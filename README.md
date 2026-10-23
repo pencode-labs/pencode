@@ -6,7 +6,7 @@ A code editor written in Go, with an Onix-powered desktop interface and a shared
 
 Pencode brings editing, language tools, a terminal, Git, and native process extensions into one workbench. Its client/server design keeps the interface on your machine while file operations and development tools run where your project lives.
 
-**Status: early development.** Pencode is being extracted from the Onix repository into a standalone project. The source includes the features below, but the standalone GUI build is currently blocked by imports of Onix's `internal` packages. Read [development setup](#development-setup) before building.
+**Status: early development.** Pencode is being extracted from the Onix repository into a standalone project. The source includes the features below and uses Onix's public HTML APIs. Read [development setup](#development-setup) before building.
 
 [Features](#features) · [Development setup](#development-setup) · [Architecture](#architecture) · [Extensions](#extensions) · [Contributing](#contributing)
 
@@ -50,7 +50,11 @@ cd pencode
 go mod tidy
 ```
 
-**Dependency resolution succeeds, but the GUI does not yet build as an independent module.** The workbench and some tests import `github.com/diiyw/onix/internal/...`, which Go forbids outside the Onix module. Migrating those dependencies to public engine APIs remains part of the extraction work. A local `replace` directive does not remove that restriction.
+Use an Onix checkout that provides the public `github.com/diiyw/onix/html/{css,dom,layout,style}` packages. The workbench and its tests use these APIs and can build as an independent module:
+
+```sh
+go build ./...
+```
 
 The server build helper in `cmd/pencode-build-servers` also still uses the former `./projects/pencode/...` layout and needs migration before use here. This repository is currently a source checkout for development, rather than a ready-to-install desktop release.
 
@@ -62,7 +66,7 @@ From the Pencode repository root:
 go test -p 1 ./protocol ./peb ./lsp ./transport ./terminal
 ```
 
-These checks cover individual packages, not full application or platform validation. Workbench tests and a full `go test ./...` are affected by the `internal` import restriction above.
+These checks cover individual packages, not full application or platform validation. Run `go test -p 1 ./...` to include the workbench and all other packages.
 
 ## Architecture
 

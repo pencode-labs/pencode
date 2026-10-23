@@ -8,9 +8,9 @@ import (
 	"testing/fstest"
 
 	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/internal/css"
-	"github.com/diiyw/onix/internal/dom"
-	"github.com/diiyw/onix/internal/style"
+	"github.com/diiyw/onix/html/css"
+	"github.com/diiyw/onix/html/dom"
+	"github.com/diiyw/onix/html/style"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"

@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/diiyw/onix/internal/dom"
+	"github.com/diiyw/onix/html/dom"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
-	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 const pencodeTextEditor = "text"

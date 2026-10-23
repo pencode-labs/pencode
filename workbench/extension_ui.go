@@ -5,13 +5,13 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/ecs"
+	"github.com/diiyw/onix/html/dom"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/internal/dom"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/peb"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 const maxExtensionSurfaces = 32

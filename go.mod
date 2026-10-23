@@ -1,6 +1,6 @@
 module github.com/pencode-labs/pencode
 
-go 1.26.0
+go 1.27.0
 
 replace github.com/diiyw/onix => ../onix
 

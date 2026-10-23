@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func command(ctx context.Context, root string, args []string) ([]byte, error) {

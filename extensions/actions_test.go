@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/output"
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/output"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func TestActionHelperProcess(t *testing.T) {

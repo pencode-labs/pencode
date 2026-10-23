@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/diiyw/onix/projects/pencode/client"
+	"github.com/pencode-labs/pencode/client"
 	"path/filepath"
 	"slices"
 	"strconv"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/projects/pencode/remote"
+	"github.com/pencode-labs/pencode/remote"
 )
 
 func TestProfilesPublicationAndInvalidData(t *testing.T) {

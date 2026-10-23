@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/diiyw/onix/projects/pencode/transport"
+	"github.com/pencode-labs/pencode/transport"
 )
 
 type Target struct {
@@ -130,7 +130,7 @@ func (c Connector) artifact(t Target, platform Platform) (*os.File, string, erro
 			target.Arch = setting.Value
 		}
 	}
-	if target != platform || info.Path != "github.com/diiyw/onix/projects/pencode/cmd/pencode-server" {
+	if target != platform || info.Path != "github.com/pencode-labs/pencode/cmd/pencode-server" {
 		return nil, "", fmt.Errorf("服务端程序必须是为 %s 构建的独立 pencode-server", platform)
 	}
 	f, err := os.Open(name)

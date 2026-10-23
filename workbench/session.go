@@ -6,10 +6,10 @@ import (
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/actions"
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/extensions"
-	"github.com/diiyw/onix/projects/pencode/output"
+	"github.com/pencode-labs/pencode/actions"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/output"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 )

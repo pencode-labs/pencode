@@ -2,9 +2,9 @@ package workbench
 
 import (
 	"context"
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/peb"
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/peb"
+	"github.com/pencode-labs/pencode/protocol"
 	"strconv"
 	"strings"
 	"time"

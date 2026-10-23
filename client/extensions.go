@@ -7,8 +7,8 @@ import (
 	"path"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/peb"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 // Extension is a connection-scoped server registration. No executable or asset

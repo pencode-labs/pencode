@@ -10,12 +10,12 @@ import (
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/project"
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/connection"
-	"github.com/diiyw/onix/projects/pencode/remote"
-	"github.com/diiyw/onix/projects/pencode/server"
-	"github.com/diiyw/onix/projects/pencode/transport"
-	"github.com/diiyw/onix/projects/pencode/workbench"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/remote"
+	"github.com/pencode-labs/pencode/server"
+	"github.com/pencode-labs/pencode/transport"
+	"github.com/pencode-labs/pencode/workbench"
 )
 
 func main() {

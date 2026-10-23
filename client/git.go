@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func (c *Client) Git(ctx context.Context, root string, args ...string) ([]byte, error) {

@@ -6,9 +6,9 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/diiyw/onix/projects/pencode/configuration"
+	"github.com/pencode-labs/pencode/configuration"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 	"github.com/diiyw/onix/syntax"
 )
 

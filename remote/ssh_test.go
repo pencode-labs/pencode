@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/transport"
+	"github.com/pencode-labs/pencode/transport"
 )
 
 func TestSSHPlatformAndTargetValidation(t *testing.T) {

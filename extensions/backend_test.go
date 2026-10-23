@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/server"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/server"
 )
 
 func extensionBackend(t testing.TB, directory string) *client.Client {

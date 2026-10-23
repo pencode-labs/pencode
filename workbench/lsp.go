@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/extensions"
-	"github.com/diiyw/onix/projects/pencode/lsp"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 type pencodeLanguageKey struct{ root, id string }

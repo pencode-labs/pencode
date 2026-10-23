@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func TestExtensionResourcesReturnOrderedPrefix(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 // Install uploads a selected local package to the server. Only this explicit

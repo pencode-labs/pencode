@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 // Process is a flow-controlled stdio/PTY stream. Each reader has at most one

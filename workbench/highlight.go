@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/projects/pencode/configuration"
+	"github.com/pencode-labs/pencode/configuration"
 	"github.com/diiyw/onix/syntax"
 	htmlui "github.com/diiyw/onix/ui/html"
 )

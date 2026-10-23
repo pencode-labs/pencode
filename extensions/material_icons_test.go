@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 // Build and install the Go extension, then exercise the real host handshake and

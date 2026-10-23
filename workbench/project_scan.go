@@ -3,10 +3,10 @@ package workbench
 import (
 	"context"
 	"fmt"
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/client"
+	"github.com/pencode-labs/pencode/client"
 )
 
 const (

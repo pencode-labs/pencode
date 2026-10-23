@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func service(op protocol.Operation, root string) protocol.Encoder {

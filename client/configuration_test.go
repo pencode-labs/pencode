@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/projects/pencode/configuration"
-	"github.com/diiyw/onix/projects/pencode/server"
+	"github.com/pencode-labs/pencode/configuration"
+	"github.com/pencode-labs/pencode/server"
 )
 
 func TestConfigurationUsesServerResourcesWithoutWorkspace(t *testing.T) {

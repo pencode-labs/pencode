@@ -7,10 +7,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/lsp"
-	"github.com/diiyw/onix/projects/pencode/output"
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/lsp"
+	"github.com/pencode-labs/pencode/output"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 // LanguageServer is a validated contribution. A workspace activates one process

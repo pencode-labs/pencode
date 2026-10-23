@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/client"
+	"github.com/pencode-labs/pencode/client"
 )
 
 // Set PENCODE_SSH_TEST_SERVER to a native standalone build to exercise real

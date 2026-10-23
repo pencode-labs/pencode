@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/diiyw/onix/projects/pencode/extensions"
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 	htmlui "github.com/diiyw/onix/ui/html"
 )
 

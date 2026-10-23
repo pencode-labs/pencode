@@ -9,7 +9,7 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/terminal"
+	"github.com/pencode-labs/pencode/terminal"
 	engineui "github.com/diiyw/onix/ui"
 )
 

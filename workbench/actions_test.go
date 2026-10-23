@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/actions"
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/actions"
+	"github.com/pencode-labs/pencode/peb"
 	htmlui "github.com/diiyw/onix/ui/html"
 )
 

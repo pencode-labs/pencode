@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/terminal"
+	"github.com/pencode-labs/pencode/terminal"
 	htmlui "github.com/diiyw/onix/ui/html"
 )
 

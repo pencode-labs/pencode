@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
-	"github.com/diiyw/onix/projects/pencode/transport"
+	"github.com/pencode-labs/pencode/peb"
+	"github.com/pencode-labs/pencode/transport"
 )
 
 type Registration struct {

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/extensions"
-	"github.com/diiyw/onix/projects/pencode/output"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/output"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/diiyw/onix/window"
 )

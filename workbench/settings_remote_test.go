@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/configuration"
-	"github.com/diiyw/onix/projects/pencode/connection"
-	"github.com/diiyw/onix/projects/pencode/remote"
-	"github.com/diiyw/onix/projects/pencode/server"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/configuration"
+	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/remote"
+	"github.com/pencode-labs/pencode/server"
 )
 
 func settingsBackend(t *testing.T, directory string) *client.Client {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 type EditorResult struct {

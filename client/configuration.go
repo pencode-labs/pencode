@@ -4,8 +4,8 @@ import (
 	"context"
 	"io/fs"
 
-	"github.com/diiyw/onix/projects/pencode/configuration"
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/configuration"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func (c *Client) ReadConfiguration(ctx context.Context) (configuration.Snapshot, error) {

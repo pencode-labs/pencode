@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func (c *Client) Create(ctx context.Context, workspace uint64, path string, directory bool) error {

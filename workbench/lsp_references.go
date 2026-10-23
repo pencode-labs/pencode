@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/diiyw/onix/projects/pencode/lsp"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 type pencodeReferencePreview struct {

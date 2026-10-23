@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/projects/pencode/connection"
-	"github.com/diiyw/onix/projects/pencode/remote"
+	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/remote"
 )
 
 func waitProjectPicker(t *testing.T, model *workspaceModel) {

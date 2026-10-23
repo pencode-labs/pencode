@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
-	"github.com/diiyw/onix/projects/pencode/server"
+	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/server"
 )
 
 // shapedConnection delays propagation independently from serialization. Packets

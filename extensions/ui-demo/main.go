@@ -6,7 +6,7 @@ import (
 	"html"
 	"os"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 const menuHTML = `<button data-ref="dialog" type="button" role="menuitem">打开表单弹窗</button><button data-ref="popup" type="button" role="menuitem">打开自由定位浮窗</button><button data-ref="panel" type="button" role="menuitem">打开工作台 Panel</button>`

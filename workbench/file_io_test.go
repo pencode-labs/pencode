@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/lsp"
-	"github.com/diiyw/onix/projects/pencode/server"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/lsp"
+	"github.com/pencode-labs/pencode/server"
 )
 
 type fileIOGate struct {

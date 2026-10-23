@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/images/svg"
-	"github.com/diiyw/onix/projects/pencode/actions"
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/output"
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/actions"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/output"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 const maxActions = 256

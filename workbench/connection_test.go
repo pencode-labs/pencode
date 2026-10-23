@@ -12,9 +12,9 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/connection"
-	"github.com/diiyw/onix/projects/pencode/remote"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/remote"
 	"github.com/diiyw/onix/ui"
 )
 

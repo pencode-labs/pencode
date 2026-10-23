@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func TestLanguageServerValidation(t *testing.T) {

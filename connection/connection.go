@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/protocol"
-	"github.com/diiyw/onix/projects/pencode/remote"
-	"github.com/diiyw/onix/projects/pencode/transport"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/remote"
+	"github.com/pencode-labs/pencode/transport"
 )
 
 type Profile struct {

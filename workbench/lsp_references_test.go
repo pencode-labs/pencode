@@ -11,7 +11,7 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/lsp"
+	"github.com/pencode-labs/pencode/lsp"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 )

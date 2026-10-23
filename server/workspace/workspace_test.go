@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func fixture(t *testing.T) (*Store, protocol.Workspace) {

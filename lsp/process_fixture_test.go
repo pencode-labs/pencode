@@ -2,7 +2,7 @@ package lsp
 
 import (
 	"context"
-	"github.com/diiyw/onix/projects/pencode/transport"
+	"github.com/pencode-labs/pencode/transport"
 	"io"
 )
 

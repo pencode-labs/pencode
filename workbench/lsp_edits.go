@@ -3,12 +3,12 @@ package workbench
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/diiyw/onix/projects/pencode/client"
+	"github.com/pencode-labs/pencode/client"
 	"path/filepath"
 	"strings"
 
 	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/projects/pencode/lsp"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 // Plans own immutable snapshots until the foreground validates every target.

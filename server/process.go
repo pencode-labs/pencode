@@ -5,9 +5,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/diiyw/onix/projects/pencode/protocol"
-	"github.com/diiyw/onix/projects/pencode/terminal"
-	"github.com/diiyw/onix/projects/pencode/transport"
+	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/terminal"
+	"github.com/pencode-labs/pencode/transport"
 )
 
 func (s *services) process(ctx context.Context, op protocol.Operation, root string, d *protocol.Decoder, e *protocol.Encoder) error {

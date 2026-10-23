@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/diiyw/onix/projects/pencode/server"
-	"github.com/diiyw/onix/projects/pencode/transport"
+	"github.com/pencode-labs/pencode/server"
+	"github.com/pencode-labs/pencode/transport"
 )
 
 func main() {

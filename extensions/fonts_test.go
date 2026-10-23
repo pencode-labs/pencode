@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func TestFontResourcesValidateAndShareFaces(t *testing.T) {

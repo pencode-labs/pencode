@@ -8,7 +8,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/diiyw/onix/projects/pencode/peb"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 type Definition struct {

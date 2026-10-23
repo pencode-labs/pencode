@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/lsp"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 func languageDispatchFixture(t *testing.T) (*pencodeLanguageSession, <-chan lsp.Message, <-chan pencodeLanguageEvent, func(lsp.Message)) {

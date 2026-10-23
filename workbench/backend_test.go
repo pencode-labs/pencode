@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/projects/pencode/client"
-	"github.com/diiyw/onix/projects/pencode/server"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/server"
 )
 
 // Tests exercise the production protocol boundary without launching a GUI or

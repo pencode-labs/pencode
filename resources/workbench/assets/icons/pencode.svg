@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1280" viewBox="0 0 1280 1280">
+  <title>Pencode</title>
+  <g transform="translate(3 22)">
+    <rect x="95" y="65" width="1079" height="1089" rx="280" fill="#b0ff59"/>
+    <rect x="226" y="196" width="823" height="840" rx="180" fill="#002f29"/>
+    <path fill="#b0ff59" d="M438 305H795C895 305 948 395 948 500C948 605 869 688 753 688H524V901C524 920 513 935 494 935H409C390 935 377 922 377 903V364C377 331 405 305 438 305Z"/>
+    <path fill="#002f29" d="M524 423H715C768 423 798 452 798 500C798 548 768 577 715 577H524Z"/>
+  </g>
+</svg>

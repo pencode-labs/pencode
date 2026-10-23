@@ -1,0 +1,11 @@
+# Generated build output and resource caches
+/dist/
+.oni-resource-cache/
+
+# Local environment and editor settings
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/

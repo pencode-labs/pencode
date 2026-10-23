@@ -1,0 +1,12 @@
+{
+  "behavior": "SceneWorkspace",
+  "modules": [
+    {
+      "id": "workbench",
+      "mod": "resources/workbench",
+      "slots": {
+        "workspace": true
+      }
+    }
+  ]
+}

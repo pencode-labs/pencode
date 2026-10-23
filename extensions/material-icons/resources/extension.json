@@ -1,0 +1,8 @@
+{
+  "id": "material-icons",
+  "name": "Material Design Icons",
+  "version": "1.0.0",
+  "publisher": "Material Extensions",
+  "description": "Material Design 文件图标主题，覆盖常见语言、框架、配置和目录名。",
+  "entry": "bin/material-icons"
+}

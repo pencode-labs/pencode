@@ -1,0 +1,8 @@
+{
+  "id": "go-lsp",
+  "name": "Go Language Server",
+  "version": "1.0.0",
+  "publisher": "Pencode",
+  "description": "Go code intelligence powered by an installed gopls",
+  "entry": "bin/go-lsp"
+}

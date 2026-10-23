@@ -1,0 +1,9 @@
+{
+  "modules": [
+    {
+      "id": "workbench",
+      "mod": "resources/workbench"
+    }
+  ],
+  "behavior": "SceneMain"
+}

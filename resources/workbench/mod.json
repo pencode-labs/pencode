@@ -1,0 +1,25 @@
+{
+  "space": "ui",
+  "resources": {
+    "launcher-html": {
+      "kind": "data",
+      "path": "assets/ui/launcher.html"
+    },
+    "workspace-html": {
+      "kind": "data",
+      "path": "assets/ui/workspace.html"
+    },
+    "pencode-css": {
+      "kind": "data",
+      "path": "assets/ui/pencode.css"
+    }
+  },
+  "name": "pencode",
+  "slots": {
+    "workspace": {
+      "type": "bool",
+      "default": false,
+      "writable": false
+    }
+  }
+}

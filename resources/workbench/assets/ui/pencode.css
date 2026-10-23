@@ -1,0 +1,2456 @@
+* {
+    box-sizing: border-box;
+    letter-spacing: 0;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-family: ui;
+}
+
+body {
+    border-radius: 12px;
+}
+
+/* Center UI labels on the selected face's cap edge and alphabetic baseline. */
+.pencode-root span,
+.pencode-root kbd {
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+button,
+textarea {
+    font-family: ui;
+    font-size: calc(13rem / 14);
+}
+
+button {
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--vscode-foreground);
+    background: transparent;
+    cursor: pointer;
+}
+
+select {
+    border-radius: 6px;
+}
+
+button:focus-visible,
+textarea:focus {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+.pencode-root {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+}
+
+.pencode-launcher,
+.pencode-sidebar,
+.pencode-tabs,
+.pencode-editor-body,
+.pencode-settings-nav,
+.pencode-settings-main {
+    border: 1px solid var(--vscode-editorGroup-border);
+}
+
+.pencode-titlebar {
+    height: 40px;
+    min-height: 40px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: transparent;
+    color: var(--vscode-titleBar-activeForeground);
+}
+
+.pencode-content {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 0;
+    margin: 0;
+    padding: 0 6px 6px;
+}
+
+.pencode-close-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.pencode-close-dialog {
+    width: 480px;
+    max-width: 100%;
+    padding: 24px;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+}
+
+.pencode-close-dialog h2 {
+    margin: 0 0 16px;
+    font-size: calc(18rem / 14);
+}
+
+.pencode-close-message {
+    margin: 0 0 12px;
+    overflow-wrap: anywhere;
+}
+
+.pencode-close-error {
+    color: var(--vscode-errorForeground);
+    overflow-wrap: anywhere;
+}
+
+.pencode-close-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+.pencode-close-actions button {
+    padding: 8px 16px;
+    border: 1px solid var(--vscode-button-border);
+    border-radius: 6px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.pencode-close-actions .pencode-close-save {
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-border);
+    background: var(--vscode-button-background);
+}
+
+.pencode-titlebar-search {
+    width: 360px;
+    max-width: calc(100% - 440px);
+    height: 28px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 12px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 14px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-placeholderForeground);
+    overflow: hidden;
+}
+
+.pencode-titlebar-search:hover,
+.pencode-titlebar-search:focus-within {
+    border-color: var(--vscode-focusBorder);
+}
+
+.pencode-titlebar-search input {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+    color: var(--vscode-input-foreground);
+    font-family: ui;
+    font-size: calc(13rem / 14);
+}
+
+.pencode-titlebar-search-shortcut {
+    pointer-events: none;
+    flex: 0 0 auto;
+    font-family: ui;
+    font-size: calc(11rem / 14);
+    color: var(--vscode-descriptionForeground);
+}
+
+.pencode-titlebar-project {
+    position: absolute;
+    top: 6px;
+    left: calc(50% - 14px);
+    z-index: 1;
+}
+
+.pencode-titlebar-settings {
+    position: absolute;
+    top: 6px;
+    right: 146px;
+    z-index: 2;
+}
+
+.pencode-window-controls {
+    position: absolute;
+    top: 6px;
+    right: 0;
+    height: 28px;
+    width: 138px;
+    display: flex;
+}
+
+.pencode-titlebar.native-controls .pencode-titlebar-settings {
+    right: 8px;
+}
+
+.pencode-titlebar.native-controls .pencode-titlebar-marketplace {
+    right: 44px;
+}
+
+.pencode-window-control {
+    width: 46px;
+    height: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 6px;
+}
+
+.pencode-window-control:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.pencode-window-close:hover {
+    background: var(--vscode-inputValidation-errorBackground);
+}
+
+.pencode-window-control img {
+    width: 16px;
+    height: 16px;
+}
+
+.pencode-primary-action img,
+.pencode-icon-button img,
+.pencode-project-arrow,
+.pencode-tree-icon,
+.pencode-find-action img {
+    width: 16px;
+    height: 16px;
+}
+
+.pencode-root img.pencode-close-icon {
+    width: 14px;
+    height: 14px;
+}
+
+.pencode-launcher {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    border-radius: 8px;
+}
+
+.pencode-launcher-panel {
+    width: 500px;
+    max-width: 100%;
+    padding: 40px;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    background: var(--vscode-editorWidget-background);
+}
+
+.pencode-launcher-kicker {
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(11rem / 14);
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+
+.pencode-launcher-panel h1 {
+    margin: 14px 0 8px;
+    color: var(--vscode-foreground);
+    font-size: calc(29rem / 14);
+    line-height: 1.1;
+    font-weight: 700;
+}
+
+.pencode-launcher-copy {
+    margin: 0 0 28px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.6;
+}
+
+.pencode-primary-action {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 14px;
+    border: 1px solid var(--vscode-button-border);
+    border-radius: 8px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    font-weight: 700;
+}
+
+.pencode-primary-action:hover {
+    background: var(--vscode-button-hoverBackground);
+    border-color: var(--vscode-button-border);
+}
+
+.pencode-launcher-status {
+    min-height: 20px;
+    margin-top: 17px;
+    color: var(--vscode-errorForeground);
+    font-size: calc(12rem / 14);
+    line-height: 1.5;
+}
+
+.pencode-workspace {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 6px;
+    background: var(--vscode-editor-background);
+}
+
+.pencode-sidebar {
+    width: 270px;
+    min-width: 220px;
+    flex: 0 0 270px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+}
+
+.pencode-sidebar-actions {
+    flex: 0 0 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin: 6px 8px 0;
+}
+
+.pencode-sidebar-open-project {
+    margin-right: auto;
+}
+
+.pencode-icon-button {
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 6px;
+    color: var(--vscode-foreground);
+}
+
+.pencode-icon-button:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.pencode-project-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: hidden;
+}
+
+.pencode-project {
+    flex: 0 0 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.pencode-project.expanded {
+    flex: 1 1 auto;
+}
+
+.pencode-project-summary {
+    flex: 0 0 30px;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 8px;
+    padding: 0 5px 0 4px;
+    border-radius: 6px;
+    background: transparent;
+}
+
+.pencode-project .pencode-project-summary:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.pencode-project-toggle {
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 5px 0 1px;
+    border: 0;
+    border-radius: 4px;
+    color: var(--vscode-sideBar-foreground);
+    font-size: calc(13rem / 14);
+    font-weight: 700;
+    text-align: left;
+}
+
+.pencode-project-arrow {
+    flex: 0 0 16px;
+}
+
+.pencode-project.expanded .pencode-project-arrow {
+    transform: rotate(90deg);
+}
+
+.pencode-project-name {
+    min-width: 0;
+    overflow-x: clip;
+    overflow-y: visible;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pencode-project-close {
+    width: 20px;
+    height: 20px;
+    min-height: 20px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 20px;
+    padding: 0;
+    border-radius: 4px;
+}
+
+.pencode-project-summary:hover .pencode-project-close,
+.pencode-project-close:focus-visible {
+    display: flex;
+}
+
+.pencode-project-close:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.pencode-tree {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 5px 7px 13px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.pencode-project:not(.expanded) .pencode-tree {
+    padding: 0;
+}
+
+.pencode-tree-height {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.pencode-tree-window {
+    position: absolute;
+    left: 0;
+    right: 0;
+}
+
+.pencode-tree-row {
+    height: 30px;
+    flex-shrink: 0;
+    width: 100%;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 5px;
+    padding-right: 9px;
+    padding-bottom: 5px;
+    border-radius: 6px;
+    color: var(--vscode-sideBar-foreground);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.pencode-tree-row:hover {
+    background: var(--vscode-list-hoverBackground);
+    color: var(--vscode-list-hoverForeground);
+}
+
+.pencode-tree-row.active {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.pencode-tree-row.directory {
+    color: var(--vscode-sideBar-foreground);
+    font-weight: 600;
+}
+
+.pencode-tree-row.directory:hover {
+    color: var(--vscode-list-hoverForeground);
+}
+
+.pencode-tree-row.drag-source {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.pencode-tree-row.drop-target,
+.pencode-project-summary.drop-target {
+    background: var(--vscode-list-hoverBackground);
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.pencode-tree-arrow {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    visibility: hidden;
+}
+
+.pencode-tree-row.directory .pencode-tree-arrow {
+    visibility: visible;
+}
+
+.pencode-tree-row.directory[aria-expanded="true"] .pencode-tree-arrow {
+    transform: rotate(90deg);
+}
+
+.pencode-tree-icon {
+    flex: 0 0 16px;
+    opacity: 0.86;
+}
+
+.pencode-tree-name {
+    min-width: 0;
+    overflow-x: clip;
+    overflow-y: visible;
+    text-overflow: ellipsis;
+}
+
+.pencode-editor-shell {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+}
+
+.pencode-tabs {
+    height: 32px;
+    min-height: 32px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 8px;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+}
+
+.pencode-tab {
+    height: 100%;
+    min-width: 120px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    border-left: 1px solid var(--vscode-tab-border);
+    background: var(--vscode-tab-inactiveBackground);
+}
+
+.pencode-tab:first-child {
+    border-left: none;
+}
+
+.pencode-tab.active {
+    border-left: none;
+    background: var(--vscode-tab-activeBackground);
+    box-shadow: inset 0 -2px 0 var(--vscode-tab-activeBorder);
+}
+
+.pencode-tab.active + .pencode-tab {
+    border-left: none;
+}
+
+.pencode-tab:hover {
+    background: var(--vscode-tab-hoverBackground);
+}
+
+.pencode-tab-select {
+    flex: 1 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 0 13px;
+    border: 0;
+    border-radius: 0;
+    color: var(--vscode-tab-inactiveForeground);
+    text-align: left;
+}
+
+.pencode-tab.active .pencode-tab-select {
+    color: var(--vscode-tab-activeForeground);
+}
+
+.pencode-tab-select:hover {
+    background: transparent;
+    color: var(--vscode-tab-hoverForeground);
+}
+
+.pencode-tab-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+}
+
+.pencode-tab-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.pencode-tab.preview .pencode-tab-name {
+    font-style: italic;
+}
+
+.pencode-tab-name {
+    flex: 0 0 auto;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.pencode-tab-close {
+    color: var(--vscode-tab-inactiveForeground);
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    margin-left: 8px;
+    margin-right: 6px;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 6px;
+}
+
+.pencode-tab.active .pencode-tab-close {
+    color: var(--vscode-tab-activeForeground);
+}
+
+.pencode-tab-close:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.pencode-tab-close img {
+    opacity: 0.72;
+}
+
+.pencode-tab.dirty .pencode-tab-close img {
+    display: none;
+}
+
+.pencode-tab.dirty:hover .pencode-tab-dot,
+.pencode-tab.dirty .pencode-tab-close:focus-visible .pencode-tab-dot {
+    display: none;
+}
+
+.pencode-tab.dirty:hover .pencode-tab-close img,
+.pencode-tab.dirty .pencode-tab-close:focus-visible img {
+    display: block;
+}
+
+.pencode-editor-body {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+}
+
+.pencode-find {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    z-index: 12;
+    width: 390px;
+    max-width: calc(100% - 74px);
+    padding: 4px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 8px;
+    background: var(--vscode-editorWidget-background);
+    box-shadow: 0 8px 22px var(--vscode-widget-shadow);
+    color: var(--vscode-editorWidget-foreground);
+}
+
+.pencode-find-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 28px;
+}
+
+.pencode-find-row + .pencode-find-row {
+    margin-top: 5px;
+}
+
+.pencode-find input {
+    flex: 1;
+    min-width: 0;
+    height: 27px;
+    padding: 0 8px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 3px;
+    outline: none;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-size: calc(12rem / 14);
+}
+
+.pencode-find input:focus {
+    border-color: var(--vscode-focusBorder);
+    outline: none;
+}
+
+.pencode-find-count {
+    min-width: 38px;
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(11rem / 14);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.pencode-find-action {
+    width: 25px;
+    min-width: 25px;
+    height: 25px;
+    padding: 0;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pencode-find-action:hover,
+.pencode-replace-action:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pencode-find-previous img,
+.pencode-lsp-previous img {
+    transform: rotate(180deg);
+}
+
+.pencode-replace-action {
+    height: 25px;
+    padding: 0 7px;
+    border-radius: 6px;
+    color: var(--vscode-textLink-foreground);
+    font-size: calc(11rem / 14);
+}
+
+.pencode-line-numbers {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 58px;
+    border-right: 1px solid var(--vscode-editorGroup-border);
+    background: var(--vscode-editorGutter-background);
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.pencode-editor {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 58px;
+    width: auto;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    resize: none;
+    padding: 0 24px 20px;
+    border: 0;
+    border-radius: 0;
+    color: var(--vscode-editor-foreground);
+    background: var(--vscode-editor-background);
+    caret-color: var(--vscode-editorCursor-foreground);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    tab-size: 2;
+    white-space: pre-wrap;
+    overflow-wrap: normal;
+    overflow-x: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.pencode-editor:focus {
+    outline: none;
+}
+
+.pencode-lsp-hover,
+.pencode-lsp-completion,
+.pencode-editor-context {
+    position: absolute;
+    z-index: 30;
+    max-width: 560px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 6px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    box-shadow: 0 8px 24px var(--vscode-widget-shadow);
+}
+
+.pencode-lsp-hover {
+    min-width: min(180px, 80%);
+    max-width: 80%;
+    max-height: calc(100% - 8px);
+    padding: 4px 6px;
+    overflow: auto;
+}
+
+.pencode-lsp-hover-measuring {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.pencode-lsp-hover-underline {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    z-index: 13;
+    pointer-events: none;
+}
+
+.pencode-lsp-hover-underline span {
+    position: absolute;
+    background: var(--vscode-textLink-foreground);
+}
+
+.pencode-lsp-hover-body {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font: inherit;
+    line-height: 1.45;
+}
+
+.pencode-lsp-hover-body p,
+.pencode-lsp-hover-body pre,
+.pencode-lsp-hover-body h1,
+.pencode-lsp-hover-body h2,
+.pencode-lsp-hover-body h3,
+.pencode-lsp-hover-body h4,
+.pencode-lsp-hover-body h5,
+.pencode-lsp-hover-body h6,
+.pencode-lsp-hover-body blockquote,
+.pencode-lsp-hover-body ul,
+.pencode-lsp-hover-body ol {
+    margin: 0 0 6px;
+}
+
+.pencode-lsp-hover-body ul,
+.pencode-lsp-hover-body ol {
+    padding-left: 20px;
+}
+
+.pencode-lsp-hover-body > :last-child {
+    margin-bottom: 0;
+}
+
+.pencode-lsp-hover-body pre,
+.pencode-lsp-hover-body code {
+    white-space: pre-wrap;
+    font: inherit;
+}
+
+.pencode-lsp-completion {
+    display: flex;
+    width: min(520px, calc(100% - 20px));
+    max-height: 270px;
+    padding: 2px;
+    flex-direction: column;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.pencode-lsp-completion-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.pencode-lsp-completion button,
+.pencode-editor-context button {
+    min-height: 28px;
+    padding: 2px 8px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.pencode-lsp-completion button:hover,
+.pencode-lsp-completion button[aria-selected="true"],
+.pencode-lsp-completion button:focus-visible,
+.pencode-editor-context button:hover,
+.pencode-editor-context button:focus-visible {
+    background: var(--vscode-list-hoverBackground);
+    outline: none;
+}
+
+.pencode-editor-context {
+    display: flex;
+    width: 240px;
+    padding: 2px;
+    flex-direction: column;
+    overflow: visible;
+}
+
+.pencode-editor-context button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    gap: 16px;
+}
+
+.pencode-context-hint {
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(11rem / 14);
+}
+
+.pencode-context-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--vscode-editorWidget-border);
+    flex-shrink: 0;
+}
+
+.pencode-editor-context button:disabled { opacity: .45; }
+.pencode-editor-context button.active { background: var(--vscode-list-hoverBackground); }
+
+.pencode-editor-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--vscode-descriptionForeground);
+    pointer-events: none;
+}
+
+.pencode-editor-empty-mark {
+    color: var(--vscode-textLink-foreground);
+    font-family: ui-monospace, monospace;
+    font-size: calc(20rem / 14);
+    font-weight: 700;
+}
+
+.pencode-statusbar {
+    height: 32px;
+    min-height: 32px;
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px 0 0;
+    color: var(--vscode-editor-foreground);
+    background: transparent;
+    font-size: calc(11rem / 14);
+    flex-shrink: 0;
+}
+
+.pencode-statusbar-buttons,
+.pencode-output-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pencode-statusbar-buttons button,
+.pencode-panel-toolbar button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 6px;
+    border: 0;
+    border-radius: 4px;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+
+.pencode-statusbar-buttons button:hover,
+.pencode-panel-toolbar button:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.pencode-statusbar-buttons button[aria-expanded="true"] {
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+}
+
+.pencode-statusbar-buttons button:focus-visible,
+.pencode-panel-toolbar button:focus-visible,
+.pencode-problem-row:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.pencode-problem-count {
+    padding: 0 5px;
+    border-radius: 10px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    font-size: calc(10rem / 14);
+    line-height: 16px;
+}
+
+.pencode-bottom-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    height: 280px;
+    max-height: 45%;
+    min-height: 0;
+    margin-top: 6px;
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 8px;
+    overflow: hidden;
+    color: var(--vscode-editor-foreground);
+    background: var(--vscode-editor-background);
+}
+
+.pencode-panel-toolbar {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    z-index: 2;
+    max-width: calc(100% - 8px);
+    display: flex;
+    align-items: center;
+    padding: 2px 0;
+    border-radius: 4px;
+    background: var(--vscode-editor-background);
+    opacity: 0.5;
+}
+
+.pencode-panel-toolbar:hover,
+.pencode-panel-toolbar:focus-within {
+    opacity: 1;
+}
+
+.pencode-panel-toolbar .pencode-icon-button {
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.pencode-panel-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.pencode-output-tools {
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.pencode-output-tools input,
+.pencode-output-tools select {
+    min-width: 0;
+    height: 28px;
+    padding: 2px 8px;
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    color: var(--vscode-dropdown-foreground);
+    background: var(--vscode-dropdown-background);
+}
+
+.pencode-output-tools input { width: 180px; }
+.pencode-output-tools select { width: 240px; }
+.pencode-panel-close { margin-left: auto; flex-shrink: 0; }
+
+.pencode-problems-pane,
+.pencode-output-pane {
+    flex: 1;
+    min-height: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+    overflow: auto;
+}
+
+.pencode-lsp-hover,
+.pencode-problems-pane,
+.pencode-output-pane,
+.pencode-output-pane textarea {
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.pencode-panel-empty {
+    margin: 0;
+    padding: 4px 16px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.pencode-problems-pane { padding-top: 8px; }
+.pencode-problem-list { padding: 0; }
+.pencode-problem-row {
+    display: block;
+    width: 100%;
+    padding: 4px 16px;
+    border: 0;
+    text-align: left;
+    white-space: pre-wrap;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+.pencode-problem-row:hover { background: var(--vscode-list-hoverBackground); }
+.pencode-problem-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.pencode-problem-group-arrow {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+}
+.pencode-problem-file-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+.pencode-problem-group-items .pencode-problem-row { padding-left: 60px; }
+.pencode-output-pane { display: flex; }
+.pencode-output-pane textarea {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px 16px 4px;
+    border: 0;
+    border-radius: 0;
+    resize: none;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow: auto;
+    font-family: ui-monospace, monospace;
+    color: inherit;
+    background: transparent;
+}
+
+.pencode-statusbar-details {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    white-space: nowrap;
+}
+
+.pencode-settings {
+    position: absolute;
+    top: 40px;
+    right: 12px;
+    z-index: 30;
+    width: 700px;
+    max-width: calc(100% - 24px);
+    height: 560px;
+    max-height: calc(100% - 56px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    background: var(--vscode-editorWidget-background);
+    box-shadow: 0 12px 34px var(--vscode-widget-shadow);
+    color: var(--vscode-editorWidget-foreground);
+}
+
+.pencode-settings-header {
+    height: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px 0 16px;
+    border-bottom: 1px solid var(--vscode-settings-headerBorder);
+}
+
+.pencode-settings-header h2 {
+    margin: 0;
+    color: var(--vscode-settings-headerForeground);
+    font-size: calc(14rem / 14);
+    font-weight: 600;
+}
+
+.pencode-settings-layout {
+    display: flex;
+    flex: 1;
+    gap: 6px;
+    padding: 6px;
+    min-height: 0;
+}
+
+.pencode-settings-nav {
+    width: 156px;
+    flex: 0 0 156px;
+    padding: 12px 6px;
+    border-radius: 8px;
+    background: var(--vscode-editor-background);
+}
+
+.pencode-settings-nav-item {
+    width: 100%;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 12px;
+    border-left: 2px solid transparent;
+    border-radius: 6px;
+    color: var(--vscode-foreground);
+    font-size: calc(12rem / 14);
+    text-align: left;
+}
+
+.pencode-settings-nav-item:hover {
+    background: var(--vscode-list-hoverBackground);
+    color: var(--vscode-list-hoverForeground);
+}
+
+.pencode-settings-nav-item.active {
+    border-left-color: var(--vscode-focusBorder);
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.pencode-settings-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 22px 20px;
+    border-radius: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+    background: var(--vscode-editor-background);
+}
+
+.pencode-settings-main-header {
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--vscode-settings-headerBorder);
+}
+
+.pencode-settings-main-header h3 {
+    margin: 0;
+    color: var(--vscode-settings-headerForeground);
+    font-size: calc(15rem / 14);
+    font-weight: 600;
+}
+
+.pencode-settings-row {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--vscode-settings-headerBorder);
+    color: var(--vscode-foreground);
+    font-size: calc(12rem / 14);
+}
+
+.pencode-settings-stepper {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.pencode-settings-stepper button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 6px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    font-size: calc(16rem / 14);
+}
+
+.pencode-settings-stepper button:hover,
+.pencode-settings-binding:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pencode-settings-value {
+    width: 52px;
+    text-align: center;
+    color: var(--vscode-foreground);
+    font-variant-numeric: tabular-nums;
+}
+
+.pencode-settings-select {
+    width: auto;
+    max-width: 100%;
+    flex-shrink: 0;
+    height: 28px;
+    padding: 0 24px 0 8px;
+    border: 1px solid var(--vscode-settings-dropdownBorder);
+    background: var(--vscode-settings-dropdownBackground);
+    color: var(--vscode-settings-dropdownForeground);
+    font: inherit;
+    cursor: pointer;
+}
+
+.pencode-settings-select:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+.pencode-settings-binding {
+    min-width: 115px;
+    max-width: 175px;
+    height: 26px;
+    overflow: hidden;
+    padding: 0 7px;
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 6px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    font-size: calc(11rem / 14);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pencode-settings-binding.recording {
+    border-color: var(--vscode-focusBorder);
+    color: var(--vscode-focusBorder);
+}
+
+.pencode-settings-reset {
+    flex: 0 0 auto;
+    padding: 5px 7px;
+    color: var(--vscode-textLink-foreground);
+    font-size: calc(11rem / 14);
+}
+
+.pencode-settings-feedback {
+    padding: 8px 0;
+    color: var(--vscode-errorForeground);
+    font-size: calc(11rem / 14);
+}
+
+.pencode-quick-anchor {
+    position: absolute;
+    top: 42px;
+    left: 12px;
+    right: 12px;
+    z-index: 35;
+    display: flex;
+    justify-content: center;
+}
+
+.pencode-quick-open {
+    width: 480px;
+    max-width: 100%;
+    padding: 7px;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    background: var(--vscode-quickInput-background);
+    box-shadow: 0 14px 38px var(--vscode-widget-shadow);
+    color: var(--vscode-quickInput-foreground);
+}
+
+.pencode-quick-empty {
+    margin: 0;
+    padding: 12px 10px;
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(12rem / 14);
+}
+
+.pencode-quick-open-list button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 30px;
+    min-height: 30px;
+    overflow: hidden;
+    padding: 0 9px;
+    border-radius: 6px;
+    color: var(--vscode-foreground);
+    font-size: calc(12rem / 14);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pencode-quick-open-list img {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.pencode-quick-open-list span {
+    min-width: 0;
+    overflow-x: clip;
+    overflow-y: visible;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pencode-quick-open-list button.active,
+.pencode-quick-open-list button:hover {
+    background: var(--vscode-quickInputList-focusBackground);
+    color: var(--vscode-quickInputList-focusForeground);
+}
+
+@media (max-width: 900px) {
+    .pencode-titlebar-search-shortcut {
+        display: none;
+    }
+
+    .pencode-sidebar {
+        width: 230px;
+        flex-basis: 230px;
+    }
+}
+
+@media (max-width: 560px) {
+    .pencode-settings-nav {
+        width: 112px;
+        flex-basis: 112px;
+    }
+
+    .pencode-settings-main {
+        padding: 8px 12px 16px;
+    }
+
+    .pencode-settings-row {
+        flex-wrap: wrap;
+        padding: 8px 0;
+    }
+}
+
+.pencode-titlebar-marketplace {
+    position: absolute;
+    top: 6px;
+    right: 182px;
+    z-index: 2;
+}
+
+.pencode-marketplace {
+    position: absolute;
+    top: 46px;
+    right: 18px;
+    width: 740px;
+    max-width: calc(100% - 36px);
+    height: 480px;
+    max-height: calc(100% - 64px);
+    z-index: 35;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    box-shadow: 0 12px 32px var(--vscode-widget-shadow);
+}
+
+.pencode-market-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 8px;
+}
+
+.pencode-market-header h2 {
+    margin: 0;
+    color: var(--vscode-settings-headerForeground);
+    font-size: calc(14rem / 14);
+    font-weight: 600;
+}
+
+.pencode-market-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 4px 16px 12px;
+}
+
+.pencode-market-toolbar input {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 5px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+}
+
+.pencode-market-toolbar input:focus {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.pencode-market-toolbar button,
+.pencode-market-actions button {
+    padding: 6px 12px;
+    border: 1px solid var(--vscode-button-border);
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.pencode-market-toolbar .pencode-market-install {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.pencode-marketplace button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.pencode-market-feedback {
+    min-height: 20px;
+    padding: 0 16px 8px;
+    font-size: calc(12rem / 14);
+    color: var(--vscode-descriptionForeground);
+    overflow-wrap: anywhere;
+}
+
+.pencode-market-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    border-top: 1px solid var(--vscode-widget-border);
+}
+
+.pencode-market-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 230px;
+    flex: 0 0 230px;
+    padding: 12px 8px;
+    overflow-y: auto;
+    border-right: 1px solid var(--vscode-widget-border);
+}
+
+.pencode-market-sidebar h3 {
+    margin: 0 8px 10px;
+    font-size: calc(12rem / 14);
+    color: var(--vscode-descriptionForeground);
+}
+
+.pencode-market-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pencode-market-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    padding: 10px 12px;
+    text-align: left;
+    gap: 4px;
+}
+
+.pencode-market-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.pencode-market-item.selected {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.pencode-market-item-name {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.pencode-market-item-id {
+    font-size: calc(11rem / 14);
+    overflow-wrap: anywhere;
+}
+
+.pencode-market-empty {
+    margin: 12px 8px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.pencode-market-detail {
+    flex: 1;
+    min-width: 0;
+    padding: 22px;
+    overflow-y: auto;
+}
+
+.pencode-market-detail h3 {
+    margin: 0 0 8px;
+    font-size: calc(21rem / 14);
+    overflow-wrap: anywhere;
+}
+
+.pencode-market-meta,
+.pencode-market-path {
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(12rem / 14);
+    overflow-wrap: anywhere;
+}
+
+.pencode-market-description {
+    margin: 22px 0;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.pencode-market-status {
+    font-size: calc(12rem / 14);
+    overflow-wrap: anywhere;
+}
+
+.pencode-market-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.pencode-market-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--vscode-widget-border);
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(11rem / 14);
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+    .pencode-market-sidebar {
+        width: 150px;
+        flex-basis: 150px;
+    }
+    .pencode-market-toolbar {
+        flex-wrap: wrap;
+    }
+    .pencode-market-toolbar input {
+        flex-basis: 100%;
+    }
+    .pencode-market-detail {
+        padding: 14px;
+    }
+}
+
+.pencode-editor-header {
+    height: 24px;
+    min-height: 24px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 4px;
+    line-height: 24px;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editor-background);
+    font-size: calc(12rem / 14);
+}
+.pencode-editor-path {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: none;
+}
+.pencode-editor-path ol {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.pencode-editor-path li {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+.pencode-editor-path [aria-current="page"] {
+    color: var(--vscode-foreground);
+}
+.pencode-path-separator {
+    margin: 0 5px;
+}
+.pencode-path-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin-right: 4px;
+    object-fit: contain;
+}
+.pencode-editor-tools {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+}
+.pencode-editor-tools select {
+    width: auto;
+    height: 22px;
+    padding: 0 24px 0 6px;
+    border: 1px solid transparent;
+    color: var(--vscode-descriptionForeground);
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+.pencode-editor-tools select:hover {
+    color: var(--vscode-foreground);
+    background: var(--vscode-toolbar-hoverBackground);
+}
+.pencode-editor-tools select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+.pencode-custom-editor {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+}
+.pencode-custom-editor > p {
+    padding: 12px 20px;
+}
+.pencode-custom-editor-content {
+    min-height: 100%;
+}
+
+/* Language service controls use the same theme colors as editor widgets. */
+.pencode-lsp-button,
+.pencode-lsp-select,
+.pencode-lsp-query-input {
+    color: var(--vscode-foreground);
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    padding: 4px 8px;
+}
+.pencode-lsp-panel {
+    position: absolute;
+    z-index: 28;
+    width: 560px;
+    max-width: calc(100% - 8px);
+    max-height: min(340px, calc(100% - 8px));
+    overflow: auto;
+    padding: 8px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px var(--vscode-widget-shadow);
+}
+.pencode-lsp-panel-header,
+.pencode-lsp-panel-footer,
+.pencode-lsp-query {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.pencode-lsp-panel-title,
+.pencode-lsp-query-input {
+    flex: 1;
+    min-width: 0;
+}
+.pencode-lsp-query {
+    margin: 4px 2px;
+}
+.pencode-lsp-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0;
+    padding: 4px 6px;
+}
+.pencode-lsp-results {
+    display: flex;
+    flex-direction: column;
+}
+.pencode-lsp-result {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 4px 6px;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+.pencode-lsp-result-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+.pencode-lsp-result-toggle {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+.pencode-lsp-reference-file[aria-expanded="true"] .pencode-lsp-result-toggle {
+    transform: rotate(90deg);
+}
+.pencode-lsp-reference-file {
+    white-space: nowrap;
+}
+.pencode-lsp-result-label,
+.pencode-lsp-result-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pencode-lsp-reference-file .pencode-lsp-result-label {
+    flex-shrink: 0;
+    max-width: 60%;
+}
+.pencode-lsp-result-path {
+    color: var(--vscode-descriptionForeground);
+}
+.pencode-lsp-result-count {
+    flex-shrink: 0;
+    margin-left: auto;
+    min-width: 20px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    text-align: center;
+}
+.pencode-lsp-reference-location {
+    padding-left: 46px;
+    white-space: pre;
+}
+.pencode-lsp-reference-location mark {
+    display: inline-block;
+    color: inherit;
+    background: var(--vscode-editor-findMatchHighlightBackground);
+}
+.pencode-lsp-button:hover,
+.pencode-lsp-result.active {
+    background: var(--vscode-list-hoverBackground);
+}
+.pencode-lsp-panel-footer {
+    justify-content: flex-end;
+    margin-top: 2px;
+}
+
+.pencode-file-context {
+    z-index: 40;
+}
+
+.pencode-file-context button:hover,
+.pencode-file-context button.active,
+.pencode-tree-row.context-selected {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.pencode-file-name {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+}
+
+.pencode-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: auto;
+}
+.pencode-actions-titlebar {
+    position: absolute;
+    top: 6px;
+    right: 218px;
+    max-width: calc(50% - 410px);
+    height: 28px;
+    z-index: 2;
+}
+.pencode-titlebar.native-controls .pencode-actions-titlebar {
+    right: 80px;
+    max-width: calc(50% - 272px);
+}
+.pencode-actions-statusbar {
+    flex: 1 1 0;
+    justify-content: flex-end;
+    margin: 0 16px;
+    height: 24px;
+}
+.pencode-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    white-space: nowrap;
+    font: inherit;
+    cursor: pointer;
+}
+.pencode-action img {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+.pencode-action span { pointer-events: none; }
+.pencode-action:hover, .pencode-action.active {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+.pencode-action:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+.pencode-action:disabled { opacity: .45; cursor: default; }
+.pencode-actions-statusbar .pencode-action { height: 24px; }
+.pencode-context-actions {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+.pencode-context-actions .pencode-action {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+}
+
+/* Source control uses the workbench theme and the existing editor tab strip. */
+.sc-file-tabs, .sc-tab-list { display: flex; flex: 0 0 auto; min-width: 0; height: 100%; }
+.source-active > :not(.sc-workspace):not(.pencode-editor) { display: none !important; }
+.source-active > .pencode-editor { visibility: hidden; }
+.sc-workspace { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.sc-panel, .sc-editor { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.sc-content-frame { margin: 0; padding: 0; border: 0; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.sc-toolbar { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px; border-bottom: 1px solid var(--vscode-editorGroup-border); }
+.sc-toolbar button, .sc-changes > button, .sc-conflict-actions button { padding: 4px 7px; border: 1px solid var(--vscode-editorGroup-border); }
+.sc-toolbar button:hover, .sc-file:hover, .sc-folder:hover, .sc-commit:hover { background: var(--vscode-list-hoverBackground); }
+.sc-workspace button:disabled { opacity: .45; cursor: default; }
+.sc-body { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.sc-changes { display: flex; flex-direction: column; width: 32%; min-width: 190px; max-width: 420px; min-height: 0; flex: 0 0 auto; overflow: hidden; padding: 8px; border-right: 1px solid var(--vscode-editorGroup-border); background: var(--vscode-sideBar-background); }
+.sc-changes-list { flex: 1; min-height: 0; overflow: auto; padding-right: 10px; }
+.sc-message { flex: 0 0 auto; width: 100%; height: 30px; min-height: 30px; padding: 6px; border: 1px solid var(--vscode-input-border); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
+.sc-message-multiline { line-height: 20px; resize: vertical; }
+.sc-changes > .sc-commit-action { flex: 0 0 auto; width: 100%; height: 32px; justify-content: center; margin-top: 6px; margin-bottom: 6px; border: 0; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.sc-changes > .sc-commit-action:hover { background: var(--vscode-button-hoverBackground); }
+.sc-changes > .sc-commit-action:disabled { background: var(--vscode-input-background); color: var(--vscode-descriptionForeground); opacity: .55; cursor: default; }
+.sc-sync-count { display: flex; align-items: center; gap: 2px; }
+.sc-sync-spinning { animation: sc-sync-spin 1s linear infinite; }
+@keyframes sc-sync-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.sc-sync-down { transform: rotate(90deg); }
+.sc-sync-up { transform: rotate(-90deg); }
+.sc-history { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.sc-heading { font-size: calc(12rem / 14); font-weight: 600; margin: 0; padding: 7px; color: var(--vscode-foreground); }
+.sc-graph { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
+.sc-commit-row { display: flex; flex-direction: column; width: 100%; min-width: 0; min-height: 32px; overflow: hidden; }
+.sc-commit { display: flex; flex: 0 0 32px; align-items: center; width: 100%; min-width: 0; height: 32px; padding: 0 4px; gap: 8px; text-align: left; border: 0; border-radius: 0; overflow: hidden; }
+.sc-commit[aria-pressed="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.sc-lanes { position: relative; height: 32px; flex: 0 0 auto; pointer-events: none; }
+.sc-graph-color-0 { color: var(--vscode-scmGraph-foreground1); }
+.sc-graph-color-1 { color: var(--vscode-scmGraph-foreground2); }
+.sc-graph-color-2 { color: var(--vscode-scmGraph-foreground3); }
+.sc-graph-color-3 { color: var(--vscode-scmGraph-foreground4); }
+.sc-graph-color-4 { color: var(--vscode-scmGraph-foreground5); }
+.sc-graph-color-5 { color: var(--vscode-scmGraph-foreground6); }
+.sc-dot { position: absolute; top: 10px; width: 12px; height: 12px; box-sizing: border-box; border: 0; border-radius: 50%; background: currentColor; }
+.sc-commit[aria-pressed="true"] .sc-dot { border: 2px solid currentColor; background: var(--vscode-list-activeSelectionBackground); }
+.sc-edge { position: absolute; width: 2px; height: 16px; background: currentColor; }
+.sc-edge-incoming { top: 0; }
+.sc-edge-outgoing { top: 16px; }
+.sc-edge-through { top: 0; height: 32px; }
+.sc-edge-arc { position: absolute; height: 17px; box-sizing: border-box; border: 0 solid currentColor; }
+.sc-edge-fork-right { top: 15px; border-top-width: 2px; border-right-width: 2px; border-radius: 0 16px 0 0; }
+.sc-edge-fork-left { top: 15px; border-top-width: 2px; border-left-width: 2px; border-radius: 16px 0 0 0; }
+.sc-edge-join-left { top: 0; border-right-width: 2px; border-bottom-width: 2px; border-radius: 0 0 16px 0; }
+.sc-edge-join-right { top: 0; border-left-width: 2px; border-bottom-width: 2px; border-radius: 0 0 0 16px; }
+.sc-edge-curve { position: absolute; height: 9px; box-sizing: border-box; border: 0 solid currentColor; }
+.sc-edge-start-right { top: 16px; border-left-width: 2px; border-bottom-width: 2px; border-radius: 0 0 0 9px; }
+.sc-edge-end-right { top: 23px; border-top-width: 2px; border-right-width: 2px; border-radius: 0 9px 0 0; }
+.sc-edge-start-left { top: 16px; border-right-width: 2px; border-bottom-width: 2px; border-radius: 0 0 9px 0; }
+.sc-edge-end-left { top: 23px; border-top-width: 2px; border-left-width: 2px; border-radius: 9px 0 0 0; }
+.sc-subject { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sc-refs { display: block; flex: 0 1 auto; min-width: 0; max-width: 25%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid var(--vscode-focusBorder); border-radius: 3px; padding: 2px 4px; }
+.sc-meta { display: block; flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); }
+.sc-commit-details { position: relative; display: flex; flex: 0 0 auto; width: 100%; min-width: 0; }
+.sc-lanes-continuation { position: absolute; top: 0; left: 4px; height: 100%; z-index: 1; }
+.sc-lanes-continuation .sc-edge { top: 0; height: 100%; }
+.sc-commit-files { flex: 1 1 0; min-width: 0; height: 100%; background: transparent; }
+.sc-commit-files .sc-tree > .muted { height: 27px; }
+.sc-tree { list-style: none; margin: 0; padding: 0; }
+.sc-file, .sc-folder { display: flex; align-items: center; min-width: 0; min-height: 27px; }
+.sc-file { padding-right: 8px; }
+.sc-file-open { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+.sc-file > button, .sc-folder > button,
+.sc-file > button:hover, .sc-folder > button:hover { height: 27px; min-height: 27px; border: 0; border-radius: 0; background: transparent; }
+.sc-file > .pencode-icon-button, .sc-folder > .pencode-icon-button,
+.sc-file > .pencode-icon-button:hover, .sc-folder > .pencode-icon-button:hover { flex: 0 0 22px; width: 22px; height: 22px; min-height: 22px; }
+.sc-folder button { flex: 1; min-width: 0; text-align: left; }
+.sc-file > .sc-file-action, .sc-folder > .sc-file-action { visibility: hidden; }
+.sc-file:hover > .sc-file-action, .sc-folder:hover > .sc-file-action { visibility: visible; }
+.sc-file > .sc-file-action:hover, .sc-folder > .sc-file-action:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    border-radius: 4px;
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+.sc-file-group { min-width: 0; }
+.sc-group-heading { padding: 0; }
+.sc-group-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 7px 0; text-align: left; }
+.sc-group-toggle:hover { background: var(--vscode-list-hoverBackground); }
+.sc-panel .muted, .sc-editor .muted { padding: 6px; color: var(--vscode-descriptionForeground); }
+.sc-code-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+.sc-diff-headings { display: flex; flex: 0 0 auto; background: var(--vscode-editorGroupHeader-tabsBackground); }
+.sc-diff-headings > h3 { flex: 1; min-width: 0; }
+.sc-diff-gutter-heading, .sc-diff-gutter { width: 28px; flex: 0 0 28px; border-left: 1px solid var(--vscode-editorGroup-border); border-right: 1px solid var(--vscode-editorGroup-border); }
+.sc-diff-gutter { position: relative; overflow: hidden; background: var(--vscode-editorGutter-background); }
+.sc-diff-gutter-track { position: absolute; top: 0; left: 0; width: 100%; }
+.sc-diff-block-action { position: absolute; left: 0; width: 100%; height: 20px; display: flex; align-items: center; justify-content: center; }
+.sc-diff-block-action button { width: 24px; min-width: 24px; height: 20px; padding: 2px; border-radius: 3px; }
+.sc-diff-block-action button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.sc-diff-block-action button:disabled { opacity: .4; cursor: default; }
+.sc-code-input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; resize: none; overflow: hidden; font-family: monospace; font-size: 13px; line-height: 20px; white-space: pre; tab-size: 4; background: transparent; color: var(--vscode-editor-foreground); }
+.sc-diff-panes .sc-code-window { pointer-events: none; }
+.sc-diff-panes, .sc-merge { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.sc-code-pane { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.sc-code-gutter { position: relative; order: -1; flex: 0 0 50px; overflow: hidden; background: var(--vscode-editorGutter-background); }
+.sc-code-gutter-track { position: absolute; top: 0; left: 0; width: 100%; }
+.sc-code-scroll { flex: 1; position: relative; min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--vscode-editorGroup-border); }
+.sc-code-height { position: relative; min-width: 100%; }
+.sc-code-window { position: absolute; left: 0; min-width: 100%; }
+.sc-code-line { display: flex; width: 100%; height: 20px; min-height: 20px; line-height: 20px; font-family: monospace; font-size: 13px; white-space: pre; }
+.sc-line-numbers { position: absolute; left: 0; width: 100%; margin: 0; padding-right: 10px; font-family: monospace; font-size: 13px; line-height: 20px; text-align: right; white-space: pre; color: var(--vscode-editorLineNumber-foreground); user-select: none; }
+.sc-line-text { font-family: monospace; font-size: 13px; line-height: 20px; white-space: pre; tab-size: 4; }
+.sc-code-line.added { background: var(--vscode-diffEditor-insertedLineBackground); }
+.sc-code-line.deleted { background: var(--vscode-diffEditor-removedLineBackground); }
+.sc-inline-change { position: absolute; pointer-events: none; }
+.sc-inline-change.added { background: var(--vscode-diffEditor-insertedTextBackground); }
+.sc-inline-change.deleted { background: var(--vscode-diffEditor-removedTextBackground); }
+.sc-code-line.empty { background: var(--vscode-editorGroupHeader-tabsBackground); }
+.sc-merge-side, .sc-merge-result { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sc-merge-result { border-right: 1px solid var(--vscode-editorGroup-border); }
+.sc-merge-side .sc-heading, .sc-merge-result .sc-heading { min-height: 30px; background: var(--vscode-editorGroupHeader-tabsBackground); }
+.sc-result-input { flex: 1; width: 100%; min-width: 0; min-height: 0; padding: 0 6px; border: 0; border-radius: 0; font-family: monospace; font-size: 13px; line-height: 20px; white-space: pre; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+.sc-conflict-actions { flex: 0 0 auto; max-height: 100px; overflow: auto; background: var(--vscode-editorWidget-background); }
+.sc-conflict-actions > span { display: block; padding: 4px 7px; }
+.sc-context-menu { position: absolute; z-index: 42; width: 266px; padding: 5px; }
+.sc-context-menu button { min-height: 27px; }
+.sc-backdrop { z-index: 45; }
+.sc-prompt { display: flex; flex-direction: column; width: 380px; min-width: 0; max-height: 100%; padding: 12px; border-radius: 12px; font-family: ui; font-size: calc(13rem / 14); }
+.sc-prompt h2 { margin: 0 0 8px; font-size: calc(14rem / 14); line-height: 1.4; }
+.sc-prompt p { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; line-height: 1.4; }
+.sc-prompt label { margin-bottom: 4px; }
+.sc-prompt code { overflow-wrap: anywhere; }
+.sc-prompt input { width: 100%; min-height: 28px; padding: 3px 6px; border-radius: 6px; font-family: ui; font-size: inherit; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); }
+.sc-prompt .pencode-close-actions { gap: 6px; margin-top: 12px; }
+.sc-prompt .pencode-close-actions button { padding: 4px 10px; line-height: 18px; }
+@media (max-width: 1000px) { .sc-meta { display: none; } .sc-toolbar { gap: 2px; } .sc-toolbar button { padding: 3px 4px; } }
+
+.sc-overlay { position: absolute; inset: 0; z-index: 42; pointer-events: none; }
+.sc-overlay > * { pointer-events: auto; }
+
+.sc-panel-pane {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+.sc-panel-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+.sc-branch {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 6px;
+}
+.sc-panel-pane .sc-history > .sc-heading { min-height: 32px; }
+.sc-graph-height { position: relative; min-width: 100%; }
+.sc-graph-window { position: absolute; left: 0; right: 0; }
+.sc-icon, #status-source-control img {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    pointer-events: none;
+}
+.sc-tab { display: flex; align-items: center; gap: 5px; }
+.sc-tab .sc-modified { width: 10px; height: 10px; }
+.sc-file-open, .sc-folder button, .sc-commit-action, #status-source-control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.sc-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sc-file-status { flex: 0 0 20px; padding: 0 4px; text-align: center; font-size: calc(12rem / 14); }
+.sc-file-status.sc-status-a { color: var(--vscode-gitDecoration-addedResourceForeground); }
+.sc-file-status.sc-status-m, .sc-file-status.sc-status-t { color: var(--vscode-gitDecoration-modifiedResourceForeground); }
+.sc-file-status.sc-status-d { color: var(--vscode-gitDecoration-deletedResourceForeground); }
+.sc-file-status.sc-status-r, .sc-file-status.sc-status-c { color: var(--vscode-gitDecoration-renamedResourceForeground); }
+.sc-file-status.sc-status-u { color: var(--vscode-gitDecoration-conflictingResourceForeground); }
+.sc-changes-list, .sc-graph, .sc-code-scroll,
+.sc-message, .sc-result-input, .sc-conflict-actions, .sc-prompt p {
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.sc-branch-button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    height: 24px;
+    padding: 2px 6px;
+    border: 0;
+    border-radius: 3px;
+    color: inherit;
+    background: transparent;
+}
+.sc-branch-button:hover, .sc-branch-button[aria-expanded="true"] { background: var(--vscode-toolbar-hoverBackground); }
+.sc-branch-button:disabled { opacity: .45; }
+.sc-branch-button .sc-branch { min-width: 0; padding-right: 0; }
+.sc-branch-menu {
+    position: absolute;
+    z-index: 42;
+    width: 320px;
+    max-width: calc(100% - 24px);
+    height: auto;
+    padding: 5px;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+.sc-branch-menu > div { flex-shrink: 0; }
+.sc-branch-heading { height: 28px; margin: 0; padding: 5px 8px; line-height: 18px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+.sc-branch-menu .sc-branch-item { width: 100%; height: 28px; }
+.sc-branch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sc-branch-submenu { z-index: 43; width: 200px; padding: 5px; }
+.sc-branch-submenu button { height: 28px; }
+
+.pencode-terminal-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+}
+
+.pencode-terminal-tabs {
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+
+.pencode-terminal-tab {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--vscode-tab-inactiveForeground);
+}
+
+.pencode-terminal-tab:hover,
+.pencode-terminal-tab.active {
+    background: var(--vscode-toolbar-hoverBackground);
+    border-radius: 4px;
+}
+
+.pencode-terminal-tab.active {
+    color: var(--vscode-tab-activeForeground);
+}
+
+.pencode-terminal-tab > button[role="tab"] {
+    padding: 3px 8px;
+    white-space: nowrap;
+    color: inherit;
+    background: transparent;
+    border-radius: 0;
+}
+
+.pencode-terminal-tab > button[role="tab"]:hover { background: transparent; }
+
+.pencode-terminal-tab .pencode-icon-button { width: 20px; height: 20px; min-height: 20px; margin-right: 2px; border-radius: 4px; }
+.pencode-terminal-context { z-index: 45; }
+.pencode-terminal-context button { height: 28px; }
+
+.pencode-terminal-pane {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.pencode-terminal-pane textarea {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 0;
+    resize: none;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow: hidden;
+    font-family: ui-monospace, monospace;
+    font-size: calc(13rem / 14);
+    line-height: 1.25;
+    color: var(--vscode-editor-foreground);
+    background: var(--vscode-editor-background);
+}
+
+.pencode-terminal-panel .pencode-panel-toolbar {
+    position: relative;
+    top: auto;
+    right: auto;
+    max-width: none;
+    width: 100%;
+    min-height: 30px;
+    flex-shrink: 0;
+    padding: 2px 8px;
+    opacity: 1;
+    border-bottom: 1px solid var(--vscode-editorGroup-border);
+}
+
+.pencode-panel-resize {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    z-index: 5;
+    cursor: row-resize;
+}
+
+.pencode-panel-resize:hover {
+    background: var(--vscode-focusBorder);
+}
+.pencode-titlebar-connection { position: absolute; top: 6px; right: 218px; z-index: 2; }
+.pencode-titlebar.native-controls .pencode-titlebar-connection { right: 80px; }
+.pencode-connection { position: absolute; top: 46px; right: 18px; width: 620px; max-width: calc(100% - 36px); max-height: calc(100% - 64px); z-index: 45; display: flex; flex-direction: column; overflow: auto; border: 1px solid var(--vscode-widget-border); border-radius: 8px; color: var(--vscode-editorWidget-foreground); background: var(--vscode-editorWidget-background); box-shadow: 0 12px 32px var(--vscode-widget-shadow); }
+.pencode-connection, .pencode-connection-form, .pencode-connection-list, .pencode-project-directories { scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+.pencode-connection[hidden], .pencode-connection-form[hidden], .pencode-connection-list[hidden], .pencode-connection-menu[hidden] { display: none; }
+.pencode-connection.form-open > .pencode-connection-header,
+.pencode-connection.form-open > .pencode-connection-toolbar,
+.pencode-connection.form-open > .pencode-connection-list,
+.pencode-connection.form-open > .pencode-connection-empty,
+.pencode-connection.form-open > .pencode-connection-footer { display: none; }
+.pencode-connection-header, .pencode-connection-toolbar, .pencode-connection-footer, .pencode-connection-form-actions { display: flex; align-items: center; }
+.pencode-connection-header { min-height: 44px; justify-content: space-between; padding: 12px 16px 8px; }
+.pencode-connection-header h2 { margin: 0; color: var(--vscode-settings-headerForeground); font-size: calc(14rem / 14); font-weight: 600; }
+.pencode-connection-toolbar { justify-content: space-between; padding: 4px 16px 12px; }
+.pencode-connection-toolbar p { margin: 0; font-size: calc(13rem / 14); }
+.pencode-connection-toolbar > button, .pencode-connection-footer > button, .pencode-connection-form-actions button { min-height: 28px; padding: 6px 12px; border: 1px solid var(--vscode-button-border); border-radius: 5px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.pencode-connection-toolbar > button:hover, .pencode-connection-footer > button:hover, .pencode-connection-form-actions button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.pencode-connection-toolbar > button { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.pencode-connection-toolbar > button:hover { background: var(--vscode-button-hoverBackground); }
+.pencode-connection button:disabled { opacity: .5; cursor: default; }
+.pencode-connection-list { flex: 0 1 auto; min-height: 0; max-height: 340px; margin: 0 16px; overflow: auto; border: 1px solid var(--vscode-widget-border); border-radius: 8px; background: var(--vscode-sideBar-background); }
+.pencode-connection-row { position: relative; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--vscode-widget-border); }
+.pencode-connection-row:last-child { border-bottom: 0; }
+.pencode-connection-row.connected { background: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground) 8%, transparent); }
+.pencode-connection-row button:disabled { opacity: .45; }
+.pencode-connection-copy { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
+.pencode-connection-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
+.pencode-connection-dot.connected { background: var(--vscode-gitDecoration-addedResourceForeground); }
+.pencode-connection-copy strong, .pencode-connection-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pencode-connection-row > .pencode-icon-button { flex: 0 0 28px; width: 28px; height: 28px; min-height: 28px; border: 1px solid var(--vscode-widget-border); border-radius: 50%; }
+.pencode-connection-menu { z-index: 46; width: 164px; padding: 4px; }
+.pencode-connection-menu button { width: 100%; min-height: 30px; padding: 4px 10px; border-radius: 5px; text-align: left; color: var(--vscode-editorWidget-foreground); }
+.pencode-connection-menu button:hover { background: var(--vscode-list-hoverBackground); }
+.pencode-connection-menu button.danger { color: var(--vscode-errorForeground); }
+.pencode-connection-empty { margin: 0 16px; padding: 28px; border: 1px dashed var(--vscode-widget-border); border-radius: 8px; text-align: center; color: var(--vscode-descriptionForeground); }
+.pencode-connection-footer { min-height: 40px; justify-content: space-between; gap: 12px; margin-top: auto; padding: 4px 16px 12px; }
+.pencode-connection-feedback { min-width: 0; margin: 0; line-height: 20px; font-size: 12px; overflow-wrap: anywhere; }
+.pencode-connection-feedback.error { flex: 1; margin-top: 6px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--vscode-errorForeground) 40%, transparent); border-radius: 5px; color: var(--vscode-errorForeground); background: color-mix(in srgb, var(--vscode-errorForeground) 8%, transparent); }
+.pencode-connection-form { position: relative; inset: auto; z-index: 6; display: flex; flex: 0 1 auto; flex-direction: column; gap: 4px; margin: 8px; padding: 16px; overflow: auto; border: 1px solid var(--vscode-widget-border); border-radius: 8px; background: var(--vscode-editorWidget-background); box-shadow: 0 12px 32px var(--vscode-widget-shadow); }
+.pencode-connection-form .pencode-connection-header { min-height: 28px; margin-bottom: 2px; padding: 0; }
+.pencode-connection-form label { margin-top: 2px; font-size: 12px; color: var(--vscode-descriptionForeground); }
+.pencode-connection-form input { width: 100%; height: 32px; padding: 4px 10px; border: 1px solid var(--vscode-input-border); border-radius: 5px; outline: none; color: var(--vscode-input-foreground); background: var(--vscode-input-background); }
+.pencode-connection-form input:focus { border-color: var(--vscode-focusBorder); }
+.pencode-connection-form-actions { justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.pencode-connection-form-actions button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.pencode-connection-form-actions button.primary:hover { background: var(--vscode-button-hoverBackground); }
+
+.pencode-project-path { display: flex; align-items: center; gap: 8px; }
+.pencode-project-overlay .pencode-project-picker { inset: auto; width: 620px; max-width: 100%; max-height: 100%; min-width: 0; margin: 0; }
+.pencode-project-picker button:disabled { opacity: .5; cursor: default; }
+.pencode-project-path input { flex: 1; min-width: 0; }
+.pencode-project-path button { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 5px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.pencode-project-path button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.pencode-project-directories { min-height: 160px; max-height: 300px; overflow: auto; margin: 8px 0; border: 1px solid var(--vscode-widget-border); border-radius: 5px; background: var(--vscode-sideBar-background); }
+.pencode-project-directory { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 10px; color: var(--vscode-editorWidget-foreground); text-align: left; }
+.pencode-project-directory:hover { background: var(--vscode-list-hoverBackground); }
+.pencode-project-directory:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.pencode-project-directory span { overflow-wrap: anywhere; }
+
+@media (max-width: 680px) {
+    .pencode-connection-form { right: 8px; left: 8px; }
+}
+
+.pencode-extension-shade {
+    position: absolute;
+    inset: 0;
+    z-index: 47;
+    background: rgba(0, 0, 0, .35);
+}
+.pencode-extension-dialog,
+.pencode-extension-popup,
+.pencode-extension-menu {
+    position: absolute;
+    z-index: 48;
+    display: flex;
+    flex-direction: column;
+    max-width: calc(100% - 16px);
+    max-height: calc(100% - 16px);
+    overflow: auto;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    color: var(--vscode-editorWidget-foreground);
+    background: var(--vscode-editorWidget-background);
+    box-shadow: 0 12px 32px var(--vscode-widget-shadow);
+}
+.pencode-extension-dialog,
+.pencode-extension-popup {
+    width: 560px;
+}
+.pencode-extension-dialog {
+    max-height: 76%;
+}
+.pencode-extension-menu { min-width: 180px; padding: 4px; }
+.pencode-extension-menu [role="menuitem"] {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    text-align: left;
+    color: inherit;
+    background: transparent;
+}
+.pencode-extension-menu [role="menuitem"]:hover,
+.pencode-extension-menu [role="menuitem"]:focus-visible { background: var(--vscode-list-hoverBackground); }
+.pencode-extension-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; }
+.pencode-extension-header button { flex-shrink: 0; min-width: 24px; }
+.pencode-extension-content { min-width: 0; min-height: 0; padding: 12px; overflow: auto; }
+.pencode-extension-menu .pencode-extension-content { padding: 0; }
+.pencode-extension-pane { flex: 1; min-height: 0; overflow: auto; }
+.pencode-extension-panel { min-height: 100%; }
+.pencode-extension-panel .pencode-extension-header { padding-right: 40px; }
+.pencode-extension-panel .pencode-extension-header button { display: none; }
+.pencode-extension-overlays { position: absolute; inset: 0; z-index: 48; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.pencode-extension-dialog, .pencode-extension-popup, .pencode-extension-menu { pointer-events: auto; }

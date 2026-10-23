@@ -1,0 +1,6 @@
+{
+  "keep": [
+    "resources/workbench/assets/icons/**"
+  ],
+  "packages": []
+}

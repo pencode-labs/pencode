@@ -1,0 +1,165 @@
+package workbench
+
+import (
+	"strings"
+
+	"github.com/diiyw/onix/input"
+	"github.com/diiyw/onix/module"
+	engineui "github.com/diiyw/onix/ui"
+	htmlui "github.com/diiyw/onix/ui/html"
+)
+
+type pencodeTerminalContext struct {
+	open, keysHandled bool
+	x, y              float32
+	index             int
+	selection         string
+}
+
+var pencodeTerminalContextRefs = [...]string{"terminal-copy", "terminal-paste", "terminal-clear"}
+
+func (m *workspaceModel) terminalSelection() string {
+	if field, ok := module.ContentGet[engineui.TextField](m.fontResources, m.terminalView.control); ok {
+		start, end := pencodeSelectionBytes(field.Value, min(field.Caret, field.Anchor), max(field.Caret, field.Anchor))
+		return field.Value[start:end]
+	}
+	return ""
+}
+
+func (m *workspaceModel) terminalAction(state *input.State, ref, selection string) {
+	if m.terminals == nil || m.terminals.active == nil {
+		return
+	}
+	item := m.terminals.active
+	switch ref {
+	case "terminal-copy":
+		if selection != "" {
+			state.SetClipboardText(selection)
+		}
+	case "terminal-paste":
+		if value, ok := state.ClipboardText(); ok && value != "" {
+			value = strings.ReplaceAll(value, "\r\n", "\n")
+			value = strings.ReplaceAll(value, "\r", "\n")
+			value = strings.ReplaceAll(value, "\x1b", "")
+			if item.screen.BracketedPaste {
+				value = "\x1b[200~" + value + "\x1b[201~"
+			}
+			m.writeTerminal(item, []byte(value))
+		}
+	case "terminal-clear":
+		item.screen.Clear()
+		item.scroll = 0
+		markPencodeRootDirtyByModel(m.fontResources, m)
+	}
+}
+
+func (m *workspaceModel) renderTerminalContext(view *htmlui.View, visible bool) {
+	c := &m.terminalView.context
+	if !visible || m.terminals == nil || m.terminals.active == nil {
+		c.open = false
+	}
+	if !c.open {
+		view.Attr("terminal-context", "hidden", "")
+		return
+	}
+	view.RemoveAttr("terminal-context", "hidden")
+	view.Attr("terminal-context", "style", languagePopupStyle(c.x, c.y))
+	for i, ref := range pencodeTerminalContextRefs {
+		view.Event(ref, htmlui.EventClick)
+		class := ""
+		if i == c.index {
+			class = "active"
+		}
+		view.Attr(ref, "class", class)
+		setContextMenuEnabled(view, ref, i != 0 || c.selection != "")
+	}
+}
+
+func (m *workspaceModel) handleTerminalContextEvent(world *module.Content, ref string) bool {
+	for _, candidate := range pencodeTerminalContextRefs {
+		if ref != candidate {
+			continue
+		}
+		c := &m.terminalView.context
+		if c.open {
+			if state, ok := module.ContentResource[*input.State](world); ok {
+				m.terminalAction(state, ref, c.selection)
+			}
+			c.open, c.selection = false, ""
+			m.terminals.focus = true
+		}
+		return true
+	}
+	return false
+}
+
+func (m *workspaceModel) updateTerminalContext(world *module.Content, state *input.State, x, y float32) bool {
+	c := &m.terminalView.context
+	inside := m.pointerInsideRefs(world, x, y, []string{"terminal-context"})
+	if c.open && inside {
+		p := state.Pointer()
+		if p.DeltaX != 0 || p.DeltaY != 0 {
+			for i, ref := range pencodeTerminalContextRefs {
+				if i != c.index && m.pointerInsideRefs(world, x, y, []string{ref}) {
+					c.index = i
+					return true
+				}
+			}
+		}
+		return false
+	}
+	changed := false
+	if c.open && (state.PointerPressed() || state.MousePressed(input.MouseRight) || state.MousePressed(input.MouseMiddle)) {
+		c.open, c.selection, changed = false, "", true
+	}
+	if !state.MousePressed(input.MouseRight) || !m.pointerInsideRefs(world, x, y, []string{"terminal-content"}) {
+		return changed
+	}
+	root, ok := world.HTMLNode(m.surface, "pencode-root")
+	if !ok {
+		return changed
+	}
+	bounds, _ := root.Bounds()
+	c.x, c.y = clampLanguagePopup(x-bounds.X, y-bounds.Y, bounds, 240, 90)
+	c.open, c.index, c.selection = true, 0, m.terminalSelection()
+	if c.selection == "" {
+		c.index = 1
+	}
+	world.Focus(m.terminalView.control)
+	return true
+}
+
+func (m *workspaceModel) terminalContextKeys(world *module.Content, state *input.State) bool {
+	c := &m.terminalView.context
+	c.keysHandled = true
+	ctrl := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
+	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
+	super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
+	switch {
+	case (ctrl && shift || super) && state.KeyPressed(input.KeyC):
+		m.handleTerminalContextEvent(world, "terminal-copy")
+	case (ctrl && shift || super) && state.KeyPressed(input.KeyV), shift && state.KeyPressed(input.KeyInsert):
+		m.handleTerminalContextEvent(world, "terminal-paste")
+	case ctrl && shift && state.KeyPressed(input.KeyK):
+		m.handleTerminalContextEvent(world, "terminal-clear")
+	case state.KeyPressed(input.KeyEscape):
+		c.open, c.selection = false, ""
+		m.terminals.focus = true
+	case state.KeyPressed(input.KeyDown), state.KeyPressed(input.KeyUp), state.KeyPressed(input.KeyTab):
+		step := 1
+		if state.KeyPressed(input.KeyUp) || state.KeyPressed(input.KeyTab) && (state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)) {
+			step = -1
+		}
+		for range len(pencodeTerminalContextRefs) {
+			c.index = (c.index + step + len(pencodeTerminalContextRefs)) % len(pencodeTerminalContextRefs)
+			if c.index != 0 || c.selection != "" {
+				break
+			}
+		}
+	case state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeySpace):
+		m.handleTerminalContextEvent(world, pencodeTerminalContextRefs[c.index])
+	default:
+		return false
+	}
+	return true
+}

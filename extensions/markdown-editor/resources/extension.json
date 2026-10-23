@@ -1,0 +1,8 @@
+{
+  "id": "markdown-editor",
+  "name": "Markdown 编辑与预览",
+  "version": "0.1.0",
+  "publisher": "Pencode",
+  "description": "演示通过 HTML/CSS 自定义编辑区域、接收输入事件并修改文档。",
+  "entry": "bin/markdown-editor"
+}

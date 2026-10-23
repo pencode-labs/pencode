@@ -1,0 +1,45 @@
+{
+  "entry": "main.json",
+  "scenes": [
+    "main.json",
+    "workspace.json"
+  ],
+  "clearColor": "#0f1115",
+  "window": {
+    "width": 1440,
+    "height": 900,
+    "title": "pencode",
+    "icon": "icons/pencode.svg",
+    "titleBarHeight": 58,
+    "cornerRadius": 11,
+    "decorations": "none",
+    "border": true,
+    "resizable": true,
+    "vsync": true,
+    "fps": 60,
+    "tps": 60,
+    "antialias": true
+  },
+  "viewport": {
+    "width": 1,
+    "height": 1,
+    "mode": "adaptive"
+  },
+  "engine": {
+    "features": [
+      "render2d",
+      "input2d",
+      "ui-controls",
+      "ui-widgets",
+      "ui-text-input",
+      "ui-html",
+      "file-dialogs"
+    ],
+    "resources": [
+      "fonts",
+      "images",
+      "html"
+    ],
+    "textureCompression": true
+  }
+}

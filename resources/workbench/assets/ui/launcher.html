@@ -1,0 +1,242 @@
+
+
+<div id="pencode-root" data-ref="root" class="pencode-root">
+  <fieldset data-ref="content" class="pencode-content">
+  <header class="pencode-titlebar" data-ref="titlebar">
+    <div id="file-search" data-ref="open-quick-search" class="pencode-titlebar-search">
+      <input id="quick-open-query" data-ref="quick-open-query" type="text" role="combobox" aria-label="搜索项目文件" aria-autocomplete="list" aria-controls="quick-open-panel" aria-expanded="false" placeholder="搜索文件（文件名:行号）" autocomplete="off" spellcheck="false">
+      <kbd data-ref="quick-search-shortcut" class="pencode-titlebar-search-shortcut" aria-hidden="true"></kbd>
+    </div>
+    <button data-ref="change-project" class="pencode-icon-button pencode-titlebar-project" type="button" title="切换项目"
+      aria-label="切换项目" hidden>
+      <img data-ref="change-project-icon" src="icons/folder-opened.svg" alt="">
+    </button>
+    <button id="connection-open" data-ref="connection-open" class="pencode-icon-button pencode-titlebar-connection" type="button" title="远程管理" aria-label="远程管理" aria-controls="connection-panel" aria-expanded="false"><img data-ref="connection-open-icon" src="icons/remote.svg" alt=""></button>
+    <button id="marketplace-button" data-ref="open-marketplace" class="pencode-icon-button pencode-titlebar-marketplace" type="button" title="扩展市场" aria-label="扩展市场" aria-controls="marketplace-panel" aria-expanded="false">
+      <img data-ref="open-marketplace-icon" src="icons/extensions.svg" alt="">
+    </button>
+    <button id="settings-button" data-ref="open-settings" class="pencode-icon-button pencode-titlebar-settings" type="button" title="设置"
+      aria-label="设置" aria-expanded="false">
+      <img data-ref="open-settings-icon" src="icons/settings.svg" alt="">
+    </button>
+    <div data-ref="window-controls" class="pencode-window-controls" aria-label="窗口控制">
+      <button data-ref="window-minimize" class="pencode-window-control" type="button" title="最小化" aria-label="最小化">
+        <img data-ref="window-minimize-icon" src="icons/minimize.svg" alt="">
+      </button>
+      <button data-ref="window-maximize" class="pencode-window-control" type="button" title="最大化" aria-label="最大化">
+        <img data-ref="window-maximize-icon" src="icons/maximize.svg" alt="">
+      </button>
+      <button data-ref="window-close" class="pencode-window-control pencode-window-close" type="button" title="关闭"
+        aria-label="关闭">
+        <img data-ref="window-close-icon" class="pencode-close-icon" src="icons/close.svg" alt="">
+      </button>
+    </div>
+  </header>
+
+
+  <section id="connection-panel" data-ref="connection-panel" class="pencode-connection" role="dialog" aria-labelledby="connection-title" hidden>
+    <header class="pencode-connection-header"><h2 id="connection-title">连接</h2><button id="connection-close" data-ref="connection-close" class="pencode-icon-button" type="button" title="关闭远程管理" aria-label="关闭远程管理"><img data-ref="connection-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
+    <div class="pencode-connection-toolbar"><p>来自这台设备的 SSH 连接</p><button id="connection-add" data-ref="connection-add" type="button">添加</button></div>
+    <div data-ref="connection-list" class="pencode-connection-list" role="list"></div>
+    <p data-ref="connection-empty" class="pencode-connection-empty">还没有 SSH 连接。点击“添加”保存第一台远程设备。</p>
+    <footer class="pencode-connection-footer"><p data-ref="connection-feedback" class="pencode-connection-feedback" role="status" aria-live="polite"></p><button id="connection-cancel" data-ref="connection-cancel" type="button" hidden>取消连接</button></footer>
+    <section data-ref="connection-password-form" class="pencode-connection-form" role="dialog" aria-labelledby="connection-password-title" hidden>
+      <header class="pencode-connection-header"><h2 id="connection-password-title" data-ref="connection-password-title">SSH 身份验证</h2></header>
+      <p data-ref="connection-password-prompt" class="pencode-connection-feedback"></p>
+      <label data-ref="connection-password-label" for="connection-password">密码或密钥口令</label><input id="connection-password" data-ref="connection-password" type="password" autocomplete="off" spellcheck="false" aria-describedby="connection-password-note">
+      <p data-ref="connection-password-note" id="connection-password-note" class="pencode-connection-feedback">密码仅用于本次认证，不会保存；断线重连时会重新询问。</p>
+      <footer class="pencode-connection-form-actions"><button id="connection-password-cancel" data-ref="connection-password-cancel" type="button">取消</button><button id="connection-password-submit" data-ref="connection-password-submit" class="primary" type="button">连接</button></footer>
+    </section>
+    <section data-ref="connection-form" class="pencode-connection-form" aria-labelledby="connection-form-title" hidden>
+      <header class="pencode-connection-header"><h2 id="connection-form-title" data-ref="connection-form-title">添加 SSH 连接</h2><button id="connection-form-close" data-ref="connection-form-close" class="pencode-icon-button" type="button" title="关闭" aria-label="关闭 SSH 表单"><img data-ref="connection-form-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
+      <label for="connection-name">显示名称</label><input id="connection-name" data-ref="connection-name" type="text" placeholder="开发服务器" autocomplete="off" spellcheck="false">
+      <label for="connection-host">主机名</label><input id="connection-host" data-ref="connection-host" type="text" placeholder="host.com 或 user@host.com" autocomplete="off" spellcheck="false">
+      <label for="connection-port">SSH 端口（可选）</label><input id="connection-port" data-ref="connection-port" type="text" inputmode="numeric" placeholder="使用 SSH config">
+      <label for="connection-identity">身份文件（可选）</label><input id="connection-identity" data-ref="connection-identity" type="text" placeholder="留空使用 SSH config 或 agent" autocomplete="off" spellcheck="false">
+      <label for="connection-directory">起始目录（可选，用于项目选择）</label><input id="connection-directory" data-ref="connection-directory" type="text" placeholder="~ 或 ~/workspace/app" autocomplete="off" spellcheck="false">
+      <footer class="pencode-connection-form-actions"><button data-ref="connection-form-cancel" type="button">取消</button><button id="connection-save" data-ref="connection-save" class="primary" type="button">保存</button></footer>
+    </section>
+  </section>
+
+  <section id="marketplace-panel" data-ref="marketplace-panel" class="pencode-marketplace" role="dialog" aria-labelledby="marketplace-title" hidden>
+    <header class="pencode-market-header">
+      <h2 id="marketplace-title">扩展市场</h2>
+      <button data-ref="close-marketplace" class="pencode-icon-button" type="button" title="关闭扩展市场" aria-label="关闭扩展市场"><img data-ref="close-marketplace-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
+    </header>
+    <div class="pencode-market-toolbar">
+      <input id="market-search" data-ref="market-search" type="search" placeholder="搜索已安装扩展" aria-label="搜索已安装扩展">
+      <button data-ref="market-refresh" type="button">刷新</button>
+      <button data-ref="market-install" class="pencode-market-install" type="button">从本地目录安装</button>
+    </div>
+    <div data-ref="market-feedback" class="pencode-market-feedback" role="status" aria-live="polite"></div>
+    <div class="pencode-market-body">
+      <div class="pencode-market-sidebar">
+        <h3>已安装</h3>
+        <nav data-ref="market-list" class="pencode-market-list" aria-label="已安装扩展"></nav>
+        <p data-ref="market-empty" class="pencode-market-empty">没有找到扩展</p>
+      </div>
+      <section class="pencode-market-detail" aria-labelledby="market-extension-name">
+        <h3 id="market-extension-name" data-ref="market-name">暂无已安装扩展</h3>
+        <p data-ref="market-meta" class="pencode-market-meta"></p>
+        <p data-ref="market-description" class="pencode-market-description"></p>
+        <p data-ref="market-status" class="pencode-market-status"></p>
+        <p data-ref="market-path" class="pencode-market-path"></p>
+        <div class="pencode-market-actions">
+          <button data-ref="market-toggle" type="button" disabled>禁用扩展</button>
+          <button data-ref="market-uninstall" class="pencode-market-uninstall" type="button" disabled>卸载扩展</button>
+        </div>
+      </section>
+    </div>
+    <footer class="pencode-market-footer"><span>扩展安装目录</span><span data-ref="market-directory"></span></footer>
+  </section>
+
+  <section id="settings-panel" data-ref="settings-panel" class="pencode-settings" role="dialog" aria-label="编辑器设置" hidden>
+    <header class="pencode-settings-header">
+      <h2>设置</h2>
+      <button data-ref="close-settings" class="pencode-icon-button" type="button" title="关闭设置" aria-label="关闭设置">
+        <img data-ref="close-settings-icon" class="pencode-close-icon" src="icons/close.svg" alt="">
+      </button>
+    </header>
+    <div class="pencode-settings-layout">
+      <nav id="settings-category-nav" class="pencode-settings-nav" aria-label="设置分类">
+        <button id="settings-appearance-nav" data-ref="settings-appearance-nav" class="pencode-settings-nav-item active" type="button" aria-current="page">外观</button>
+        <button id="settings-shortcuts-nav" data-ref="settings-shortcuts-nav" class="pencode-settings-nav-item" type="button">快捷键</button>
+      </nav>
+      <div id="settings-main" class="pencode-settings-main">
+        <header class="pencode-settings-main-header">
+          <h3 data-ref="settings-page-title">外观</h3>
+          <button id="reset-shortcuts" data-ref="reset-shortcuts" class="pencode-settings-reset" type="button" hidden>恢复默认快捷键</button>
+        </header>
+        <div data-ref="settings-feedback" class="pencode-settings-feedback" role="status" aria-live="polite" hidden></div>
+        <div data-ref="extensions-feedback" class="pencode-settings-feedback" role="status" aria-live="polite" hidden></div>
+        <section id="settings-appearance-pane" data-ref="settings-appearance-pane" aria-label="外观设置">
+          <div class="pencode-settings-row">
+            <span>代码行宽度（编辑区域百分比）</span>
+            <div class="pencode-settings-stepper">
+              <button data-ref="editor-width-decrease" type="button" title="减小代码区域宽度" aria-label="减小代码区域宽度">−</button>
+              <span data-ref="editor-width-value" class="pencode-settings-value"></span>
+              <button data-ref="editor-width-increase" type="button" title="增大代码区域宽度" aria-label="增大代码区域宽度">+</button>
+            </div>
+          </div>
+          <div class="pencode-settings-row">
+            <span>代码字体大小</span>
+            <div class="pencode-settings-stepper">
+              <button data-ref="font-decrease" type="button" title="缩小代码字体" aria-label="缩小代码字体">−</button>
+              <span data-ref="font-size-value" class="pencode-settings-value"></span>
+              <button id="font-increase" data-ref="font-increase" type="button" title="放大代码字体" aria-label="放大代码字体">+</button>
+            </div>
+          </div>
+          <div class="pencode-settings-row">
+            <span>界面字体大小</span>
+            <div class="pencode-settings-stepper">
+              <button data-ref="ui-font-decrease" type="button" title="缩小界面字体" aria-label="缩小界面字体">−</button>
+              <span data-ref="ui-font-size-value" class="pencode-settings-value"></span>
+              <button id="ui-font-increase" data-ref="ui-font-increase" type="button" title="放大界面字体" aria-label="放大界面字体">+</button>
+            </div>
+          </div>
+          <div class="pencode-settings-row">
+            <label for="theme-select">颜色主题</label>
+            <select id="theme-select" data-ref="theme-select" class="pencode-settings-select" aria-label="颜色主题"></select>
+          </div>
+          <div class="pencode-settings-row">
+            <label for="icon-theme-select">文件图标主题</label>
+            <select id="icon-theme-select" data-ref="icon-theme-select" class="pencode-settings-select" aria-label="文件图标主题"></select>
+          </div>
+          <div class="pencode-settings-row">
+            <label for="code-font-select">代码字体</label>
+            <select id="code-font-select" data-ref="code-font-select" class="pencode-settings-select"></select>
+          </div>
+          <div class="pencode-settings-row">
+            <label for="ui-font-select">界面字体</label>
+            <select id="ui-font-select" data-ref="ui-font-select" class="pencode-settings-select"></select>
+          </div>
+          <div class="pencode-settings-row">
+            <span>界面缩放</span>
+            <div class="pencode-settings-stepper">
+              <button data-ref="zoom-decrease" type="button" title="缩小界面" aria-label="缩小界面">−</button>
+              <span data-ref="zoom-value" class="pencode-settings-value"></span>
+              <button data-ref="zoom-increase" type="button" title="放大界面" aria-label="放大界面">+</button>
+            </div>
+          </div>
+        </section>
+        <section id="settings-shortcuts-pane" data-ref="settings-shortcuts-pane" aria-label="快捷键设置" hidden>
+          <div class="pencode-settings-row"><span>保存文件</span><button data-ref="shortcut-save" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>撤销</span><button data-ref="shortcut-undo" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>重做</span><button data-ref="shortcut-redo" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>查找</span><button data-ref="shortcut-find" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>替换</span><button data-ref="shortcut-replace" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>快速打开文件</span><button data-ref="shortcut-quick-open" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>关闭标签</span><button data-ref="shortcut-close" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>下一个标签</span><button data-ref="shortcut-next" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>上一个标签</span><button data-ref="shortcut-previous" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>切换侧栏</span><button data-ref="shortcut-sidebar" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>放大界面</span><button data-ref="shortcut-zoom-in" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>缩小界面</span><button data-ref="shortcut-zoom-out" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>重置缩放</span><button data-ref="shortcut-zoom-reset" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><span>打开设置</span><button data-ref="shortcut-settings" class="pencode-settings-binding" type="button"></button></div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <div class="pencode-quick-anchor">
+    <section id="quick-open-panel" data-ref="quick-open" class="pencode-quick-open" role="listbox" aria-label="匹配的项目文件" hidden>
+      <p data-ref="quick-empty" class="pencode-quick-empty" role="status" hidden>没有匹配的文件</p>
+      <div class="pencode-quick-open-list">
+        <button id="quick-row-0" data-ref="quick-row-0" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-0" data-ref="quick-icon-0" src="icons/file-text.svg" alt=""><span id="quick-label-0" data-ref="quick-label-0"></span></button>
+        <button id="quick-row-1" data-ref="quick-row-1" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-1" data-ref="quick-icon-1" src="icons/file-text.svg" alt=""><span id="quick-label-1" data-ref="quick-label-1"></span></button>
+        <button id="quick-row-2" data-ref="quick-row-2" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-2" data-ref="quick-icon-2" src="icons/file-text.svg" alt=""><span id="quick-label-2" data-ref="quick-label-2"></span></button>
+        <button id="quick-row-3" data-ref="quick-row-3" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-3" data-ref="quick-icon-3" src="icons/file-text.svg" alt=""><span id="quick-label-3" data-ref="quick-label-3"></span></button>
+        <button id="quick-row-4" data-ref="quick-row-4" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-4" data-ref="quick-icon-4" src="icons/file-text.svg" alt=""><span id="quick-label-4" data-ref="quick-label-4"></span></button>
+        <button id="quick-row-5" data-ref="quick-row-5" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-5" data-ref="quick-icon-5" src="icons/file-text.svg" alt=""><span id="quick-label-5" data-ref="quick-label-5"></span></button>
+        <button id="quick-row-6" data-ref="quick-row-6" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-6" data-ref="quick-icon-6" src="icons/file-text.svg" alt=""><span id="quick-label-6" data-ref="quick-label-6"></span></button>
+        <button id="quick-row-7" data-ref="quick-row-7" role="option" tabindex="-1" type="button" hidden><img id="quick-icon-7" data-ref="quick-icon-7" src="icons/file-text.svg" alt=""><span id="quick-label-7" data-ref="quick-label-7"></span></button>
+      </div>
+    </section>
+  </div>
+
+  <section data-ref="launcher" class="pencode-launcher" aria-labelledby="launcher-title">
+    <div class="pencode-launcher-panel">
+      <div class="pencode-launcher-kicker">PROJECT WORKSPACE</div>
+      <h1 id="launcher-title">打开项目</h1>
+      <p class="pencode-launcher-copy">选择一个项目目录，开始浏览和编辑源文件。</p>
+      <button data-ref="open-project" class="pencode-primary-action" type="button">
+        <img data-ref="open-project-icon" src="icons/folder-opened.svg" alt="">
+        <span>打开项目目录</span>
+      </button>
+      <div data-ref="launcher-status" class="pencode-launcher-status" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  
+  </fieldset>
+  <div data-ref="connection-project-overlay" class="pencode-close-overlay pencode-project-overlay" hidden>
+    <section id="connection-project-picker" data-ref="connection-project-picker" class="pencode-connection-form pencode-project-picker" role="dialog" aria-modal="true" aria-labelledby="connection-project-title">
+      <header class="pencode-connection-header"><h2 id="connection-project-title">选择项目目录</h2><button id="connection-project-close" data-ref="connection-project-close" class="pencode-icon-button" type="button" title="关闭项目选择" aria-label="关闭项目选择"><img data-ref="connection-project-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
+      <p data-ref="connection-project-host" class="pencode-connection-feedback"></p>
+      <label for="connection-project-path">远端目录</label>
+      <div class="pencode-project-path"><input id="connection-project-path" data-ref="connection-project-path" type="text" autocomplete="off" spellcheck="false"><button id="connection-project-up" data-ref="connection-project-up" class="pencode-icon-button" type="button" title="上级目录" aria-label="上级目录"><img data-ref="connection-project-up-icon" src="icons/arrow-up.svg" alt=""></button></div>
+      <nav data-ref="connection-project-list" class="pencode-project-directories" aria-label="子文件夹"></nav>
+      <p data-ref="connection-project-feedback" class="pencode-connection-feedback" role="status" aria-live="polite"></p>
+      <footer class="pencode-connection-form-actions"><button id="connection-project-cancel" data-ref="connection-project-cancel" type="button">取消</button><button id="connection-project-open" data-ref="connection-project-open" class="primary" type="button">打开此目录</button></footer>
+    </section>
+  </div>
+  <div id="connection-menu" data-ref="connection-menu" class="pencode-editor-context pencode-connection-menu" role="menu" aria-label="连接操作" hidden>
+    <button id="connection-menu-edit" data-ref="connection-menu-edit" type="button" role="menuitem" tabindex="-1">编辑</button>
+    <button id="connection-menu-retry" data-ref="connection-menu-retry" type="button" role="menuitem" tabindex="-1">连接 / 重连</button>
+    <button id="connection-menu-disconnect" data-ref="connection-menu-disconnect" type="button" role="menuitem" tabindex="-1">退出</button>
+    <button id="connection-menu-delete" data-ref="connection-menu-delete" class="danger" type="button" role="menuitem" tabindex="-1">删除</button>
+  </div>
+  <div data-ref="close-dialog" class="pencode-close-overlay" hidden>
+    <section class="pencode-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="close-title" aria-describedby="close-message">
+      <h2 id="close-title">未保存的更改</h2>
+      <p id="close-message" data-ref="close-message" class="pencode-close-message"></p>
+      <p data-ref="close-error" class="pencode-close-error" role="alert" hidden></p>
+      <div class="pencode-close-actions">
+        <button id="close-save" data-ref="close-save" class="pencode-close-save" type="button">保存</button>
+        <button id="close-discard" data-ref="close-discard" type="button">不保存</button>
+        <button id="close-cancel" data-ref="close-cancel" type="button">取消</button>
+      </div>
+    </section>
+  </div>
+</div>

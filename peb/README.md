@@ -232,7 +232,7 @@ err := peb.Serve(os.Stdin, os.Stdout, peb.Contributions{
 
 selector 使用与编辑工具相同的 `FileName` / `FileSuffix` 规则，不区分目录，同一服务的文件使用声明的 `LanguageID`。`Command` 不通过 shell 执行；带路径分隔符的相对路径基于扩展目录，服务工作目录和 `rootUri` 为项目根目录。`InitializationOptions` 原样传给 initialize；`Configuration` 用于 `workspace/configuration` 的按 section 查询和初始 `workspace/didChangeConfiguration` 通知。所有 JSON 文件仍放在扩展的 `resources/` 中；也可以像示例一样在程序内生成选项。
 
-完整可构建示例见 [Go LSP 扩展](../extensions/go/main.go)，安装和操作见 [Pencode LSP 开发文档](../lsp/README.md)。
+完整可构建示例见 [Go 扩展](../extensions/go/main.go)，安装和操作见 [Pencode LSP 开发文档](../lsp/README.md)。
 
 ## Actions
 

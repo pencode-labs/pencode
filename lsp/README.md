@@ -4,7 +4,7 @@
 
 ## 扩展接入
 
-一个扩展可以贡献多个服务。每个服务提供 ID、展示名称、languageId、文件名/后缀 selector、启动程序和参数，以及可选的 initializationOptions / configuration。示例见 [Go LSP 扩展](../extensions/go/main.go) 和 [peb 协议](../peb/README.md#语言服务扩展)。服务可使用服务端系统 PATH 内的程序，或扩展内附带的可执行文件。宿主不会自动安装语言服务器。
+一个扩展可以贡献多个服务。每个服务提供 ID、展示名称、languageId、文件名/后缀 selector、启动程序和参数，以及可选的 initializationOptions / configuration。示例见 [Go 扩展](../extensions/go/main.go) 和 [peb 协议](../peb/README.md#语言服务扩展)。服务可使用服务端系统 PATH 内的程序，或扩展内附带的可执行文件。宿主不会自动安装语言服务器。
 
 服务按需启动，一个项目根目录和服务贡献共享一个进程。扩展禁用、移除、项目关闭和最终视图销毁都会停止服务。初始化最多 10 秒、普通请求最多 30 秒、退出宽限 1 秒；请求取消不关闭服务。失败会显示在工作台状态中，可通过禁用再启用扩展重新启动。
 

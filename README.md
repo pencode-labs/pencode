@@ -28,7 +28,7 @@ The extension manager currently installs from local directories; there is no onl
 
 ### Requirements and current limitations
 
-- Go **1.26.0 or newer**.
+- Go **1.27.0 or newer**.
 - An Onix checkout next to this repository, named `onix`. The current `go.mod` uses `replace github.com/diiyw/onix => ../onix`.
 - The native development libraries required by Onix for desktop builds; see `docs/desktop-builds.md` in the Onix checkout.
 - System `git` for source control and OpenSSH `ssh` for remote connections. Install language servers separately on the workspace host.
@@ -45,7 +45,7 @@ workspace/
 With Onix in place, clone Pencode beside it and resolve dependencies:
 
 ```sh
-git clone https://github.com/pencode-labs/pencode.git
+git clone --recurse-submodules https://github.com/pencode-labs/pencode.git
 cd pencode
 go mod tidy
 ```
@@ -66,7 +66,11 @@ From the Pencode repository root:
 go test -p 1 ./protocol ./peb ./lsp ./transport ./terminal
 ```
 
-These checks cover individual packages, not full application or platform validation. Run `go test -p 1 ./...` to include the workbench and all other packages.
+These checks cover individual packages, not full application or platform validation. Run `go test -p 1 ./...` to include the workbench and all other packages in the main module. Test the independent extension modules separately:
+
+```sh
+git submodule foreach 'go test ./...'
+```
 
 ## Architecture
 
@@ -93,7 +97,7 @@ For remote workspaces, settings and extensions belong to the workspace host; sys
 | `server/` | Workspace services and process ownership |
 | `transport/`, `remote/`, `connection/` | Local transport, SSH, and connection lifecycle |
 | `terminal/`, `lsp/`, `peb/` | Terminal emulator, LSP support, and extension protocol/SDK |
-| `extensions/` | Example extensions |
+| `extensions/` | Extension host integration and example extension submodules |
 | `resources/` | Application configuration, scenes, UI assets, and icons |
 | `cmd/` | Standalone server and server artifact build helper |
 
@@ -103,12 +107,18 @@ Extensions are executable programs communicating with the server through **peb v
 
 Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host and include an executable and a `resources/extension.json` manifest. Use the extension manager's local-directory installation flow to register one.
 
-Explore the included examples:
+The examples are Git submodules, each maintained in a public MIT-licensed repository under `pencode-labs`:
 
-- [Go language tools](extensions/go-lsp): registers `gopls`, which must be installed separately.
-- [Markdown editor](extensions/markdown-editor): custom source editing and preview.
-- [Material file icons](extensions/material-icons): a file icon theme.
-- [Extension UI](extensions/ui-demo): actions, dialogs, menus, popups, and panels.
+- [Go language tools](https://github.com/pencode-labs/go-lsp): registers `gopls`, which must be installed separately.
+- [Markdown editor](https://github.com/pencode-labs/markdown-editor): custom source editing and preview.
+- [Material file icons](https://github.com/pencode-labs/material-icons): a file icon theme.
+- [Extension UI](https://github.com/pencode-labs/ui-demo): actions, dialogs, menus, popups, and panels.
+
+For an existing checkout, initialize the submodules with `git submodule update --init --recursive`. Each extension has its own Go module and build instructions. For example, build Go language tools from the repository root with:
+
+```sh
+(cd extensions/go-lsp && go build -o bin/go-lsp .)
+```
 
 The current protocol is v6. Older extensions must be rebuilt with the current SDK.
 

@@ -50,7 +50,8 @@ func TestGoLanguageExtensionRegistration(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "build", "-p", "1", "-o", entry, "./go-lsp")
+	cmd := exec.CommandContext(ctx, "go", "build", "-p", "1", "-o", entry, ".")
+	cmd.Dir = "go-lsp"
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, output)
 	}

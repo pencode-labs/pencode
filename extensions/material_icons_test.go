@@ -46,7 +46,8 @@ func TestMaterialIconsRegistersIconTheme(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	command := exec.CommandContext(ctx, "go", "build", "-p", "1", "-o", filepath.Join(directory, filepath.FromSlash(entry)), "./material-icons")
+	command := exec.CommandContext(ctx, "go", "build", "-p", "1", "-o", filepath.Join(directory, filepath.FromSlash(entry)), ".")
+	command.Dir = "material-icons"
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build material-icons: %v\n%s", err, output)
 	}

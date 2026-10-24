@@ -28,7 +28,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 
 ### 环境要求与当前限制
 
-- Go **1.26.0 或更新版本**。
+- Go **1.27.0 或更新版本**。
 - 在本仓库旁准备名为 `onix` 的 Onix 源码目录。当前 `go.mod` 使用 `replace github.com/diiyw/onix => ../onix`。
 - Onix 桌面构建所需的平台原生开发库，具体见 Onix 源码中的 `docs/desktop-builds.md`。
 - Git 功能需要系统 `git`，远程连接需要 OpenSSH `ssh`。语言服务器需在工作区所在设备上单独安装。
@@ -45,7 +45,7 @@ workspace/
 准备好 Onix 后，在其同级目录克隆 Pencode 并整理依赖：
 
 ```sh
-git clone https://github.com/pencode-labs/pencode.git
+git clone --recurse-submodules https://github.com/pencode-labs/pencode.git
 cd pencode
 go mod tidy
 ```
@@ -66,7 +66,11 @@ go build ./...
 go test -p 1 ./protocol ./peb ./lsp ./transport ./terminal
 ```
 
-这些检查只覆盖对应包，不能代表完整应用已经通过构建或各平台运行验证。执行 `go test -p 1 ./...` 可覆盖工作台及其他所有包。
+这些检查只覆盖对应包，不能代表完整应用已经通过构建或各平台运行验证。执行 `go test -p 1 ./...` 可覆盖主模块中的工作台及其他所有包。扩展使用独立模块，需单独测试：
+
+```sh
+git submodule foreach 'go test ./...'
+```
 
 ## 架构
 
@@ -93,7 +97,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 | `server/` | 工作区服务与进程管理 |
 | `transport/`、`remote/`、`connection/` | 本地传输、SSH 与连接生命周期 |
 | `terminal/`、`lsp/`、`peb/` | 终端模拟器、LSP 支持和扩展协议／SDK |
-| `extensions/` | 示例扩展 |
+| `extensions/` | 扩展宿主集成与示例扩展子模块 |
 | `resources/` | 应用配置、场景、界面资源与图标 |
 | `cmd/` | 独立服务端与服务端产物构建助手 |
 
@@ -103,12 +107,18 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 扩展安装在服务端的 `~/.pencode/extensions/<扩展 ID>/`，包含可执行文件和 `resources/extension.json` 清单。可通过扩展管理器的本地目录安装流程注册扩展。
 
-仓库提供以下示例：
+以下示例均为 Git 子模块，各自在 `pencode-labs` 下的公开仓库维护，采用 MIT 协议：
 
-- [Go 语言工具](extensions/go-lsp)：注册 `gopls`，需另行安装该语言服务器。
-- [Markdown 编辑器](extensions/markdown-editor)：自定义源码编辑与预览。
-- [Material 文件图标](extensions/material-icons)：文件图标主题。
-- [扩展 UI](extensions/ui-demo)：工作台按钮、弹窗、菜单、浮窗与面板。
+- [Go 语言工具](https://github.com/pencode-labs/go-lsp)：注册 `gopls`，需另行安装该语言服务器。
+- [Markdown 编辑器](https://github.com/pencode-labs/markdown-editor)：自定义源码编辑与预览。
+- [Material 文件图标](https://github.com/pencode-labs/material-icons)：文件图标主题。
+- [扩展 UI](https://github.com/pencode-labs/ui-demo)：工作台按钮、弹窗、菜单、浮窗与面板。
+
+已有检出可运行 `git submodule update --init --recursive` 初始化子模块。每个扩展都有独立的 Go 模块与构建说明。例如，在主仓库根目录构建 Go 语言工具：
+
+```sh
+(cd extensions/go-lsp && go build -o bin/go-lsp .)
+```
 
 当前协议为 v6，旧扩展需要使用当前 SDK 重新构建。
 

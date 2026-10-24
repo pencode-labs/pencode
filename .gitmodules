@@ -1,0 +1,16 @@
+[submodule "extensions/go-lsp"]
+	path = extensions/go-lsp
+	url = https://github.com/pencode-labs/go-lsp.git
+	branch = main
+[submodule "extensions/markdown-editor"]
+	path = extensions/markdown-editor
+	url = https://github.com/pencode-labs/markdown-editor.git
+	branch = main
+[submodule "extensions/material-icons"]
+	path = extensions/material-icons
+	url = https://github.com/pencode-labs/material-icons.git
+	branch = main
+[submodule "extensions/ui-demo"]
+	path = extensions/ui-demo
+	url = https://github.com/pencode-labs/ui-demo.git
+	branch = main

@@ -15,6 +15,7 @@ type pencodeTabScroll struct {
 	area                        ecs.Entity
 	file                        *openFile
 	project                     *pencodeProject
+	terminal                    *pencodeTerminal
 	viewportWidth, contentWidth float32
 }
 
@@ -47,6 +48,10 @@ func (model *workspaceModel) syncTabScroll(world *module.Content) {
 	if next.sourceKey != "" {
 		id = "sc-tab-group:" + next.sourceKey
 	}
+	model.revealTab(world, viewportNode, id, scroll)
+}
+
+func (model *workspaceModel) revealTab(world *module.Content, viewportNode htmlui.Node, id string, scroll *scene.UIScroll) {
 	tabNode, tabOK := world.HTMLNode(model.surface, id)
 	if !tabOK {
 		return
@@ -59,9 +64,9 @@ func (model *workspaceModel) syncTabScroll(world *module.Content) {
 	// Bounds are unscrolled layout coordinates; use the smallest displacement
 	// that fits the tab, aligning its start if it exceeds the viewport width.
 	left := tab.X - viewport.X
-	position := max(scroll.Position.X(), next.viewportWidth-left-tab.Width)
+	position := max(scroll.Position.X(), scroll.ViewportSize.X()-left-tab.Width)
 	position = min(position, -left)
-	position = min(max(position, -max(next.contentWidth-next.viewportWidth, 0)), 0)
+	position = min(max(position, -max(scroll.ContentSize.X()-scroll.ViewportSize.X(), 0)), 0)
 	if position != scroll.Position.X() {
 		scroll.Position[0], scroll.Momentum[0] = position, 0
 		model.app.RequestRender()
@@ -77,13 +82,20 @@ func (model *workspaceModel) updateTabWheel(world *module.Content, state *input.
 	}
 	zoom := max(float32(model.settings.Zoom)/100, .01)
 	x, y := pointer.X/zoom, pointer.Y/zoom
-	if !model.pointerInsideRefs(world, x, y, []string{"tabs"}) ||
-		model.fileContext.open && model.pointerInsideRefs(world, x, y, []string{"file-context"}) ||
+	if model.fileContext.open && model.pointerInsideRefs(world, x, y, []string{"file-context"}) ||
 		model.languageUI.contextOpen && model.pointerInsideRefs(world, x, y, []string{"lsp-context", "lsp-context-submenu"}) ||
-		model.market != nil && model.market.open && model.pointerInsideRefs(world, x, y, []string{"marketplace-panel"}) {
+		model.market != nil && model.market.open && model.pointerInsideRefs(world, x, y, []string{"marketplace-panel"}) || model.terminalView.context.open {
 		return
 	}
-	scroll := module.ContentMut[scene.UIScroll](world, model.tabScroll.area)
+	var area ecs.Entity
+	if model.pointerInsideRefs(world, x, y, []string{"tabs"}) {
+		area = model.tabScroll.area
+	} else if model.bottom.active == pencodePanelTerminal && model.pointerInsideRefs(world, x, y, []string{"terminal-tabs"}) {
+		area = model.terminalView.tabScroll.area
+	} else {
+		return
+	}
+	scroll := module.ContentMut[scene.UIScroll](world, area)
 	if scroll == nil || !scroll.Horizontal || scroll.DisableInput {
 		return
 	}

@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/output"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/diiyw/onix/window"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/output"
 )
 
 type pencodeMarketOperation uint8
@@ -21,6 +21,7 @@ const (
 	pencodeMarketUninstall
 	pencodeMarketEnable
 	pencodeMarketDisable
+	pencodeMarketOpenDirectory
 )
 
 type pencodeMarketResult struct {
@@ -35,7 +36,7 @@ type pencodeMarketResult struct {
 // UI state belongs to the session, so a scene switch does not lose an ongoing
 // installation. Workers publish immutable results; only the UI mutates state.
 type pencodeMarketplace struct {
-	directory                  string // Server path for presentation only.
+	directory                  string // Backend path; only local workspaces can open it.
 	open, busy                 bool
 	filter, selected, feedback string
 	items                      []extensions.Installed
@@ -87,6 +88,9 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 	if m == nil || m.busy {
 		return
 	}
+	if op == pencodeMarketOpenDirectory && (model.remoteWorkspace() || m.directory == "") {
+		return
+	}
 	if model.session == nil || model.session.backend == nil {
 		m.feedback = "服务未连接"
 		return
@@ -101,6 +105,9 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 		m.feedback = "正在启用扩展…"
 	case pencodeMarketDisable:
 		m.feedback = "正在禁用扩展…"
+	case pencodeMarketOpenDirectory:
+		m.feedback = "正在打开扩展目录…"
+		source = m.directory
 	}
 	ctx, cancel := context.WithCancel(output.WithStore(context.Background(), model.outputStore()))
 	m.cancel, m.done = cancel, make(chan struct{})
@@ -140,8 +147,12 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 			if r.err == nil {
 				r.bundles[id] = bundle
 			}
+		case pencodeMarketOpenDirectory:
+			openCtx, stop := context.WithTimeout(ctx, 5*time.Second)
+			r.err = openExternalCommand(openCtx, source).Run()
+			stop()
 		}
-		if r.err == nil {
+		if r.err == nil && op != pencodeMarketOpenDirectory {
 			catalog, err := backend.ListExtensions(ctx)
 			r.err = err
 			r.items, r.directory = catalog.Items, catalog.Directory
@@ -189,6 +200,10 @@ func (model *workspaceModel) pollMarketplace() bool {
 				bundle.Close()
 			}
 			m.feedback = fmt.Sprintf("操作失败：%v", result.err)
+			return true
+		}
+		if result.op == pencodeMarketOpenDirectory {
+			m.feedback = ""
 			return true
 		}
 		m.items, m.directory = result.items, result.directory
@@ -276,6 +291,8 @@ func (model *workspaceModel) handleMarketplaceEvent(c *module.ContentEventContex
 		m.revision++
 	case "market-refresh":
 		model.startMarketOperation(pencodeMarketRefresh, "", "")
+	case "market-open-directory":
+		model.startMarketOperation(pencodeMarketOpenDirectory, "", "")
 	case "market-install":
 		if m.busy || model.app == nil || model.app.OpenFolder == nil {
 			return true
@@ -351,6 +368,7 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	view.Event("open-marketplace", htmlui.EventClick)
 	view.Event("close-marketplace", htmlui.EventClick)
 	view.Event("market-refresh", htmlui.EventClick)
+	view.Event("market-open-directory", htmlui.EventClick)
 	view.Event("market-install", htmlui.EventClick)
 	view.Event("market-uninstall", htmlui.EventClick)
 	view.Event("market-toggle", htmlui.EventClick)
@@ -365,8 +383,13 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	view.Attr("marketplace-panel", "aria-busy", boolAttribute(m.busy))
 	view.Text("market-feedback", m.feedback)
 	view.Text("market-directory", m.directory)
-	for _, ref := range [...]string{"market-refresh", "market-install", "market-uninstall"} {
-		if m.busy || ref == "market-uninstall" && m.selected == "" {
+	if model.remoteWorkspace() {
+		view.Attr("market-open-directory", "hidden", "")
+	} else {
+		view.RemoveAttr("market-open-directory", "hidden")
+	}
+	for _, ref := range [...]string{"market-refresh", "market-install", "market-uninstall", "market-open-directory"} {
+		if m.busy || ref == "market-uninstall" && m.selected == "" || ref == "market-open-directory" && m.directory == "" {
 			view.Attr(ref, "disabled", "")
 		} else {
 			view.RemoveAttr(ref, "disabled")

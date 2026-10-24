@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/diiyw/onix/syntax"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/server"
-	"github.com/diiyw/onix/syntax"
 )
 
 func TestServiceChild(t *testing.T) {
@@ -214,6 +214,24 @@ func TestServerIndexPagesSearchAndWorkspaceLifetime(t *testing.T) {
 	paths, err = c.SearchPaths(t.Context(), id, "IMAGE", nil, protocol.PathRule{Pattern: ".png", Suffix: true})
 	if err != nil || !reflect.DeepEqual(paths, []string{"image.png"}) {
 		t.Fatal("custom editor search", paths, err)
+	}
+	for _, query := range []string{
+		"file-042.go",
+		"src/file-042.go",
+		`src\file-042.go`,
+		`SRC\FILE-042.GO`,
+		filepath.Join(w.Path, "src", "file-042.go"),
+		filepath.ToSlash(filepath.Join(w.Path, "src", "file-042.go")),
+		strings.ToUpper(filepath.Join(w.Path, "src", "file-042.go")),
+	} {
+		paths, err = c.SearchPaths(t.Context(), id, query, nil)
+		if err != nil || !reflect.DeepEqual(paths, []string{"src/file-042.go"}) {
+			t.Fatalf("path search %q = %v, %v", query, paths, err)
+		}
+	}
+	paths, err = c.SearchPaths(t.Context(), id, w.Path+"-other/src/file-042.go", nil)
+	if err != nil || len(paths) != 0 {
+		t.Fatal("path outside workspace matched", paths, err)
 	}
 	if err := c.CloseWorkspace(t.Context(), w.ID); err != nil {
 		t.Fatal(err)

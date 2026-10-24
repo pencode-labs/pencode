@@ -34,6 +34,8 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	theme, err := syntax.LoadTheme(fstest.MapFS{"resources/icons.json": &fstest.MapFile{Data: []byte(`{
   "type":"light", "colors":{
    "icon.foreground":"#2468ac80", "button.foreground":"#135790",
+   "problemsErrorIcon.foreground":"#e81123", "problemsWarningIcon.foreground":"#bf8803",
+   "problemsInfoIcon.foreground":"#1a85ff", "editorHint.foreground":"#6c6c6c",
    "list.activeSelectionForeground":"#cc00dd", "tab.activeForeground":"#112233", "tab.inactiveForeground":"#aabbcc"
   }
  }`)}}, "resources/icons.json")

@@ -77,7 +77,7 @@ func renderPencodeTree(context module.ContentRenderContext[projectProps, struct{
 	for _, index := range rows[first:end] {
 		entry := project.Entries[index]
 		htmlui.AppendComponentChild(view, "tree-window", componentKey(entry.Path), definition,
-			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name, Depth: entry.Depth, IsDir: entry.IsDir, Openable: entry.Openable}, struct{}{})
+			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name, Depth: entry.Depth, IsDir: entry.IsDir, Openable: entry.Openable, HasErrors: !entry.IsDir && model.fileHasErrors(project, entry.Path)}, struct{}{})
 	}
 }
 

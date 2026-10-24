@@ -12,16 +12,17 @@ import (
 )
 
 type pencodeTheme struct {
-	id            string
-	label         string
-	theme         *syntax.Theme
-	css           string
-	icons         map[pencodeIconKey]string
-	border, guide graphics.ColorRGBA
-	link          graphics.ColorRGBA
-	bracket       graphics.ColorRGBA
-	editorStyle   engineui.StyleOverride[engineui.TextFieldStyle]
-	selectStyle   engineui.HTMLSelectStyle
+	id              string
+	label           string
+	theme           *syntax.Theme
+	css             string
+	icons           map[pencodeIconKey]string
+	border, guide   graphics.ColorRGBA
+	link            graphics.ColorRGBA
+	bracket         graphics.ColorRGBA
+	diagnosticError graphics.ColorRGBA
+	editorStyle     engineui.StyleOverride[engineui.TextFieldStyle]
+	selectStyle     engineui.HTMLSelectStyle
 }
 
 type pencodeIconKey struct{ source, foreground string }
@@ -70,6 +71,9 @@ var pencodeColorParents = map[string]string{
 	"settings.dropdownForeground":     "dropdown.foreground",
 	"settings.dropdownBorder":         "dropdown.border",
 	"icon.foreground":                 "foreground",
+	"problemsErrorIcon.foreground":    "editorError.foreground",
+	"problemsWarningIcon.foreground":  "editorWarning.foreground",
+	"problemsInfoIcon.foreground":     "editorInfo.foreground",
 	"badge.background":                "list.hoverBackground",
 	"badge.foreground":                "foreground",
 	"input.placeholderForeground":     "descriptionForeground",
@@ -106,6 +110,14 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return dark
 		}
 		switch key {
+		case "problemsErrorIcon.foreground":
+			return decoration(syntax.Color{R: 244, G: 135, B: 113, A: 255}, syntax.Color{R: 232, G: 17, B: 35, A: 255}), nil
+		case "problemsWarningIcon.foreground":
+			return decoration(syntax.Color{R: 204, G: 167, B: 0, A: 255}, syntax.Color{R: 191, G: 136, B: 3, A: 255}), nil
+		case "problemsInfoIcon.foreground":
+			return decoration(syntax.Color{R: 117, G: 190, B: 255, A: 255}, syntax.Color{R: 26, G: 133, B: 255, A: 255}), nil
+		case "editorHint.foreground":
+			return decoration(syntax.Color{R: 178, G: 178, B: 178, A: 255}, syntax.Color{R: 108, G: 108, B: 108, A: 255}), nil
 		case "scmGraph.foreground1":
 			return decoration(syntax.Color{R: 70, G: 166, B: 239, A: 255}, syntax.Color{R: 0, G: 109, B: 190, A: 255}), nil
 		case "scmGraph.foreground2":
@@ -193,6 +205,11 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 	}
+	for _, severity := range pencodeProblemSeverities {
+		if err := addIcon(severity.icon); err != nil {
+			return pencodeTheme{}, err
+		}
+	}
 	for _, name := range []string{"add", "remove", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "refresh-cw", "close", "discard"} {
 		if err := addIcon(pencodeIconKey{"icons/" + name + ".svg", "icon.foreground"}); err != nil {
 			return pencodeTheme{}, err
@@ -228,6 +245,14 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 		return pencodeTheme{}, err
 	}
 	result.link = pencodeSyntaxColor(link)
+	errorColor, err := color("errorForeground")
+	if err != nil {
+		return pencodeTheme{}, err
+	}
+	if value, ok := theme.LookupColor("editorError.foreground"); ok {
+		errorColor = value
+	}
+	result.diagnosticError = pencodeSyntaxColor(errorColor)
 	result.bracket = result.link
 	if value, ok := theme.LookupColor("editorBracketHighlight.foreground1"); ok {
 		result.bracket = pencodeSyntaxColor(value)

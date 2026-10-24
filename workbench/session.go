@@ -111,7 +111,9 @@ func (s *Session) syncLayout() {
 	model.focusLanguageControls(model.fontResources)
 	model.editor.syncCaretStatus(model.fontResources, model.surface, model)
 	model.editor.syncGutter(model.fontResources, model.surface, model)
+	model.editor.diagnostics.sync(model.fontResources, model)
 	model.constrainLanguagePopups(model.fontResources)
+	model.editor.saveView(model.fontResources, model)
 }
 
 func (s *Session) Register(registry *module.Registry) error {

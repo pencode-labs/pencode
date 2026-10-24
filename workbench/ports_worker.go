@@ -51,7 +51,7 @@ type pencodePorts struct {
 	failed              bool
 }
 
-func portBrowserCommand(ctx context.Context, address string) *exec.Cmd {
+func openExternalCommand(ctx context.Context, address string) *exec.Cmd {
 	switch runtime.GOOS {
 	case "darwin":
 		return exec.CommandContext(ctx, "open", address)
@@ -358,7 +358,7 @@ func startPorts(backend *client.Client, options pencodePortsOptions, wake func()
 				case "open":
 					if entry != nil && entry.row.url != "" {
 						openCtx, stop := context.WithTimeout(ctx, 5*time.Second)
-						err = portBrowserCommand(openCtx, entry.row.url).Run()
+						err = openExternalCommand(openCtx, entry.row.url).Run()
 						stop()
 						if err != nil {
 							err = fmt.Errorf("无法打开浏览器：%w", err)

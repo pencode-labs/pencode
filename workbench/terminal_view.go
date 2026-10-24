@@ -7,10 +7,10 @@ import (
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/terminal"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/terminal"
 )
 
 type terminalBackground struct {
@@ -34,6 +34,7 @@ type pencodeTerminalView struct {
 	tabsCount      int
 	tabsActive     *pencodeTerminal
 	tabsTheme      *pencodeTheme
+	tabScroll      pencodeTabScroll
 	context        pencodeTerminalContext
 	caret          int
 	edits          []input.TextEdit
@@ -68,6 +69,9 @@ func (m *workspaceModel) renderTerminal(view *htmlui.View) {
 				class, foreground, tabindex = class+" active", "tab.activeForeground", "0"
 			}
 			b.open("div", item.id, "class", class, "role", "presentation")
+			if item == t.active {
+				b.attr("id", "active-terminal-tab")
+			}
 			b.text("button", item.selectRef, item.label, "id", item.selectRef, "type", "button", "role", "tab", "aria-selected", boolAttribute(item == t.active), "aria-controls", "terminal-pane", "tabindex", tabindex, "title", item.root)
 			b.open("button", item.closeRef, "id", item.closeRef, "type", "button", "class", "pencode-icon-button", "title", "关闭终端", "aria-label", "关闭 "+item.label)
 			b.text("img", "close", "", "src", m.themedIcon("icons/close.svg", foreground), "alt", "", "class", "pencode-close-icon")
@@ -199,6 +203,28 @@ func (m *workspaceModel) prepareTerminalView() {
 	}
 	v.value = string(v.buffer)
 }
+func (m *workspaceModel) syncTerminalTabScroll(world *module.Content) {
+	node, ok := world.HTMLNode(m.surface, "terminal-tabs")
+	if !ok {
+		return
+	}
+	area, ok := node.ScrollContainer()
+	if !ok {
+		m.terminalView.tabScroll = pencodeTabScroll{}
+		return
+	}
+	scroll := module.ContentMut[scene.UIScroll](world, area)
+	if scroll == nil || m.terminals == nil {
+		return
+	}
+	next := pencodeTabScroll{area: area, terminal: m.terminals.active, viewportWidth: scroll.ViewportSize.X(), contentWidth: scroll.ContentSize.X()}
+	if m.terminalView.tabScroll == next {
+		return
+	}
+	m.terminalView.tabScroll = next
+	m.revealTab(world, node, "active-terminal-tab", scroll)
+}
+
 func (m *workspaceModel) bindTerminal(world *module.Content) {
 	v := &m.terminalView
 	visible := m.bottom.active == pencodePanelTerminal && m.screen == pencodeWorkspace
@@ -208,6 +234,7 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 		}
 		return
 	}
+	m.syncTerminalTabScroll(world)
 	bound := false
 	if m.terminals != nil {
 		for _, item := range m.terminals.items {

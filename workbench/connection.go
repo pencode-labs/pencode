@@ -445,6 +445,7 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 	model.settingsPath = ""
 	model.unloadContributions("extensions/", "peb://")
 	clear(model.extensionStates)
+	model.extensionFeedback = ""
 	s.backend, model.backend = backend, backend
 	model.applyConfiguration(result.configuration, result.profile.Remote())
 	for view := range s.views {

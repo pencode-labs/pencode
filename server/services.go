@@ -129,7 +129,7 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 			return err
 		}
 		return browseDirectory(ctx, directory, e)
-	case protocol.GitCommand, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen:
+	case protocol.GitCommand, protocol.GitRepositories, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen:
 		if root == "" {
 			return protocol.ErrProtocol
 		}
@@ -137,6 +137,8 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 	switch op {
 	case protocol.GitCommand:
 		return s.git(ctx, root, &d, e)
+	case protocol.GitRepositories:
+		return s.gitRepositories(ctx, root, &d, e)
 	case protocol.FileRead, protocol.FileSave:
 		return s.file(op, root, &d, e)
 	case protocol.DiffPatch:
@@ -164,7 +166,9 @@ func (s *services) closeWorkspace(id uint64) {
 		if owner == root {
 			replacement := ""
 			for _, opened := range s.projects {
-				if relative, err := filepath.Rel(derived, opened); err == nil && filepath.IsLocal(relative) {
+				relative, err := filepath.Rel(derived, opened)
+				inside, insideErr := filepath.Rel(opened, derived)
+				if err == nil && filepath.IsLocal(relative) || insideErr == nil && filepath.IsLocal(inside) {
 					replacement = opened
 					break
 				}

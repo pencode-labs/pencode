@@ -30,15 +30,30 @@ type pencodeDiagnosticKey struct {
 	uri     lsp.URI
 }
 
+type pencodeProblemFile struct{ root, path string }
+
 type pencodeProblem struct {
 	session  *pencodeLanguageSession
 	location lsp.Location
 	path     string
 	label    string
+	severity int
+}
+
+var pencodeProblemSeverities = [...]struct {
+	icon  pencodeIconKey
+	label string
+}{
+	{pencodeIconKey{"icons/info.svg", "problemsInfoIcon.foreground"}, "信息"},
+	{pencodeIconKey{"icons/error.svg", "problemsErrorIcon.foreground"}, "错误"},
+	{pencodeIconKey{"icons/warning.svg", "problemsWarningIcon.foreground"}, "警告"},
+	{pencodeIconKey{"icons/info.svg", "problemsInfoIcon.foreground"}, "信息"},
+	{pencodeIconKey{"icons/lightbulb.svg", "editorHint.foreground"}, "提示"},
 }
 
 type pencodeProblemProps struct {
 	Model   *workspaceModel
+	Theme   *pencodeTheme
 	Problem pencodeProblem
 }
 
@@ -47,6 +62,7 @@ type pencodeProblemGroup struct {
 	path, count string
 	start, end  int
 	expanded    bool
+	hasErrors   bool
 	revision    uint64
 }
 
@@ -63,6 +79,7 @@ type pencodeBottomPanel struct {
 	resizeY, resizeHeight            float32
 	heightStyle                      string
 	diagnostics                      map[pencodeDiagnosticKey][]lsp.Diagnostic
+	errorFiles                       map[pencodeProblemFile]bool
 	problemsDirty                    bool
 	problems                         []pencodeProblem
 	problemGroups                    []*pencodeProblemGroup
@@ -166,6 +183,7 @@ func (model *workspaceModel) syncProblems() {
 		return
 	}
 	clear(p.problems)
+	clear(p.errorFiles)
 	p.problems = p.problems[:0]
 	for key, items := range p.diagnostics {
 		path := string(key.uri)
@@ -176,21 +194,22 @@ func (model *workspaceModel) syncProblems() {
 			}
 		}
 		for _, item := range items {
-			severity := "信息"
-			switch item.Severity {
-			case 1:
-				severity = "错误"
-			case 2:
-				severity = "警告"
-			case 4:
-				severity = "提示"
+			severity := item.Severity
+			if severity == 1 {
+				if p.errorFiles == nil {
+					p.errorFiles = make(map[pencodeProblemFile]bool)
+				}
+				p.errorFiles[pencodeProblemFile{key.session.key.root, path}] = true
+			}
+			if severity < 0 || severity >= len(pencodeProblemSeverities) {
+				severity = 0
 			}
 			source := item.Source
 			if source == "" && key.session.server != nil {
 				source = key.session.server.Label
 			}
-			label := fmt.Sprintf("%s · %d:%d · %s · %s", severity, item.Range.Start.Line+1, item.Range.Start.Character+1, item.Message, source)
-			p.problems = append(p.problems, pencodeProblem{session: key.session, location: lsp.Location{URI: key.uri, Range: item.Range}, path: path, label: label})
+			label := fmt.Sprintf("%d:%d · %s · %s", item.Range.Start.Line+1, item.Range.Start.Character+1, item.Message, source)
+			p.problems = append(p.problems, pencodeProblem{session: key.session, location: lsp.Location{URI: key.uri, Range: item.Range}, path: path, label: label, severity: severity})
 		}
 	}
 	slices.SortFunc(p.problems, func(a, b pencodeProblem) int {
@@ -210,8 +229,10 @@ func (model *workspaceModel) syncProblems() {
 	p.problemGroups = p.problemGroups[:0]
 	for start := 0; start < len(p.problems); {
 		problem := p.problems[start]
+		hasErrors := problem.severity == 1
 		end := start + 1
 		for end < len(p.problems) && p.problems[end].location.URI == problem.location.URI {
+			hasErrors = hasErrors || p.problems[end].severity == 1
 			end++
 		}
 		group := p.problemGroupByURI[problem.location.URI]
@@ -224,6 +245,7 @@ func (model *workspaceModel) syncProblems() {
 		}
 		group.path, group.count = problem.path, strconv.Itoa(end-start)
 		group.start, group.end, group.revision = start, end, p.problemRevision
+		group.hasErrors = hasErrors
 		p.problemGroups = append(p.problemGroups, group)
 		start = end
 	}
@@ -239,6 +261,14 @@ func (model *workspaceModel) syncProblems() {
 	p.problemsDirty = false
 }
 
+func (model *workspaceModel) fileHasErrors(project *pencodeProject, path string) bool {
+	root := model.projectPath
+	if project != nil {
+		root = project.Path
+	}
+	return model.bottom.errorFiles[pencodeProblemFile{root, path}]
+}
+
 func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[pencodeProblemGroupProps, struct{}], error) {
 	problemDefinition, err := newProblemDefinition(content)
 	if err != nil {
@@ -250,6 +280,11 @@ func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[penc
 			Render: func(c module.ContentRenderContext[pencodeProblemGroupProps, struct{}], view *htmlui.View) {
 				model, group := c.Props.Model, c.Props.Group
 				view.Text("path", group.path)
+				class := ""
+				if group.hasErrors {
+					class = "pencode-error-name"
+				}
+				view.Attr("path", "class", class)
 				view.Text("count", group.count)
 				source := model.fileIcons.source(filepath.Base(group.path), false)
 				if source == "" {
@@ -267,7 +302,7 @@ func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[penc
 				setPanelVisible(view, "items", group.expanded)
 				if group.expanded {
 					for i := group.start; i < group.end; i++ {
-						htmlui.AppendComponentChild(view, "items", uint64(i-group.start+1), problemDefinition, pencodeProblemProps{Model: model, Problem: model.bottom.problems[i]}, struct{}{})
+						htmlui.AppendComponentChild(view, "items", uint64(i-group.start+1), problemDefinition, pencodeProblemProps{Model: model, Theme: c.Props.Theme, Problem: model.bottom.problems[i]}, struct{}{})
 					}
 				}
 			},
@@ -288,10 +323,13 @@ func handleProblemGroupEvent(c *module.ContentEventContext[pencodeProblemGroupPr
 
 func newProblemDefinition(content *module.Content) (*htmlui.Definition[pencodeProblemProps, struct{}], error) {
 	return module.ContentDefine[pencodeProblemProps, struct{}](content,
-		htmlui.NewTemplate(`<div class="pencode-problem-item" role="listitem"><button data-ref="problem" type="button" class="pencode-problem-row"></button></div>`), "",
+		htmlui.NewTemplate(`<div class="pencode-problem-item" role="listitem"><button data-ref="problem" type="button" class="pencode-problem-row"><img data-ref="severity" class="pencode-problem-severity-icon"><span data-ref="label"></span></button></div>`), "",
 		module.ContentBehavior[pencodeProblemProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProblemProps, struct{}], view *htmlui.View) {
-				view.Text("problem", c.Props.Problem.label)
+				severity := pencodeProblemSeverities[c.Props.Problem.severity]
+				view.Attr("severity", "src", c.Props.Model.themedIcon(severity.icon.source, severity.icon.foreground))
+				view.Attr("severity", "alt", severity.label)
+				view.Text("label", c.Props.Problem.label)
 				view.Event("problem", htmlui.EventClick)
 			},
 			HandleEvent: handleProblemEvent,

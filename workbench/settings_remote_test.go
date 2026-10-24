@@ -82,6 +82,7 @@ func TestRemoteConfigurationFollowsWorkspaceAndSavesOnServer(t *testing.T) {
 		s.Close()
 	})
 	model.beginConnection(profile, false)
+	model.extensionFeedback = "扩展 local 加载失败：local error"
 	waitConnection(t, model)
 	if model.settings.FontSize != 11 || model.settings.Theme != "dark-plus" || model.backend != local {
 		t.Fatal("connecting changed local settings")
@@ -92,6 +93,9 @@ func TestRemoteConfigurationFollowsWorkspaceAndSavesOnServer(t *testing.T) {
 	if model.settings.FontSize != 11 || model.settingsRemote {
 		t.Fatal("canceling browsing applied remote settings")
 	}
+	if model.extensionFeedback == "" {
+		t.Fatal("browsing SSH projects cleared local extension feedback")
+	}
 	model.openSSHProject(profile)
 	waitProjectPicker(t, model)
 	model.connectionEvent("connection-project-open", "")
@@ -100,6 +104,9 @@ func TestRemoteConfigurationFollowsWorkspaceAndSavesOnServer(t *testing.T) {
 	}
 	if !model.settingsRemote || model.settings.FontSize != 21 || model.settings.UIFontSize != 18 || model.settings.EditorWidth != 65 || model.settings.Zoom != 120 || model.settings.Bindings["save"].Key != input.KeyL {
 		t.Fatalf("remote editor settings were not applied: %+v", model.settings)
+	}
+	if model.extensionFeedback != "" {
+		t.Fatalf("remote workspace retained local extension feedback: %s", model.extensionFeedback)
 	}
 	if model.syntaxTheme.Name != "Remote" || model.syntaxDefinitions.Scope("comment") != "remote.comment" || model.settings.IconTheme != "extensions/remote/icons" || model.settings.CodeFont != "extensions/remote/code" {
 		t.Fatal("remote themes, definitions or pending extension selections lost")

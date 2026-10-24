@@ -40,6 +40,7 @@ const (
 	PortList
 	PortConnect
 	StreamCloseWrite
+	GitRepositories
 )
 
 type Port struct {

@@ -77,6 +77,7 @@ func renderPortRow(c module.ContentRenderContext[pencodePortProps, struct{}], vi
 	view.Attr("row", "id", ref+"-row")
 	view.Attr("row", "aria-selected", boolAttribute(p.Selected))
 	view.Attr("row", "title", row.status)
+	view.Event("row", htmlui.EventClick)
 	view.Text("select", row.remote)
 	view.Text("address", row.local)
 	view.Attr("address", "title", row.url)
@@ -133,6 +134,8 @@ func handlePortRowEvent(c *module.ContentEventContext[pencodePortProps, struct{}
 	u := &m.portUI
 	u.selected = row.key
 	switch c.Ref {
+	case "row":
+		u.focus = true
 	case "label-input", "local-input":
 		u.value = c.Event.Value
 	case "select":

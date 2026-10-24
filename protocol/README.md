@@ -50,6 +50,7 @@ ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存
 | ConfigurationRead | 空 | directory:string, count:u32, {path:string, data:bytes}[] |
 | SettingsSave | data:bytes（JSON object） | 空 |
 | GitCommand | args:string[] | output:bytes |
+| GitRepositories | 空 | count:u32, {root:string}[]（项目及其子目录内的仓库） |
 | FileRead | path:string, links:u32, limit:u32 | content:bytes |
 | FileSave | path:string, diskBaseline:string, result:string | 空 |
 | DiffPatch | left:bytes, right:bytes | unifiedPatch:bytes |

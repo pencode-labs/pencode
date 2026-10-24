@@ -26,6 +26,7 @@ const (
 )
 
 type sourceResult struct {
+	Repositories      []string
 	Selection         uint64
 	Page              *sourceHistoryPage
 	PageRefs          string
@@ -37,6 +38,7 @@ type sourceResult struct {
 	Tab               *sourceTab
 	SavedKey, Message string
 	Err               error
+	RepositoryError   string
 	Reload            bool
 }
 
@@ -55,14 +57,20 @@ type sourcePanelKey struct {
 	TreeRevision                             uint64
 	Sync                                     sourceSyncStatus
 	Message, Selected                        string
+	RepositoryError                          string
 	Busy, Modal, HasMore, Multiline, Syncing bool
 }
 
 type sourceToolsKey struct {
-	Theme      *pencodeTheme
-	Branch     string
-	Busy       bool
-	BranchMenu bool
+	Theme           *pencodeTheme
+	Branch          string
+	Busy            bool
+	BranchMenu      bool
+	Unavailable     bool
+	Repositories    *string
+	RepositoryCount int
+	Repository      string
+	RepositoryMenu  bool
 }
 
 func sourceFirst[T any](values []T) *T {
@@ -75,7 +83,18 @@ func sourceFirst[T any](values []T) *T {
 // UI state belongs to one project. A job only receives captured immutable values;
 // its bounded result is applied by the foreground, including for inactive projects.
 type pencodeSourceControl struct {
+	Repositories                            []string
+	RepositoriesLoaded                      bool
+	RepositoryViews                         map[string]sourceRepositoryView
+	FollowPath                              string
+	RepositoryMenuOpen, RepositoryFocus     bool
+	RepositoryIndex                         int
+	RepositoryX, RepositoryY                float32
+	RepositoryWidth, RepositoryHeight       float32
+	repositoryView                          sourceVNodeView
+	repositoryKey                           sourceRepositoryMenuKey
 	Snapshot                                sourceSnapshot
+	RepositoryError                         string
 	Done                                    chan sourceResult
 	JobKind                                 sourceJobKind
 	RefreshCancel                           context.CancelFunc
@@ -148,6 +167,19 @@ func (s *pencodeSourceControl) unsaved() bool {
 	}
 	return false
 }
+func (s *pencodeSourceControl) unsavedRepositories() bool {
+	if s.unsaved() {
+		return true
+	}
+	for _, view := range s.RepositoryViews {
+		for _, tab := range view.Tabs {
+			if tab.Result != tab.Saved {
+				return true
+			}
+		}
+	}
+	return false
+}
 func (s *pencodeSourceControl) busy() bool {
 	return s.Done != nil && (s.JobKind != sourceRefresh || s.Snapshot.Repository.Root == "")
 }
@@ -170,6 +202,8 @@ func (s *pencodeSourceControl) stop() {
 	}
 	s.Context = nil
 	s.Done = nil
+	s.RepositoriesLoaded = false
+	s.NextRefresh = time.Time{}
 }
 func (m *workspaceModel) sourceState() *pencodeSourceControl {
 	if p := m.activeProjectState(); p != nil {
@@ -186,16 +220,12 @@ func (m *workspaceModel) sourceHasDrafts() bool {
 	// Repository roots can enclose more than one open project.
 	root := m.sourceState().Snapshot.Repository.Root
 	for _, p := range m.projects {
-		relative, err := filepath.Rel(root, p.Path)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			continue
-		}
 		for _, f := range p.Files {
-			if f.Dirty {
+			if f.Dirty && sourceRepositoryForPath([]string{root}, filepath.ToSlash(filepath.Join(p.Path, filepath.FromSlash(f.Path)))) != "" {
 				return true
 			}
 		}
-		if p.sourceControl.unsaved() {
+		if sourceRepositoryForPath([]string{root}, filepath.ToSlash(p.Path)) != "" && p.sourceControl.unsavedRepositories() {
 			return true
 		}
 	}
@@ -230,27 +260,47 @@ func (m *workspaceModel) refreshSourceControl() {
 	if s.Context == nil {
 		s.Context, s.Cancel = context.WithCancel(context.Background())
 	}
-	directory := m.projectPath
+	directory := s.Snapshot.Repository.Root
+	if directory == "" {
+		directory = m.projectPath
+	}
+	project, discover := m.projectPath, !s.RepositoriesLoaded || s.Snapshot.Repository.Root == ""
+	activePath := m.activePath
+	if s.FollowPath == activePath && s.Snapshot.Repository.Root != "" {
+		activePath = ""
+	}
 	backend := m.backend
 	statusOnly := !s.visible() && m.bottom.active != pencodePanelSourceControl && !s.modal()
 	ctx, cancel := context.WithCancel(s.Context)
 	s.RefreshCancel = cancel
 	m.sourceJob(sourceRefresh, func() sourceResult {
 		r := sourceRepository{Root: directory, Context: ctx, Backend: backend}
-		root, err := r.command("rev-parse", "--show-toplevel")
-		if err != nil {
-			return sourceResult{Err: err, StatusOnly: statusOnly}
+		var repositories []string
+		if discover {
+			var err error
+			repositories, err = backend.GitRepositories(ctx, project)
+			if err != nil {
+				return sourceResult{RepositoryError: err.Error()}
+			}
+			if len(repositories) == 0 {
+				return sourceResult{Repositories: repositories, RepositoryError: "No Git repositories found"}
+			}
+			if !slices.Contains(repositories, directory) {
+				directory = repositories[0]
+			}
+			if activePath != "" {
+				if root := sourceRepositoryForPath(repositories, filepath.ToSlash(filepath.Join(project, filepath.FromSlash(activePath)))); root != "" {
+					directory = root
+				}
+			}
+			r.Root = directory
 		}
-		r.Root = strings.TrimSuffix(string(root), "\n")
 		if statusOnly {
 			snapshot, err := r.statusSnapshot()
-			if err != nil {
-				return sourceResult{Err: err, StatusOnly: true}
-			}
-			return sourceResult{Snapshot: &snapshot, Err: err, StatusOnly: true}
+			return sourceResult{Repositories: repositories, Snapshot: &snapshot, Err: err, StatusOnly: true}
 		}
 		snapshot, err := r.snapshot(sourceHistoryPageSize)
-		return sourceResult{Snapshot: &snapshot, Err: err}
+		return sourceResult{Repositories: repositories, Snapshot: &snapshot, Err: err}
 	})
 }
 func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *pencodeProject) bool {
@@ -261,7 +311,32 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 	case result := <-s.Done:
 		s.Done = nil
 		s.cancelRefresh()
+		if result.Repositories != nil {
+			if !slices.Equal(result.Repositories, s.Repositories) {
+				s.Repositories = result.Repositories
+				s.FollowPath = ""
+			}
+			s.RepositoriesLoaded = true
+		}
+		if result.RepositoryError != "" {
+			if s.Snapshot.Repository.Root != "" {
+				s.selectRepository(sourceRepository{})
+			}
+			s.RepositoryError = result.RepositoryError
+			s.Snapshot = sourceSnapshot{}
+			s.SelectedHash, s.CommitFiles = "", nil
+			s.GraphFirst, s.GraphScrollY, s.RestoreGraph = 0, 0, true
+			s.MenuOpen, s.BranchMenuOpen = false, false
+		}
 		if result.Snapshot != nil && result.Snapshot.Repository.Root != "" {
+			if result.Snapshot.Repository.Root != s.Snapshot.Repository.Root {
+				visible := s.visible()
+				s.selectRepository(result.Snapshot.Repository)
+				if !visible {
+					s.Active, s.RestoreScroll = "", false
+				}
+			}
+			s.RepositoryError = ""
 			next := *result.Snapshot
 			if result.StatusOnly {
 				next = s.Snapshot
@@ -369,11 +444,14 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		changed = true
 	}
 	s := m.sourceState()
-	if (s.MenuOpen || s.BranchMenuOpen) && m.bottom.active != pencodePanelSourceControl {
-		s.MenuOpen, s.BranchMenuOpen = false, false
+	if m.followSourceRepository() {
 		changed = true
 	}
-	if m.projectPath != "" && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen {
+	if (s.MenuOpen || s.BranchMenuOpen || s.RepositoryMenuOpen) && m.bottom.active != pencodePanelSourceControl {
+		s.MenuOpen, s.BranchMenuOpen, s.RepositoryMenuOpen = false, false, false
+		changed = true
+	}
+	if m.projectPath != "" && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen && !s.RepositoryMenuOpen {
 		if time.Now().After(s.NextRefresh) {
 			m.refreshSourceControl()
 			changed = true
@@ -390,6 +468,11 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		m.positionSourceBranches(world)
 		changed = changed || x != s.MenuX || y != s.MenuY || width != s.BranchWidth || height != s.BranchHeight
 	}
+	if s.RepositoryMenuOpen {
+		x, y, width, height := s.RepositoryX, s.RepositoryY, s.RepositoryWidth, s.RepositoryHeight
+		m.positionSourceRepositories(world)
+		changed = changed || x != s.RepositoryX || y != s.RepositoryY || width != s.RepositoryWidth || height != s.RepositoryHeight
+	}
 	if m.bottom.active == pencodePanelSourceControl && m.syncSourceGraph(world) {
 		changed = true
 	}
@@ -399,6 +482,10 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 	pointer := state.Pointer()
 	zoom := max(float32(m.settings.Zoom)/100, .01)
 	x, y := pointer.X/zoom, pointer.Y/zoom
+	if s.RepositoryMenuOpen && (state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight)) && !m.pointerInsideRefs(world, x, y, []string{"sc-repository-menu", "sc-repositories"}) {
+		s.RepositoryMenuOpen = false
+		changed = true
+	}
 	if s.BranchMenuOpen && (state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight)) && !m.pointerInsideRefs(world, x, y, []string{"sc-branch-menu", "sc-branch-submenu", "sc-branches"}) {
 		s.BranchMenuOpen = false
 		changed = true
@@ -430,6 +517,7 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 					root, _ := world.HTMLNode(m.surface, "pencode-root")
 					area, _ := root.Bounds()
 					s.MenuHash, s.MenuOpen, s.BranchMenuOpen = c.Hash, true, false
+					s.RepositoryMenuOpen = false
 					s.MenuX, s.MenuY = max(0, min(x-area.X, area.Width-270)), max(0, min(y-area.Y, area.Height-300))
 					changed = true
 					break
@@ -586,6 +674,9 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	if s.BranchMenuOpen && m.bottom.active == pencodePanelSourceControl {
 		m.renderSourceBranches(b)
 	}
+	if s.RepositoryMenuOpen && m.bottom.active == pencodePanelSourceControl {
+		m.renderSourceRepositories(b)
+	}
 	if s.modal() {
 		m.renderSourcePrompt(b)
 		view.Attr("content", "disabled", "")
@@ -630,7 +721,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 			s.Handlers = make(map[string]sourceClickBinding)
 		}
 		bound := false
-		for _, builder := range []*sourceVNodeView{&s.view, &s.tabsView, &s.overlayView, &s.panelView, &s.toolsView, &s.branchView} {
+		for _, builder := range []*sourceVNodeView{&s.view, &s.tabsView, &s.overlayView, &s.panelView, &s.toolsView, &s.branchView, &s.repositoryView} {
 			for _, id := range builder.clicks {
 				if node, ok := world.HTMLNode(m.surface, id); ok {
 					binding := s.Handlers[id]
@@ -679,7 +770,8 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 		}
 	}
 	m.focusSourceBranches(world)
-	if s.BranchMenuOpen {
+	m.focusSourceRepositories(world)
+	if s.BranchMenuOpen || s.RepositoryMenuOpen {
 		return
 	}
 	if !s.visible() && !s.modal() {
@@ -772,6 +864,9 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	if s.BranchMenuOpen {
 		return true, m.sourceBranchShortcut(state)
 	}
+	if s.RepositoryMenuOpen {
+		return true, m.sourceRepositoryShortcut(state)
+	}
 	if state.KeyPressed(input.KeyEscape) && s.MenuOpen {
 		s.MenuOpen = false
 		return true, true
@@ -831,9 +926,9 @@ func (m *workspaceModel) sourceCloseBlocked(project *pencodeProject) bool {
 		if m.pollSourceResult(s, p) {
 			m.sourceChanged()
 		}
-		if s.unsaved() || s.Done != nil && (s.JobKind == sourceWrite || s.JobKind == sourceSync) {
+		if s.unsavedRepositories() || s.Done != nil && (s.JobKind == sourceWrite || s.JobKind == sourceSync) {
 			m.activateProject(p)
-			if s.unsaved() {
+			if s.unsavedRepositories() {
 				s.Notice = "差异或合并编辑标签中有未保存的修改，请保存或关闭这些标签后再关闭项目或窗口。"
 			} else {
 				s.Notice = "Git 正在修改仓库，请等待操作完成后再关闭项目或窗口。"

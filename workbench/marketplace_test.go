@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -9,7 +10,55 @@ import (
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/remote"
 )
+
+func TestMarketplaceDirectoryButtonFollowsWorkspace(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	model := session.active.model
+	session.ConfigureConnection(nil, connection.Profile{})
+	model.market.open = true
+	model.market.directory = t.TempDir()
+	for _, screen := range [...]pencodeScreen{pencodeWorkspace, pencodeLauncher} {
+		model.screen = screen
+		if err := app.Modules().UpdateFrame(1.0 / 60); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.Modules().Dispatch(); err != nil {
+			t.Fatal(err)
+		}
+		model = session.active.model
+		for _, remoteMode := range [...]bool{false, true, false} {
+			profile := connection.Profile{}
+			if remoteMode {
+				profile.SSH = remote.Target{Host: "remote"}
+			}
+			session.connection.workspaceProfile = profile
+			markPencodeRootDirtyByModel(model.fontResources, model)
+			if err := model.fontResources.SyncHTML(); err != nil {
+				t.Fatal(err)
+			}
+			node, ok := model.fontResources.HTMLNode(model.surface, "market-open-directory")
+			if !ok {
+				t.Fatal("missing directory button")
+			}
+			markup, err := node.Serialize()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hidden := strings.Contains(markup, " hidden"); hidden != remoteMode {
+				t.Fatalf("directory button visibility in remote mode %v: %s", remoteMode, markup)
+			}
+			if remoteMode {
+				model.handleMarketplaceEvent(&module.ContentEventContext[appProps, appState]{Ref: "market-open-directory"})
+				if model.market.busy {
+					t.Fatal("remote workspace started opening a server path locally")
+				}
+			}
+		}
+	}
+}
 
 func waitPencodeMarket(t *testing.T, model *workspaceModel) {
 	t.Helper()

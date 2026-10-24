@@ -102,6 +102,20 @@ func (a *workspaceModel) sourceAction(id string) {
 	if s.Done != nil {
 		return
 	}
+	if id == "sc-repositories" {
+		a.toggleSourceRepositories()
+		a.sourceChanged()
+		return
+	}
+	if root, ok := strings.CutPrefix(id, "sc-repository:"); ok {
+		if s.RepositoryMenuOpen && slices.Contains(s.Repositories, root) {
+			s.RepositoryMenuOpen, s.RepositoryFocus = false, true
+			a.switchSourceRepository(root, false)
+		}
+		a.sourceChanged()
+		return
+	}
+	s.RepositoryMenuOpen = false
 	if strings.HasPrefix(id, "sc-branch:") {
 		ref := strings.TrimPrefix(id, "sc-branch:")
 		for i, branch := range s.Snapshot.Branches {
@@ -147,6 +161,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	case id == "sc-branches":
 		a.toggleSourceBranches()
 	case id == "sc-refresh":
+		s.RepositoriesLoaded = false
 		a.refreshSourceControl()
 	case id == "sc-more":
 		a.loadSourceHistory()
@@ -514,7 +529,8 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		First: s.GraphFirst, Visible: s.GraphVisible, TreeRevision: s.TreeRevision,
 		Sync:    s.Snapshot.Sync,
 		Message: s.CommitMessage, Multiline: s.MessageMultiline, Selected: s.SelectedHash, Busy: s.busy(), Modal: s.modal(), HasMore: s.Snapshot.HasMore,
-		Syncing: s.Done != nil && s.JobKind == sourceSync,
+		Syncing:         s.Done != nil && s.JobKind == sourceSync,
+		RepositoryError: s.RepositoryError,
 	}
 	if b.used != 0 && s.panelKey == key {
 		return
@@ -522,6 +538,11 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	s.panelKey = key
 	b.reset()
 	b.open("section", "source", "id", "sc-panel", "class", "sc-panel", "aria-label", "Source Control")
+	if s.RepositoryError != "" {
+		b.text("p", "repository-error", "当前文件夹未检测到 Git 仓库。", "id", "sc-repository-error", "class", "muted", "role", "status", "title", s.RepositoryError)
+		b.close()
+		return
+	}
 	b.open("fieldset", "controls", "class", "sc-content-frame")
 	if s.modal() {
 		b.attr("disabled", "")
@@ -738,14 +759,24 @@ func (a *workspaceModel) sourceFileTree(b *sourceVNodeView, kind, label string, 
 
 func (a *workspaceModel) renderSourceToolbar(b *sourceVNodeView) {
 	s := a.sourceState()
-	key := sourceToolsKey{Theme: a.workbenchTheme, Branch: s.Snapshot.Branch, Busy: s.busy(), BranchMenu: s.BranchMenuOpen}
+	key := sourceToolsKey{Theme: a.workbenchTheme, Branch: s.Snapshot.Branch, Busy: s.busy(), BranchMenu: s.BranchMenuOpen, Unavailable: s.RepositoryError != "",
+		Repositories: sourceFirst(s.Repositories), RepositoryCount: len(s.Repositories), Repository: s.Snapshot.Repository.Root, RepositoryMenu: s.RepositoryMenuOpen}
 	if b.used != 0 && s.toolsKey == key {
 		return
 	}
 	s.toolsKey = key
 	b.reset()
+	if len(s.Repositories) > 1 {
+		b.open("button", "repository", "id", "sc-repositories", "type", "button", "class", "sc-branch-button", "title", "Switch Repository: "+key.Repository, "aria-label", "Switch Repository: "+key.Repository, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.RepositoryMenuOpen), "aria-controls", "sc-repository-menu")
+		if s.busy() {
+			b.attr("disabled", "")
+		}
+		b.text("span", "name", sourceRepositoryLabel(a.projectPath, key.Repository), "class", "sc-repository-name")
+		a.sourceIcon(b, "arrow", "chevron-down", "")
+		b.close()
+	}
 	b.open("button", "branch", "id", "sc-branches", "type", "button", "class", "sc-branch-button", "title", "Switch Branch: "+s.Snapshot.Branch, "aria-label", "Switch Branch: "+s.Snapshot.Branch, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.BranchMenuOpen), "aria-controls", "sc-branch-menu")
-	if s.busy() {
+	if s.busy() || key.Unavailable {
 		b.attr("disabled", "")
 	}
 	a.sourceIcon(b, "icon", "git-branch", "")
@@ -759,7 +790,7 @@ func (a *workspaceModel) renderSourceToolbar(b *sourceVNodeView) {
 		{"sc-op:fetch", "Fetch", "git-fetch"}, {"sc-op:pull", "Pull", "repo-pull"}, {"sc-op:push", "Push", "repo-push"},
 		{"sc-op:abort", "Abort Merge", "git-merge-abort"},
 	} {
-		a.sourceIconButton(b, item.ID, item.Label, item.Icon, s.busy(), "")
+		a.sourceIconButton(b, item.ID, item.Label, item.Icon, s.busy() || key.Unavailable && item.ID != "sc-refresh", "")
 	}
 }
 func (a *workspaceModel) sourceFileIcon(b *sourceVNodeView, key, name string, directory, expanded bool) {

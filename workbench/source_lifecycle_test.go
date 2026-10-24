@@ -2,6 +2,9 @@ package workbench
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -125,13 +128,73 @@ func TestSourceControlBackgroundStatusOutsideRepository(t *testing.T) {
 		}
 	}
 	wait()
-	if s.Notice != "" || s.Snapshot.Repository.Root != "" {
+	if s.modal() || s.RepositoryError == "" || s.Snapshot.Repository.Root != "" {
 		t.Fatal("background status refresh opened a Git error outside a repository")
+	}
+	checkPanel := func() {
+		t.Helper()
+		m.renderSourceControl(&s.panelView)
+		m.renderSourceToolbar(&s.toolsView)
+		found := false
+		for _, group := range s.panelView.groups[:s.panelView.used] {
+			found = found || group.node.Text == "当前文件夹未检测到 Git 仓库。"
+			if group.node.Text == "No changes" || strings.HasPrefix(group.node.Text, "No commits yet") {
+				t.Fatal("non-repository displayed repository empty states")
+			}
+		}
+		if !found || s.modal() || slices.Contains(s.panelView.clicks, "sc-create-commit") {
+			t.Fatal("repository error was not shown inline without commit controls")
+		}
+		for _, group := range s.toolsView.groups[:s.toolsView.used] {
+			if group.node.Tag != "button" {
+				continue
+			}
+			id, disabled := "", false
+			for _, attr := range group.attrs {
+				if attr.Name == "id" {
+					id = attr.Value
+				}
+				disabled = disabled || attr.Name == "disabled"
+			}
+			if disabled != (id != "sc-refresh") {
+				t.Fatalf("unexpected toolbar availability: %s disabled=%v", id, disabled)
+			}
+		}
+		if allocations := testing.AllocsPerRun(100, func() {
+			m.renderSourceControl(&s.panelView)
+			m.renderSourceToolbar(&s.toolsView)
+		}); allocations != 0 {
+			t.Fatalf("unchanged repository error view allocated %g times", allocations)
+		}
 	}
 	m.sourceAction("sc-toggle")
 	wait()
-	if s.Notice == "" {
-		t.Fatal("opening Source Control did not report the repository error")
+	checkPanel()
+	m.sourceAction("sc-refresh")
+	wait()
+	checkPanel()
+	r := sourceRepository{Root: m.projectPath, Backend: m.backend}
+	sourceTestGit(t, r, "init", "-b", "main")
+	m.sourceAction("sc-refresh")
+	wait()
+	m.renderSourceControl(&s.panelView)
+	if s.RepositoryError != "" || s.modal() || s.Snapshot.Repository.Root == "" || !slices.Contains(s.panelView.clicks, "sc-create-commit") {
+		t.Fatal("initializing a repository did not restore the source control panel")
+	}
+	sourceTestWrite(t, r, "file.txt", "content")
+	m.sourceAction("sc-refresh")
+	wait()
+	if len(s.Snapshot.Files) == 0 {
+		t.Fatal("repository changes were not loaded")
+	}
+	if err := os.Rename(filepath.Join(r.Root, ".git"), filepath.Join(r.Root, "git-backup")); err != nil {
+		t.Fatal(err)
+	}
+	m.sourceAction("sc-refresh")
+	wait()
+	checkPanel()
+	if len(s.Snapshot.Files) != 0 || s.Snapshot.Repository.Root != "" {
+		t.Fatal("repository detection failure retained stale repository state")
 	}
 }
 

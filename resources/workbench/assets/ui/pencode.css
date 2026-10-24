@@ -583,6 +583,10 @@ textarea:focus {
     text-overflow: ellipsis;
 }
 
+.pencode-error-name {
+    color: var(--vscode-problemsErrorIcon-foreground);
+}
+
 .pencode-editor-shell {
     flex: 1;
     min-width: 0;
@@ -1177,7 +1181,9 @@ textarea:focus {
 .pencode-problems-pane { padding-top: 8px; }
 .pencode-problem-list { padding: 0; }
 .pencode-problem-row {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     width: 100%;
     padding: 4px 16px;
     border: 0;
@@ -1198,7 +1204,8 @@ textarea:focus {
     width: 12px;
     height: 12px;
 }
-.pencode-problem-file-icon {
+.pencode-problem-file-icon,
+.pencode-problem-severity-icon {
     flex-shrink: 0;
     width: 16px;
     height: 16px;
@@ -1581,16 +1588,27 @@ textarea:focus {
 }
 
 .pencode-market-toolbar button,
-.pencode-market-actions button {
+.pencode-market-actions button,
+.pencode-market-footer button {
     padding: 6px 12px;
     border: 1px solid var(--vscode-button-border);
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
 }
 
+.pencode-market-toolbar button:hover:enabled,
+.pencode-market-actions button:hover:enabled,
+.pencode-market-footer button:hover:enabled {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
 .pencode-market-toolbar .pencode-market-install {
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
+}
+
+.pencode-market-toolbar .pencode-market-install:hover:enabled {
+    background: var(--vscode-button-hoverBackground);
 }
 
 .pencode-marketplace button:disabled {
@@ -1708,13 +1726,24 @@ textarea:focus {
 
 .pencode-market-footer {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    align-items: center;
+    gap: 12px;
     padding: 10px 16px;
     border-top: 1px solid var(--vscode-widget-border);
     color: var(--vscode-descriptionForeground);
     font-size: calc(11rem / 14);
     overflow-wrap: anywhere;
+}
+
+.pencode-market-directory {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 3px;
+}
+
+.pencode-market-footer button {
+    flex-shrink: 0;
 }
 
 @media (max-width: 620px) {
@@ -2219,6 +2248,7 @@ textarea:focus {
 .sc-branch-button:hover, .sc-branch-button[aria-expanded="true"] { background: var(--vscode-toolbar-hoverBackground); }
 .sc-branch-button:disabled { opacity: .45; }
 .sc-branch-button .sc-branch { min-width: 0; padding-right: 0; }
+.sc-repository-name { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-branch-menu {
     position: absolute;
     z-index: 42;
@@ -2248,11 +2278,15 @@ textarea:focus {
 .pencode-terminal-tabs {
     display: flex;
     align-items: stretch;
+    gap: 6px;
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: thin;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
 }
+
+.pencode-terminal-tools > .pencode-icon-button { flex-shrink: 0; }
 
 .pencode-terminal-tab {
     display: flex;
@@ -2473,7 +2507,7 @@ textarea:focus {
 .pencode-port-process { flex: 1.6 1 200px; }
 .pencode-port-visibility { flex: 0 0 76px; }
 .pencode-port-origin { flex: 0 0 134px; padding-right: 0; }
-.pencode-port-source { display: block; flex: 1; min-width: 0; height: 30px; line-height: 30px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pencode-port-source { display: flex; align-items: center; flex: 1; min-width: 0; height: 30px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .pencode-port-origin .pencode-port-row-actions { margin-left: 0; }
 .pencode-port-heading { flex-shrink: 0; height: 28px; min-height: 28px; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-editorGroup-border); font-size: calc(11rem / 14); }
 .pencode-port-heading:hover { background: transparent; }

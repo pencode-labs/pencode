@@ -203,7 +203,11 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 			}
 		}
 	case protocol.PathSearch:
-		query := d.String()
+		query := strings.ReplaceAll(d.String(), `\`, "/")
+		root := strings.TrimRight(strings.ReplaceAll(p.root, `\`, "/"), "/")
+		if len(query) > len(root) && query[len(root)] == '/' && strings.EqualFold(query[:len(root)], root) {
+			query = query[len(root)+1:]
+		}
 		count := d.U32()
 		if count > 128 {
 			return protocol.ErrProtocol

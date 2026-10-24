@@ -60,6 +60,7 @@ type treeEntry struct {
 
 type openFile struct {
 	document         *client.Document
+	editorView       pencodeEditorView
 	editorID         string
 	editorGeneration uint64
 	customEditor     *extensions.Editor
@@ -253,29 +254,31 @@ type appState struct {
 }
 
 type treeProps struct {
-	Model    *workspaceModel
-	Theme    *pencodeTheme
-	Icons    *pencodeFileIcons
-	Project  *pencodeProject
-	Path     string
-	RowID    string
-	TreeID   string
-	Name     string
-	Depth    int
-	IsDir    bool
-	Openable bool
+	Model     *workspaceModel
+	Theme     *pencodeTheme
+	Icons     *pencodeFileIcons
+	Project   *pencodeProject
+	Path      string
+	RowID     string
+	TreeID    string
+	Name      string
+	Depth     int
+	IsDir     bool
+	Openable  bool
+	HasErrors bool
 }
 
 type tabProps struct {
-	Model   *workspaceModel
-	Theme   *pencodeTheme
-	Icons   *pencodeFileIcons
-	Project *pencodeProject
-	Path    string
-	Name    string
-	Active  bool
-	Preview bool
-	Dirty   bool
+	Model     *workspaceModel
+	Theme     *pencodeTheme
+	Icons     *pencodeFileIcons
+	Project   *pencodeProject
+	Path      string
+	Name      string
+	Active    bool
+	Preview   bool
+	Dirty     bool
+	HasErrors bool
 }
 
 type projectProps struct {
@@ -284,6 +287,7 @@ type projectProps struct {
 	Theme             *pencodeTheme
 	Icons             *pencodeFileIcons
 	Project           *pencodeProject
+	ProblemRevision   uint64
 }
 
 type pencodeDefinitions struct {
@@ -360,6 +364,11 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				view.Attr("icon", "src", props.Model.themedIcon(treeIcon(props), treeIconForeground(props)))
 				view.Text("name", props.Name)
+				nameClass := "pencode-tree-name"
+				if props.HasErrors {
+					nameClass = "pencode-tree-name pencode-error-name"
+				}
+				view.Attr("name", "class", nameClass)
 				view.Event("row", htmlui.EventClick)
 			},
 			HandleEvent: handleTreeEvent,
@@ -459,6 +468,11 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				view.Attr("select", "aria-selected", boolAttribute(props.Active))
 				view.Attr("close", "aria-label", "关闭 "+props.Name)
 				view.Text("name", props.Name)
+				nameClass := "pencode-tab-name"
+				if props.HasErrors {
+					nameClass = "pencode-tab-name pencode-error-name"
+				}
+				view.Attr("name", "class", nameClass)
 				view.Event("select", htmlui.EventClick)
 				view.Event("close", htmlui.EventClick)
 			},
@@ -537,6 +551,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	model.ensureSettings()
 	model.syncWorkbenchTheme(context.World)
 	model.syncActions()
+	model.syncProblems()
 	if runtime.GOOS == "darwin" {
 		view.Attr("titlebar", "class", "pencode-titlebar native-controls")
 		view.Attr("window-controls", "hidden", "")
@@ -761,7 +776,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		htmlui.AppendComponentChild(view, "projects",
 			componentKey(project.Path),
 			projectDefinition,
-			projectProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project},
+			projectProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, ProblemRevision: model.bottom.problemRevision},
 			struct{}{},
 		)
 	}
@@ -775,7 +790,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 			htmlui.AppendComponentChild(view, "file-tabs",
 				componentKey(file.Path),
 				tabDefinition,
-				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty},
+				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty, HasErrors: model.fileHasErrors(project, file.Path)},
 				struct{}{},
 			)
 		}

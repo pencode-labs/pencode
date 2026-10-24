@@ -129,6 +129,29 @@ func TestTitlebarSearchOpensFileAtLine(t *testing.T) {
 	}
 }
 
+func TestTitlebarSearchMatchesPaths(t *testing.T) {
+	model, project := resourceTestModel(t)
+	const name = "workbench/exec_windows_test.go"
+	resourceTestWrite(t, project, name, "package workbench\n")
+	resourceTestWrite(t, project, "other/exec_windows_test.go", "package other\n")
+	model.startProjectScan(project, false)
+	waitPencodeProjectScan(t, project, func() { model.pollProjectScans() })
+	for _, query := range []string{
+		name,
+		`workbench\exec_windows_test.go`,
+		`WORKBENCH\EXEC_WINDOWS_TEST.GO:51`,
+		filepath.Join(project.Path, filepath.FromSlash(name)),
+		filepath.ToSlash(filepath.Join(project.Path, filepath.FromSlash(name))) + ":51",
+	} {
+		model.quickQuery = query
+		model.openQuickOpen()
+		settleQuick(t, model)
+		if model.quickCount != 1 || model.quickMatches[0] != name {
+			t.Fatalf("path query %q: matches=%v count=%d", query, model.quickMatches, model.quickCount)
+		}
+	}
+}
+
 func TestPencodeQuickLocation(t *testing.T) {
 	for _, fixture := range []struct {
 		query, path string

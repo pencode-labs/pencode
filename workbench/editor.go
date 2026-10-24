@@ -19,6 +19,7 @@ import (
 type pencodeEditor struct {
 	control, text, gutter, numbers                       ecs.Entity
 	file                                                 *openFile
+	needsFocus                                           bool
 	guide                                                ecs.Entity
 	firstLine, lastLine                                  int
 	numberBuffer                                         []byte
@@ -31,6 +32,7 @@ type pencodeEditor struct {
 	linkSpans                                            []scene.TextSpan2D
 	linkPaint                                            pencodeOverlayKey
 	brackets                                             pencodeBracketIndex
+	diagnostics                                          pencodeDiagnosticPaint
 	layoutKey                                            pencodeGutterLayoutKey
 	caretContent                                         string
 	caretInfo                                            string
@@ -45,11 +47,25 @@ type pencodeGutterLayoutKey struct {
 	wrapMode            scene.TextWrapMode
 }
 
-const (
-	pencodeCodeInkOffsetEm   = -.11
-	pencodeNumberInkOffsetEm = -.065
-	pencodeEditorWheelLines  = 4
-)
+type pencodeEditorView struct {
+	caret, anchor    int
+	scrollX, scrollY float32
+}
+
+// Snapshot after native input and layout, before a tab event can replace the
+// shared control's value and clamp its selection to another document.
+func (editor *pencodeEditor) saveView(world *module.Content, model *workspaceModel) {
+	if editor.file == nil || editor.file != model.activeFile() || !model.textEditorActive() {
+		return
+	}
+	field, ok := module.ContentGet[engineui.TextField](world, editor.control)
+	textarea, scrollOK := module.ContentGet[engineui.Textarea](world, editor.control)
+	if ok && scrollOK {
+		editor.file.editorView = pencodeEditorView{field.Caret, field.Anchor, textarea.ScrollX, textarea.ScrollY}
+	}
+}
+
+const pencodeEditorWheelLines = 4
 
 func syncPencodeEditor(context *module.ContentSystemContext) error {
 	world := context.World
@@ -81,9 +97,8 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 		module.ContentSetIfChanged(world, entity, scene.Visibility{Visible: visible})
 	}
 	if !visible {
-		if model.sourceState().visible() {
-			editor.file = nil
-		}
+		editor.file = nil
+		editor.needsFocus = false
 		module.ContentSetIfChanged(world, editor.guide, scene.Visibility{})
 		model.focusFindInput(world, surface)
 		editor.syncCaretStatus(world, surface, model)
@@ -139,29 +154,35 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 		guideColor = model.workbenchTheme.guide
 	}
 	editor.syncWidthGuide(world, model.settings.EditorWidth, guideColor)
-	valueText.InkOffsetY = float32(valueText.FontSize) * pencodeCodeInkOffsetEm
 	field, _ := module.ContentGet[engineui.TextField](world, editor.control)
 	if content := model.activeContent(); content != field.Value {
 		world.SetControlValue(editor.control, content)
 	}
 	model.focusFindInput(world, surface)
-	if editor.file != file {
+	if editor.file != file || editor.needsFocus {
+		editor.needsFocus = false
 		if !model.quickOpen && !model.findOpen && !model.settingsOpen && model.closing.action == pencodeCloseNone {
-			world.Focus(editor.control)
+			// A comparison tab can still hide this control until HTML reconciles.
+			// Retry on the next frame once the file editor is interactive again.
+			editor.needsFocus = !world.Focus(editor.control)
+			if editor.needsFocus && model.app != nil {
+				model.app.RequestRender()
+			}
 		}
-		// Focus can move the caret to the end; initialize the document after it.
+		// Focus can move the caret to the end; restore the document after it.
 		if field := module.ContentMut[engineui.TextField](world, editor.control); field != nil {
-			field.Caret, field.Anchor = 0, 0
+			length := file.textBuffer(file.Content).Runes()
+			field.Caret, field.Anchor = min(file.editorView.caret, length), min(file.editorView.anchor, length)
 			field.ScrollX = 0
 			field.Composition = ""
 			field.Selecting = false
 		}
 		if textarea := module.ContentMut[engineui.Textarea](world, editor.control); textarea != nil {
-			textarea.ResetScroll()
+			textarea.RestoreScroll(file.editorView.scrollX, file.editorView.scrollY)
 		}
 		if link, ok := module.ContentGet[html.ControlText](world, editor.text); ok {
 			transform := module.ContentMut[scene.UITransform](world, editor.text)
-			transform.Translation.X.Value, transform.Translation.Y.Value = link.Content.X, link.Content.Y
+			transform.Translation.X.Value, transform.Translation.Y.Value = link.Content.X-file.editorView.scrollX, link.Content.Y-file.editorView.scrollY
 		}
 		editor.file = file
 	}
@@ -311,7 +332,8 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	numbers := module.ContentMut[scene.Text2D](world, editor.numbers)
 	numbers.Font, numbers.FontSize, numbers.DPI = valueText.Font, valueText.FontSize, valueText.DPI
 	numbers.LineHeight = valueText.LineHeight
-	numbers.InkOffsetY = float32(numbers.FontSize) * pencodeNumberInkOffsetEm
+	// Share the font's centered line metrics with code and diagnostic labels.
+	numbers.InkOffsetY = valueText.InkOffsetY
 	model.ensureSyntaxTheme()
 	numbers.Color = pencodeSyntaxColor(model.syntaxTheme.Color("editorLineNumber.foreground"))
 	numbers.TextAlignment, numbers.WrapWidth = scene.TextAlignRight, float32(bounds.Width)-23
@@ -397,6 +419,7 @@ func (editor *pencodeEditor) syncWidthGuide(world *module.Content, widthPercent 
 }
 
 func (editor *pencodeEditor) dispose(world *module.Content) {
+	editor.diagnostics.dispose(world)
 	world.Despawn(editor.numbers)
 	world.Despawn(editor.gutter)
 	world.Despawn(editor.guide)

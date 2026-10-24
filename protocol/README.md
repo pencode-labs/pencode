@@ -56,6 +56,9 @@ ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存
 | ProcessOpen / TerminalOpen | cols:u32, rows:u32, command:string, args:string[] | stream:u64, stderrStream:u64 |
 | StreamRead | stream:u64 | eof:u32, data:bytes |
 | StreamWrite | stream:u64, data:bytes | 空 |
+| PortList | 空（root 为空） | count:u32, {port:u32, host:string, pid:u32, process:string}[] |
+| PortConnect | port:u32, host:string（root 为空，远端 TCP 目标） | stream:u64, stderrStream:u64（零） |
+| StreamCloseWrite | stream:u64（TCP 流） | 空；关闭写方向，保留读取响应 |
 | StreamResize | stream:u64, cols:u32, rows:u32 | 空 |
 | StreamClose / StreamWait | stream:u64 | 空；Wait 非零退出码为 Failure |
 | IndexOpen | 空 | index:u64 |
@@ -81,6 +84,14 @@ ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存
 所有布尔值只取 0/1。`FileRead links=1` 返回 Git 工作树中符号链接自身的文本，并把缺失文件视为空；普通源码读取跟随工作区内的链接，通过 os.Root 拒绝越界。`FileSave` 检查磁盘原文，写临时文件并替换。TerminalOpen 不使用 command/args，stderrStream 为零，因为 PTY 合并输出。
 
 每条流有八个 32 KiB 服务端缓冲，输出窗口最多 256 KiB，按需接收并施加背压；StreamRead 等待首批数据后，立即合并已有数据返回（最多 256 KiB），不等待填满窗口；StreamWrite 最大 256 KiB，客户端串行发送完整 Write 内的批次，保持并发写入的消息顺序；每连接最多 16 条流（普通进程占 stdout、stderr 两条，PTY 占一条）。流关闭会终止并回收进程；正常连接退出先让服务端清理资源，再由传输层执行超时终止。标准流保持 LSP 原始 JSON-RPC，工作台收到的双向请求语义保持不变。
+
+端口转发复用连接内的流传输，每个 TCP 连接占一条流；创建 TCP 流时总流预算为 32 条，创建进程时仍为 16 条。每个转发最多并发 16 个 TCP 连接，工作区最多 128 项转发。PortConnect 接受合法主机名或 IP 地址，使用服务端 DNS 与网络环境连接目标；主机和端口直接传给 TCP dialer，不经过 shell。本地默认监听 `127.0.0.1`，用户可以为单个端口切换为监听所有网络接口。
+
+PortList 在 Linux 读取 `/proc/net/tcp{,6}` 并关联 `/proc/<pid>/fd`、`cmdline`，在 macOS 使用 `lsof`；返回当前用户监听端口的地址、PID 与进程信息。Ports 面板始终启用基于进程的自动转发，每 3 秒刷新，跳过 SSH 端口和无法确定所属进程的监听。远端停止监听时回收自动转发，手动停止的端口会被抑制，直至检测到监听消失。无变化的前台轮询不分配内存或重建行。
+
+Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端口号或 `host:port`，显示标签、转发地址、协议、运行进程、可见性和来源。工具栏的 ＋ 按钮用于添加转发；协议列点击切换 HTTP/HTTPS，可见性列点击切换本机/局域网；行内按钮提供复制地址、浏览器打开、更改本地端口、设置标签和停止转发，工具栏提供刷新。新建或断线重连时优先使用指定本地端口，占用时自动分配其他端口；更改本地端口先创建新监听，再释放旧监听，目标端口被占用时提示失败并保留原转发。输入支持 Enter 确认、Escape 取消；选中行支持上下导航、F2 修改标签、Delete 停止转发。
+
+转发状态仅保留在当前会话内。临时断线重连保留当前会话的端口、实际本地端口、标签、协议与可见性；重新打开工作区时重新检测监听端口。连接断开、切换工作区或退出时关闭本地监听及活跃 TCP 连接。Ports 表头固定，只有端口列表纵向滚动。
 
 索引每页最多 256 项，每工作区最多 262144 项，目录深度最多 256；不递归符号链接，跳过 `.git`、`dist`、`node_modules`。同根的新索引替换旧扫描。PathSearch 按历史顺序优先、随后按树顺序返回最多 128 个可打开文件，支持不区分大小写的子串和自定义编辑器规则；扫描期间可以查询已索引部分。
 

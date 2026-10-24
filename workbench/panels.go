@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/module"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/output"
-	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 type pencodePanel uint8
@@ -22,6 +22,7 @@ const (
 	pencodePanelSourceControl
 	pencodePanelTerminal
 	pencodePanelExtension
+	pencodePanelPorts
 )
 
 type pencodeDiagnosticKey struct {
@@ -391,6 +392,9 @@ func (model *workspaceModel) syncOutput() {
 }
 
 func (model *workspaceModel) handleBottomPanelEvent(world *module.Content, ref, value string) bool {
+	if model.portEvent(ref, value) {
+		return true
+	}
 	if model.handleTerminalContextEvent(world, ref) || model.terminalEvent(ref) {
 		return true
 	}

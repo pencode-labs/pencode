@@ -12,7 +12,7 @@ import (
 
 func main() {
 	platforms := flag.String("platforms", "linux/amd64,linux/arm64,darwin/amd64,darwin/arm64", "Comma-separated SSH server platforms")
-	output := flag.String("output", "projects/pencode/resources/servers", "Artifact directory")
+	output := flag.String("output", "resources/servers", "Artifact directory")
 	flag.Parse()
 	if err := build(*platforms, *output); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -42,7 +42,7 @@ func build(platforms, output string) error {
 			return err
 		}
 		binary := filepath.Join(stage, "pencode-server")
-		cmd := exec.Command("go", "build", "-p", "1", "-trimpath", "-ldflags=-s -w -buildid=", "-o", binary, "./projects/pencode/cmd/pencode-server")
+		cmd := exec.Command("go", "build", "-p", "1", "-trimpath", "-ldflags=-s -w -buildid=", "-o", binary, "./cmd/pencode-server")
 		cmd.Env = append(baseEnv[:len(baseEnv):len(baseEnv)], "GOOS="+goos, "GOARCH="+arch, "CGO_ENABLED=0")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		fmt.Println("Building", platform)

@@ -11,6 +11,32 @@ import (
 	htmlui "github.com/diiyw/onix/ui/html"
 )
 
+func TestTitlebarActionsDoNotOverlapBuiltInControls(t *testing.T) {
+	app, model, _, _ := languageInteractionFixture(t)
+	for i := range 3 {
+		a := peb.Action{ID: fmt.Sprintf("titlebar/%d", i), Text: "UI 示例", Location: peb.TitleBarRight}
+		if err := model.session.Actions.Register(actions.Definition{Action: a, Run: func(peb.ActionContext) error { return nil }}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, zoom := range [...]int{70, 100, 150} {
+		model.setZoom(model.fontResources, zoom)
+		languageInteractionStep(t, app)
+		languageInteractionStep(t, app)
+		slot := editorContextBounds(t, model, "actions-titlebar")
+		search := editorContextBounds(t, model, "file-search")
+		if slot.X < search.X+search.Width {
+			t.Fatalf("actions overlap search at zoom %d: actions=%+v search=%+v", zoom, slot, search)
+		}
+		for _, ref := range [...]string{"connection-open", "marketplace-button", "settings-button"} {
+			button := editorContextBounds(t, model, ref)
+			if slot.X+slot.Width > button.X {
+				t.Fatalf("actions overlap %s at zoom %d: actions=%+v button=%+v", ref, zoom, slot, button)
+			}
+		}
+	}
+}
+
 func TestPencodeActionsRenderClickUpdateAndRemove(t *testing.T) {
 	// In-memory HTML/input systems only: no native window or screenshot.
 	app, model, _, state := languageInteractionFixture(t)

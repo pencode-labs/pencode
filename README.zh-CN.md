@@ -56,17 +56,17 @@ go mod tidy
 go build ./...
 ```
 
-构建并重新安装仓库内的扩展后启动 Pencode：
+编译安装 `pencode-server` 并重新安装仓库内的扩展后启动 Pencode：
 
 ```sh
 make run
 ```
 
-该命令在每个已检出的扩展目录中构建，使用各自维护的 `go.mod` 和 `go.sum`，并禁用 Go workspace。扩展安装到本机的 `~/.pencode/extensions/<扩展 ID>/`。每个扩展构建成功后，会先删除同 ID 的旧安装目录，再安装新程序、资源和清单。Windows 自动使用 `.exe` 可执行文件并调整安装后的清单入口；Linux 和 macOS 使用原生可执行文件名。源码中的清单保持不变。
+该命令先编译服务端并安装到 `~/.pencode/pencode-server`（Windows 为 `%USERPROFILE%/.pencode/pencode-server.exe`）。随后在每个已检出的扩展目录中构建，使用各自维护的 `go.mod` 和 `go.sum`，并禁用 Go workspace。扩展安装到本机的 `~/.pencode/extensions/<扩展 ID>/`。每个扩展构建成功后，会先删除同 ID 的旧安装目录，再安装新程序、资源和清单。Windows 自动使用 `.exe` 可执行文件并调整安装后的清单入口；Linux 和 macOS 使用原生可执行文件名。源码中的清单保持不变。
 
 可运行 `make install-extensions` 只安装扩展而不启动应用，或使用 `make install-extensions EXTENSIONS_DIR="/path/to/extensions"` 将扩展打包到其他目录。远程工作区的扩展需要在远端安装。
 
-`cmd/pencode-build-servers` 中的服务端构建助手也仍使用原有 `./projects/pencode/...` 布局，需要迁移后才能在本仓库使用。当前仓库适合源码开发，尚不是可直接安装的桌面发行版。
+可运行 `make install-server` 仅编译安装本机服务端。离线 SSH 引导所需的服务端可在仓库根目录运行 `go run ./cmd/pencode-build-servers` 构建，默认生成 Linux/macOS 的 amd64、arm64 程序，位于 `resources/servers/<os>-<arch>/pencode-server`。当前仓库适合源码开发，尚不是可直接安装的桌面发行版。
 
 ### 验证独立包
 
@@ -127,7 +127,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 已有检出可运行 `git submodule update --init --recursive` 初始化子模块。每个扩展都有独立的 Go 模块与构建说明。例如，在主仓库根目录构建 Go 语言工具：
 
 ```sh
-(cd extensions/go-lsp && go build -o bin/go-lsp .)
+(cd extensions/go && go build -o bin/go .)
 ```
 
 当前协议为 v6，旧扩展需要使用当前 SDK 重新构建。

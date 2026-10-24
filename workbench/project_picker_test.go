@@ -3,10 +3,15 @@ package workbench
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
+	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/ui"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/remote"
 )
@@ -20,6 +25,140 @@ func waitProjectPicker(t *testing.T, model *workspaceModel) {
 			t.Fatal("project picker did not finish")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	model := session.active.model
+	session.ConfigureConnection(nil, connection.Profile{})
+	directory := filepath.ToSlash(t.TempDir())
+	for _, name := range []string{"app/nested", "assets", "other"} {
+		if err := os.MkdirAll(filepath.Join(directory, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	profile := connection.Profile{SSH: remote.Target{Host: "remote"}, Directory: directory}
+	session.connection.links[profile.SSH] = &pencodeSSHLink{backend: model.backend, profile: profile}
+	model.openSSHProject(profile)
+	waitProjectPicker(t, model)
+	step := func() {
+		t.Helper()
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		if _, err := app.Step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	step()
+	field, ok := model.fontResources.HTMLControl(model.surface, "connection-project-path")
+	if !ok {
+		t.Fatal("missing path input")
+	}
+	typePath := func(value string) {
+		t.Helper()
+		model.fontResources.SetControlValue(field, value)
+		ecs.WriteMessage(app.World, htmlui.Event{Entity: model.surface, Target: field, Kind: htmlui.EventInput, Value: value, Bubbles: true})
+		step()
+	}
+	checkChoices := func(want ...string) {
+		t.Helper()
+		var names []string
+		for _, access := range module.ContentQuery[htmlui.Component[pencodeProjectDirectoryProps, struct{}]](model.fontResources) {
+			names = append(names, access.Get().Props.Name)
+		}
+		slices.Sort(names)
+		if !slices.Equal(names, want) {
+			t.Fatalf("rendered directories = %v, want %v", names, want)
+		}
+	}
+	checkInput := func(want string) {
+		t.Helper()
+		control, _ := module.ContentGet[htmlui.Control](model.fontResources, field)
+		text, _ := module.ContentGet[ui.TextField](model.fontResources, field)
+		if control.Value != want || text.Value != want {
+			t.Fatalf("displayed path = %q / %q, want %q", control.Value, text.Value, want)
+		}
+	}
+	checkChoices("app", "assets", "other")
+	typePath(directory + "/a")
+	checkChoices("app", "assets")
+	typePath(directory + "/missing")
+	checkChoices()
+	if session.connection.picker.selected() {
+		t.Fatal("incomplete path selected the parent directory")
+	}
+	typePath(directory + "/ap")
+	checkChoices("app")
+	checkInput(directory + "/ap")
+	for entity, access := range module.ContentQuery[htmlui.Component[pencodeProjectDirectoryProps, struct{}]](model.fontResources) {
+		component := access.Get()
+		component.Definition.Behavior.HandleEvent(&htmlui.ComponentEventContext[pencodeProjectDirectoryProps, struct{}]{World: app.World, Component: entity, Props: &component.Props, Ref: "directory", Event: htmlui.Event{Kind: htmlui.EventClick}})
+		break
+	}
+	checkInput(directory + "/app")
+	waitProjectPicker(t, model)
+	step()
+	checkChoices("nested")
+	checkInput(directory + "/app")
+	model.connectionEvent("connection-project-up", "")
+	waitProjectPicker(t, model)
+	step()
+	checkChoices("app", "assets", "other")
+	checkInput(directory)
+	typePath("")
+	checkChoices()
+	if session.connection.picker.selected() {
+		t.Fatal("empty path selected a directory")
+	}
+}
+
+func TestProjectPickerLatestInputWinsAndCachedFilteringDoesNotAllocate(t *testing.T) {
+	model, project := resourceTestModel(t)
+	s := NewSession(project.backend)
+	model.session = s
+	s.ConfigureConnection(nil, connection.Profile{})
+	t.Cleanup(s.Close)
+	directory := filepath.ToSlash(t.TempDir())
+	t.Setenv("HOME", directory)
+	t.Setenv("USERPROFILE", directory)
+	for _, name := range []string{"app/nested", "assets"} {
+		if err := os.MkdirAll(filepath.Join(directory, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	profile := connection.Profile{SSH: remote.Target{Host: "remote"}, Directory: directory}
+	s.connection.links[profile.SSH] = &pencodeSSHLink{backend: project.backend, profile: profile}
+	model.openSSHProject(profile)
+	// Leave the initial result unpolled while more input arrives.
+	model.connectionEvent("connection-project-path", directory+"/missing/n")
+	model.connectionEvent("connection-project-path", directory+"/app/ne")
+	waitProjectPicker(t, model)
+	p := &s.connection.picker
+	if p.path != directory+"/app" || p.input != directory+"/app/ne" || !p.matches("nested") || p.failed {
+		t.Fatalf("latest input was lost: %+v", p)
+	}
+	// A stale failure must also leave the latest query intact.
+	model.connectionEvent("connection-project-path", directory+"/missing/n")
+	model.connectionEvent("connection-project-path", directory+"/app/")
+	waitProjectPicker(t, model)
+	if p.path != directory+"/app" || p.input != directory+"/app/" || p.failed || !p.selected() {
+		t.Fatalf("stale failure changed the selected directory: %+v", p)
+	}
+	model.connectionEvent("connection-project-path", "~/a")
+	waitProjectPicker(t, model)
+	if p.path != directory || p.input != "~/a" || !p.matches("app") || !p.matches("assets") {
+		t.Fatalf("home query did not filter: %+v", p)
+	}
+	queries := [...]string{directory + "/a", directory + "/ap", directory + "/missing", directory + "/"}
+	if allocations := testing.AllocsPerRun(100, func() {
+		for _, query := range queries {
+			model.connectionEvent("connection-project-path", query)
+			if p.busy {
+				t.Fatal("filtering reread the current directory")
+			}
+		}
+	}); allocations != 0 {
+		t.Fatalf("cached directory filtering allocated %g times", allocations)
 	}
 }
 

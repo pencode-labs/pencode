@@ -349,6 +349,11 @@
               <div id="terminal-tabs" data-ref="terminal-tabs" class="pencode-terminal-tabs" role="tablist" aria-label="终端会话"></div>
               <button id="terminal-new" data-ref="terminal-new" class="pencode-icon-button" type="button" title="新建终端 (Ctrl+Shift+`)" aria-label="新建终端"><img data-ref="terminal-new-icon" src="icons/add.svg" alt=""></button>
             </div>
+            <div data-ref="ports-tools" class="pencode-ports-tools" hidden>
+              <span class="pencode-ports-title">Ports</span>
+              <button id="ports-new" data-ref="ports-new" class="pencode-icon-button" type="button" title="转发端口" aria-label="转发端口"><img data-ref="ports-new-icon" alt=""></button>
+              <button id="ports-refresh" data-ref="ports-refresh" class="pencode-icon-button" type="button" title="刷新端口" aria-label="刷新端口"><img data-ref="ports-refresh-icon" alt=""></button>
+            </div>
             <div data-ref="output-tools" class="pencode-output-tools" hidden>
               <input id="output-filter" data-ref="output-filter" type="search" placeholder="筛选输出…" aria-label="筛选输出">
               <select id="output-source" data-ref="output-source" aria-label="输出信息源"></select>
@@ -366,6 +371,22 @@
         <section id="terminal-pane" data-ref="terminal-pane" class="pencode-terminal-pane" role="tabpanel" aria-labelledby="status-terminal" hidden>
           <textarea id="terminal-content" data-ref="terminal-content" readonly wrap="soft" spellcheck="false" aria-label="终端，Ctrl+Shift+C 复制，Ctrl+Shift+V 粘贴"></textarea>
         </section>
+        <section id="ports-pane" data-ref="ports-pane" class="pencode-ports-pane" role="tabpanel" aria-labelledby="status-ports" hidden>
+          <div id="ports-table" data-ref="ports-table" class="pencode-ports-table" role="table" aria-label="转发的端口" hidden>
+            <div id="ports-heading" class="pencode-port-row pencode-port-heading" role="row"><span class="pencode-port-cell pencode-port-number" role="columnheader">端口</span><span class="pencode-port-cell pencode-port-address" role="columnheader">转发地址</span><span class="pencode-port-cell pencode-port-protocol" role="columnheader">协议</span><span class="pencode-port-cell pencode-port-process" role="columnheader">运行的进程</span><span class="pencode-port-cell pencode-port-visibility" role="columnheader">可见性</span><span class="pencode-port-cell pencode-port-origin" role="columnheader">来源</span></div>
+            <div id="ports-list" data-ref="ports-list" class="pencode-ports-list" role="rowgroup"></div>
+          </div>
+          <div id="ports-empty" data-ref="ports-empty" class="pencode-ports-empty"><p>尚未转发任何端口。</p><p>远端监听端口会自动转发，也可点击上方 ＋ 手动添加。</p></div>
+          <div data-ref="ports-footer" class="pencode-ports-footer" hidden>
+            <div id="ports-new-input" data-ref="ports-new-input" class="pencode-port-new-input" hidden>
+              <input id="ports-input" data-ref="ports-input" class="pencode-port-input" type="text" placeholder="端口号或地址，例如 3000 或 localhost:3000" aria-label="转发端口号或主机:端口" autocomplete="off" spellcheck="false">
+              <button id="ports-confirm" data-ref="ports-confirm" class="pencode-icon-button" type="button" title="确认 (Enter)" aria-label="确认转发"><img data-ref="ports-confirm-icon" alt=""></button>
+              <button id="ports-cancel" data-ref="ports-cancel" class="pencode-icon-button" type="button" title="取消 (Escape)" aria-label="取消"><img data-ref="ports-cancel-icon" alt=""></button>
+            </div>
+            <span data-ref="ports-edit-hint" class="pencode-ports-edit-hint" hidden>Enter 确认 · Escape 取消</span>
+          </div>
+          <p data-ref="ports-message" class="pencode-ports-message" role="status" hidden></p>
+        </section>
         <section id="output-pane" data-ref="output-pane" class="pencode-output-pane" aria-labelledby="status-output" hidden>
           <textarea id="output-content" data-ref="output-content" readonly wrap="soft" spellcheck="false" aria-label="输出信息" placeholder="当前信息源暂无输出"></textarea>
         </section>
@@ -376,6 +397,7 @@
           <button id="status-problems" data-ref="status-problems" type="button" aria-controls="bottom-panel" aria-expanded="false">Problems <span data-ref="status-problem-count" class="pencode-problem-count">0</span></button>
           <button id="status-terminal" data-ref="status-terminal" type="button" aria-controls="bottom-panel" aria-expanded="false" title="切换终端 (Ctrl+`)">Terminal</button>
           <button id="status-output" data-ref="status-output" type="button" aria-controls="bottom-panel" aria-expanded="false">Output</button>
+          <button id="status-ports" data-ref="status-ports" type="button" aria-controls="bottom-panel" aria-expanded="false" hidden>Ports</button>
         </div>
         <div data-ref="actions-statusbar" class="pencode-actions pencode-actions-statusbar" role="group" aria-label="状态栏操作"></div>
         <div class="pencode-statusbar-details">

@@ -35,7 +35,7 @@ func TestPencodeLanguageExtensionProcess(t *testing.T) {
 
 func installRemoteGoServer(t *testing.T, backend *client.Client, command string) *extensions.Bundle {
 	t.Helper()
-	directory := filepath.Join(t.TempDir(), "go-lsp")
+	directory := filepath.Join(t.TempDir(), "go")
 	if err := os.MkdirAll(filepath.Join(directory, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func installRemoteGoServer(t *testing.T, backend *client.Client, command string)
 	if err := os.Link(executable, filepath.Join(directory, entry)); err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.Marshal(extensions.Manifest{ID: "go-lsp", Entry: entry, Args: []string{
+	data, err := json.Marshal(extensions.Manifest{ID: "go", Entry: entry, Args: []string{
 		"-test.run=^TestPencodeLanguageExtensionProcess$", "--", "pencode-language-fixture", command,
 	}})
 	if err != nil {
@@ -154,7 +154,7 @@ func TestLanguageWorkbenchGoplsAndExtensionUnload(t *testing.T) {
 		t.Fatal("LSP did not settle", model.status, model.languages.panel.body)
 	}
 	wait(func() bool { doc := model.languages.documents[file]; return doc != nil && len(doc.servers) == 1 })
-	session := model.languages.sessions[pencodeLanguageKey{project.Path, "extensions/go-lsp/gopls"}]
+	session := model.languages.sessions[pencodeLanguageKey{project.Path, "extensions/go/gopls"}]
 	model.runLanguageAction(nil, "textDocument/formatting", false)
 	wait(func() bool { return strings.Contains(file.Content, "a, b int") })
 	if !file.Dirty || len(file.undo) != 1 {
@@ -167,7 +167,7 @@ func TestLanguageWorkbenchGoplsAndExtensionUnload(t *testing.T) {
 		doc := model.languages.documents[file]
 		return doc != nil && doc.servers[session].saveRevision == file.saveRevision
 	})
-	model.removeLanguageServers("extensions/go-lsp/")
+	model.removeLanguageServers("extensions/go/")
 	select {
 	case <-session.done:
 	case <-time.After(3 * time.Second):

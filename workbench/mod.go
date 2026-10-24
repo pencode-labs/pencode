@@ -134,6 +134,9 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 	if m.model.pollConnection() {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
+	if m.model.pollPorts() {
+		markPencodeRootDirtyByModel(c.Content(), m.model)
+	}
 	previousFile := m.model.activeFile()
 	previousContent := ""
 	if previousFile != nil {
@@ -254,6 +257,7 @@ func (m *Mod) Destroy(c *module.Context) error {
 		m.installed = false
 		delete(m.session.views, m)
 		if len(m.session.views) == 0 {
+			m.model.closePorts()
 			m.session.closeSettingsWriters()
 			m.model.stopFileIO()
 			if m.session.connection != nil {

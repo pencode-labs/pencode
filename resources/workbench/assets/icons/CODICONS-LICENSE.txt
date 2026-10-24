@@ -16,6 +16,11 @@ minimize.svg: codicon:chrome-minimize
 refresh-cw.svg: codicon:refresh
 settings.svg: codicon:settings
 
+Additional Codicons retrieved with better-icons through Iconify:
+copy.svg: codicon:copy
+edit.svg: codicon:edit
+globe.svg: codicon:globe
+
 All UI icons use the upstream 16x16 geometry and currentColor.
 Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
 

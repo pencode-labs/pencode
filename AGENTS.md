@@ -1,2 +1,3 @@
 - Avoid compatibility code. Prefer generics and keep implementations concise.
 - Aim for zero allocations when adding features, especially on warm paths.
+- New UI should match the IDE UI styles

@@ -1,8 +1,8 @@
 > 历史实现说明 / Historical implementation notes
 >
-> 本文保留项目从 Onix 仓库迁出前的设计、API 示例和验证记录。下文的
-> `./projects/pencode/...`、引擎根目录路径及构建命令属于原仓库布局，
-> 不应直接用于当前独立仓库；性能与验证结论也仅对应当时的实现。
+> 本文保留项目从 Onix 仓库迁出前的设计、API 示例和验证记录。
+> 构建与验证命令已按当前独立仓库布局调整，默认从 Pencode 仓库根目录执行；
+> Onix 引擎测试单独在相邻的 Onix 仓库运行。性能与验证结论仅对应当时的实现。
 > 当前项目介绍、环境要求和已知限制见 [中文首页](../README.zh-CN.md)
 > 与 [English README](../README.md)。协议细节请以对应包文档和源码为准。
 
@@ -13,7 +13,7 @@
 第六阶段已完成远程文件操作异步化和定向验证。本地与 SSH 共用 CS 链路。本地 GUI 自动启动当前可执行文件的 `--pencode-server` 无头模式；远端通过系统 OpenSSH 安装并启动独立 `pencode-server`，二者均通过二进制 stdin/stdout 连接；索引、Git、PTY、LSP、解析器以及扩展宿主均由 server 持有。无头入口在窗口和工作台初始化之前运行。独立程序可直接构建：
 
 ```sh
-go build -p 1 -o /tmp/pencode-server ./projects/pencode/cmd/pencode-server
+go build -p 1 -o /tmp/pencode-server ./cmd/pencode-server
 ```
 
 | 模块 | 职责 |
@@ -45,9 +45,10 @@ go build -p 1 -o /tmp/pencode-server ./projects/pencode/cmd/pencode-server
 定向验证，不启动编辑器或截图测试：
 
 ```sh
-go test -p 1 ./projects/pencode/protocol ./projects/pencode/client ./projects/pencode/server ./projects/pencode/server/extensionhost ./projects/pencode/server/workspace ./projects/pencode/extensions ./projects/pencode/transport ./projects/pencode/remote ./projects/pencode/connection ./projects/pencode/lsp ./projects/pencode/terminal ./syntax
-go test -p 1 ./projects/pencode/workbench -skip '^TestSourceControlPencodeMergeEditor$'
-go test -race -p 1 ./projects/pencode/protocol ./projects/pencode/client ./projects/pencode/server ./projects/pencode/server/extensionhost ./projects/pencode/server/workspace ./projects/pencode/extensions ./projects/pencode/transport ./projects/pencode/terminal
+go test -p 1 ./protocol ./client ./server ./server/extensionhost ./server/workspace ./extensions ./transport ./remote ./connection ./lsp ./terminal
+(cd ../onix && go test -p 1 ./syntax)
+go test -p 1 ./workbench -skip '^TestSourceControlPencodeMergeEditor$'
+go test -race -p 1 ./protocol ./client ./server ./server/extensionhost ./server/workspace ./extensions ./transport ./terminal
 ```
 
 `TestSourceControlPencodeMergeEditor` 在迁移前的基线也存在“未显示合并警告”的失败，单独保留跟踪。
@@ -65,8 +66,8 @@ go test -race -p 1 ./projects/pencode/protocol ./projects/pencode/client ./proje
 可复现的无窗口弱网测试和基准：
 
 ```sh
-go test -p 1 ./projects/pencode/client -run 'Test(WeakNetwork|SlowDocument|CancelledDownload|InterruptedLarge|ProcessConcurrent)' -count=1 -v
-go test -p 1 ./projects/pencode/client -run '^$' -bench '^BenchmarkWeakNetworkDocumentSave$' -benchtime=3x
+go test -p 1 ./client -run 'Test(WeakNetwork|SlowDocument|CancelledDownload|InterruptedLarge|ProcessConcurrent)' -count=1 -v
+go test -p 1 ./client -run '^$' -bench '^BenchmarkWeakNetworkDocumentSave$' -benchtime=3x
 ```
 
 测试链路分别模拟双向传播延迟与限速，允许多个帧同时在途，使用有界网络队列，并将字节流拆成最多 997 字节的片段。覆盖 UTF-8/CRLF、大段编辑、批量和单字节进程输出、下载与文件操作交错、取消下载、上传中断及并发写入顺序，不依赖公网环境。
@@ -90,16 +91,15 @@ Linux amd64 / i5-11500 的一次参考结果：50 ms RTT、每方向 4 MiB/s 时
 均不可用时才自动安装。远端支持 Linux/macOS 的 amd64、arm64，需要 POSIX shell、`uname`、`mktemp`、`head`、`wc`、`tr`、`sha256sum`（Linux）或 `shasum`（macOS）。先在仓库根目录准备对应平台的独立程序，远端无需 Go 工具链：
 
 ```sh
-go run -p 1 ./projects/pencode/cmd/pencode-build-servers
+go run -p 1 ./cmd/pencode-build-servers
 ```
 
-默认生成 `projects/pencode/resources/servers/<os>-<arch>/pencode-server`。发布时将整个 `resources/servers` 放在 GUI 可执行文件旁；开发运行可显式指定目录：
+默认生成 `resources/servers/<os>-<arch>/pencode-server`。发布时将整个 `resources/servers` 放在 GUI 可执行文件旁；开发运行可显式指定目录：
 
 ```sh
-go build -p 1 -o /tmp/pencode ./projects/pencode
-cd projects/pencode
+go build -p 1 -o /tmp/pencode .
 /tmp/pencode --ssh devbox --remote-path '~/workspace/app' \
-  --server-directory /absolute/onix/projects/pencode/resources/servers
+  --server-directory /absolute/pencode/resources/servers
 ```
 
 也可以用 `--server-binary /absolute/pencode-server` 指定与远端平台一致的单个本地程序。同平台时，GUI 旁的独立 `pencode-server` 也可作为备选。上传前验证独立服务的 Go 构建信息与平台；不能用 GUI 可执行文件代替独立服务。
@@ -113,10 +113,10 @@ cd projects/pencode
 真实 SSH 集成测试使用临时密钥、独立 known_hosts 和回环 sshd，不修改用户 SSH 配置：
 
 ```sh
-go build -p 1 -o /tmp/pencode-server ./projects/pencode/cmd/pencode-server
+go build -p 1 -o /tmp/pencode-server ./cmd/pencode-server
 PENCODE_SSH_TEST_SERVER=/tmp/pencode-server \
-  go test -p 1 ./projects/pencode/remote -run '^TestSSHIntegration$' -count=1 -v
-go test -race -p 1 ./projects/pencode/workbench -run '^TestConnection' -count=1
+  go test -p 1 ./remote -run '^TestSSHIntegration$' -count=1 -v
+go test -race -p 1 ./workbench -run '^TestConnection' -count=1
 ```
 
 该测试需要安装 `ssh`、`sshd` 和 `ssh-keygen`，覆盖首次主机指纹确认与拒绝、主机密钥变更拒绝、加密密钥的弹窗认证、重连重新询问、单次会话安装、固定路径复用、远端保存、进程双流和 PTY shell；恢复测试覆盖未保存编辑、撤销与终端屏幕保留、外部冲突、取消及连续掉线限制。跨平台构建不代替对应系统的人工验收。
@@ -129,7 +129,7 @@ go test -race -p 1 ./projects/pencode/workbench -run '^TestConnection' -count=1
 
 渲染、语法解析、LSP 和扩展协议目前仍消费不可变字符串快照。每个修改版本最多生成一份快照，重复读取复用缓存；外部传入的完整快照直接复用。节点与追加缓冲区预留容量内的局部修改、索引查询和缓存读取保持零分配，生成新字符串快照、历史副本及扩容仍会分配。
 
-定向验证：`go test -p 1 ./text/piecetree ./input ./ui ./projects/pencode/workbench`。核心远距离编辑基准：`go test -p 1 ./text/piecetree -run '^$' -bench '^BenchmarkTreeDistantEdit$' -benchtime=1000x`。
+定向验证：`go test -p 1 ./workbench`；Onix 引擎测试：`(cd ../onix && go test -p 1 ./text/piecetree ./input ./ui)`。核心远距离编辑基准：`(cd ../onix && go test -p 1 ./text/piecetree -run '^$' -bench '^BenchmarkTreeDistantEdit$' -benchtime=1000x)`。
 
 ## 并发执行模型
 
@@ -157,7 +157,7 @@ go test -race -p 1 ./projects/pencode/workbench -run '^TestConnection' -count=1
 
 每个会话使用有界输入/输出队列，输出满时施加背压，不丢弃终端字节；后台只处理原生进程和字节队列，屏幕与原生 UI 均由前台更新。滚屏历史采用环形缓冲区，视图只生成当前可见网格，文本颜色与背景批次复用；屏幕解析及视图缓存的稳定路径有零分配测试。输出快照、缓冲区扩容、创建和调整屏幕尺寸仍会分配。
 
-定向验证：`go test -p 1 ./projects/pencode/terminal ./projects/pencode/workbench ./projects/pencode`。终端包还可单独运行 `go test -race ./projects/pencode/terminal`。PTY 实际交互和无窗口原生控件测试覆盖中文输入、复制、尺寸变化、Ctrl+C、会话切换及进程回收；不启动编辑器截图测试。Windows/macOS 的交叉编译不代替对应系统的人工交互验收。
+定向验证：`go test -p 1 ./terminal ./workbench .`。终端包还可单独运行 `go test -race ./terminal`。PTY 实际交互和无窗口原生控件测试覆盖中文输入、复制、尺寸变化、Ctrl+C、会话切换及进程回收；不启动编辑器截图测试。Windows/macOS 的交叉编译不代替对应系统的人工交互验收。
 
 ## Git 版本控制
 
@@ -171,14 +171,14 @@ go test -race -p 1 ./projects/pencode/workbench -run '^TestConnection' -count=1
 
 每个项目独立保存 Git 视图和比较标签。Git 命令、读取和差异计算在后台执行，每个项目同时只运行一项任务，结果通过有界通道返回 UI；关闭项目会取消任务。历史首次加载 32 条，滚动接近底部时异步追加下一批，也可点击 Load more；分页沿用分支连线状态，并固定本轮历史的引用，避免新提交造成重复。打开 Git 视图时每 5 秒刷新，也可手动 Refresh；引用未变时保留已加载历史。Git 列表和差异只渲染可见行附近的窗口，稳定空闲轮询与控件同步保持零分配。图标使用 SVG，滚动条沿用 Output 的主题细滚动条。文本比较限制为每侧 2 MiB、100,000 行；二进制文件显示说明。使用系统 `git` 及已配置的身份和远程认证，不弹出终端认证提示。
 
-定向验证：`go test ./projects/pencode/workbench -run '^TestSourceControl' -count=1`。交互测试使用无窗口的 HTML/原生控件事件，不启动编辑器或截图；视觉验收由人工进行。
+定向验证：`go test ./workbench -run '^TestSourceControl' -count=1`。交互测试使用无窗口的 HTML/原生控件事件，不启动编辑器或截图；视觉验收由人工进行。
 
 面板收起后保留 DOM 和原生控件，未变化的文件树、历史和工具栏复用已有视图，避免反复绑定事件和同步整页。布局引擎分别缓存 Flex 的 auto basis 与最终尺寸，并复用定位前的测量结果；嵌套 Flex 无需改为其他布局。可在真实仓库上运行无窗口基准：
 
 ```sh
-ONIX_PENCODE_PROFILE_PROJECT="$HOME/workspace/onix" \
-ONIX_PENCODE_PROFILE_FILE=projects/pencode/workbench/source_workspace.go \
-go test ./projects/pencode/workbench -run '^$' \
+ONIX_PENCODE_PROFILE_PROJECT="$PWD" \
+ONIX_PENCODE_PROFILE_FILE=workbench/source_workspace.go \
+go test ./workbench -run '^$' \
   -bench '^BenchmarkPencodeSourceControl$' -benchtime=10x
 ```
 
@@ -224,14 +224,14 @@ my-extension/
 
 扩展通过 `peb.Contributions.LanguageServers` 注册语言服务，宿主负责按项目启动进程、能力协商、文档同步、诊断和退出。代码区右键菜单提供补全、悬浮信息、参数提示、定义/引用跳转、重命名、格式化、代码操作、符号和层级等入口，不支持的操作会禁用；语义 token 自动覆盖代码前景色。
 
-构建安装 [Go/gopls 示例](../extensions/go-lsp/main.go)：
+构建安装 [Go/gopls 示例](../extensions/go/main.go)：
 
 ```sh
 # 先确保 gopls 已安装且在 PATH 中
-pencode_extension_dir="$HOME/.pencode/extensions/go-lsp"
+pencode_extension_dir="$HOME/.pencode/extensions/go"
 mkdir -p "$pencode_extension_dir/bin"
-cp -R projects/pencode/extensions/go-lsp/resources "$pencode_extension_dir/"
-go build -p 1 -o "$pencode_extension_dir/bin/go-lsp" ./projects/pencode/extensions/go-lsp
+cp -R extensions/go/resources "$pencode_extension_dir/"
+(cd extensions/go && GOWORK=off go build -p 1 -o "$pencode_extension_dir/bin/go" .)
 ```
 
 在扩展市场刷新后打开 Go 文件即可激活。输入标识符时自动弹出补全，语言服务器声明的触发字符（例如 `.`、`(`、`,`）会触发对应的补全或参数提示。补全支持方向键选择、Enter/Tab 接受和分页；普通鼠标悬停显示符号说明，Ctrl 悬停显示可用导航链接下划线。Ctrl+左键在变量、方法等定义位置查找引用，在符号使用位置转到定义；`Shift+F12` 始终查找引用。补全、悬停、参数提示、引用和命令结果均在代码区域的浮层显示，Esc 关闭。鼠标命中使用实际文字排版，支持缩放、Tab、中文和折行，移动光标、修改文档或切换文件会取消过期请求。
@@ -259,8 +259,8 @@ macOS / iOS 优先 Menlo，其次 Monaco、Courier New；Windows / Linux 等平�
 ```sh
 pencode_extension_dir="$HOME/.pencode/extensions/markdown-editor"
 mkdir -p "$pencode_extension_dir/bin"
-cp -R projects/pencode/extensions/markdown-editor/resources "$pencode_extension_dir/"
-go build -o "$pencode_extension_dir/bin/markdown-editor" ./projects/pencode/extensions/markdown-editor
+cp -R extensions/markdown-editor/resources "$pencode_extension_dir/"
+(cd extensions/markdown-editor && GOWORK=off go build -o "$pencode_extension_dir/bin/markdown-editor" .)
 ```
 
 源码编辑保留输入控件与光标，点击「刷新预览」更新右侧 Markdown。扩展开发与事件协议见 [自定义文件编辑工具 API](../peb/README.md#自定义文件编辑工具)。
@@ -272,14 +272,14 @@ go build -o "$pencode_extension_dir/bin/markdown-editor" ./projects/pencode/exte
 ```sh
 pencode_extension_dir="$HOME/.pencode/extensions/material-icons"
 mkdir -p "$pencode_extension_dir/bin"
-cp -R projects/pencode/extensions/material-icons/resources "$pencode_extension_dir/"
-go build -o "$pencode_extension_dir/bin/material-icons" ./projects/pencode/extensions/material-icons
+cp -R extensions/material-icons/resources "$pencode_extension_dir/"
+(cd extensions/material-icons && GOWORK=off go build -o "$pencode_extension_dir/bin/material-icons" .)
 ```
 
 重新生成规则表和图标（需要 Node.js，脚本在临时目录中克隆上游仓库）：
 
 ```sh
-python3 projects/pencode/tools/build_material_icons.py
+python3 tools/build_material_icons.py
 ```
 
 脚本默认更新 `extensions/material-icons/resources/`，把每个 SVG 的根元素规范化为 `width="16" height="16"` 并保留原 viewBox，因为 peb 要求图标尺寸在 1..256 之间。更新规则后需重新构建扩展。Go SDK 在 Initialize 中校验宿主 `capabilities` 包含文件图标，注册完成后等待 Shutdown 退出。Windows 上构建 `bin/material-icons.exe` 并相应修改 manifest 的 `entry`。
@@ -396,8 +396,9 @@ Pencode 和引擎的 Markdown 代码块共用 `syntax` 包，使用 [gotreesitte
 仅运行相关包；不启动编辑器和截图测试：
 
 ```sh
-go test -p 1 ./projects/pencode/lsp ./projects/pencode/peb ./projects/pencode/extensions/... ./projects/pencode/workbench ./projects/pencode
-go vet -p 1 ./projects/pencode/lsp ./projects/pencode/peb ./projects/pencode/extensions/... ./projects/pencode/workbench ./projects/pencode
+go test -p 1 ./lsp ./peb ./extensions/... ./workbench .
+go vet -p 1 ./lsp ./peb ./extensions/... ./workbench .
+git submodule foreach 'GOWORK=off go test ./... && GOWORK=off go vet ./...'
 ```
 
 ## Action 按钮
@@ -415,8 +416,8 @@ go vet -p 1 ./projects/pencode/lsp ./projects/pencode/peb ./projects/pencode/ext
 完整 API 见 [扩展 UI 协议](../peb/README.md#弹窗上下文菜单与-panel)。可直接构建 [UI 示例扩展](../extensions/ui-demo/main.go)：
 
 ```sh
-mkdir -p projects/pencode/extensions/ui-demo/bin
-go build -o projects/pencode/extensions/ui-demo/bin/ui-demo ./projects/pencode/extensions/ui-demo
+mkdir -p extensions/ui-demo/bin
+(cd extensions/ui-demo && GOWORK=off go build -o bin/ui-demo .)
 ```
 
-在扩展市场选择「从本地目录安装」，选择 `projects/pencode/extensions/ui-demo`。安装后点击标题栏「UI 示例」，即可打开菜单、表单弹窗、自由定位浮窗和 Panel；浮窗中的按钮可切换工作区坐标与 action 锚点，并保留搜索输入；勾选「点击外部关闭」可实时切换关闭策略。当前协议为 **peb v6**，已有扩展需用当前 SDK 重新构建。
+在扩展市场选择「从本地目录安装」，选择 `extensions/ui-demo`。安装后点击标题栏「UI 示例」，即可打开菜单、表单弹窗、自由定位浮窗和 Panel；浮窗中的按钮可切换工作区坐标与 action 锚点，并保留搜索输入；勾选「点击外部关闭」可实时切换关闭策略。当前协议为 **peb v6**，已有扩展需用当前 SDK 重新构建。

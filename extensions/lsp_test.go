@@ -37,27 +37,27 @@ func TestLanguageServerValidation(t *testing.T) {
 	}
 }
 func TestGoLanguageExtensionRegistration(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "go-lsp")
+	root := filepath.Join(t.TempDir(), "go")
 	if err := os.MkdirAll(filepath.Join(root, "bin"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.CopyFS(filepath.Join(root, "resources"), os.DirFS("go-lsp/resources")); err != nil {
+	if err := os.CopyFS(filepath.Join(root, "resources"), os.DirFS("go/resources")); err != nil {
 		t.Fatal(err)
 	}
-	entry := filepath.Join(root, "bin", "go-lsp")
+	entry := filepath.Join(root, "bin", "go")
 	if runtime.GOOS == "windows" {
 		t.Skip("manifest example uses a Unix executable name")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "build", "-p", "1", "-o", entry, ".")
-	cmd.Dir = "go-lsp"
+	cmd.Dir = "go"
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, output)
 	}
 	// Exercise the PATH fallback independently of a locally installed GOPATH/bin/gopls.
 	t.Setenv("GOPATH", t.TempDir())
-	bundle, err := Load(ctx, extensionBackend(t, filepath.Dir(root)), "go-lsp")
+	bundle, err := Load(ctx, extensionBackend(t, filepath.Dir(root)), "go")
 	if err != nil {
 		t.Fatal(err)
 	}

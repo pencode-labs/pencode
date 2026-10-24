@@ -56,17 +56,17 @@ Use an Onix checkout that provides the public `github.com/diiyw/onix/html/{css,d
 go build ./...
 ```
 
-To build and reinstall the bundled extensions before starting Pencode, run:
+To compile and install `pencode-server` and reinstall the bundled extensions before starting Pencode, run:
 
 ```sh
 make run
 ```
 
-This builds each checked-out extension in its own Go module, using its own `go.mod` and `go.sum` with Go workspaces disabled. Extensions are installed in `~/.pencode/extensions/<extension-id>/` on the local host. After each successful build, the previous installation with that ID is deleted and replaced, including its resources and manifest. Windows executables and installed manifest entries use `.exe`; Linux and macOS use the native executable name. Source manifests are unchanged.
+This builds and installs `pencode-server` into `~/.pencode/pencode-server` (`%USERPROFILE%/.pencode/pencode-server.exe` on Windows). It builds each checked-out extension in its own Go module, using its own `go.mod` and `go.sum` with Go workspaces disabled. Extensions are installed in `~/.pencode/extensions/<extension-id>/` on the local host. After each successful build, the previous installation with that ID is deleted and replaced, including its resources and manifest. Windows executables and installed manifest entries use `.exe`; Linux and macOS use the native executable name. Source manifests are unchanged.
 
 Use `make install-extensions` to install without launching the app, or `make install-extensions EXTENSIONS_DIR="/path/to/extensions"` to stage packages in another directory. Remote workspaces need their extensions installed on the remote host.
 
-The server build helper in `cmd/pencode-build-servers` also still uses the former `./projects/pencode/...` layout and needs migration before use here. This repository is currently a source checkout for development, rather than a ready-to-install desktop release.
+Use `make install-server` to compile and install only the local server. For offline SSH bootstrap, run `go run ./cmd/pencode-build-servers` from the repository root to build Linux/macOS amd64 and arm64 servers into `resources/servers/<os>-<arch>/pencode-server`. This repository is currently a source checkout for development, rather than a ready-to-install desktop release.
 
 ### Verify individual packages
 
@@ -127,7 +127,7 @@ The examples are Git submodules, each maintained in a public MIT-licensed reposi
 For an existing checkout, initialize the submodules with `git submodule update --init --recursive`. Each extension has its own Go module and build instructions. For example, build Go language tools from the repository root with:
 
 ```sh
-(cd extensions/go-lsp && go build -o bin/go-lsp .)
+(cd extensions/go && go build -o bin/go .)
 ```
 
 The current protocol is v6. Older extensions must be rebuilt with the current SDK.

@@ -14,10 +14,10 @@ func TestSourceControlHistoryTree(t *testing.T) {
 		{Path: "docs/manual/main.md", Index: 'A'},
 		{Path: "docs/readme.md", Index: 'M'},
 		{Path: "font/system.go", Index: 'M'},
-		{Path: "projects/pencode/main.go", Index: 'M'},
+		{Path: "internal/example/main.go", Index: 'M'},
 		{Path: "root.go", Index: 'D'},
 	}
-	wantPaths := []string{"docs", "docs/manual", "docs/manual/main.md", "docs/readme.md", "font", "font/system.go", "projects", "projects/pencode", "projects/pencode/main.go", "root.go"}
+	wantPaths := []string{"docs", "docs/manual", "docs/manual/main.md", "docs/readme.md", "font", "font/system.go", "internal", "internal/example", "internal/example/main.go", "root.go"}
 	wantDepths := []int{0, 1, 2, 1, 0, 1, 0, 1, 2, 0}
 	rows := s.historyTree()
 	if len(rows) != len(wantPaths) {

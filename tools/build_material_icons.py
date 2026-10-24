@@ -136,7 +136,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=Path(__file__).resolve().parents[1] / "extensions" / "material-icons",
-        help="extension directory (default: projects/pencode/extensions/material-icons)",
+        help="extension directory (default: extensions/material-icons)",
     )
     parser.add_argument("--skip-build", action="store_true", help="reuse an existing dist/")
     args = parser.parse_args()

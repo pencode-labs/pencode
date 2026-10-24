@@ -62,7 +62,7 @@ func (s *services) process(ctx context.Context, op protocol.Operation, root stri
 		}
 		s.attachProcess(p, logs, root, 0, e)
 
-	case protocol.StreamRead, protocol.StreamWrite, protocol.StreamResize, protocol.StreamClose, protocol.StreamWait:
+	case protocol.StreamRead, protocol.StreamWrite, protocol.StreamResize, protocol.StreamClose, protocol.StreamWait, protocol.StreamCloseWrite:
 		id := d.U64()
 		if op == protocol.StreamClose {
 			if err := d.Done(); err != nil {
@@ -79,6 +79,16 @@ func (s *services) process(ctx context.Context, op protocol.Operation, root stri
 			return &protocol.Error{Code: protocol.NotFound, Message: "process is closed"}
 		}
 		switch op {
+		case protocol.StreamCloseWrite:
+			if err := d.Done(); err != nil {
+				return err
+			}
+			p.writeMu.Lock()
+			defer p.writeMu.Unlock()
+			if conn, ok := p.process.(interface{ CloseWrite() error }); ok {
+				return conn.CloseWrite()
+			}
+			return protocol.ErrProtocol
 		case protocol.StreamWait:
 			if err := d.Done(); err != nil {
 				return err

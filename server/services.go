@@ -8,8 +8,8 @@ import (
 
 	"github.com/pencode-labs/pencode/configuration"
 
-	"github.com/pencode-labs/pencode/protocol"
 	"github.com/diiyw/onix/syntax"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 type services struct {
@@ -79,6 +79,11 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 		}
 	}
 	switch op {
+	case protocol.PortList, protocol.PortConnect:
+		if root != "" {
+			return protocol.ErrProtocol
+		}
+		return s.port(ctx, op, &d, e)
 	case protocol.ConfigurationRead, protocol.SettingsSave:
 		if root != "" {
 			return protocol.ErrProtocol
@@ -136,7 +141,7 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 		return s.file(op, root, &d, e)
 	case protocol.DiffPatch:
 		return s.diff(ctx, &d, e)
-	case protocol.ProcessOpen, protocol.TerminalOpen, protocol.StreamRead, protocol.StreamWrite, protocol.StreamResize, protocol.StreamClose, protocol.StreamWait:
+	case protocol.ProcessOpen, protocol.TerminalOpen, protocol.StreamRead, protocol.StreamWrite, protocol.StreamResize, protocol.StreamClose, protocol.StreamWait, protocol.StreamCloseWrite:
 		return s.process(ctx, op, root, &d, e)
 	case protocol.IndexOpen, protocol.IndexNext, protocol.IndexClose, protocol.PathSearch:
 		return s.index(ctx, op, root, &d, e)

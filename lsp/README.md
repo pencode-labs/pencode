@@ -4,7 +4,7 @@
 
 ## 扩展接入
 
-一个扩展可以贡献多个服务。每个服务提供 ID、展示名称、languageId、文件名/后缀 selector、启动程序和参数，以及可选的 initializationOptions / configuration。示例见 [Go LSP 扩展](../extensions/go-lsp/main.go) 和 [peb 协议](../peb/README.md#语言服务扩展)。服务可使用服务端系统 PATH 内的程序，或扩展内附带的可执行文件。宿主不会自动安装语言服务器。
+一个扩展可以贡献多个服务。每个服务提供 ID、展示名称、languageId、文件名/后缀 selector、启动程序和参数，以及可选的 initializationOptions / configuration。示例见 [Go LSP 扩展](../extensions/go/main.go) 和 [peb 协议](../peb/README.md#语言服务扩展)。服务可使用服务端系统 PATH 内的程序，或扩展内附带的可执行文件。宿主不会自动安装语言服务器。
 
 服务按需启动，一个项目根目录和服务贡献共享一个进程。扩展禁用、移除、项目关闭和最终视图销毁都会停止服务。初始化最多 10 秒、普通请求最多 30 秒、退出宽限 1 秒；请求取消不关闭服务。失败会显示在工作台状态中，可通过禁用再启用扩展重新启动。
 
@@ -53,8 +53,9 @@ push 诊断按 URI 和版本保存，文档修改清除旧诊断；也可手动�
 在仓库根目录运行串行定向检查，不启动编辑器截图：
 
 ```sh
-go test -p 1 ./projects/pencode/lsp ./projects/pencode/peb ./projects/pencode/extensions/... ./projects/pencode/workbench ./projects/pencode
-go vet -p 1 ./projects/pencode/lsp ./projects/pencode/peb ./projects/pencode/extensions/... ./projects/pencode/workbench ./projects/pencode
+go test -p 1 ./lsp ./peb ./extensions/... ./workbench .
+go vet -p 1 ./lsp ./peb ./extensions/... ./workbench .
+git submodule foreach 'GOWORK=off go test ./... && GOWORK=off go vet ./...'
 ```
 
 测试包含独立假服务进程、双向请求、初始化期间的配置查询、取消和断开、Unicode/CRLF 随机增量修改、事务编辑、过期结果、卸载回收及零分配检查。若 PATH 有 `gopls`，还会运行真实服务的格式化、定义跳转和工作台生命周期测试；无 gopls 时只跳过这两项。

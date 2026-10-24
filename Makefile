@@ -4,17 +4,23 @@ ARGS ?=
 EXTENSIONS_DIR ?=
 
 .DEFAULT_GOAL := run
-.PHONY: run install-extensions release
+.PHONY: run install-server install-extensions release
 
 ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
 .SHELLFLAGS := /C
 EXE := .exe
+SERVER_DIR ?= $(USERPROFILE)/.pencode
+else
+SERVER_DIR ?= $(HOME)/.pencode
 endif
 
 # Usage: make run ARGS="--ssh user@host --remote-path /path/to/project"
-run: install-extensions
+run: install-server install-extensions
 	$(GO) run . $(ARGS)
+
+install-server:
+	$(GO) build -o "$(SERVER_DIR)/pencode-server$(EXE)" ./cmd/pencode-server
 
 install-extensions:
 	$(GO) run ./cmd/pencode-install-extensions -go "$(GO)" -directory "$(EXTENSIONS_DIR)"

@@ -22,17 +22,17 @@ import (
 	"github.com/diiyw/onix/graphics/codec/webp"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/client"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/output"
-	"github.com/pencode-labs/pencode/peb"
-	"github.com/pencode-labs/pencode/protocol"
 	"github.com/diiyw/onix/resource"
 	sceneapi "github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	"github.com/diiyw/onix/text"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/diiyw/onix/window"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/output"
+	"github.com/pencode-labs/pencode/peb"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 const (
@@ -119,6 +119,8 @@ type workspaceModel struct {
 	actions                             pencodeActionState
 	output                              *output.Store
 	bottom                              pencodeBottomPanel
+	ports                               *pencodePorts
+	portUI                              pencodePortUI
 	terminals                           *pencodeTerminals
 	terminalView                        pencodeTerminalView
 	languages                           *pencodeLanguageState
@@ -488,6 +490,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	portDefinition, err := newPortDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	directoryDefinition, err := newProjectDirectoryDefinition(content)
 	if err != nil {
 		return nil, err
@@ -506,6 +512,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				if context.Props != nil && context.Props.Model != nil && context.Props.Screen == pencodeWorkspace {
 					context.Props.Model.renderBottomPanel(view, problemDefinition)
+					context.Props.Model.renderPorts(view, portDefinition)
 				}
 			},
 			HandleEvent: handlePencodeRootEvent,

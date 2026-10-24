@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/ui"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/configuration"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/remote"
-	"github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 type pencodeDial func(context.Context, connection.Profile, func(string)) (*client.Client, error)
@@ -156,6 +156,7 @@ func (s *Session) watchConnection(wake func()) {
 // Retire all readers and handles before replacing a connection. The text,
 // piece trees, undo stacks, source drafts and terminal screens remain local.
 func (model *workspaceModel) retireConnection(closeBackend bool) {
+	model.closePorts()
 	model.stopFileIO()
 	model.fileClose = pencodeCloseRequest{}
 	if model.closing.saveID != 0 {

@@ -6,12 +6,12 @@ import (
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/scene"
+	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/output"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
 )
 
 // Session keeps the foreground model available while preloaded views own their
@@ -43,6 +43,7 @@ func NewSession(backend *client.Client) *Session {
 func (s *Session) Close() {
 	s.closeSettingsWriters()
 	if s.active != nil {
+		s.active.model.closePorts()
 		s.active.model.stopFileIO()
 	}
 	if s.connection != nil {
@@ -93,6 +94,7 @@ func (s *Session) syncLayout() {
 	}
 	model.bindSourceControls(model.fontResources)
 	model.bindTerminal(model.fontResources)
+	model.focusPorts(model.fontResources)
 	model.syncTabScroll(model.fontResources)
 	model.centerRevealedTreeRow(model.fontResources)
 	model.syncTreeScroll(model.fontResources)

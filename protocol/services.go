@@ -37,7 +37,17 @@ const (
 	DirectoryBrowse
 	ConfigurationRead
 	SettingsSave
+	PortList
+	PortConnect
+	StreamCloseWrite
 )
+
+type Port struct {
+	Number  uint16
+	Host    string
+	PID     uint32
+	Process string
+}
 
 type IndexEntry struct {
 	Path, Name string

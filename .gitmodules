@@ -1,5 +1,5 @@
-[submodule "extensions/go-lsp"]
-	path = extensions/go-lsp
+[submodule "extensions/go"]
+	path = extensions/go
 	url = https://github.com/pencode-labs/go.git
 	branch = main
 [submodule "extensions/markdown-editor"]

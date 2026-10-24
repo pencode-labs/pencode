@@ -1961,14 +1961,14 @@ textarea:focus {
 .pencode-actions-titlebar {
     position: absolute;
     top: 6px;
-    right: 218px;
-    max-width: calc(50% - 410px);
+    right: 254px;
+    max-width: calc(50% - 446px);
     height: 28px;
     z-index: 2;
 }
 .pencode-titlebar.native-controls .pencode-actions-titlebar {
-    right: 80px;
-    max-width: calc(50% - 272px);
+    right: 116px;
+    max-width: calc(50% - 308px);
 }
 .pencode-actions-statusbar {
     flex: 1 1 0;
@@ -2454,3 +2454,47 @@ textarea:focus {
 .pencode-extension-panel .pencode-extension-header button { display: none; }
 .pencode-extension-overlays { position: absolute; inset: 0; z-index: 48; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .pencode-extension-dialog, .pencode-extension-popup, .pencode-extension-menu { pointer-events: auto; }
+
+.pencode-ports-panel .pencode-panel-toolbar { position: relative; top: auto; right: auto; max-width: none; padding: 3px 6px 3px 12px; border-radius: 0; border-bottom: 1px solid var(--vscode-editorGroup-border); opacity: 1; }
+.pencode-ports-tools { display: flex; flex: 1; align-items: center; gap: 4px; min-height: 28px; }
+.pencode-ports-title { margin-right: auto; font-size: calc(11rem / 14); font-weight: 600; text-transform: uppercase; }
+.pencode-ports-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.pencode-ports-pane.is-empty { align-items: center; justify-content: center; }
+.pencode-ports-table { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; }
+.pencode-ports-list { flex: 1; min-height: 0; min-width: 760px; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+.pencode-port-row { display: flex; align-items: center; min-width: 760px; min-height: 30px; padding: 0 12px; font-size: calc(12rem / 14); }
+.pencode-port-row:hover { background: var(--vscode-list-hoverBackground); }
+.pencode-port-row.selected { background: var(--vscode-list-inactiveSelectionBackground); }
+.pencode-port-row.selected:focus-within { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.pencode-port-cell { display: flex; align-items: center; gap: 6px; min-width: 0; height: 30px; padding-right: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pencode-port-number { flex: 0.6 1 120px; }
+.pencode-port-address { flex: 1 1 180px; }
+.pencode-port-protocol { flex: 0 0 76px; }
+.pencode-port-process { flex: 1.6 1 200px; }
+.pencode-port-visibility { flex: 0 0 76px; }
+.pencode-port-origin { flex: 0 0 134px; padding-right: 0; }
+.pencode-port-source { display: block; flex: 1; min-width: 0; height: 30px; line-height: 30px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pencode-port-origin .pencode-port-row-actions { margin-left: 0; }
+.pencode-port-heading { flex-shrink: 0; height: 28px; min-height: 28px; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-editorGroup-border); font-size: calc(11rem / 14); }
+.pencode-port-heading:hover { background: transparent; }
+.pencode-port-dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: 3px; background: var(--vscode-testing-iconPassed); }
+.pencode-port-row.failed .pencode-port-dot { background: var(--vscode-errorForeground); }
+.pencode-port-name, .pencode-port-link, .pencode-port-toggle { min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pencode-port-link { color: var(--vscode-textLink-foreground); }
+.pencode-port-link:hover { text-decoration: underline; }
+.pencode-port-toggle { padding: 2px 4px; border-radius: 3px; }
+.pencode-port-toggle:hover { background: var(--vscode-toolbar-hoverBackground); }
+.pencode-port-row-actions { display: flex; align-items: center; flex-shrink: 0; margin-left: auto; visibility: hidden; }
+.pencode-port-row:hover .pencode-port-row-actions, .pencode-port-row.selected .pencode-port-row-actions, .pencode-port-row:focus-within .pencode-port-row-actions { visibility: visible; }
+.pencode-port-row .pencode-icon-button { width: 22px; height: 22px; min-height: 22px; padding: 3px; border: 0; border-radius: 3px; }
+.pencode-port-row .pencode-icon-button img, .pencode-ports-footer .pencode-icon-button img { width: 16px; height: 16px; }
+.pencode-port-row button:focus-visible, .pencode-ports-footer button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.pencode-ports-footer { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 8px 12px; }
+.pencode-port-input { width: 100%; min-width: 0; height: 26px; padding: 3px 6px; border: 0; border-radius: 0; outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; color: var(--vscode-input-foreground); placeholder-color: var(--vscode-input-placeholderForeground); background: var(--vscode-input-background); }
+.pencode-port-new-input { display: flex; flex: 1; align-items: center; gap: 4px; min-width: 260px; }
+.pencode-port-new-input .pencode-icon-button { flex-shrink: 0; width: 26px; height: 26px; min-height: 26px; border: 0; }
+.pencode-ports-empty { color: var(--vscode-descriptionForeground); text-align: center; font-size: calc(12rem / 14); }
+.pencode-ports-empty p { margin: 4px 12px; }
+.pencode-ports-edit-hint { flex-shrink: 0; color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); }
+.pencode-ports-message { flex-shrink: 0; margin: 0; padding: 0 12px 8px; color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); }
+.pencode-ports-message.error { color: var(--vscode-errorForeground); }

@@ -12,11 +12,11 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/configuration"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/pencode-labs/pencode/configuration"
 )
 
 const (
@@ -549,6 +549,9 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		return false
 	}
 	model.ensureSettings()
+	if handled, changed := model.portsShortcut(world, state); handled {
+		return changed
+	}
 	if handled, changed := model.terminalShortcut(world, state); handled {
 		return changed
 	}

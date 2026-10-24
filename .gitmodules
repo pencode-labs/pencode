@@ -1,6 +1,6 @@
 [submodule "extensions/go-lsp"]
 	path = extensions/go-lsp
-	url = https://github.com/pencode-labs/go-lsp.git
+	url = https://github.com/pencode-labs/go.git
 	branch = main
 [submodule "extensions/markdown-editor"]
 	path = extensions/markdown-editor

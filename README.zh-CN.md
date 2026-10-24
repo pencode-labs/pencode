@@ -109,7 +109,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 以下示例均为 Git 子模块，各自在 `pencode-labs` 下的公开仓库维护，采用 MIT 协议：
 
-- [Go 语言工具](https://github.com/pencode-labs/go-lsp)：注册 `gopls`，需另行安装该语言服务器。
+- [Go 语言工具](https://github.com/pencode-labs/go)：注册 `gopls`，需另行安装该语言服务器。
 - [Markdown 编辑器](https://github.com/pencode-labs/markdown-editor)：自定义源码编辑与预览。
 - [Material 文件图标](https://github.com/pencode-labs/material-icons)：文件图标主题。
 - [扩展 UI](https://github.com/pencode-labs/ui-demo)：工作台按钮、弹窗、菜单、浮窗与面板。

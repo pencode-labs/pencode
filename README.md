@@ -109,7 +109,7 @@ Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host
 
 The examples are Git submodules, each maintained in a public MIT-licensed repository under `pencode-labs`:
 
-- [Go language tools](https://github.com/pencode-labs/go-lsp): registers `gopls`, which must be installed separately.
+- [Go language tools](https://github.com/pencode-labs/go): registers `gopls`, which must be installed separately.
 - [Markdown editor](https://github.com/pencode-labs/markdown-editor): custom source editing and preview.
 - [Material file icons](https://github.com/pencode-labs/material-icons): a file icon theme.
 - [Extension UI](https://github.com/pencode-labs/ui-demo): actions, dialogs, menus, popups, and panels.

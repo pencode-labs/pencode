@@ -56,6 +56,16 @@ go mod tidy
 go build ./...
 ```
 
+构建并重新安装仓库内的扩展后启动 Pencode：
+
+```sh
+make run
+```
+
+该命令在每个已检出的扩展目录中构建，使用各自维护的 `go.mod` 和 `go.sum`，并禁用 Go workspace。扩展安装到本机的 `~/.pencode/extensions/<扩展 ID>/`。每个扩展构建成功后，会先删除同 ID 的旧安装目录，再安装新程序、资源和清单。Windows 自动使用 `.exe` 可执行文件并调整安装后的清单入口；Linux 和 macOS 使用原生可执行文件名。源码中的清单保持不变。
+
+可运行 `make install-extensions` 只安装扩展而不启动应用，或使用 `make install-extensions EXTENSIONS_DIR="/path/to/extensions"` 将扩展打包到其他目录。远程工作区的扩展需要在远端安装。
+
 `cmd/pencode-build-servers` 中的服务端构建助手也仍使用原有 `./projects/pencode/...` 布局，需要迁移后才能在本仓库使用。当前仓库适合源码开发，尚不是可直接安装的桌面发行版。
 
 ### 验证独立包

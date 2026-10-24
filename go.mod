@@ -15,6 +15,6 @@ require (
 
 require (
 	github.com/binzume/modelconv v0.3.6-0.20240207142816-1eb06bec8e82 // indirect
-	github.com/ebitengine/purego v0.11.0 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
+	github.com/ebitengine/purego v0.11.2 // indirect
+	github.com/godbus/dbus/v5 v5.2.4 // indirect
 )

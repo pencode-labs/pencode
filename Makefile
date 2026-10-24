@@ -1,9 +1,10 @@
 GO ?= go
 DIST_DIR ?= dist
 ARGS ?=
+EXTENSIONS_DIR ?=
 
 .DEFAULT_GOAL := run
-.PHONY: run release
+.PHONY: run install-extensions release
 
 ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
@@ -12,8 +13,11 @@ EXE := .exe
 endif
 
 # Usage: make run ARGS="--ssh user@host --remote-path /path/to/project"
-run:
+run: install-extensions
 	$(GO) run . $(ARGS)
+
+install-extensions:
+	$(GO) run ./cmd/pencode-install-extensions -go "$(GO)" -directory "$(EXTENSIONS_DIR)"
 
 # Run the resulting executable from DIST_DIR so it can find resources/.
 # Keep authoring resource support; onix_release requires binary resource packages.

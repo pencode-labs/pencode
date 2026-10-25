@@ -156,11 +156,11 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 	}
 	background, ok := module.ContentGet[scene.Sprite2D](world, paint.quads[0])
 	size, _ := module.ContentGet[scene.Size2D](world, model.editor.control)
-	if !ok || background.Width != size.Width || background.Shape.Fill.A != paint.key.color.A*.1 {
+	if !ok || background.Width != size.Width || background.Shape.Fill.A != paint.key.colors[1].A*.1 {
 		t.Fatalf("full row background = %+v", background)
 	}
 	label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
-	if label.Value != diagnostic.Message || label.Color != paint.key.color || label.Font != model.codeFont() {
+	if label.Value != diagnostic.Message || label.Color != paint.key.colors[1] || label.Font != model.codeFont() {
 		t.Fatalf("inline error label = %+v", label)
 	}
 	up, _ := module.ContentGet[scene.UITransform](world, paint.waves[0])
@@ -244,10 +244,34 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 			t.Fatal("cleared diagnostics left a native visual visible")
 		}
 	}
-	diagnostic.Severity = 2
-	publish([]lsp.Diagnostic{diagnostic}, doc.version)
-	if len(paint.ranges) != 0 {
-		t.Fatal("warning rendered as a red error")
+	for _, severity := range []int{2, 3, 4, 0} {
+		diagnostic.Severity = severity
+		publish([]lsp.Diagnostic{diagnostic}, doc.version)
+		if len(paint.ranges) != 1 || len(paint.quads) != 1 || len(paint.waves) != 1 || len(paint.labels) != 1 {
+			t.Fatalf("severity %d did not reuse diagnostic decorations", severity)
+		}
+		color := model.workbenchTheme.diagnosticColors[severity]
+		fill := color
+		fill.A *= .1
+		background, _ := module.ContentGet[scene.Sprite2D](world, paint.quads[0])
+		wave, _ := module.ContentGet[scene.Sprite2D](world, paint.waves[0])
+		label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
+		if background.Shape.Fill != fill || wave.Tint != color || label.Color != color || label.Value != diagnostic.Message {
+			t.Fatalf("severity %d has incorrect decoration colors: background=%+v wave=%+v label=%+v", severity, background.Shape.Fill, wave.Tint, label.Color)
+		}
+		for _, entity := range []ecs.Entity{paint.root, paint.quads[0], paint.waves[0], paint.labels[0]} {
+			if visible, _ := module.ContentGet[scene.Visibility](world, entity); !visible.Visible {
+				t.Fatalf("severity %d decoration is hidden", severity)
+			}
+		}
+		if allocations := testing.AllocsPerRun(100, func() {
+			paint.sync(world, model)
+			position := module.ContentMut[scene.UITransform](world, model.editor.text)
+			position.Translation.Y.Value = -5 - position.Translation.Y.Value
+			paint.sync(world, model)
+		}); allocations != 0 {
+			t.Fatalf("severity %d warm diagnostic rendering allocated %g times", severity, allocations)
+		}
 	}
 	diagnostic.Severity = 1
 	diagnostic.Range.End = diagnostic.Range.Start
@@ -259,6 +283,64 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 	paint.sync(world, model)
 	if visible, _ := module.ContentGet[scene.Visibility](world, paint.root); visible.Visible {
 		t.Fatal("diagnostic remains visible outside the text editor")
+	}
+}
+
+func TestPencodeEditorDiagnosticSeverityPriority(t *testing.T) {
+	app, model, provider, _ := languageInteractionFixture(t)
+	world := model.fontResources
+	file := model.activeFile()
+	file.Content = "hint warning information error\n"
+	model.setEditorValueAndCaret(world, file.Content, 0)
+	model.syncLanguageDocuments()
+	markPencodeRootDirtyByModel(world, model)
+	languageInteractionStep(t, app)
+	doc := model.languages.documents[file]
+	items := []lsp.Diagnostic{
+		{Severity: 4, Message: "hint", Range: lsp.Range{End: lsp.Position{Character: 29}}},
+		{Severity: 2, Message: "warning", Range: lsp.Range{Start: lsp.Position{Character: 5}, End: lsp.Position{Character: 12}}},
+		{Severity: 3, Message: "information", Range: lsp.Range{Start: lsp.Position{Character: 13}, End: lsp.Position{Character: 24}}},
+		{Severity: 1, Message: "error", Range: lsp.Range{Start: lsp.Position{Character: 25}, End: lsp.Position{Character: 30}}},
+	}
+	paint := &model.editor.diagnostics
+	for _, severity := range []int{1, 2, 3, 4} {
+		model.setProblems(provider, doc.uri, items)
+		paint.sync(world, model)
+		if len(paint.ranges) != len(items) || len(paint.quads) != 1 || len(paint.labels) != 1 || len(paint.waves) < len(items) {
+			t.Fatalf("mixed severity decorations: ranges=%d backgrounds=%d labels=%d waves=%d", len(paint.ranges), len(paint.quads), len(paint.labels), len(paint.waves))
+		}
+		color := model.workbenchTheme.diagnosticColors[severity]
+		fill := color
+		fill.A *= .1
+		background, _ := module.ContentGet[scene.Sprite2D](world, paint.quads[0])
+		label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
+		message := [...]string{"", "error", "warning", "information", "hint"}[severity]
+		if background.Shape.Fill != fill || label.Color != color || label.Value != message {
+			t.Fatalf("row did not prioritize severity %d: background=%+v label=%+v", severity, background.Shape.Fill, label)
+		}
+		for i, diagnostic := range paint.ranges {
+			wave, _ := module.ContentGet[scene.Sprite2D](world, paint.waves[i])
+			if wave.Tint != model.workbenchTheme.diagnosticColors[diagnostic.severity] {
+				t.Fatalf("severity %d lost its underline color", diagnostic.severity)
+			}
+		}
+		last, _ := module.ContentGet[scene.Sprite2D](world, paint.waves[len(items)-1])
+		if last.Tint != color {
+			t.Fatal("overlapping underlines did not prioritize the most severe diagnostic")
+		}
+		for _, entity := range paint.waves[len(items):] {
+			if visible, _ := module.ContentGet[scene.Visibility](world, entity); visible.Visible {
+				t.Fatal("removed diagnostic left a visible underline")
+			}
+		}
+		// A palette update must repaint even when the error color is unchanged.
+		model.workbenchTheme.diagnosticColors[severity].R *= .5
+		paint.sync(world, model)
+		label, _ = module.ContentGet[scene.Text2D](world, paint.labels[0])
+		if label.Color != model.workbenchTheme.diagnosticColors[severity] {
+			t.Fatalf("severity %d retained a stale theme color", severity)
+		}
+		items = slices.DeleteFunc(items, func(item lsp.Diagnostic) bool { return item.Severity == severity })
 	}
 }
 

@@ -1,11 +1,12 @@
 //go:build windows
 
-package workbench
+package server
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -26,12 +27,12 @@ func TestSourceControlCommandWithoutConsole(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := sourceCommand(ctx)
+	cmd := exec.CommandContext(ctx, executable, "-test.run=^TestSourceControlCommandWithoutConsole$")
+	hideServiceWindow(cmd)
 	if cmd.Err != nil {
 		t.Fatal(cmd.Err)
 	}
-	// Run this test binary with the same process setup used by every Git path.
-	cmd.Path, cmd.Args = executable, []string{executable, "-test.run=^TestSourceControlCommandWithoutConsole$"}
+	// Exercise the same process setup used by Git in the backend.
 	cmd.Env = append(os.Environ(), helper+"=1")
 	data, err := cmd.CombinedOutput()
 	if err != nil {

@@ -434,9 +434,10 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 			return
 		}
 		if j.preview && p.PreviewPath != "" {
-			m.highlightCache.remove(p.Files[p.PreviewPath])
+			m.highlightCache.retainPreview(p.Files[p.PreviewPath])
 		}
 		acceptProjectFile(p, j.relative, j.preview, r.document, r.content)
+		m.highlightCache.restorePreview(p.Files[j.relative])
 		r.document = nil
 		if j.reveal {
 			m.queueProjectFileReveal(p)
@@ -667,6 +668,8 @@ func (m *workspaceModel) finishFileClose() {
 		}
 	case pencodeCloseProject:
 		m.closeProject(r.project)
+	case pencodeCloseOtherTabs, pencodeCloseRightTabs, pencodeCloseSavedTabs, pencodeCloseAllTabs:
+		m.closeProjectTabs(r.action, r.project, r.path)
 	case pencodeCloseWindow:
 		if m.requestWindowClose() && m.app != nil {
 			m.app.RequestClose()

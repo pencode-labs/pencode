@@ -20,6 +20,7 @@ import (
 type pencodeDiagnosticRange struct {
 	start, end int
 	message    string
+	severity   int
 }
 
 type pencodeDiagnosticPaint struct {
@@ -43,6 +44,7 @@ type pencodeDiagnosticPaintKey struct {
 	spacing, lineHeight, ink float32
 	stack                    scene.UIStackIndex
 	color                    graphics.ColorRGBA
+	colors                   [len(pencodeProblemSeverities)]graphics.ColorRGBA
 }
 
 func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspaceModel) {
@@ -79,8 +81,9 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 				encoding = key.session.client.Encoding
 			}
 			for _, diagnostic := range diagnostics {
-				if diagnostic.Severity != 1 {
-					continue
+				severity := diagnostic.Severity
+				if severity < 1 || severity >= len(pencodeProblemSeverities) {
+					severity = 3
 				}
 				start, startErr := lsp.OffsetAt(file.Content, diagnostic.Range.Start, encoding)
 				end, endErr := lsp.OffsetAt(file.Content, diagnostic.Range.End, encoding)
@@ -88,10 +91,14 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 					continue
 				}
 				message := strings.ReplaceAll(strings.ReplaceAll(diagnostic.Message, "\r", " "), "\n", " ")
-				paint.ranges = append(paint.ranges, pencodeDiagnosticRange{start, end, message})
+				paint.ranges = append(paint.ranges, pencodeDiagnosticRange{start, end, message, severity})
 			}
 		}
 		slices.SortFunc(paint.ranges, func(a, b pencodeDiagnosticRange) int {
+			// Paint the most severe underline last when diagnostic ranges overlap.
+			if a.severity != b.severity {
+				return b.severity - a.severity
+			}
 			if a.start != b.start {
 				return a.start - b.start
 			}
@@ -113,7 +120,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 		layout: pencodeGutterLayoutKey{text.Value, text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
 		file:   file, revision: paint.revision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight,
-		ink: text.InkOffsetY, stack: stack, color: model.workbenchTheme.diagnosticError,
+		ink: text.InkOffsetY, stack: stack, colors: model.workbenchTheme.diagnosticColors,
 	}
 	if paint.key == key {
 		return
@@ -148,8 +155,6 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 	module.ContentSetIfChanged(world, paint.root, scene.ClipRect2D{Width: size.Width, Height: size.Height})
 	module.ContentSetIfChanged(world, paint.root, size)
 	quadCount, labelCount, waveCount := 0, 0, 0
-	background := key.color
-	background.A *= .10
 	first := max(0, int(math.Floor(float64(-key.y/text.LineHeight))))
 	for line := first; line < count; line++ {
 		start, end, rect, _ := scene.TextLineRange2D(text, line)
@@ -157,18 +162,16 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 		if y >= size.Height {
 			break
 		}
-		marked := false
-		for _, diagnostic := range paint.ranges {
+		marked := -1
+		for i, diagnostic := range paint.ranges {
 			if diagnostic.start > end || diagnostic.end < start || diagnostic.end == start && diagnostic.start != start {
 				continue
 			}
 			if diagnostic.start == end && start < end && end < len(text.Value) && text.Value[end] != '\r' && text.Value[end] != '\n' {
 				continue // A soft wrap boundary belongs to the following visual line.
 			}
-			if !marked {
-				paint.quad(world, &quadCount, stack-1, 0, y, size.Width, rect.Height, 0, background)
-				paint.label(world, &labelCount, stack+1, key.x+rect.X+rect.Width+float32(text.FontSize)*2, y, diagnostic.message, text, key.color)
-				marked = true
+			if marked < 0 || diagnostic.severity < paint.ranges[marked].severity {
+				marked = i
 			}
 			left, right := max(start, diagnostic.start), min(end, diagnostic.end)
 			if left == right && right < end {
@@ -185,8 +188,16 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 			x := key.x + underline.X
 			waveLeft, waveRight := max(x, 0), min(x+underline.Width, size.Width)
 			if waveRight > waveLeft {
-				paint.wave(world, &waveCount, stack+1, waveLeft, y+rect.Height-3, waveRight-waveLeft, (waveLeft-x)/6, (waveRight-x)/6, key.color)
+				paint.wave(world, &waveCount, stack+1, waveLeft, y+rect.Height-3, waveRight-waveLeft, (waveLeft-x)/6, (waveRight-x)/6, key.colors[diagnostic.severity])
 			}
+		}
+		if marked >= 0 {
+			diagnostic := paint.ranges[marked]
+			color := key.colors[diagnostic.severity]
+			background := color
+			background.A *= .10
+			paint.quad(world, &quadCount, stack-1, 0, y, size.Width, rect.Height, 0, background)
+			paint.label(world, &labelCount, stack+1, key.x+rect.X+rect.Width+float32(text.FontSize)*2, y, diagnostic.message, text, color)
 		}
 	}
 	for _, entity := range paint.quads[quadCount:] {

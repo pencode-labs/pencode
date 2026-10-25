@@ -145,7 +145,7 @@ func (model *workspaceModel) relocateProjectResources(source, target *pencodePro
 			}
 		}
 	}
-	if model.fileClose.action == pencodeCloseTab && model.fileClose.project == source && pencodeResourceContains(old, model.fileClose.path) {
+	if (model.fileClose.action == pencodeCloseTab || model.fileClose.action == pencodeCloseOtherTabs || model.fileClose.action == pencodeCloseRightTabs) && model.fileClose.project == source && pencodeResourceContains(old, model.fileClose.path) {
 		if target == nil {
 			model.fileClose = pencodeCloseRequest{}
 		} else {

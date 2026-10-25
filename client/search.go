@@ -40,6 +40,7 @@ func (c *Client) SearchText(ctx context.Context, root, directory, query string, 
 		for j := range f.Matches {
 			m := &f.Matches[j]
 			m.Start, m.End, m.Line, m.Column = int(d.U32()), int(d.U32()), int(d.U32()), int(d.U32())
+			m.PreviewStart = int(d.U32())
 			m.Preview = d.String()
 		}
 	}

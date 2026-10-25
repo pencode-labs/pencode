@@ -291,6 +291,8 @@ func (model *workspaceModel) pollCustomEditors() bool {
 			}
 		case pencodeCloseProject:
 			model.closeProject(request.project)
+		case pencodeCloseOtherTabs, pencodeCloseRightTabs, pencodeCloseSavedTabs, pencodeCloseAllTabs:
+			model.closeProjectTabs(request.action, request.project, request.path)
 		case pencodeCloseWindow:
 			if model.requestWindowClose() && model.app != nil {
 				model.app.RequestClose()

@@ -11,9 +11,9 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/lsp"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 type pencodeLanguagePanel struct {
@@ -1135,7 +1135,10 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 	}
 	if p.navigate != nil && model.editor.file == p.navigate {
 		caret := utf8.RuneCountInString(p.navigate.Content[:min(p.offset, len(p.navigate.Content))])
-		model.setEditorValueAndCaret(world, p.navigate.Content, caret)
+		// The editor has already bound this document; navigation only moves the caret.
+		if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
+			field.Caret, field.Anchor = caret, caret
+		}
 		model.revealEditorCaret(world, caret)
 		p.navigate = nil
 	}

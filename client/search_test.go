@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/textsearch"
@@ -61,5 +62,45 @@ func TestSearchTextScopeBuffersAndLimits(t *testing.T) {
 	r, err = c.SearchText(t.Context(), w.Path, "", "a", textsearch.Options{WholeWord: true}, nil)
 	if err != nil || !r.Truncated {
 		t.Fatal("missing truncation", err)
+	}
+}
+
+func TestSearchPreviewContainsExactMatch(t *testing.T) {
+	c, w := peer(t, nil)
+	for _, test := range []struct {
+		name, content, query string
+		options              textsearch.Options
+	}{
+		{"long.txt", "target" + strings.Repeat(" tail", 200), "target", textsearch.Options{}},
+		{"unicode.txt", strings.Repeat("中🙂", 80) + "TARGET target\r\n", "target", textsearch.Options{}},
+		{"regex.txt", "prefix 12345 suffix", `\d+`, textsearch.Options{Regex: true}},
+		{"multiline.txt", "first target\nnext line", "target\nnext", textsearch.Options{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(w.Path, test.name), []byte(test.content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			result, err := c.SearchText(t.Context(), w.Path, "", test.query, test.options, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, file := range result.Files {
+				if file.Path != test.name {
+					continue
+				}
+				for _, match := range file.Matches {
+					found = true
+					start := match.Start - match.PreviewStart
+					end := min(len(match.Preview), match.End-match.PreviewStart)
+					if !utf8.ValidString(match.Preview) || start < 0 || start >= len(match.Preview) || end <= start || match.Preview[start:end] != test.content[match.Start:match.PreviewStart+end] {
+						t.Fatalf("preview lost the match: %+v", match)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("no result for preview fixture")
+			}
+		})
 	}
 }

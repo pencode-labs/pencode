@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"slices"
 	"time"
 
 	"github.com/diiyw/onix/ecs"
@@ -84,7 +85,7 @@ func (model *workspaceModel) updateTabWheel(world *module.Content, state *input.
 	x, y := pointer.X/zoom, pointer.Y/zoom
 	if model.fileContext.open && model.pointerInsideRefs(world, x, y, []string{"file-context"}) ||
 		model.languageUI.contextOpen && model.pointerInsideRefs(world, x, y, []string{"lsp-context", "lsp-context-submenu"}) ||
-		model.market != nil && model.market.open && model.pointerInsideRefs(world, x, y, []string{"marketplace-panel"}) || model.terminalView.context.open {
+		model.market != nil && model.market.open && model.pointerInsideRefs(world, x, y, []string{"marketplace-panel"}) || model.terminalView.context.open || model.tabContext.open {
 		return
 	}
 	var area ecs.Entity
@@ -129,6 +130,10 @@ type pencodeCloseAction uint8
 const (
 	pencodeCloseNone pencodeCloseAction = iota
 	pencodeCloseTab
+	pencodeCloseOtherTabs
+	pencodeCloseRightTabs
+	pencodeCloseSavedTabs
+	pencodeCloseAllTabs
 	pencodeCloseProject
 	pencodeCloseWindow
 )
@@ -158,7 +163,7 @@ func (model *workspaceModel) beginClose(action pencodeCloseAction, project *penc
 		model.setActiveStatus("正在等待文件操作完成后关闭…")
 		return false
 	}
-	if action != pencodeCloseTab && model.sourceCloseBlocked(project) {
+	if action >= pencodeCloseProject && model.sourceCloseBlocked(project) {
 		return false
 	}
 	// A pending extension reply may still turn a clean file dirty. Keep it
@@ -167,7 +172,7 @@ func (model *workspaceModel) beginClose(action pencodeCloseAction, project *penc
 		if !document.busy() {
 			continue
 		}
-		if action == pencodeCloseWindow || document.project == project && (action == pencodeCloseProject || file.Path == relative) {
+		if action == pencodeCloseWindow || document.project == project && (action == pencodeCloseProject || tabCloseIncludes(action, project, relative, file)) {
 			model.customClose = pencodeCloseRequest{action: action, project: project, path: relative}
 			model.setActiveStatus("正在等待编辑工具完成操作…")
 			return false
@@ -185,6 +190,12 @@ func (model *workspaceModel) beginClose(action pencodeCloseAction, project *penc
 		}
 		if file := files[relative]; file != nil && file.Dirty {
 			request.targets = append(request.targets, pencodeCloseTarget{project, file})
+		}
+	} else if action < pencodeCloseProject {
+		for _, path := range project.Tabs {
+			if file := project.Files[path]; file != nil && file.Dirty && tabCloseIncludes(action, project, relative, file) {
+				request.targets = append(request.targets, pencodeCloseTarget{project, file})
+			}
 		}
 	} else if action == pencodeCloseProject {
 		model.collectCloseTargets(project)
@@ -278,9 +289,47 @@ func (model *workspaceModel) resolveClose(save bool) {
 		}
 	case pencodeCloseProject:
 		model.discardProject(project)
+	case pencodeCloseOtherTabs, pencodeCloseRightTabs, pencodeCloseSavedTabs, pencodeCloseAllTabs:
+		model.discardProjectTabs(action, project, relative)
 	case pencodeCloseWindow:
 		if model.app != nil && model.app.Context != nil {
 			model.app.RequestClose()
+		}
+	}
+}
+
+func tabCloseIncludes(action pencodeCloseAction, project *pencodeProject, path string, file *openFile) bool {
+	switch action {
+	case pencodeCloseTab:
+		return file.Path == path
+	case pencodeCloseOtherTabs:
+		return file.Path != path
+	case pencodeCloseRightTabs:
+		anchor := slices.Index(project.Tabs, path)
+		return anchor >= 0 && slices.Index(project.Tabs, file.Path) > anchor
+	case pencodeCloseSavedTabs:
+		return !file.Dirty
+	case pencodeCloseAllTabs:
+		return true
+	}
+	return false
+}
+
+func (m *workspaceModel) closeProjectTabs(action pencodeCloseAction, project *pencodeProject, path string) {
+	if project == nil || m.closing.action != pencodeCloseNone {
+		return
+	}
+	if action == pencodeCloseTab {
+		m.closeProjectTab(project, path)
+	} else if m.beginClose(action, project, path) {
+		m.discardProjectTabs(action, project, path)
+	}
+}
+
+func (m *workspaceModel) discardProjectTabs(action pencodeCloseAction, project *pencodeProject, path string) {
+	for i := len(project.Tabs) - 1; i >= 0; i-- {
+		if file := project.Files[project.Tabs[i]]; file != nil && tabCloseIncludes(action, project, path, file) {
+			m.discardProjectTab(project, file.Path)
 		}
 	}
 }

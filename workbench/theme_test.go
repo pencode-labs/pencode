@@ -59,6 +59,16 @@ func TestPencodeWorkbenchThemeColors(t *testing.T) {
 			if strings.Contains(prepared.css, "var(") {
 				t.Fatal("unresolved theme color")
 			}
+			for severity, color := range prepared.diagnosticColors {
+				if color.A == 0 {
+					t.Fatalf("severity %d has no diagnostic color", severity)
+				}
+				for previous := 1; previous < severity; previous++ {
+					if color == prepared.diagnosticColors[previous] {
+						t.Fatalf("severities %d and %d use the same color", previous, severity)
+					}
+				}
+			}
 			inline := pencodeComputedTheme(t, prepared, `<div class="sc-inline-change added" data-ref="added"></div><div class="sc-inline-change deleted" data-ref="deleted"></div>`)
 			for _, kind := range []string{"added", "deleted"} {
 				if value := inline[kind]; value == nil || value.BackgroundColor.Color.A == 0 {
@@ -198,6 +208,27 @@ func TestPencodeCustomWorkbenchThemeAndLightDefaults(t *testing.T) {
 	}
 	if prepared.border != graphics.ColorFromRGB(0x13, 0x57, 0x90) || prepared.guide != graphics.ColorFromRGB(0x45, 0x67, 0x89) || !strings.HasSuffix(prepared.icons[pencodeIconKey{"icons/close.svg", "icon.foreground"}], "foreground=2468ac") {
 		t.Fatal("native decorations or icon palette did not adopt custom colors")
+	}
+}
+
+func TestPencodeWorkbenchDiagnosticThemeOverrides(t *testing.T) {
+	theme, err := syntax.LoadTheme(fstest.MapFS{"diagnostics.json": &fstest.MapFile{Data: []byte(`{
+  "type":"light", "colors":{
+   "editorError.foreground":"#cc1122", "editorWarning.foreground":"#bb990080",
+   "editorInfo.foreground":"#1177cc", "editorHint.foreground":"#77777700"
+  }
+ }`)}}, "diagnostics.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := preparePencodeTheme("diagnostics", theme, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for severity, key := range [...]string{"editorInfo.foreground", "editorError.foreground", "editorWarning.foreground", "editorInfo.foreground", "editorHint.foreground"} {
+		if prepared.diagnosticColors[severity] != pencodeSyntaxColor(theme.Color(key)) {
+			t.Fatalf("severity %d ignored theme color %s", severity, key)
+		}
 	}
 }
 

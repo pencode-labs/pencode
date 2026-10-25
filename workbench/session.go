@@ -112,6 +112,7 @@ func (s *Session) syncLayout() {
 	model.focusFolderSearch(model.fontResources)
 	model.constrainFileContext(model.fontResources)
 	model.focusLanguageControls(model.fontResources)
+	model.focusPanelEditor(model.fontResources)
 	model.editor.syncCaretStatus(model.fontResources, model.surface, model)
 	model.editor.syncGutter(model.fontResources, model.surface, model)
 	model.editor.diagnostics.sync(model.fontResources, model)

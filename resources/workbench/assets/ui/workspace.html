@@ -373,7 +373,7 @@
               <select id="output-source" data-ref="output-source" aria-label="输出信息源"></select>
               <button data-ref="output-clear" class="pencode-icon-button" type="button" title="清除当前信息源" aria-label="清除当前信息源"><img data-ref="output-clear-icon" src="icons/clear-all.svg" alt=""></button>
             </div>
-            <button data-ref="panel-close" class="pencode-panel-close pencode-icon-button" type="button" aria-label="收起面板" title="收起面板"><img data-ref="panel-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
+            <button id="panel-close" data-ref="panel-close" class="pencode-panel-close pencode-icon-button" type="button" aria-label="收起面板" title="收起面板"><img data-ref="panel-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
           </div>
         </header>
         <div id="extension-pane" data-ref="extension-pane" class="pencode-extension-pane" hidden></div>
@@ -443,6 +443,16 @@
   <div id="pencode-extension-overlays" data-ref="extension-overlays" class="pencode-extension-overlays"></div>
   <div id="source-overlay" data-ref="source-overlay" class="sc-overlay"></div>
   <div data-ref="input-context-slot" class="pencode-input-context-layer"></div>
+  <div id="tab-context" data-ref="tab-context" class="pencode-editor-context pencode-tab-context" role="menu" aria-label="标签页操作" hidden>
+    <button id="tab-context-close" data-ref="tab-context-close" type="button" role="menuitem" tabindex="-1">关闭</button>
+    <button id="tab-context-others" data-ref="tab-context-others" type="button" role="menuitem" tabindex="-1">关闭其他标签页</button>
+    <button id="tab-context-right" data-ref="tab-context-right" type="button" role="menuitem" tabindex="-1">关闭右侧标签页</button>
+    <button id="tab-context-saved" data-ref="tab-context-saved" type="button" role="menuitem" tabindex="-1">关闭已保存的标签页</button>
+    <button id="tab-context-all" data-ref="tab-context-all" type="button" role="menuitem" tabindex="-1">全部关闭</button>
+    <div class="pencode-context-separator" role="separator"></div>
+    <button id="tab-context-copy-path" data-ref="tab-context-copy-path" type="button" role="menuitem" tabindex="-1">复制路径</button>
+    <button id="tab-context-copy-relative" data-ref="tab-context-copy-relative" type="button" role="menuitem" tabindex="-1">复制相对路径</button>
+  </div>
   <div id="terminal-context" data-ref="terminal-context" class="pencode-editor-context pencode-terminal-context" role="menu" aria-label="终端操作" hidden>
     <button id="terminal-copy" data-ref="terminal-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span class="pencode-context-hint">Ctrl+Shift+C</span></button>
     <button id="terminal-paste" data-ref="terminal-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span class="pencode-context-hint">Ctrl+Shift+V</span></button>
@@ -472,7 +482,7 @@
     <section id="folder-search-panel" class="pencode-folder-search" role="dialog" aria-modal="true" aria-labelledby="folder-search-title">
       <header class="pencode-folder-header">
         <span id="folder-search-title">在文件夹中查找</span>
-        <button id="folder-search-close" data-ref="folder-search-close" class="pencode-replace-action" type="button" aria-label="关闭搜索">关闭 (Esc)</button>
+        <button id="folder-search-close" data-ref="folder-search-close" class="pencode-icon-button" type="button" title="关闭搜索 (Esc)" aria-label="关闭搜索"><img data-ref="folder-search-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
       </header>
       <p data-ref="folder-search-scope" class="pencode-folder-scope"></p>
       <div class="pencode-find-layout">
@@ -496,8 +506,8 @@
       <div class="pencode-folder-toolbar">
         <span data-ref="folder-search-status" role="status" class="pencode-folder-status"></span>
         <span data-ref="folder-search-page" class="pencode-find-count"></span>
-        <button id="folder-search-previous" data-ref="folder-search-previous" class="pencode-replace-action" type="button" title="上一页 (PageUp)">上一页</button>
-        <button id="folder-search-next" data-ref="folder-search-next" class="pencode-replace-action" type="button" title="下一页 (PageDown)">下一页</button>
+        <button id="folder-search-previous" data-ref="folder-search-previous" class="pencode-icon-button pencode-folder-previous" type="button" title="上一页 (PageUp)" aria-label="上一页结果"><img data-ref="folder-search-previous-icon" src="icons/chevron-right.svg" alt=""></button>
+        <button id="folder-search-next" data-ref="folder-search-next" class="pencode-icon-button" type="button" title="下一页 (PageDown)" aria-label="下一页结果"><img data-ref="folder-search-next-icon" src="icons/chevron-right.svg" alt=""></button>
       </div>
       <div id="folder-search-results" data-ref="folder-search-results" class="pencode-folder-results" role="listbox" aria-label="搜索结果"></div>
     </section>

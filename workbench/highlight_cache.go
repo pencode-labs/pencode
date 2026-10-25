@@ -8,12 +8,14 @@ import (
 // Cache paint spans and bracket offsets, never per-tab trees. Brackets count
 // toward the same slot budget as spans, keeping the FIFO below 2 MiB.
 const (
-	pencodeHighlightCacheSpanLimit  = 65536
-	pencodeHighlightCacheSpareLimit = 4096
+	pencodeHighlightCacheSpanLimit   = 65536
+	pencodeHighlightCacheSpareLimit  = 4096
+	pencodeHighlightPreviewByteLimit = 1 << 20
 )
 
 type pencodeHighlightCacheEntry struct {
 	file        *openFile
+	path        string // Set only while a replaced preview has no live file.
 	source      string
 	theme       *syntax.Theme
 	definitions *syntax.Definitions
@@ -23,6 +25,51 @@ type pencodeHighlightCacheEntry struct {
 	characters  int
 	lineInfo    string
 	valid       bool
+}
+
+// Replaced previews keep only bounded paint data, never documents or trees.
+// Reopening still reads the file; restore requires the freshly read contents.
+func (cache *pencodeHighlightCache) retainPreview(file *openFile) {
+	if cache == nil || file == nil || !file.Preview || file.Dirty {
+		return
+	}
+	entry := &cache.entries[file.highlightSlot]
+	if entry.file != file {
+		return
+	}
+	if !entry.valid || len(entry.source) > pencodeHighlightPreviewByteLimit {
+		cache.remove(file)
+		return
+	}
+	entry.file, entry.path = nil, file.Path
+	bytes := 0
+	for i := range cache.entries {
+		if cached := &cache.entries[i]; cached.file == nil {
+			bytes += len(cached.source)
+		}
+	}
+	for i := cache.next; bytes > pencodeHighlightPreviewByteLimit; i = (i + 1) % len(cache.entries) {
+		cached := &cache.entries[i]
+		if cached.file == nil {
+			bytes -= len(cached.source)
+			cache.spans -= cap(cached.spans) + cap(cached.brackets)
+			*cached = pencodeHighlightCacheEntry{}
+		}
+	}
+}
+
+func (cache *pencodeHighlightCache) restorePreview(file *openFile) {
+	if cache == nil {
+		return
+	}
+	for i := range cache.entries {
+		entry := &cache.entries[i]
+		if entry.file == nil && entry.valid && entry.path == file.Path && entry.source == file.Content {
+			entry.file, entry.path = file, ""
+			file.highlightSlot = uint8(i)
+			return
+		}
+	}
 }
 
 type pencodeHighlightCache struct {

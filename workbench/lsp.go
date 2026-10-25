@@ -483,7 +483,7 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 			if state.sessions[event.session.key] != event.session {
 				continue
 			}
-			if event.method != "workspace/semanticTokens/refresh" && event.method != "window/logMessage" && event.method != "window/showMessage" && !(event.method == "result" && event.job.semantic) {
+			if event.method != "textDocument/publishDiagnostics" && event.method != "workspace/semanticTokens/refresh" && event.method != "window/logMessage" && event.method != "window/showMessage" && !(event.method == "result" && event.job.semantic) {
 				changed = true
 			}
 			switch event.method {
@@ -520,6 +520,7 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 				}
 				if !stale {
 					model.setProblems(event.session, p.URI, p.Diagnostics)
+					changed = changed || model.bottom.problemsDirty
 				}
 			case "workspace/applyEdit":
 				var p struct {

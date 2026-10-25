@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
@@ -49,9 +51,13 @@ type pencodeFolderSearch struct {
 	rows                                       []folderSearchRow
 	index                                      int
 	view                                       sourceVNodeView
+	preview                                    folderSearchHighlight
+	icons                                      *pencodeFileIcons
+	theme                                      *pencodeTheme
 	nodes                                      []html.VNode
 	pageLabel                                  string
 	dirty                                      bool
+	revealResult                               bool
 	nextPath                                   string
 	nextOffset                                 int
 	navigate                                   *openFile
@@ -167,6 +173,7 @@ func (m *workspaceModel) folderSnapshotsCurrent(job folderSearchJob) bool {
 
 func (m *workspaceModel) pollFolderSearch() bool {
 	s := &m.folderSearch
+	highlightChanged := m.pollFolderSearchHighlight()
 	if !s.open {
 		if s.worker != nil {
 			s.worker.poll(func(*folderSearchResult) {})
@@ -178,9 +185,9 @@ func (m *workspaceModel) pollFolderSearch() bool {
 		return true
 	}
 	if s.worker == nil {
-		return false
+		return highlightChanged
 	}
-	changed, retry := false, false
+	changed, retry := highlightChanged, false
 	s.worker.poll(func(r *folderSearchResult) {
 		if r.job.revision != s.revision {
 			return
@@ -226,7 +233,7 @@ func (m *workspaceModel) pollFolderSearch() bool {
 		if r.err != nil {
 			s.message = r.err.Error()
 		}
-		s.dirty = true
+		s.dirty, s.revealResult = true, true
 	})
 	if retry {
 		m.startFolderSearch()
@@ -236,6 +243,7 @@ func (m *workspaceModel) pollFolderSearch() bool {
 
 func (m *workspaceModel) closeFolderSearchWorker() {
 	s := &m.folderSearch
+	m.closeFolderSearchHighlight()
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -285,13 +293,18 @@ func (m *workspaceModel) renderFolderSearch(view *html.View) {
 			view.RemoveAttr(ref, "disabled")
 		}
 	}
+	m.highlightFolderSearch()
+	if s.icons != m.fileIcons || s.theme != m.workbenchTheme {
+		s.icons, s.theme, s.dirty = m.fileIcons, m.workbenchTheme, true
+	}
 	if s.dirty {
 		b := &s.view
 		b.reset()
 		// Bound retained DOM work independently of the result budget.
-		first := s.index / 12 * 12
-		s.pageLabel = fmt.Sprintf("%d / %d", min(1+s.index/12, (len(s.rows)+11)/12), (len(s.rows)+11)/12)
-		for i := first; i < min(first+12, len(s.rows)); i++ {
+		first := s.index / folderSearchPageSize * folderSearchPageSize
+		pages := (len(s.rows) + folderSearchPageSize - 1) / folderSearchPageSize
+		s.pageLabel = fmt.Sprintf("%d / %d", min(1+s.index/folderSearchPageSize, pages), pages)
+		for i := first; i < min(first+folderSearchPageSize, len(s.rows)); i++ {
 			row := s.rows[i]
 			file := s.result.Files[row.file]
 			match := file.Matches[row.match]
@@ -301,8 +314,17 @@ func (m *workspaceModel) renderFolderSearch(view *html.View) {
 				class += " active"
 			}
 			b.open("button", id, "id", id, "type", "button", "class", class, "role", "option", "aria-selected", boolAttribute(i == s.index))
-			b.text("span", id+"-location", fmt.Sprintf("%s:%d:%d", file.Path, match.Line, match.Column), "class", "pencode-folder-location")
-			b.text("span", id+"-preview", match.Preview, "class", "pencode-folder-preview")
+			b.open("span", id+"-location", "class", "pencode-folder-location")
+			source := m.fileIcons.source(path.Base(file.Path), false)
+			if source == "" {
+				source = "icons/file-text.svg"
+			}
+			b.text("img", id+"-icon", "", "src", m.themedIcon(source, "icon.foreground"), "class", "pencode-folder-file-icon", "alt", "", "aria-hidden", "true")
+			b.text("span", id+"-path", fmt.Sprintf("%s:%d:%d", file.Path, match.Line, match.Column), "class", "pencode-folder-path")
+			b.close()
+			b.open("span", id+"-preview", "class", "pencode-folder-preview")
+			renderFolderSearchPreview(b, match, s.preview.tokens(i-first))
+			b.close()
 			b.close()
 		}
 		s.nodes, s.dirty = b.nodes(), false
@@ -310,7 +332,7 @@ func (m *workspaceModel) renderFolderSearch(view *html.View) {
 	view.Keyed("folder-search-results", s.nodes)
 	view.Text("folder-search-page", s.pageLabel)
 	for _, ref := range [...]string{"folder-search-previous", "folder-search-next"} {
-		if len(s.rows) <= 12 {
+		if len(s.rows) <= folderSearchPageSize {
 			view.Attr(ref, "disabled", "")
 		} else {
 			view.RemoveAttr(ref, "disabled")
@@ -323,6 +345,7 @@ func (m *workspaceModel) renderFolderSearch(view *html.View) {
 
 func (m *workspaceModel) focusFolderSearch(world *module.Content) {
 	s := &m.folderSearch
+	m.revealFolderSearchResult(world)
 	if s.navigate != nil && !s.open && m.editor.file == s.navigate && m.activeFile() == s.navigate && world.Focus(m.editor.control) {
 		if field := module.ContentMut[engineui.TextField](world, m.editor.control); field != nil {
 			field.Anchor, field.Caret = s.navigateStart, s.navigateEnd
@@ -348,16 +371,49 @@ func (m *workspaceModel) focusFolderSearch(world *module.Content) {
 	}
 }
 
+func (m *workspaceModel) revealFolderSearchResult(world *module.Content) {
+	s := &m.folderSearch
+	if !s.open || !s.revealResult || len(s.rows) == 0 {
+		return
+	}
+	list, ok := world.HTMLNode(m.surface, "folder-search-results")
+	if !ok {
+		return
+	}
+	item, ok := world.HTMLNode(m.surface, "folder-search-result-"+strconv.Itoa(s.index))
+	if !ok {
+		return
+	}
+	area, ok := list.ScrollContainer()
+	if !ok {
+		return
+	}
+	if scroll := module.ContentMut[scene.UIScroll](world, area); scroll != nil {
+		bounds, _ := list.Bounds()
+		row, _ := item.Bounds()
+		top, bottom := row.Y-bounds.Y, row.Y+row.Height-bounds.Y
+		position := scroll.Position[1]
+		if top+position < 0 {
+			position = -top
+		} else if bottom+position > bounds.Height {
+			position = bounds.Height - bottom
+		}
+		scroll.Position[1] = min(0, max(-max(0, scroll.ContentSize[1]-scroll.ViewportSize[1]), position))
+		scroll.Momentum[1] = 0
+		s.revealResult = false
+	}
+}
+
 func (m *workspaceModel) advanceFolderSearch(step int) {
 	s := &m.folderSearch
 	if len(s.rows) > 0 {
-		if step == 12 || step == -12 {
-			pages := (len(s.rows) + 11) / 12
-			s.index = (s.index/12 + step/12 + pages) % pages * 12
+		if step == folderSearchPageSize || step == -folderSearchPageSize {
+			pages := (len(s.rows) + folderSearchPageSize - 1) / folderSearchPageSize
+			s.index = (s.index/folderSearchPageSize + step/folderSearchPageSize + pages) % pages * folderSearchPageSize
 		} else {
 			s.index = (s.index + step%len(s.rows) + len(s.rows)) % len(s.rows)
 		}
-		s.dirty = true
+		s.dirty, s.revealResult = true, true
 	}
 }
 
@@ -432,9 +488,9 @@ func (m *workspaceModel) handleFolderSearchEvent(world *module.Content, ref, val
 	case "folder-search-all":
 		m.replaceFolderSearch(true)
 	case "folder-search-previous":
-		m.advanceFolderSearch(-12)
+		m.advanceFolderSearch(-folderSearchPageSize)
 	case "folder-search-next":
-		m.advanceFolderSearch(12)
+		m.advanceFolderSearch(folderSearchPageSize)
 	default:
 		if suffix, ok := strings.CutPrefix(ref, "folder-search-result-"); ok {
 			if index, err := strconv.Atoi(suffix); err == nil {
@@ -466,9 +522,9 @@ func (m *workspaceModel) folderSearchKeys(world *module.Content, state *input.St
 	case state.KeyPressed(input.KeyUp):
 		m.advanceFolderSearch(-1)
 	case state.KeyPressed(input.KeyPageDown):
-		m.advanceFolderSearch(12)
+		m.advanceFolderSearch(folderSearchPageSize)
 	case state.KeyPressed(input.KeyPageUp):
-		m.advanceFolderSearch(-12)
+		m.advanceFolderSearch(-folderSearchPageSize)
 	case state.KeyPressed(input.KeyEnter):
 		if pencodeControlFocused(world, m.surface, "folder-search-replacement") {
 			m.replaceFolderSearch(state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl) || state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper))

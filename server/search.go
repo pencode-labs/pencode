@@ -86,7 +86,6 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 				end += match.Start
 			}
 			start := max(lineStart, match.Start-80)
-			start = max(start, end-320)
 			for start > lineStart && !utf8.RuneStart(content[start]) {
 				start--
 			}
@@ -94,12 +93,12 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 			for end < len(content) && !utf8.RuneStart(content[end]) {
 				end--
 			}
-			file.Matches = append(file.Matches, protocol.TextMatch{Start: match.Start, End: match.End, Line: line, Column: utf8.RuneCountInString(content[lineStart:match.Start]) + 1, Preview: strings.Clone(strings.TrimSuffix(content[start:end], "\r"))})
+			file.Matches = append(file.Matches, protocol.TextMatch{Start: match.Start, End: match.End, Line: line, Column: utf8.RuneCountInString(content[lineStart:match.Start]) + 1, PreviewStart: start, Preview: strings.Clone(strings.TrimSuffix(content[start:end], "\r"))})
 		}
 		total += len(displayed)
 		budget += len(file.Path) + len(file.Digest) + 16
 		for _, match := range file.Matches {
-			budget += 20 + len(match.Preview)
+			budget += 24 + len(match.Preview)
 		}
 		if budget > protocol.MaxMessage-4096 {
 			searchErr = fmt.Errorf("搜索结果过大，请缩小文件夹范围")
@@ -194,6 +193,7 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 			e.U32(uint32(m.End))
 			e.U32(uint32(m.Line))
 			e.U32(uint32(m.Column))
+			e.U32(uint32(m.PreviewStart))
 			e.String(m.Preview)
 		}
 	}

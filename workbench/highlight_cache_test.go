@@ -2,11 +2,100 @@ package workbench
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 )
+
+func TestPencodePreviewSwitchReusesHighlightAfterReadingFile(t *testing.T) {
+	model, project := resourceTestModel(t)
+	defer model.closeHighlightWorker()
+	resourceTestWrite(t, project, "a.go", "package first\nfunc First() { println(1) }\n")
+	resourceTestWrite(t, project, "b.go", "package second\nfunc Second() { println(2) }\n")
+	open := func(path string) {
+		t.Helper()
+		if err := model.requestFileOpen(project, path, true, false, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := awaitFileIO(t, model); err != nil {
+			t.Fatal(err)
+		}
+		settlePencodeHighlight(t, model)
+	}
+	var expected [2][]scene.TextSpan2D
+	for i, path := range []string{"a.go", "b.go"} {
+		open(path)
+		expected[i] = slices.Clone(model.highlightScratch)
+	}
+	revision := model.highlightRevision
+	for i := range 100 {
+		path := []string{"a.go", "b.go"}[i%2]
+		previous := model.activeFile()
+		open(path)
+		if model.highlightRevision != revision || !slices.Equal(model.highlightScratch, expected[i%2]) {
+			t.Fatal("replacing a preview reparsed unchanged content or changed its highlighting")
+		}
+		if len(project.Files) != 1 || len(project.Tabs) != 1 || previous.document != nil || previous.Content != "" {
+			t.Fatal("replaced preview retained its document or editor state")
+		}
+	}
+	// A disk change must be read and parsed rather than restored from the cache.
+	changed := "package changed\n// updated on disk\nvar Value = \"new\"\n"
+	resourceTestWrite(t, project, "a.go", changed)
+	open("a.go")
+	if model.activeContent() != changed || model.highlightRevision == revision || slices.Equal(model.highlightScratch, expected[0]) {
+		t.Fatal("reopened preview reused stale content or highlighting")
+	}
+}
+
+func TestPencodePreviewHighlightCacheRetention(t *testing.T) {
+	var cache pencodeHighlightCache
+	file := openFile{Path: "preview.go", Preview: true, Content: "package demo\n"}
+	cache.put(pencodeHighlightCacheEntry{file: &file, source: file.Content})
+	if allocs := testing.AllocsPerRun(100, func() {
+		cache.retainPreview(&file)
+		cache.restorePreview(&file)
+	}); allocs != 0 {
+		t.Fatalf("warm preview cache allocated %g times", allocs)
+	}
+	file.Dirty = true
+	cache.retainPreview(&file)
+	if entry, ok := cache.get(&file, nil, nil); !ok || entry.file != &file {
+		t.Fatal("dirty preview lost its live cache entry")
+	}
+	file.Dirty = false
+	file.Preview = false
+	cache.retainPreview(&file)
+	if _, ok := cache.get(&file, nil, nil); !ok {
+		t.Fatal("pinned file lost its live cache entry")
+	}
+	cache.remove(&file)
+	for i := range 70 {
+		file = openFile{Path: "preview.go", Preview: true, Content: strings.Repeat("x", pencodeHighlightPreviewByteLimit/3+i)}
+		cache.put(pencodeHighlightCacheEntry{file: &file, source: file.Content, spans: []scene.TextSpan2D{{End: 1}}})
+		cache.retainPreview(&file)
+		bytes, spans := 0, 0
+		for _, entry := range cache.entries {
+			if entry.file != nil {
+				t.Fatal("preview cache retained the closed file")
+			}
+			bytes += len(entry.source)
+			spans += cap(entry.spans) + cap(entry.brackets)
+		}
+		if bytes > pencodeHighlightPreviewByteLimit || spans != cache.spans {
+			t.Fatalf("preview retention: bytes=%d spans=%d charged=%d", bytes, spans, cache.spans)
+		}
+	}
+	file = openFile{Path: "large.go", Preview: true, Content: strings.Repeat("x", pencodeHighlightPreviewByteLimit+1)}
+	cache.put(pencodeHighlightCacheEntry{file: &file, source: file.Content})
+	cache.retainPreview(&file)
+	cache.restorePreview(&file)
+	if _, ok := cache.get(&file, nil, nil); ok {
+		t.Fatal("oversized preview was retained")
+	}
+}
 
 func TestPencodeHighlightCachedSwitchDoesNotParseOrAllocate(t *testing.T) {
 	a := &openFile{Path: "a/main.go", Content: "package first\n// 中文\nvar First = 1\n"}

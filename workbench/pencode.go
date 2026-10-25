@@ -154,6 +154,7 @@ type workspaceModel struct {
 	files                               map[string]*openFile
 	tabs                                []string
 	tabScroll                           pencodeTabScroll
+	tabContext                          pencodeTabContext
 	activePath                          string
 	revealProject                       *pencodeProject
 	revealPath                          string // pending reveal row, empty when nothing is pending
@@ -449,7 +450,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					className += " active"
 					view.Attr("tab", "id", "active-tab")
 				} else {
-					view.RemoveAttr("tab", "id")
+					view.Attr("tab", "id", "file-tab:"+props.Path)
 				}
 				if props.Preview {
 					className += " preview"
@@ -580,6 +581,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	model.renderLanguageEditorPopups(view)
 	model.renderCloseDialog(view)
 	model.renderFileContext(view)
+	model.renderTabContext(view)
 	model.renderFolderSearch(view)
 	model.renderActions(view, actionDefinition)
 	model.renderExtensionUI(view)
@@ -922,6 +924,10 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		return
 	}
 	model.lastFileClick = 0
+	if model.handleTabContextEvent(context.World, context.Ref) {
+		markPencodeRootDirty(context, model)
+		return
+	}
 	if model.handleFolderSearchEvent(context.World, context.Ref, context.Event.Value) {
 		markPencodeRootDirty(context, model)
 		return
@@ -2151,6 +2157,9 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 		changed = true
 	}
 	if model.updateFileContext(context.World, state) {
+		changed = true
+	}
+	if model.updateTabContext(context.World, state) {
 		changed = true
 	}
 	if model.updateLanguageInteractions(context.World, state) {

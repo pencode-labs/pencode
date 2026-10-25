@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/module"
+	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/output"
@@ -73,8 +74,13 @@ type pencodeProblemGroupProps struct {
 	Group pencodeProblemGroup
 }
 
+type pencodeProblemGroupState struct {
+	rendered pencodeProblemGroupProps
+}
+
 type pencodeBottomPanel struct {
 	active                           pencodePanel
+	focusEditor                      bool
 	resizing                         bool
 	resizeY, resizeHeight            float32
 	heightStyle                      string
@@ -159,9 +165,18 @@ func (model *workspaceModel) setProblems(session *pencodeLanguageSession, uri ls
 		if p.diagnostics == nil {
 			p.diagnostics = make(map[pencodeDiagnosticKey][]lsp.Diagnostic)
 		}
+		previous := p.diagnostics[key]
 		p.diagnostics[key] = items
+		if slices.EqualFunc(previous, items, equalProblemDiagnostic) {
+			return
+		}
 	}
 	p.problemsDirty = true
+}
+
+func equalProblemDiagnostic(a, b lsp.Diagnostic) bool {
+	// Keep the latest server metadata without rebuilding identical visible rows.
+	return a.Range == b.Range && a.Severity == b.Severity && a.Source == b.Source && a.Message == b.Message
 }
 
 func (model *workspaceModel) clearSessionProblems(session *pencodeLanguageSession) {
@@ -269,15 +284,21 @@ func (model *workspaceModel) fileHasErrors(project *pencodeProject, path string)
 	return model.bottom.errorFiles[pencodeProblemFile{root, path}]
 }
 
-func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[pencodeProblemGroupProps, struct{}], error) {
+func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[pencodeProblemGroupProps, pencodeProblemGroupState], error) {
 	problemDefinition, err := newProblemDefinition(content)
 	if err != nil {
 		return nil, err
 	}
-	return module.ContentDefine[pencodeProblemGroupProps, struct{}](content,
+	return module.ContentDefine[pencodeProblemGroupProps, pencodeProblemGroupState](content,
 		htmlui.NewTemplate(`<div class="pencode-problem-group" role="listitem"><button data-ref="toggle" type="button" class="pencode-problem-row pencode-problem-group-toggle"><img data-ref="arrow" class="pencode-problem-group-arrow" alt=""><img data-ref="icon" class="pencode-problem-file-icon" alt=""><span data-ref="path"></span><span data-ref="count" class="pencode-problem-count"></span></button><div data-ref="items" class="pencode-problem-group-items" role="list"></div></div>`), "",
-		module.ContentBehavior[pencodeProblemGroupProps, struct{}]{
-			Render: func(c module.ContentRenderContext[pencodeProblemGroupProps, struct{}], view *htmlui.View) {
+		module.ContentBehavior[pencodeProblemGroupProps, pencodeProblemGroupState]{
+			Render: func(c module.ContentRenderContext[pencodeProblemGroupProps, pencodeProblemGroupState], view *htmlui.View) {
+				// Navigation can redraw the workbench without changing this file's problems.
+				if c.State.rendered == *c.Props {
+					view.PatchBindings()
+					return
+				}
+				c.State.rendered = *c.Props
 				model, group := c.Props.Model, c.Props.Group
 				view.Text("path", group.path)
 				class := ""
@@ -310,7 +331,7 @@ func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[penc
 		})
 }
 
-func handleProblemGroupEvent(c *module.ContentEventContext[pencodeProblemGroupProps, struct{}]) {
+func handleProblemGroupEvent(c *module.ContentEventContext[pencodeProblemGroupProps, pencodeProblemGroupState]) {
 	if c.Ref != "toggle" {
 		return
 	}
@@ -349,7 +370,7 @@ func handleProblemEvent(c *module.ContentEventContext[pencodeProblemProps, struc
 	markPencodeRootDirtyByModel(c.World, model)
 }
 
-func (model *workspaceModel) renderBottomPanel(view *htmlui.View, definition *htmlui.Definition[pencodeProblemGroupProps, struct{}]) {
+func (model *workspaceModel) renderBottomPanel(view *htmlui.View, definition *htmlui.Definition[pencodeProblemGroupProps, pencodeProblemGroupState]) {
 	model.captureOutputStatus()
 	model.renderTerminal(view)
 	if model.bottom.heightStyle != "" {
@@ -378,8 +399,8 @@ func (model *workspaceModel) renderBottomPanel(view *htmlui.View, definition *ht
 			p.problemGroups[0].expanded = true
 			p.problemGroupsInitialized = true
 		}
-		for i, group := range p.problemGroups {
-			htmlui.AppendComponentChild(view, "problem-list", uint64(i+1), definition, pencodeProblemGroupProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Group: *group}, struct{}{})
+		for _, group := range p.problemGroups {
+			htmlui.AppendComponentChild(view, "problem-list", componentKey(string(group.uri)), definition, pencodeProblemGroupProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Group: *group}, pencodeProblemGroupState{})
 		}
 	}
 	if out {
@@ -395,6 +416,24 @@ func setPanelVisible(view *htmlui.View, ref string, visible bool) {
 		view.RemoveAttr(ref, "hidden")
 	} else {
 		view.Attr(ref, "hidden", "")
+	}
+}
+
+func (model *workspaceModel) focusPanelEditor(world *module.Content) {
+	if !model.bottom.focusEditor {
+		return
+	}
+	model.bottom.focusEditor = false
+	if !model.textEditorActive() {
+		return
+	}
+	field, ok := module.ContentGet[engineui.TextField](world, model.editor.control)
+	if ok && world.Focus(model.editor.control) {
+		current := module.ContentMut[engineui.TextField](world, model.editor.control)
+		current.Caret, current.Anchor = field.Caret, field.Anchor
+		if textarea := module.ContentMut[engineui.Textarea](world, model.editor.control); textarea != nil {
+			textarea.RestoreScroll(textarea.ScrollX, textarea.ScrollY)
+		}
 	}
 }
 
@@ -456,7 +495,8 @@ func (model *workspaceModel) handleBottomPanelEvent(world *module.Content, ref, 
 		}
 		p.active = pencodePanelClosed
 		if world != nil {
-			world.Focus(model.editor.control)
+			// Restore focus after native pointer handling and panel layout finish.
+			p.focusEditor = true
 		}
 	case "output-source":
 		for _, c := range p.channels {

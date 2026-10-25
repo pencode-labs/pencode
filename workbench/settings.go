@@ -537,6 +537,10 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		}
 		return false
 	}
+	if model.tabContext.open {
+		model.languageUI.keysHandled = true
+		return model.handleTabContextKeys(world, state)
+	}
 	if model.fileContext.open || model.fileContext.dialog != "" {
 		model.languageUI.keysHandled = model.fileContext.open
 		return model.handleFileContextKeys(world, state)

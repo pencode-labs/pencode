@@ -12,17 +12,17 @@ import (
 )
 
 type pencodeTheme struct {
-	id              string
-	label           string
-	theme           *syntax.Theme
-	css             string
-	icons           map[pencodeIconKey]string
-	border, guide   graphics.ColorRGBA
-	link            graphics.ColorRGBA
-	bracket         graphics.ColorRGBA
-	diagnosticError graphics.ColorRGBA
-	editorStyle     engineui.StyleOverride[engineui.TextFieldStyle]
-	selectStyle     engineui.HTMLSelectStyle
+	id               string
+	label            string
+	theme            *syntax.Theme
+	css              string
+	icons            map[pencodeIconKey]string
+	border, guide    graphics.ColorRGBA
+	link             graphics.ColorRGBA
+	bracket          graphics.ColorRGBA
+	diagnosticColors [len(pencodeProblemSeverities)]graphics.ColorRGBA
+	editorStyle      engineui.StyleOverride[engineui.TextFieldStyle]
+	selectStyle      engineui.HTMLSelectStyle
 }
 
 type pencodeIconKey struct{ source, foreground string }
@@ -44,6 +44,9 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"find-previous-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"find-toggle-replace-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"folder-search-toggle-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"folder-search-close-icon", "icons/close.svg", "icon.foreground"},
+	{"folder-search-previous-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"folder-search-next-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"find-next-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"find-close-icon", "icons/close.svg", "icon.foreground"},
 	{"output-clear-icon", "icons/clear-all.svg", "icon.foreground"},
@@ -112,11 +115,11 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return dark
 		}
 		switch key {
-		case "problemsErrorIcon.foreground":
+		case "editorError.foreground", "problemsErrorIcon.foreground":
 			return decoration(syntax.Color{R: 244, G: 135, B: 113, A: 255}, syntax.Color{R: 232, G: 17, B: 35, A: 255}), nil
-		case "problemsWarningIcon.foreground":
+		case "editorWarning.foreground", "problemsWarningIcon.foreground":
 			return decoration(syntax.Color{R: 204, G: 167, B: 0, A: 255}, syntax.Color{R: 191, G: 136, B: 3, A: 255}), nil
-		case "problemsInfoIcon.foreground":
+		case "editorInfo.foreground", "problemsInfoIcon.foreground":
 			return decoration(syntax.Color{R: 117, G: 190, B: 255, A: 255}, syntax.Color{R: 26, G: 133, B: 255, A: 255}), nil
 		case "editorHint.foreground":
 			return decoration(syntax.Color{R: 178, G: 178, B: 178, A: 255}, syntax.Color{R: 108, G: 108, B: 108, A: 255}), nil
@@ -134,6 +137,8 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return decoration(syntax.Color{R: 100, G: 199, B: 213, A: 255}, syntax.Color{R: 0, G: 127, B: 140, A: 255}), nil
 		case "editor.findMatchHighlightBackground":
 			return syntax.Color{R: 234, G: 92, A: 85}, nil
+		case "editor.findMatchBackground":
+			return syntax.Color{R: 234, G: 92, A: 160}, nil
 		case "diffEditor.insertedLineBackground":
 			return syntax.Color{R: 40, G: 167, B: 69, A: 48}, nil
 		case "diffEditor.removedLineBackground":
@@ -247,14 +252,13 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 		return pencodeTheme{}, err
 	}
 	result.link = pencodeSyntaxColor(link)
-	errorColor, err := color("errorForeground")
-	if err != nil {
-		return pencodeTheme{}, err
+	for severity, key := range [...]string{"editorInfo.foreground", "editorError.foreground", "editorWarning.foreground", "editorInfo.foreground", "editorHint.foreground"} {
+		value, err := color(key)
+		if err != nil {
+			return pencodeTheme{}, err
+		}
+		result.diagnosticColors[severity] = pencodeSyntaxColor(value)
 	}
-	if value, ok := theme.LookupColor("editorError.foreground"); ok {
-		errorColor = value
-	}
-	result.diagnosticError = pencodeSyntaxColor(errorColor)
 	result.bracket = result.link
 	if value, ok := theme.LookupColor("editorBracketHighlight.foreground1"); ok {
 		result.bracket = pencodeSyntaxColor(value)

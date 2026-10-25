@@ -33,6 +33,7 @@ import (
 	"github.com/pencode-labs/pencode/output"
 	"github.com/pencode-labs/pencode/peb"
 	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/textsearch"
 )
 
 const (
@@ -201,7 +202,15 @@ type workspaceModel struct {
 	findCachedQuery                     string
 	replaceQuery                        string
 	findContent                         string
-	findMatches                         []int
+	findMatches                         []textsearch.Match
+	findOptions                         textsearch.Options
+	findCachedOptions                   textsearch.Options
+	findPattern                         *textsearch.Pattern
+	findError                           string
+	findRevision                        uint64
+	findSelection                       bool
+	findScope, findCachedScope          pencodeFindScope
+	folderSearch                        pencodeFolderSearch
 	findIndex                           int
 	findCountLabel                      string
 	quickWorker                         *latestWorker[pencodeQuickJob, pencodeQuickResult]
@@ -240,6 +249,7 @@ type workspaceModel struct {
 	closing                             pencodeCloseRequest
 	languageUI                          pencodeLanguageInteraction
 	fileContext                         pencodeFileContext
+	inputContext                        pencodeInputContext
 	fileClipboard                       pencodeFileClipboard
 	fileDrag                            pencodeFileDrag
 }
@@ -512,6 +522,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	inputContextDefinition, err := newInputContextDefinition()
+	if err != nil {
+		return nil, err
+	}
 	definitions.root, err = module.ContentDefine[appProps, appState](content,
 		htmlui.NewTemplate(page),
 		"",
@@ -521,6 +535,9 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					return
 				}
 				renderPencodeRoot(context, view, definitions.project, definitions.tab, definitions.market, definitions.connect, definitions.action)
+				if context.Props != nil && context.Props.Model != nil {
+					context.Props.Model.renderInputContext(view, inputContextDefinition)
+				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderProjectPicker(view, directoryDefinition)
 				}
@@ -563,6 +580,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	model.renderLanguageEditorPopups(view)
 	model.renderCloseDialog(view)
 	model.renderFileContext(view)
+	model.renderFolderSearch(view)
 	model.renderActions(view, actionDefinition)
 	model.renderExtensionUI(view)
 	model.renderMarketplace(view, marketDefinition)
@@ -613,6 +631,28 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("find-close", htmlui.EventClick)
 	view.Event("replace-one", htmlui.EventClick)
 	view.Event("replace-all", htmlui.EventClick)
+	view.Event("find-toggle-replace", htmlui.EventClick)
+	view.Event("find-selection", htmlui.EventClick)
+	view.Event("find-preserve", htmlui.EventClick)
+	renderFindToggle(view, "find-selection", model.findSelection)
+	renderFindToggle(view, "find-preserve", model.findOptions.PreserveCase)
+	renderSearchOptions(view, pencodeFindOptionRefs, model.findOptions)
+	view.Attr("find-query", "value", model.findQuery)
+	view.Attr("replace-query", "value", model.replaceQuery)
+	renderReplaceToggle(view, "find-toggle-replace", model.replaceOpen)
+	view.Text("find-error", model.findError)
+	if model.findError == "" {
+		view.Attr("find-error", "hidden", "")
+	} else {
+		view.RemoveAttr("find-error", "hidden")
+	}
+	for _, ref := range [...]string{"find-previous", "find-next", "replace-one", "replace-all"} {
+		if len(model.findMatches) == 0 {
+			view.Attr(ref, "disabled", "")
+		} else {
+			view.RemoveAttr(ref, "disabled")
+		}
+	}
 	view.Event("quick-open-query", htmlui.EventInput)
 	for _, ref := range pencodeQuickRowRefs {
 		view.Event(ref, htmlui.EventClick)
@@ -859,6 +899,13 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		return
 	}
 	model := context.Props.Model
+	inputContextDismissed := model.inputContext.open && !strings.HasPrefix(context.Ref, "input-context-")
+	if inputContextDismissed {
+		model.inputContext.open = false
+		model.inputContext.activate = false
+		model.inputContext.restore = false
+		markPencodeRootDirty(context, model)
+	}
 	if overlay := model.actions.ui.overlay; overlay != nil && overlay.ui.Kind == peb.Dialog && model.closing.action == pencodeCloseNone && model.fileContext.dialog == "" && context.Ref != "window-close" {
 		return
 	}
@@ -875,6 +922,10 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		return
 	}
 	model.lastFileClick = 0
+	if model.handleFolderSearchEvent(context.World, context.Ref, context.Event.Value) {
+		markPencodeRootDirty(context, model)
+		return
+	}
 	if model.handleFileContextEvent(context.World, context.Ref, context.Event.Value) {
 		markPencodeRootDirty(context, model)
 		return
@@ -1882,6 +1933,7 @@ func (model *workspaceModel) applyFileContent(file *openFile, project *pencodePr
 		file.document.Update(file.Content, value, start, oldSuffix, newSuffix)
 	}
 	file.Content = value
+	model.rebaseFindScope(file, start, oldSuffix, newSuffix)
 	file.Dirty = file.Content != file.savedContent
 	if project != nil {
 		pinProjectFile(project, file.Path)
@@ -2068,6 +2120,14 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	state, ok := module.ContentResource[*input.State](context.World)
 	if !ok {
 		return nil
+	}
+	if handled, changed := model.updateInputContext(context.World, state); handled {
+		if changed {
+			markPencodeRootDirtyByModel(context.World, model)
+		}
+		return nil
+	} else if changed {
+		markPencodeRootDirtyByModel(context.World, model)
 	}
 	handled, uiChanged := model.updateExtensionUI(context.World, state)
 	if uiChanged {

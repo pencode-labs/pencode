@@ -32,6 +32,7 @@ type pencodeFileClipboard struct {
 
 var pencodeFileContextRefs = [...]string{
 	"file-context-open", "file-context-new-file", "file-context-new-folder",
+	"file-context-find",
 	"file-context-cut", "file-context-copy", "file-context-paste",
 	"file-context-copy-path", "file-context-copy-relative", "file-context-rename", "file-context-delete", "file-context-refresh",
 }
@@ -100,7 +101,7 @@ func (model *workspaceModel) fileContextEnabled(ref string) bool {
 
 func (model *workspaceModel) updateFileContext(world *module.Content, state *input.State) bool {
 	c := &model.fileContext
-	if model.settingsOpen || model.quickOpen || model.sidebarHidden || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
+	if model.folderSearch.open || model.settingsOpen || model.quickOpen || model.sidebarHidden || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
 		changed := c.open || c.dialog != ""
 		*c = pencodeFileContext{}
 		return changed
@@ -285,6 +286,8 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 	c.open = false
 	project, relative := c.project, c.path
 	switch action := strings.TrimPrefix(ref, "file-context-"); action {
+	case "find":
+		model.openFolderSearch(project, model.fileContextDirectory(), false)
 	case "new-file", "new-folder", "rename", "delete":
 		c.dialog, c.needsFocus, c.err, c.name = action, true, "", ""
 		switch action {

@@ -129,12 +129,14 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 			return err
 		}
 		return browseDirectory(ctx, directory, e)
-	case protocol.GitCommand, protocol.GitRepositories, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen:
+	case protocol.GitCommand, protocol.GitRepositories, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen, protocol.TextSearch:
 		if root == "" {
 			return protocol.ErrProtocol
 		}
 	}
 	switch op {
+	case protocol.TextSearch:
+		return s.searchText(ctx, root, &d, e)
 	case protocol.GitCommand:
 		return s.git(ctx, root, &d, e)
 	case protocol.GitRepositories:

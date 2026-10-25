@@ -541,6 +541,9 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		model.languageUI.keysHandled = model.fileContext.open
 		return model.handleFileContextKeys(world, state)
 	}
+	if model.folderSearch.open {
+		return model.folderSearchKeys(world, state)
+	}
 	if model.closing.action != pencodeCloseNone {
 		if state.KeyPressed(input.KeyEscape) {
 			model.clearCloseRequest()
@@ -617,11 +620,21 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		}
 	}
 	if model.findOpen {
+		if option := searchOptionKey(state); option >= 0 {
+			toggleSearchOption(&model.findOptions, option)
+			model.refreshFindMatches()
+			model.findFromCaret(world)
+			return true
+		}
 		if state.KeyPressed(input.KeyEscape) {
 			model.closeFind(world)
 			return true
 		}
-		if state.KeyPressed(input.KeyEnter) {
+		if state.KeyPressed(input.KeyEnter) && (pencodeControlFocused(world, model.surface, "find-query") || pencodeControlFocused(world, model.surface, "replace-query")) {
+			if pencodeControlFocused(world, model.surface, "replace-query") {
+				model.replaceFindMatch(world, state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl) || state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper))
+				return true
+			}
 			step := 1
 			if state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift) {
 				step = -1
@@ -629,6 +642,22 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			model.advanceFind(world, step)
 			return true
 		}
+	}
+	if state.KeyPressed(input.KeyF3) && model.textEditorActive() {
+		step := 1
+		if state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift) {
+			step = -1
+		}
+		model.advanceFind(world, step)
+		return true
+	}
+	primary := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
+	if goos == "darwin" {
+		primary = state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
+	}
+	if primary && (state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)) && (state.KeyPressed(input.KeyF) || state.KeyPressed(input.KeyH)) {
+		model.openFolderSearch(model.activeProjectState(), "", state.KeyPressed(input.KeyH))
+		return true
 	}
 	if model.handleLanguageKeys(world, state) {
 		return true

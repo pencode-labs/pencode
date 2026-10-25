@@ -199,7 +199,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 	}
 	ui := &model.languageUI
 	ui.keysHandled = false
-	if model.fileContext.open || model.fileContext.dialog != "" || !model.textEditorActive() || model.settingsOpen || model.quickOpen || model.findOpen || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
+	if model.folderSearch.open || model.fileContext.open || model.fileContext.dialog != "" || !model.textEditorActive() || model.settingsOpen || model.quickOpen || model.findOpen || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
 		changed := ui.contextOpen || ui.hover.open || ui.hover.link || model.languages != nil && (model.languages.panel.open || model.languages.panel.completion)
 		model.cancelLanguageAutomatic()
 		model.cancelLanguageHover()

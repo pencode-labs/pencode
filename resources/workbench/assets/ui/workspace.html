@@ -325,18 +325,29 @@
           <button id="lsp-context-22" data-ref="lsp-context-22" type="button" role="menuitem" tabindex="-1">拉取诊断</button>
         </div>
         <div data-ref="find-bar" class="pencode-find" hidden>
-          <div class="pencode-find-row">
-            <input id="find-query" data-ref="find-query" type="text" aria-label="查找" placeholder="查找">
-            <span data-ref="find-count" class="pencode-find-count"></span>
-            <button data-ref="find-previous" class="pencode-find-action pencode-find-previous" type="button" title="上一个匹配" aria-label="上一个匹配"><img data-ref="find-previous-icon" src="icons/chevron-right.svg" alt=""></button>
-            <button data-ref="find-next" class="pencode-find-action" type="button" title="下一个匹配" aria-label="下一个匹配"><img data-ref="find-next-icon" src="icons/chevron-right.svg" alt=""></button>
-            <button data-ref="find-close" class="pencode-find-action" type="button" title="关闭查找" aria-label="关闭查找"><img data-ref="find-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
+          <div class="pencode-find-layout">
+            <button id="find-toggle-replace" data-ref="find-toggle-replace" class="pencode-find-toggle" type="button" title="展开替换" aria-label="展开替换" aria-expanded="false"><img data-ref="find-toggle-replace-icon" src="icons/chevron-right.svg" alt=""></button>
+            <div class="pencode-find-rows">
+              <div class="pencode-find-row">
+                <input id="find-query" data-ref="find-query" type="text" aria-label="查找" placeholder="查找">
+                <button data-ref="find-case" class="pencode-find-action pencode-find-option" type="button" title="区分大小写" aria-label="区分大小写" aria-pressed="false">Aa</button>
+                <button data-ref="find-word" class="pencode-find-action pencode-find-option" type="button" title="全字匹配" aria-label="全字匹配" aria-pressed="false">ab</button>
+                <button data-ref="find-regex" class="pencode-find-action pencode-find-option" type="button" title="使用正则表达式" aria-label="使用正则表达式" aria-pressed="false">.*</button>
+                <button data-ref="find-selection" class="pencode-find-action pencode-find-option" type="button" title="在选定内容中查找" aria-label="在选定内容中查找" aria-pressed="false">≡</button>
+                <span data-ref="find-count" class="pencode-find-count"></span>
+                <button data-ref="find-previous" class="pencode-find-action pencode-find-previous" type="button" title="上一个匹配" aria-label="上一个匹配"><img data-ref="find-previous-icon" src="icons/chevron-right.svg" alt=""></button>
+                <button data-ref="find-next" class="pencode-find-action" type="button" title="下一个匹配" aria-label="下一个匹配"><img data-ref="find-next-icon" src="icons/chevron-right.svg" alt=""></button>
+                <button data-ref="find-close" class="pencode-find-action" type="button" title="关闭查找" aria-label="关闭查找"><img data-ref="find-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
+              </div>
+              <div data-ref="replace-row" class="pencode-find-row" hidden>
+                <input id="replace-query" data-ref="replace-query" type="text" aria-label="替换为" placeholder="替换为">
+                <button data-ref="find-preserve" class="pencode-find-action pencode-find-option" type="button" title="保留大小写" aria-label="保留大小写" aria-pressed="false">AB</button>
+                <button data-ref="replace-one" class="pencode-replace-action" type="button">替换</button>
+                <button data-ref="replace-all" class="pencode-replace-action" type="button">全部替换</button>
+              </div>
+            </div>
           </div>
-          <div data-ref="replace-row" class="pencode-find-row" hidden>
-            <input id="replace-query" data-ref="replace-query" type="text" aria-label="替换为" placeholder="替换为">
-            <button data-ref="replace-one" class="pencode-replace-action" type="button">替换</button>
-            <button data-ref="replace-all" class="pencode-replace-action" type="button">全部替换</button>
-          </div>
+          <p data-ref="find-error" class="pencode-find-error" role="alert" hidden></p>
         </div>
         <div data-ref="editor-empty" class="pencode-editor-empty" hidden>
           <span class="pencode-editor-empty-mark">/</span>
@@ -431,6 +442,7 @@
   <div data-ref="extension-modal-shade" class="pencode-extension-shade" hidden></div>
   <div id="pencode-extension-overlays" data-ref="extension-overlays" class="pencode-extension-overlays"></div>
   <div id="source-overlay" data-ref="source-overlay" class="sc-overlay"></div>
+  <div data-ref="input-context-slot" class="pencode-input-context-layer"></div>
   <div id="terminal-context" data-ref="terminal-context" class="pencode-editor-context pencode-terminal-context" role="menu" aria-label="终端操作" hidden>
     <button id="terminal-copy" data-ref="terminal-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span class="pencode-context-hint">Ctrl+Shift+C</span></button>
     <button id="terminal-paste" data-ref="terminal-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span class="pencode-context-hint">Ctrl+Shift+V</span></button>
@@ -441,6 +453,7 @@
     <div class="pencode-context-separator" role="separator"></div>
     <button id="file-context-new-file" data-ref="file-context-new-file" type="button" role="menuitem" tabindex="-1">新建文件…</button>
     <button id="file-context-new-folder" data-ref="file-context-new-folder" type="button" role="menuitem" tabindex="-1">新建文件夹…</button>
+    <button id="file-context-find" data-ref="file-context-find" type="button" role="menuitem" tabindex="-1">Find in Folder...</button>
     <div class="pencode-context-separator" role="separator"></div>
     <button id="file-context-cut" data-ref="file-context-cut" type="button" role="menuitem" tabindex="-1">剪切</button>
     <button id="file-context-copy" data-ref="file-context-copy" type="button" role="menuitem" tabindex="-1">复制</button>
@@ -455,6 +468,41 @@
     <button id="file-context-refresh" data-ref="file-context-refresh" type="button" role="menuitem" tabindex="-1">刷新列表</button>
     <div data-ref="actions-left-context" class="pencode-context-actions" role="group" aria-label="扩展操作"></div>
   </div>
+  <div id="folder-search" data-ref="folder-search" class="pencode-close-overlay" hidden>
+    <section id="folder-search-panel" class="pencode-folder-search" role="dialog" aria-modal="true" aria-labelledby="folder-search-title">
+      <header class="pencode-folder-header">
+        <span id="folder-search-title">在文件夹中查找</span>
+        <button id="folder-search-close" data-ref="folder-search-close" class="pencode-replace-action" type="button" aria-label="关闭搜索">关闭 (Esc)</button>
+      </header>
+      <p data-ref="folder-search-scope" class="pencode-folder-scope"></p>
+      <div class="pencode-find-layout">
+        <button id="folder-search-toggle" data-ref="folder-search-toggle" class="pencode-find-toggle" type="button" aria-expanded="false" title="展开替换" aria-label="展开替换"><img data-ref="folder-search-toggle-icon" src="icons/chevron-right.svg" alt=""></button>
+        <div class="pencode-find-rows">
+          <div class="pencode-find-row">
+            <input id="folder-search-query" data-ref="folder-search-query" type="text" aria-label="搜索文本" placeholder="搜索文本" autocomplete="off" spellcheck="false">
+            <button data-ref="folder-search-case" class="pencode-find-action pencode-find-option" type="button" title="区分大小写" aria-label="区分大小写" aria-pressed="false">Aa</button>
+            <button data-ref="folder-search-word" class="pencode-find-action pencode-find-option" type="button" title="全字匹配" aria-label="全字匹配" aria-pressed="false">ab</button>
+            <button data-ref="folder-search-regex" class="pencode-find-action pencode-find-option" type="button" title="使用正则表达式" aria-label="使用正则表达式" aria-pressed="false">.*</button>
+            <button id="folder-search-run" data-ref="folder-search-run" class="pencode-replace-action" type="button">搜索</button>
+          </div>
+          <div data-ref="folder-search-replace-row" class="pencode-find-row" hidden>
+            <input id="folder-search-replacement" data-ref="folder-search-replacement" type="text" aria-label="替换为" placeholder="替换为（正则支持 $1、${name}）" autocomplete="off" spellcheck="false">
+            <button data-ref="folder-search-preserve" class="pencode-find-action pencode-find-option" type="button" title="保留大小写" aria-label="保留大小写" aria-pressed="false">AB</button>
+            <button id="folder-search-one" data-ref="folder-search-one" class="pencode-replace-action" type="button" title="替换选中的匹配">替换</button>
+            <button id="folder-search-all" data-ref="folder-search-all" class="pencode-replace-action" type="button">全部替换</button>
+          </div>
+        </div>
+      </div>
+      <div class="pencode-folder-toolbar">
+        <span data-ref="folder-search-status" role="status" class="pencode-folder-status"></span>
+        <span data-ref="folder-search-page" class="pencode-find-count"></span>
+        <button id="folder-search-previous" data-ref="folder-search-previous" class="pencode-replace-action" type="button" title="上一页 (PageUp)">上一页</button>
+        <button id="folder-search-next" data-ref="folder-search-next" class="pencode-replace-action" type="button" title="下一页 (PageDown)">下一页</button>
+      </div>
+      <div id="folder-search-results" data-ref="folder-search-results" class="pencode-folder-results" role="listbox" aria-label="搜索结果"></div>
+    </section>
+  </div>
+
   <div data-ref="file-dialog" class="pencode-close-overlay" hidden>
     <section class="pencode-close-dialog" role="dialog" aria-modal="true" aria-labelledby="file-dialog-title" aria-describedby="file-dialog-message">
       <h2 id="file-dialog-title" data-ref="file-dialog-title"></h2>

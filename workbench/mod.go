@@ -103,6 +103,7 @@ func (m *Mod) Enter(c *module.Context, _ module.SceneStartup) error {
 		m.model.highlightWorker = local.highlightWorker
 		m.model.highlightRevision = local.highlightRevision
 		m.model.lastFileClick = 0
+		m.model.inputContext = pencodeInputContext{}
 		m.model.resetHighlight()
 	}
 	m.model.screen = m.screen
@@ -202,9 +203,10 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 	activePath := m.model.activePath
 	treeChanged := m.model.pollProjectScans()
 	quickChanged := m.model.pollQuickMatches()
+	folderChanged := m.model.pollFolderSearch()
 	hoverChanged := m.model.pollHoverMarkup()
 	referenceChanged := m.model.pollReferencePreviews()
-	if treeChanged || quickChanged || hoverChanged || referenceChanged {
+	if treeChanged || quickChanged || folderChanged || hoverChanged || referenceChanged {
 		if activePath != m.model.activePath {
 			setPencodeEditorValue(c.Content(), m.model.surface, m.model.activeContent())
 		}
@@ -293,6 +295,7 @@ func (m *Mod) Destroy(c *module.Context) error {
 		m.model.editor.dispose(c.Content())
 		m.model.closeHighlightWorker()
 		m.model.closeQuickWorker()
+		m.model.closeFolderSearchWorker()
 		m.model.closeHoverWorker()
 		m.model.closeReferenceWorker()
 	}

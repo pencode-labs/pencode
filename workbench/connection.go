@@ -177,6 +177,8 @@ func (model *workspaceModel) retireConnection(closeBackend bool) {
 	for view := range s.views {
 		view.model.closeHighlightWorker()
 		view.model.closeQuickWorker()
+		view.model.closeFolderSearch(nil)
+		view.model.closeFolderSearchWorker()
 		view.model.closeHoverWorker()
 		view.model.closeReferenceWorker()
 	}

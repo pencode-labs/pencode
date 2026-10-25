@@ -42,6 +42,8 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"reveal-active-file-icon", "icons/locate-fixed.svg", "icon.foreground"},
 	{"reload-from-disk-icon", "icons/refresh-cw.svg", "icon.foreground"},
 	{"find-previous-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"find-toggle-replace-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"folder-search-toggle-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"find-next-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"find-close-icon", "icons/close.svg", "icon.foreground"},
 	{"output-clear-icon", "icons/clear-all.svg", "icon.foreground"},

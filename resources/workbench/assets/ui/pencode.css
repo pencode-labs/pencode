@@ -741,7 +741,7 @@ textarea:focus {
     top: 8px;
     right: 16px;
     z-index: 12;
-    width: 390px;
+    width: 550px;
     max-width: calc(100% - 74px);
     padding: 4px;
     border: 1px solid var(--vscode-editorWidget-border);
@@ -758,11 +758,62 @@ textarea:focus {
     min-height: 28px;
 }
 
+.pencode-find-layout {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 5px;
+}
+
+.pencode-find-rows {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.pencode-find-rows > .pencode-find-row + .pencode-find-row {
+    margin-top: 0;
+}
+
+.pencode-find-toggle {
+    display: flex;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-editorWidget-foreground);
+}
+
+.pencode-find-toggle:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pencode-find-toggle img {
+    width: 16px;
+    height: 16px;
+    transition: transform 100ms ease-out;
+}
+
+.pencode-find-toggle.expanded img {
+    transform: rotate(90deg);
+}
+
+.pencode-find-toggle.expanded {
+    height: 61px;
+}
+
 .pencode-find-row + .pencode-find-row {
     margin-top: 5px;
 }
 
-.pencode-find input {
+.pencode-find input,
+.pencode-folder-search input {
     flex: 1;
     min-width: 0;
     height: 27px;
@@ -775,7 +826,8 @@ textarea:focus {
     font-size: calc(12rem / 14);
 }
 
-.pencode-find input:focus {
+.pencode-find input:focus,
+.pencode-folder-search input:focus {
     border-color: var(--vscode-focusBorder);
     outline: none;
 }
@@ -816,6 +868,21 @@ textarea:focus {
     color: var(--vscode-textLink-foreground);
     font-size: calc(11rem / 14);
 }
+
+.pencode-find-option { font-size: calc(12rem / 14); border: 1px solid transparent; border-radius: 3px; }
+.pencode-find-option.active { border-color: var(--vscode-focusBorder); background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.pencode-find-error { margin: 5px 4px 0; color: var(--vscode-errorForeground); font-size: calc(12rem / 14); }
+.pencode-folder-search { width: 720px; max-width: calc(100% - 32px); max-height: calc(100% - 64px); padding: 12px; border: 1px solid var(--vscode-editorWidget-border); border-radius: 8px; background: var(--vscode-editorWidget-background); color: var(--vscode-editorWidget-foreground); box-shadow: 0 8px 22px var(--vscode-widget-shadow); display: flex; flex-direction: column; gap: 8px; }
+.pencode-folder-header, .pencode-folder-toolbar { display: flex; align-items: center; gap: 8px; }
+.pencode-folder-header { justify-content: space-between; font-weight: 600; }
+.pencode-folder-scope { margin: 0; color: var(--vscode-descriptionForeground); font-size: calc(12rem / 14); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pencode-folder-status { flex: 1; min-width: 0; font-size: calc(12rem / 14); color: var(--vscode-descriptionForeground); }
+.pencode-folder-results { min-height: 80px; max-height: 440px; overflow-y: auto; }
+.pencode-folder-result { display: flex; flex-direction: column; align-items: stretch; width: 100%; padding: 5px 8px; gap: 2px; text-align: left; border: 1px solid transparent; border-radius: 3px; }
+.pencode-folder-result:hover { background: var(--vscode-list-hoverBackground); }
+.pencode-folder-result.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.pencode-folder-location { font-size: calc(11rem / 14); opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pencode-folder-preview { font-family: monospace; font-size: calc(12rem / 14); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 
 .pencode-line-numbers {
     position: absolute;
@@ -1007,6 +1074,9 @@ textarea:focus {
 
 .pencode-editor-context button:disabled { opacity: .45; }
 .pencode-editor-context button.active { background: var(--vscode-list-hoverBackground); }
+
+.pencode-input-context-layer { position: absolute; inset: 0; z-index: 60; pointer-events: none; }
+.pencode-input-context { z-index: 60; pointer-events: auto; }
 
 .pencode-editor-empty {
     position: absolute;

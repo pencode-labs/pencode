@@ -26,7 +26,7 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 	if state.PointerPressed() || state.KeyPressed(input.KeyEnter) || state.KeyPressed(input.KeySpace) {
 		drag.suppressClick = false
 	}
-	if model.screen != pencodeWorkspace || model.sidebarHidden || model.settingsOpen || model.quickOpen || model.fileContext.open || model.fileContext.dialog != "" || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open || state.KeyPressed(input.KeyEscape) || state.MousePressed(input.MouseRight) {
+	if model.folderSearch.open || model.screen != pencodeWorkspace || model.sidebarHidden || model.settingsOpen || model.quickOpen || model.fileContext.open || model.fileContext.dialog != "" || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open || state.KeyPressed(input.KeyEscape) || state.MousePressed(input.MouseRight) {
 		active := drag.active
 		*drag = pencodeFileDrag{suppressClick: drag.suppressClick}
 		return active

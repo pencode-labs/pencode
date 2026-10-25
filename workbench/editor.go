@@ -33,6 +33,7 @@ type pencodeEditor struct {
 	linkPaint                                            pencodeOverlayKey
 	brackets                                             pencodeBracketIndex
 	diagnostics                                          pencodeDiagnosticPaint
+	findPaint                                            pencodeFindPaint
 	layoutKey                                            pencodeGutterLayoutKey
 	caretContent                                         string
 	caretInfo                                            string
@@ -62,6 +63,9 @@ func (editor *pencodeEditor) saveView(world *module.Content, model *workspaceMod
 	textarea, scrollOK := module.ContentGet[engineui.Textarea](world, editor.control)
 	if ok && scrollOK {
 		editor.file.editorView = pencodeEditorView{field.Caret, field.Anchor, textarea.ScrollX, textarea.ScrollY}
+		if model.findOpen && !model.findSelection && field.Focused && field.Caret != field.Anchor {
+			model.captureFindScope(world)
+		}
 	}
 }
 
@@ -161,7 +165,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 	model.focusFindInput(world, surface)
 	if editor.file != file || editor.needsFocus {
 		editor.needsFocus = false
-		if !model.quickOpen && !model.findOpen && !model.settingsOpen && model.closing.action == pencodeCloseNone {
+		if !model.folderSearch.open && !model.quickOpen && !model.findOpen && !model.settingsOpen && model.closing.action == pencodeCloseNone {
 			// A comparison tab can still hide this control until HTML reconciles.
 			// Retry on the next frame once the file editor is interactive again.
 			editor.needsFocus = !world.Focus(editor.control)
@@ -420,6 +424,7 @@ func (editor *pencodeEditor) syncWidthGuide(world *module.Content, widthPercent 
 
 func (editor *pencodeEditor) dispose(world *module.Content) {
 	editor.diagnostics.dispose(world)
+	editor.findPaint.dispose(world)
 	world.Despawn(editor.numbers)
 	world.Despawn(editor.gutter)
 	world.Despawn(editor.guide)

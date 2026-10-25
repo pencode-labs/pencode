@@ -89,6 +89,7 @@ func (s *Session) syncLayout() {
 	model := s.active.model
 	model.focusQuickControls(model.fontResources, model.surface)
 	model.focusConnectionPassword(model.fontResources)
+	defer model.syncInputContext(model.fontResources)
 	if s.active.screen != pencodeWorkspace {
 		return
 	}
@@ -107,11 +108,14 @@ func (s *Session) syncLayout() {
 	}
 	model.syncExtensionUI(model.fontResources)
 	model.focusFileContext(model.fontResources)
+	model.focusFindInput(model.fontResources, model.surface)
+	model.focusFolderSearch(model.fontResources)
 	model.constrainFileContext(model.fontResources)
 	model.focusLanguageControls(model.fontResources)
 	model.editor.syncCaretStatus(model.fontResources, model.surface, model)
 	model.editor.syncGutter(model.fontResources, model.surface, model)
 	model.editor.diagnostics.sync(model.fontResources, model)
+	model.editor.findPaint.sync(model.fontResources, model)
 	model.constrainLanguagePopups(model.fontResources)
 	model.editor.saveView(model.fontResources, model)
 }

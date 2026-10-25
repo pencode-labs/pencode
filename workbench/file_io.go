@@ -23,6 +23,7 @@ const (
 	fileReload
 	fileCloseWorkspace
 	fileLanguageEdit
+	fileSearchReplace
 )
 const fileIOCapacity = 32
 
@@ -59,12 +60,15 @@ type fileIOJob struct {
 	reload                                                []fileReloadResult
 	navigation                                            *fileNavigation
 	language                                              *languageEditPlan
+	searchReplace                                         *folderReplacePlan
 }
 type fileNavigation struct {
-	line    int
-	offset  func(string) (int, error)
-	history bool
-	query   string
+	line        int
+	offset      func(string) (int, error)
+	history     bool
+	query       string
+	searchMatch *protocol.TextMatch
+	digest      string
 }
 type fileIOResult struct {
 	job                  *fileIOJob
@@ -204,6 +208,8 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		r.destination, r.err = j.backend.Transfer(j.ctx, j.workspace, j.targetWorkspace, j.relative, j.destination, j.cut, j.duplicate)
 	case fileLanguageEdit:
 		r.err = executeLanguageEdit(j)
+	case fileSearchReplace:
+		r.err = executeFolderReplace(j)
 	case fileReload:
 		r.reload = j.reload
 		for i := range r.reload {
@@ -259,6 +265,7 @@ func (m *workspaceModel) submitFileIO(j *fileIOJob) error {
 	return nil
 }
 func (m *workspaceModel) stopFileIO() {
+	m.folderSearch.replacing = false
 	if m.fileIO != nil {
 		m.fileIO.cancel()
 		for _, j := range m.fileIO.pending {
@@ -283,7 +290,7 @@ func (m *workspaceModel) cancelProjectFileIO(p *pencodeProject) {
 func (m *workspaceModel) fileIOMutating(p *pencodeProject) bool {
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
-			if (j.project == p || j.target == p) && j.kind >= fileCreate && j.kind <= fileTransfer {
+			if (j.project == p || j.target == p) && (j.kind >= fileCreate && j.kind <= fileTransfer || j.kind == fileSearchReplace) {
 				return true
 			}
 		}
@@ -341,6 +348,10 @@ func (m *workspaceModel) pollFileIO() bool {
 }
 func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 	j := r.job
+	if j.kind == fileSearchReplace {
+		m.acceptFolderReplace(r)
+		return
+	}
 	if j.kind == fileOpenWorkspace {
 		if r.err != nil {
 			m.setActiveStatus("打开项目失败：" + r.err.Error())
@@ -453,6 +464,10 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 }
 func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n *fileNavigation) {
 	if n == nil || f == nil {
+		return
+	}
+	if n.searchMatch != nil {
+		m.finishSearchNavigation(p, f, n)
 		return
 	}
 	if n.history {

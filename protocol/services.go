@@ -41,6 +41,7 @@ const (
 	PortConnect
 	StreamCloseWrite
 	GitRepositories
+	TextSearch
 )
 
 type Port struct {

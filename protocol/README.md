@@ -1,4 +1,4 @@
-# Pencode CS v4
+# Pencode CS v7
 
 GUI 和无头服务通过有序双向字节流通信。本地传输是子进程管道，远端传输是 OpenSSH 加密的 stdin/stdout；不监听或转发服务端端口，协议与具体传输无关。所有整数采用小端编码；不传递 Go 指针或渲染对象。旧版本不兼容。
 
@@ -7,7 +7,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 4 |
+| 4 | 2 | 协议版本，当前 7 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -15,7 +15,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 
 payload 中的字符串为 `u32 长度 + 原始字节`，数组为 `u32 元素数 + 元素`，字段按序排列，不允许尾随字节。Reader 返回的 payload 借用其缓冲区，仅在下一次 Read 之前有效。大请求由同一 request ID 的若干 Data 帧和最终请求帧组成，大响应由 Data 帧和最终 Reply 帧组成，组装总量上限 64 MiB。客户端最多保留 64 个未完成请求，上传及未完成响应分别限制为 128 MiB 逻辑 payload；已取消但仍由写协程持有的上传继续计费，上传超限返回 Busy，响应超限关闭连接。不同请求的分块可以交错；客户端在大上传块之间轮转调度普通请求，取消优先。服务端未完成的上传合计上限 128 MiB。
 
-v4 的文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
+v7 使用 peb v8 注册格式，增加扩展调试适配器和文档语言覆盖；保留调试适配器与调试终端服务，GUI、server 与扩展需同时更新。文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
 
 首个请求必须是空 Hello，服务端返回空 Reply。之后支持：
 
@@ -57,6 +57,8 @@ ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存
 | FileSave | path:string, diskBaseline:string, result:string | 空 |
 | DiffPatch | left:bytes, right:bytes | unifiedPatch:bytes |
 | ProcessOpen / TerminalOpen | cols:u32, rows:u32, command:string, args:string[] | stream:u64, stderrStream:u64 |
+| DebugAdapterOpen | adapter:string（Delve / stdio / tcp）, command:string, address:string, args:string[] | stream:u64, stderrStream:u64 |
+| DebugTerminalOpen | cwd:string, args:string[], count:u32, {key:string, present:u32, [value:string]}[] | pid:u32, stream:u64, stderrStream:u64（零） |
 | StreamRead | stream:u64 | eof:u32, data:bytes |
 | StreamWrite | stream:u64, data:bytes | 空 |
 | PortList | 空（root 为空） | count:u32, {port:u32, host:string, pid:u32, process:string}[] |
@@ -100,7 +102,7 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 
 解析会话由客户端分配 ID，每连接最多 8 个，初始 baseVersion 为 0。增量范围采用 UTF-8 字节边界；结果只包含语言和 capture，不含颜色、字体、HTML、ECS 或 GPU 数据。captures 编码为 `prefix:u32, removed:u32, inserted:u32 + {start:u32, end:u32, captureID:u32, [name:string]}[inserted]`。保留上次结果的前 prefix 项，将之后的 removed 项替换为传回的 inserted 项，并将剩余后缀的起止位置加上本次源码字节长度变化。服务端比较解析后的真实 capture，允许多行注释等语法变化扩大替换范围；初次返回完整列表。名称表在解析会话内保留，captureID 从零递增；ID 首次出现时紧跟名称，后续复用 ID。释放会话后清空 capture 和名称表。本地按主题和 capture 映射着色，主题切换不发送解析请求。
 
-`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v6 编码，CS 与 peb 的帧版本独立。
+`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v8 编码，CS 与 peb 的帧版本独立。
 
 扩展安装是单连接事务：同时最多两个暂存包；文件路径必须是有效相对路径，拒绝符号链接和特殊文件，单包最多 256 MiB / 4096 项。Prepare 在暂存目录执行 peb 注册；GUI 完成字体、主题和图标验证后调用 Commit 发布，失败调用 Abort 清理。禁用、卸载和连接关闭撤销资源句柄并回收扩展进程，未提交的暂存包随连接释放。禁用扩展的 Load 返回零句柄，不执行扩展或占用注册预算。
 

@@ -3,24 +3,28 @@ package workbench
 import (
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/diiyw/onix/module"
+	engineui "github.com/diiyw/onix/ui"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 type pencodeActionState struct {
-	ui       pencodeExtensionUIState
-	local    *actions.Registry
-	revision uint64
-	snapshot []peb.Action
-	rows     []pencodeActionProps
-	theme    *pencodeTheme
-	owner    *workspaceModel
+	ui            pencodeExtensionUIState
+	local         *actions.Registry
+	revision      uint64
+	snapshot      []peb.Action
+	rows          []pencodeActionProps
+	theme         *pencodeTheme
+	owner         *workspaceModel
+	file          *openFile
+	fileName      string
+	openWithCount int
 	// Context references include the existing built-in items and visible actions.
 	leftRefs, rightRefs []string
 	sessions            map[string]*extensions.ActionSession
@@ -32,7 +36,7 @@ type pencodeActionProps struct {
 	Active           bool
 }
 
-var pencodeActionSlots = [...]string{"actions-statusbar", "actions-left-context", "actions-right-context", "actions-titlebar"}
+var pencodeActionSlots = [...]string{"actions-statusbar", "actions-left-context", "actions-right-context", "actions-titlebar", "actions-open-with"}
 
 func (model *workspaceModel) actionRegistry() *actions.Registry {
 	if model.session != nil {
@@ -45,12 +49,18 @@ func (model *workspaceModel) actionRegistry() *actions.Registry {
 }
 func (model *workspaceModel) syncActions() bool {
 	state := &model.actions
+	file := model.activeFile()
+	name := ""
+	if file != nil {
+		name = file.Name
+	}
 	previous := state.revision
 	state.snapshot, state.revision = model.actionRegistry().Snapshot(state.snapshot, state.revision)
-	if previous == state.revision && state.theme == model.workbenchTheme && state.owner == model {
+	if previous == state.revision && state.theme == model.workbenchTheme && state.owner == model && state.file == file && state.fileName == name {
 		return false
 	}
-	state.theme, state.owner = model.workbenchTheme, model
+	state.theme, state.owner, state.file, state.fileName = model.workbenchTheme, model, file, name
+	state.openWithCount = 0
 	clear(state.rows)
 	state.rows = state.rows[:0]
 	state.leftRefs = append(state.leftRefs[:0], pencodeFileContextRefs[:]...)
@@ -58,6 +68,15 @@ func (model *workspaceModel) syncActions() bool {
 	for _, a := range state.snapshot {
 		if a.Hidden {
 			continue
+		}
+		if a.Location == peb.OpenWith {
+			if state.file == nil || editorMatch(&a, state.file.Name) == 0 {
+				continue
+			}
+			state.openWithCount++
+			if a.Icon == "" {
+				a.Icon = "icons/file-text.svg"
+			}
 		}
 		ref := "action-" + a.ID
 		icon := a.Icon
@@ -100,9 +119,15 @@ func (model *workspaceModel) editorContextRefs() []string {
 }
 func (model *workspaceModel) renderActions(view *htmlui.View, definition *htmlui.Definition[pencodeActionProps, struct{}]) {
 	model.syncActions()
+	selected := model.fileEditor(model.activeFile())
 	left, right := len(pencodeFileContextRefs), len(pencodeEditorContextRefs)
 	for _, props := range model.actions.rows {
 		switch props.Action.Location {
+		case peb.OpenWith:
+			if model.sourceState().visible() {
+				continue
+			}
+			props.Active = selected != nil && selected.ID == props.Action.ID
 		case peb.LeftContextMenu:
 			props.Active = model.fileContext.index == left
 			left++
@@ -136,11 +161,21 @@ func renderPencodeAction(context module.ContentRenderContext[pencodeActionProps,
 	}
 	if a.Disabled {
 		view.Attr("run", "disabled", "")
+	} else {
+		view.RemoveAttr("run", "disabled")
 	}
-	view.Text("text", a.Text)
+	if a.Location == peb.OpenWith {
+		view.Attr("run", "aria-pressed", strconv.FormatBool(props.Active))
+		view.Attr("text", "hidden", "")
+	} else {
+		view.RemoveAttr("run", "aria-pressed")
+		view.RemoveAttr("text", "hidden")
+		view.Text("text", a.Text)
+	}
 	if a.Icon == "" {
 		view.Attr("icon", "hidden", "")
 	} else {
+		view.RemoveAttr("icon", "hidden")
 		view.Attr("icon", "src", props.Icon)
 		view.Attr("icon", "style", a.IconStyle)
 	}
@@ -193,6 +228,10 @@ func (model *workspaceModel) runAction(world *module.Content, id string) {
 		c.Caret, c.Anchor = uint32(max(0, ui.contextCaret)), uint32(max(0, ui.contextAnchor))
 		model.dismissLanguageContext()
 	}
+	if a.Location == peb.OpenWith {
+		model.selectEditor(id)
+		return
+	}
 	model.captureExtensionAction(world, c)
 	if err := model.actionRegistry().Run(c); err != nil {
 		model.extensionFeedback = err.Error()
@@ -213,12 +252,10 @@ func (model *workspaceModel) importActions(extension *extensions.ActionExtension
 	if state.sessions == nil {
 		state.sessions = make(map[string]*extensions.ActionSession)
 	}
-	if previous := state.sessions[extension.ID]; previous != nil {
-		model.clearExtensionUI(extension.ID)
-		previous.Close()
+	if state.sessions[extension.ID] != nil {
+		model.removeActions(extension.ID)
 	}
 	prefix := "extensions/" + extension.ID + "/"
-	model.actionRegistry().RemovePrefix(prefix)
 	extension.Output = model.outputStore().Channel("Extension: " + extension.ID)
 	session := extension.Start(model.backgroundWake())
 	state.sessions[extension.ID] = session
@@ -240,6 +277,7 @@ func (model *workspaceModel) registerExtensionAction(a peb.Action, session *exte
 	}
 }
 func (model *workspaceModel) removeActions(id string) {
+	model.removeEditors("extensions/" + id + "/")
 	model.clearExtensionUI(id)
 	if session := model.actions.sessions[id]; session != nil {
 		session.Close()
@@ -298,10 +336,20 @@ func (model *workspaceModel) pollActions() bool {
 					continue
 				}
 				change := result.Change
+				// A live description may change its location or associations.
 				if change.Remove {
+					model.removeEditors(change.Action.ID)
 					model.actionRegistry().Remove(change.Action.ID)
-				} else if err := model.actionRegistry().Update(change.Action); err != nil {
-					model.registerExtensionAction(change.Action, session, prefix)
+				} else if change.Action.Location == peb.OpenWith {
+					if !model.updateEditorAction(change.Action) {
+						model.actionRegistry().Remove(change.Action.ID)
+						model.importEditors([]extensions.Editor{session.Editor(change.Action)})
+					}
+				} else {
+					model.removeEditors(change.Action.ID)
+					if err := model.actionRegistry().Update(change.Action); err != nil {
+						model.registerExtensionAction(change.Action, session, prefix)
+					}
 				}
 			default:
 				goto nextSession

@@ -10,10 +10,10 @@ import (
 
 	"github.com/diiyw/onix/font"
 	"github.com/diiyw/onix/images/svg"
+	"github.com/diiyw/onix/syntax"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/output"
 	"github.com/pencode-labs/pencode/peb"
-	"github.com/diiyw/onix/syntax"
 )
 
 const (
@@ -65,7 +65,7 @@ func (b *Bundle) Close() {
 // Editor retains its validated process entry for on-demand activation.
 type Editor struct {
 	Output *output.Channel
-	peb.Editor
+	peb.Action
 	LocalID string
 	remote  *client.Extension
 }
@@ -133,8 +133,15 @@ func loadBundle(source fs.FS, id string, c peb.Contributions) (result *Bundle, f
 			if err != nil {
 				return nil, err
 			}
-			bundle.Actions.Actions = append(bundle.Actions.Actions, loaded)
+			if a.Location == peb.OpenWith {
+				bundle.Editors = append(bundle.Editors, Editor{Action: loaded, LocalID: a.ID})
+			} else {
+				bundle.Actions.Actions = append(bundle.Actions.Actions, loaded)
+			}
 		}
+	}
+	if !c.ActionService && bundle.Actions != nil && len(bundle.Actions.Actions) == 0 {
+		bundle.Actions = nil
 	}
 	ids := make(map[string]bool)
 	faces := make(map[string]*font.Face)
@@ -180,20 +187,6 @@ func loadBundle(source fs.FS, id string, c peb.Contributions) (result *Bundle, f
 			}
 		}
 		bundle.Fonts = append(bundle.Fonts, Font{"extensions/" + id + "/" + f.ID, f.Label, regular, bold})
-	}
-	for _, editor := range c.Editors {
-		if !validID(editor.ID) || editor.Label == "" || ids["editor/"+editor.ID] || len(editor.Selectors) == 0 {
-			return nil, fmt.Errorf("invalid or duplicate editor id %q", editor.ID)
-		}
-		ids["editor/"+editor.ID] = true
-		for _, rule := range editor.Selectors {
-			if rule.Match != peb.FileName && rule.Match != peb.FileSuffix || !validRule(peb.IconRule{Match: rule.Match, Pattern: rule.Pattern}) {
-				return nil, fmt.Errorf("invalid editor selector %q", rule.Pattern)
-			}
-		}
-		localID := editor.ID
-		editor.ID = "extensions/" + id + "/" + localID
-		bundle.Editors = append(bundle.Editors, Editor{Editor: editor, LocalID: localID})
 	}
 	for _, t := range c.Themes {
 		if !validID(t.ID) || t.Label == "" || ids["theme/"+t.ID] {

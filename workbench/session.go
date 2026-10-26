@@ -115,6 +115,7 @@ func (s *Session) syncLayout() {
 	model.focusPanelEditor(model.fontResources)
 	model.editor.syncCaretStatus(model.fontResources, model.surface, model)
 	model.editor.syncGutter(model.fontResources, model.surface, model)
+	model.editor.debugPaint.sync(model.fontResources, model)
 	model.editor.diagnostics.sync(model.fontResources, model)
 	model.editor.findPaint.sync(model.fontResources, model)
 	model.constrainLanguagePopups(model.fontResources)

@@ -40,12 +40,19 @@ type ActionSession struct {
 	Done     <-chan struct{}
 	requests chan actionRequest
 	cancel   context.CancelFunc
+	remote   *client.Extension
+	output   *output.Channel
 }
 
 type actionRequest struct {
 	action peb.ActionContext
 	event  peb.UIEvent
 	ui     bool
+}
+
+// Editor binds a live Open With action to the extension's document process.
+func (s *ActionSession) Editor(a peb.Action) Editor {
+	return Editor{Action: a, LocalID: strings.TrimPrefix(a.ID, "extensions/"+s.remote.Info.ID+"/"), remote: s.remote, Output: s.output}
 }
 
 func (s *ActionSession) Submit(c peb.ActionContext) bool { return s.submit(actionRequest{action: c}) }
@@ -73,7 +80,7 @@ func (s *ActionSession) Close() {
 func (extension *ActionExtension) Start(wake func()) *ActionSession {
 	ctx, cancel := context.WithCancel(context.Background())
 	results, done := make(chan ActionResult, 16), make(chan struct{})
-	s := &ActionSession{Results: results, Done: done, requests: make(chan actionRequest, 64), cancel: cancel}
+	s := &ActionSession{Results: results, Done: done, requests: make(chan actionRequest, 64), cancel: cancel, remote: extension.remote, output: extension.Output}
 	go func() {
 		defer close(done)
 		defer close(results)

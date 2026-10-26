@@ -24,6 +24,8 @@ const (
 type extensionEntry struct {
 	registration extensionhost.Registration
 	root         *os.Root
+	ctx          context.Context
+	cancel       context.CancelFunc
 	upload       *extensionhost.Upload
 	committed    bool
 	enable       bool
@@ -52,6 +54,9 @@ func (s *extensionService) close() {
 
 func (s *extensionService) remove(id uint64, entry *extensionEntry) {
 	delete(s.entries, id)
+	if entry.cancel != nil {
+		entry.cancel()
+	}
 	s.resourceBytes -= entry.resourceSize
 	if entry.root != nil {
 		entry.root.Close()
@@ -116,7 +121,8 @@ func (s *extensionService) register(ctx context.Context, directory, id string, e
 	if err != nil {
 		return nil, err
 	}
-	return &extensionEntry{registration: r, root: root, enable: enable, resourceData: make(map[string][]byte)}, nil
+	lifetime, cancel := context.WithCancel(s.owner.ctx)
+	return &extensionEntry{registration: r, root: root, ctx: lifetime, cancel: cancel, enable: enable, resourceData: make(map[string][]byte)}, nil
 }
 
 func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, root string, d *protocol.Decoder, e *protocol.Encoder) error {
@@ -239,7 +245,8 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 			return err
 		}
 		s.next++
-		s.entries[s.next] = &extensionEntry{upload: upload}
+		lifetime, cancel := context.WithCancel(s.owner.ctx)
+		s.entries[s.next] = &extensionEntry{upload: upload, ctx: lifetime, cancel: cancel}
 		e.U64(s.next)
 		return nil
 	}

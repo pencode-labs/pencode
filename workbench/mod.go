@@ -98,7 +98,6 @@ func (m *Mod) Enter(c *module.Context, _ module.SceneStartup) error {
 		m.model.editor = local.editor
 		m.model.terminalView = local.terminalView
 		m.model.customDocuments = local.customDocuments
-		m.model.editorOptionsFile = nil
 		m.model.highlightScratch, m.model.highlightRebaseScratch = local.highlightScratch, local.highlightRebaseScratch
 		m.model.highlightWorker = local.highlightWorker
 		m.model.highlightRevision = local.highlightRevision
@@ -175,6 +174,9 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	if m.model.pollLanguageServers(c.Content()) {
+		markPencodeRootDirtyByModel(c.Content(), m.model)
+	}
+	if m.model.pollDebugger(c.Content()) {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	if m.model.pollCustomEditors() {
@@ -259,6 +261,7 @@ func (m *Mod) Destroy(c *module.Context) error {
 		m.installed = false
 		delete(m.session.views, m)
 		if len(m.session.views) == 0 {
+			m.model.closeDebugger()
 			m.model.closePorts()
 			m.session.closeSettingsWriters()
 			m.model.stopFileIO()

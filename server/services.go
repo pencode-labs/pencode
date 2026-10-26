@@ -135,6 +135,10 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 		}
 	}
 	switch op {
+	case protocol.DebugAdapterOpen:
+		return s.openDebugAdapter(ctx, root, &d, e)
+	case protocol.DebugTerminalOpen:
+		return s.openDebugTerminal(ctx, root, &d, e)
 	case protocol.TextSearch:
 		return s.searchText(ctx, root, &d, e)
 	case protocol.GitCommand:

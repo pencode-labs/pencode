@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
-	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 type pencodeExtensionState uint8
@@ -257,9 +257,9 @@ func (model *workspaceModel) importExtension(bundle *extensions.Bundle) error {
 	model.rebuildIconThemeOptions()
 	model.selectIconTheme(model.settings.IconTheme)
 	model.importLanguageServers(bundle.LanguageServers)
+	model.importActions(bundle.Actions)
 	model.importEditors(bundle.Editors)
 	model.importFonts(bundle.Fonts)
-	model.importActions(bundle.Actions)
 	return nil
 }
 

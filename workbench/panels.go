@@ -24,6 +24,7 @@ const (
 	pencodePanelTerminal
 	pencodePanelExtension
 	pencodePanelPorts
+	pencodePanelDebug
 )
 
 type pencodeDiagnosticKey struct {
@@ -469,6 +470,9 @@ func (model *workspaceModel) syncOutput() {
 }
 
 func (model *workspaceModel) handleBottomPanelEvent(world *module.Content, ref, value string) bool {
+	if model.debugEvent(world, ref, value) {
+		return true
+	}
 	if model.portEvent(ref, value) {
 		return true
 	}

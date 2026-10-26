@@ -156,6 +156,7 @@ func (s *Session) watchConnection(wake func()) {
 // Retire all readers and handles before replacing a connection. The text,
 // piece trees, undo stacks, source drafts and terminal screens remain local.
 func (model *workspaceModel) retireConnection(closeBackend bool) {
+	model.closeDebugger()
 	model.closePorts()
 	model.stopFileIO()
 	model.fileClose = pencodeCloseRequest{}

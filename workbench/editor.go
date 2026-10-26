@@ -33,6 +33,7 @@ type pencodeEditor struct {
 	linkPaint                                            pencodeOverlayKey
 	brackets                                             pencodeBracketIndex
 	diagnostics                                          pencodeDiagnosticPaint
+	debugPaint                                           pencodeDebugPaint
 	findPaint                                            pencodeFindPaint
 	layoutKey                                            pencodeGutterLayoutKey
 	caretContent                                         string
@@ -423,6 +424,7 @@ func (editor *pencodeEditor) syncWidthGuide(world *module.Content, widthPercent 
 }
 
 func (editor *pencodeEditor) dispose(world *module.Content) {
+	editor.debugPaint.dispose(world)
 	editor.diagnostics.dispose(world)
 	editor.findPaint.dispose(world)
 	world.Despawn(editor.numbers)

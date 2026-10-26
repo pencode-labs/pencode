@@ -155,3 +155,37 @@ func TestExtensionRegistrationCapturesOutput(t *testing.T) {
 		t.Fatalf("missing registration stderr: %q", text)
 	}
 }
+
+func TestOpenWithActionResourcesAndAssociations(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(directory, "resources"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "resources", "preview.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M0 0h16v16H0z"/></svg>`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	a := peb.Action{ID: "preview", Text: "Preview", Location: peb.OpenWith, Icon: "resources/preview.svg", Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".tsx"}}}
+	bundle, err := loadBundle(root.FS(), "test", peb.Contributions{Actions: []peb.Action{a}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Actions != nil || len(bundle.Editors) != 1 || bundle.Editors[0].ID != "extensions/test/preview" || bundle.Editors[0].LocalID != "preview" || bundle.Editors[0].Icon != "peb://test/resources/preview.svg" || len(bundle.Icons) != 1 {
+		t.Fatalf("incorrect view registration: %+v", bundle)
+	}
+	for _, rule := range []peb.DocumentSelector{{Match: peb.FolderName, Pattern: "docs"}, {Match: peb.FileSuffix, Pattern: "."}, {Match: peb.FileName, Pattern: ".."}, {Match: peb.FileSuffix, Pattern: "md"}, {Match: peb.FileName, Pattern: "a\x00b"}, {Match: peb.FileName, Pattern: "../README"}} {
+		invalid := a
+		invalid.Selectors = []peb.DocumentSelector{rule}
+		if _, err := loadBundle(root.FS(), "test", peb.Contributions{Actions: []peb.Action{invalid}}); err == nil {
+			t.Fatalf("accepted invalid association: %+v", rule)
+		}
+	}
+	a.Selectors = nil
+	if _, err := loadBundle(root.FS(), "test", peb.Contributions{Actions: []peb.Action{a}}); err == nil {
+		t.Fatal("accepted open-with action with no associations")
+	}
+}

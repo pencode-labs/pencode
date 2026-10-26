@@ -5,8 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
+	"unicode/utf16"
 	"unsafe"
 )
 
@@ -29,9 +31,22 @@ type windowsProcess struct {
 	mu                    sync.Mutex
 	started               bool
 	cols, rows            int
+	pid                   int
 }
 
 func startNative(directory string, cols, rows int) (Process, error) {
+	shell, err := exec.LookPath("pwsh.exe")
+	if err != nil {
+		shell = os.Getenv("COMSPEC")
+		if shell == "" {
+			shell = "cmd.exe"
+		}
+	}
+	cmd := exec.Command(shell)
+	cmd.Dir = directory
+	return startNativeCommand(cmd, cols, rows)
+}
+func startNativeCommand(cmd *exec.Cmd, cols, rows int) (Process, error) {
 	if err := createPseudoConsole.Find(); err != nil {
 		return nil, fmt.Errorf("ConPTY requires Windows 10 1809 or newer: %w", err)
 	}
@@ -69,26 +84,19 @@ func startNative(directory string, cols, rows int) (Process, error) {
 	if result == 0 {
 		return nil, err
 	}
-	shell, err := exec.LookPath("pwsh.exe")
-	if err != nil {
-		shell = os.Getenv("COMSPEC")
-		if shell == "" {
-			shell = "cmd.exe"
-		}
-		shell, err = exec.LookPath(shell)
-		if err != nil {
-			return nil, err
-		}
-	}
-	application, err := syscall.UTF16PtrFromString(shell)
+	application, err := syscall.UTF16PtrFromString(cmd.Path)
 	if err != nil {
 		return nil, err
 	}
-	command, err := syscall.UTF16PtrFromString(syscall.EscapeArg(shell))
+	args := make([]string, len(cmd.Args))
+	for i, arg := range cmd.Args {
+		args[i] = syscall.EscapeArg(arg)
+	}
+	command, err := syscall.UTF16PtrFromString(strings.Join(args, " "))
 	if err != nil {
 		return nil, err
 	}
-	dir, err := syscall.UTF16PtrFromString(directory)
+	dir, err := syscall.UTF16PtrFromString(cmd.Dir)
 	if err != nil {
 		return nil, err
 	}
@@ -103,12 +111,14 @@ func startNative(directory string, cols, rows int) (Process, error) {
 	startup.attributes = &attributes[0]
 	var info syscall.ProcessInformation
 	// Suspend until the process is in our job, so descendants cannot escape cleanup.
-	err = syscall.CreateProcess(application, command, nil, nil, false, 0x00080000|0x00000400|0x00000004, nil, dir, &startup.info, &info)
+	environment := utf16.Encode([]rune(strings.Join(cmd.Environ(), "\x00") + "\x00\x00"))
+	err = syscall.CreateProcess(application, command, nil, nil, false, 0x00080000|0x00000400|0x00000004, &environment[0], dir, &startup.info, &info)
 	runtime.KeepAlive(attributes)
 	if err != nil {
 		return nil, err
 	}
 	p.process = info.Process
+	p.pid = int(info.ProcessId)
 	defer syscall.CloseHandle(info.Thread)
 	job, _, err := createJob.Call(0, 0)
 	if job == 0 {
@@ -128,6 +138,7 @@ func startNative(directory string, cols, rows int) (Process, error) {
 	p.started = true
 	return p, nil
 }
+func (p *windowsProcess) PID() int                    { return p.pid }
 func (p *windowsProcess) Read(b []byte) (int, error)  { return p.output.Read(b) }
 func (p *windowsProcess) Write(b []byte) (int, error) { return p.input.Write(b) }
 func (p *windowsProcess) Resize(cols, rows int) error {

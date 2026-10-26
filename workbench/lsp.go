@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -226,7 +227,8 @@ func (model *workspaceModel) startLanguageSession(root string, server *extension
 				return nil, ctx.Err()
 			}
 		}
-		startup, stop := context.WithTimeout(ctx, 10*time.Second)
+		// Extension launchers can install their language tools on first use.
+		startup, stop := context.WithTimeout(ctx, 10*time.Minute)
 		client, err := server.Start(startup, root, handler)
 		stop()
 		if err != nil {
@@ -313,7 +315,7 @@ func (session *pencodeLanguageSession) runJobs(ctx context.Context, client *lsp.
 		case job.notify:
 			err = client.Notify(request, job.method, job.params)
 		case job.method == "":
-			err = client.SyncDocument(request, job.uri, session.server.LanguageID, job.content, job.version)
+			err = client.SyncDocument(request, job.uri, session.server.DocumentLanguage(path.Base(string(job.uri))), job.content, job.version)
 			if err == nil && job.save {
 				err = client.DidSaveText(request, job.uri, job.saved)
 			}

@@ -15,19 +15,19 @@ import (
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/client"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/peb"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func TestPencodeCustomEditorProcess(t *testing.T) {
 	if !slices.Contains(os.Args, "pencode-editor-fixture") {
 		return
 	}
-	err := peb.ServeEditors(os.Stdin, os.Stdout, peb.Contributions{Editors: []peb.Editor{{ID: "source", Label: "Custom source", Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}}, func(message peb.EditorMessage) (peb.EditorReply, error) {
+	err := peb.ServeEditors(os.Stdin, os.Stdout, peb.Contributions{Actions: []peb.Action{{ID: "source", Text: "Custom source", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}}, func(message peb.EditorMessage) (peb.EditorReply, error) {
 		if message.Event.Kind == "input" {
 			return peb.EditorReply{Content: &message.Event.Value}, nil
 		}
@@ -178,10 +178,10 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 func TestPencodeEditorAssociationsAndBinarySave(t *testing.T) {
 	model := &workspaceModel{}
 	model.importEditors([]extensions.Editor{
-		{Editor: peb.Editor{ID: "extensions/test/suffix", Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".ts"}}}},
-		{Editor: peb.Editor{ID: "extensions/test/long", Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".d.ts"}}}},
-		{Editor: peb.Editor{ID: "extensions/test/exact", Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileName, Pattern: "exact.d.ts"}}}},
-		{Editor: peb.Editor{ID: "extensions/test/image", Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".png"}}}},
+		{Action: peb.Action{ID: "extensions/test/suffix", Text: "Suffix", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".ts"}}}},
+		{Action: peb.Action{ID: "extensions/test/long", Text: "Long", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".d.ts"}}}},
+		{Action: peb.Action{ID: "extensions/test/exact", Text: "Exact", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileName, Pattern: "exact.d.ts"}}}},
+		{Action: peb.Action{ID: "extensions/test/image", Text: "Image", Location: peb.OpenWith, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".png"}}}},
 	})
 	file := &openFile{Name: "exact.d.ts"}
 	if got := model.fileEditor(file); got == nil || got.ID != "extensions/test/exact" {
@@ -290,5 +290,140 @@ func TestPencodeCustomViewRejectsInvalidBindingsAndHostIDs(t *testing.T) {
 	}
 	if !document.definition.ScopedCSS || !strings.Contains(document.definition.CSS, "onix-scope-") {
 		t.Fatal("extension CSS can escape its component")
+	}
+}
+
+func TestPencodeCustomViewLinksOpenWorkspaceDocuments(t *testing.T) {
+	model, project := resourceTestModel(t)
+	resourceTestWrite(t, project, "docs/README.md", "# Readme")
+	resourceTestWrite(t, project, "guide with spaces.md", "# Guide")
+	openProjectFile(project, "docs/README.md")
+	model.syncActiveProjectFields()
+	document := &pencodeCustomDocument{model: model, project: project, file: model.activeFile(), process: &extensions.EditorSession{}}
+	view := &peb.EditorView{HTML: `<a data-ref="guide" href="../guide%20with%20spaces.md">Guide</a><a data-ref="site" href="https://example.com">Site</a><a hidden data-ref="hidden" href="hidden.md">Hidden</a><a data-ref="owned" href="owned.md">Owned</a>`, Events: []peb.EditorBinding{{Ref: "owned", Kind: "click"}}}
+	if err := document.setView(view); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.links) != 2 || document.links["site"] != "https://example.com" {
+		t.Fatal(document.links)
+	}
+	document.definition.Behavior.HandleEvent(&htmlui.ComponentEventContext[*pencodeCustomDocument, struct{}]{Props: &document, Ref: "guide", Event: htmlui.Event{Kind: htmlui.EventClick}})
+	if err := awaitFileIO(t, model); err != nil {
+		t.Fatal(err)
+	}
+	if file := model.activeFile(); file == nil || file.Path != "guide with spaces.md" {
+		t.Fatal("link did not open its document", file)
+	}
+	if document.count != 0 {
+		t.Fatal("host link was forwarded to the extension")
+	}
+	for _, href := range []string{"../../outside.md", "javascript:alert(1)", "file:///tmp/private.md", "#section"} {
+		document.openLink(href)
+		if model.activeFile().Path != "guide with spaces.md" {
+			t.Fatalf("invalid link changed the active document: %q", href)
+		}
+	}
+}
+
+func TestPencodeOpenWithActionsReplaceAndSplit(t *testing.T) {
+	// Headless retained HTML controls; no editor window or screenshots.
+	app, model, _, state := languageInteractionFixture(t)
+	file := model.activeFile()
+	bundle := installPencodeEditorFixture(t, model.backend)
+	bundle.Editors[0].Default = false
+	model.importEditors(bundle.Editors)
+	step := func() {
+		t.Helper()
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		languageInteractionStep(t, app)
+		languageInteractionStep(t, app)
+	}
+	wait := func(ready func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			step()
+			if ready() {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatal("open-with view did not settle")
+	}
+	step()
+	if !model.textEditorActive() {
+		t.Fatal("optional view replaced source before a click")
+	}
+	id := bundle.Editors[0].ID
+	editorContextClick(t, app, model, state, "action-"+id)
+	wait(func() bool { d := model.customDocuments[file]; return d != nil && d.definition != nil && !d.busy() })
+	if model.textEditorActive() || file.editorSplit {
+		t.Fatal("open-with action did not replace source")
+	}
+	body := editorContextBounds(t, model, "editor-body")
+	full := editorContextBounds(t, model, "custom-editor")
+	if full.Width < body.Width-2 || full.X < body.X || full.X > body.X+1 {
+		t.Fatalf("single view did not fill the body: %+v %+v", full, body)
+	}
+	editorContextClick(t, app, model, state, "editor-split")
+	step()
+	source := editorContextBounds(t, model, "editor")
+	preview := editorContextBounds(t, model, "custom-editor")
+	if !model.textEditorActive() || !file.editorSplit || source.X+source.Width > preview.X || preview.X < body.X+body.Width/2-1 || preview.Width > body.Width/2+1 {
+		t.Fatalf("incorrect split: source=%+v preview=%+v body=%+v", source, preview, body)
+	}
+	// Switching an action in split mode replaces only the extension pane.
+	alternate := bundle.Editors[0]
+	alternate.ID, alternate.Text = "extensions/source/alternate", "Alternate view"
+	model.importEditors([]extensions.Editor{alternate})
+	step()
+	editorContextClick(t, app, model, state, "action-"+alternate.ID)
+	wait(func() bool {
+		d := model.customDocuments[file]
+		return d != nil && d.provider.ID == alternate.ID && d.definition != nil && !d.busy()
+	})
+	if !file.editorSplit || !model.textEditorActive() {
+		t.Fatal("switching extension views collapsed the split")
+	}
+	document := model.customDocuments[file]
+	updated := alternate.Action
+	updated.Tooltip = "Updated preview"
+	if !model.updateEditorAction(updated) {
+		t.Fatal("live open-with action was not updated")
+	}
+	step()
+	if model.customDocuments[file] != document {
+		t.Fatal("appearance update replaced a document session")
+	}
+	// Native edits still reach the extension snapshot while both panes are visible.
+	content := file.Content + "// split edit\n"
+	model.updateActiveContent(content)
+	wait(func() bool { d := model.customDocuments[file]; return !d.busy() && d.content == content })
+	if !file.Dirty {
+		t.Fatal("split edit did not use host history")
+	}
+	editorContextClick(t, app, model, state, "editor-split")
+	step()
+	if model.textEditorActive() || file.editorSplit {
+		t.Fatal("collapse did not retain the selected extension")
+	}
+	editorContextClick(t, app, model, state, "editor-text")
+	wait(func() bool { return model.customDocuments[file] == nil })
+	if !model.textEditorActive() || file.editorSplit || file.Content != content {
+		t.Fatal("returning to source lost content or layout")
+	}
+	// The layout button can also open a preview directly from source.
+	editorContextClick(t, app, model, state, "editor-split")
+	wait(func() bool { d := model.customDocuments[file]; return d != nil && d.definition != nil && !d.busy() })
+	if !model.textEditorActive() || !file.editorSplit {
+		t.Fatal("split from source did not select the preview")
+	}
+	if allocs := testing.AllocsPerRun(100, func() { model.syncActions(); model.fileEditor(file); model.textEditorActive() }); allocs != 0 {
+		t.Fatalf("idle open-with state allocated %g", allocs)
+	}
+	model.removeEditors("extensions/source/")
+	step()
+	if !model.textEditorActive() {
+		t.Fatal("removing the provider did not restore source")
 	}
 }

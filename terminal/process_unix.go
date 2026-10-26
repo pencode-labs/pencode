@@ -35,12 +35,14 @@ func ioctl(file *os.File, request uint, value unsafe.Pointer) error {
 	return nil
 }
 func startNative(directory string, cols, rows int) (Process, error) {
+	return startNativeCommand(shellCommand(directory), cols, rows)
+}
+func startNativeCommand(cmd *exec.Cmd, cols, rows int) (Process, error) {
 	master, slave, err := openPTY()
 	if err != nil {
 		return nil, err
 	}
 	defer slave.Close()
-	cmd := shellCommand(directory)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
 	p := &unixProcess{master: master, cmd: cmd}
@@ -53,6 +55,7 @@ func startNative(directory string, cols, rows int) (Process, error) {
 	}
 	return p, nil
 }
+func (p *unixProcess) PID() int                    { return p.cmd.Process.Pid }
 func (p *unixProcess) Read(b []byte) (int, error)  { return p.master.Read(b) }
 func (p *unixProcess) Write(b []byte) (int, error) { return p.master.Write(b) }
 func (p *unixProcess) Wait() error                 { return p.cmd.Wait() }

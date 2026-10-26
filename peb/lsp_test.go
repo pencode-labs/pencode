@@ -7,7 +7,7 @@ import (
 )
 
 func TestLanguageServerContributionRoundTripAndCapabilities(t *testing.T) {
-	want := Contributions{LanguageServers: []LanguageServer{{ID: "go", Label: "Go", LanguageID: "go", Command: "bin/gopls", Args: []string{"serve"}, Selectors: []DocumentSelector{{Match: FileSuffix, Pattern: ".go"}}, InitializationOptions: `{"中文":"😀"}`, Configuration: `{"gopls":{"staticcheck":true}}`}}}
+	want := Contributions{LanguageServers: []LanguageServer{{ID: "go", Label: "Go", LanguageID: "go", Command: "bin/gopls", Args: []string{"serve"}, Selectors: []DocumentSelector{{Match: FileSuffix, Pattern: ".go"}, {Match: FileName, Pattern: "go.mod", LanguageID: "go.mod"}}, InitializationOptions: `{"中文":"😀"}`, Configuration: `{"gopls":{"staticcheck":true}}`}}}
 	data, err := EncodeContributions(nil, want)
 	if err != nil {
 		t.Fatal(err)

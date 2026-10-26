@@ -25,6 +25,7 @@ func encodeLanguageServers(e *encoder, servers []LanguageServer) {
 		for _, rule := range s.Selectors {
 			e.number(uint32(rule.Match))
 			e.str(rule.Pattern)
+			e.str(rule.LanguageID)
 		}
 		e.text(s.InitializationOptions)
 		e.text(s.Configuration)
@@ -47,7 +48,7 @@ func decodeLanguageServers(d *decoder) []LanguageServer {
 		}
 		s.Selectors = make([]DocumentSelector, d.count())
 		for j := range s.Selectors {
-			s.Selectors[j] = DocumentSelector{Match(d.number()), d.str()}
+			s.Selectors[j] = DocumentSelector{Match: Match(d.number()), Pattern: d.str(), LanguageID: d.str()}
 		}
 		s.InitializationOptions, s.Configuration = d.text(), d.text()
 	}

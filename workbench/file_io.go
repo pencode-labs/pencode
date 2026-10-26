@@ -556,6 +556,7 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 		f.savedContent = j.content
 		f.Dirty = f.Content != j.content
 		f.saveRevision++
+		m.syncDebugBreakpoints(j.project, f)
 		m.setProjectStatus(j.project, "已保存 "+f.Name)
 		m.syncLanguageDocuments()
 	} else {
@@ -598,10 +599,13 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		f.closeDocument()
 		f.document = item.document
 		item.document = nil
+		start, oldEnd, newEnd, _ := pencodeChangedRange(f.Content, item.content)
+		m.rebaseDebugBreakpoints(p, f, item.content, start, oldEnd, newEnd)
 		f.Content = item.content
 		f.savedContent = item.content
 		f.Dirty = false
 		f.pencodeEditHistory = pencodeEditHistory{}
+		m.syncDebugBreakpoints(p, f)
 	}
 	m.resetHighlight()
 	m.syncActiveProjectFields()

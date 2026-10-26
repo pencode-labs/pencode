@@ -15,7 +15,7 @@ func TestActionCodecAndReusableEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := DecodeActionChange(data)
-	if err != nil || got != change {
+	if err != nil || got.Remove != change.Remove || !got.Action.Equal(change.Action) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	for n := range len(data) {
@@ -35,7 +35,7 @@ func TestActionCodecAndReusableEncoding(t *testing.T) {
 	contributions := Contributions{Actions: []Action{change.Action}, ActionService: true}
 	registration, _ := EncodeContributions(nil, contributions)
 	decodedRegistration, err := DecodeContributions(registration)
-	if err != nil || !decodedRegistration.ActionService || !slices.Equal(decodedRegistration.Actions, contributions.Actions) {
+	if err != nil || !decodedRegistration.ActionService || !slices.EqualFunc(decodedRegistration.Actions, contributions.Actions, Action.Equal) {
 		t.Fatal(decodedRegistration, err)
 	}
 	if allocs := testing.AllocsPerRun(100, func() {
@@ -96,7 +96,7 @@ func TestActionServicePublishesWithoutClickAndHandlesInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	change, err := DecodeActionChange(frame.Payload)
-	if err != nil || change.Action != a {
+	if err != nil || !change.Action.Equal(a) {
 		t.Fatal(change, err)
 	}
 	payload, _ := EncodeActionContext(nil, ActionContext{ID: a.ID, Path: "/project/main.go"})
@@ -120,5 +120,25 @@ func TestActionServicePublishesWithoutClickAndHandlesInvocation(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOpenWithActionCodec(t *testing.T) {
+	a := Action{ID: "preview", Text: "Preview", Location: OpenWith, Default: true, Icon: "resources/preview.svg", Selectors: []DocumentSelector{{Match: FileSuffix, Pattern: ".md"}, {Match: FileName, Pattern: "README"}}}
+	data, err := EncodeContributions(nil, Contributions{Actions: []Action{a}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeContributions(data)
+	if err != nil || len(decoded.Actions) != 1 || !a.Equal(decoded.Actions[0]) || decoded.ActionService {
+		t.Fatalf("open-with registration: %+v %v", decoded, err)
+	}
+	for n := range len(data) {
+		if _, err := DecodeContributions(data[:n]); err == nil {
+			t.Fatalf("accepted truncation %d", n)
+		}
+	}
+	if allocs := testing.AllocsPerRun(100, func() { data, _ = EncodeContributions(data, Contributions{Actions: []Action{a}}) }); allocs != 0 {
+		t.Fatalf("warm registration codec allocated %g", allocs)
 	}
 }

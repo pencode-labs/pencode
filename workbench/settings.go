@@ -555,6 +555,9 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		}
 		return false
 	}
+	if model.debugShortcut(world, state) {
+		return true
+	}
 	model.ensureSettings()
 	if handled, changed := model.portsShortcut(world, state); handled {
 		return changed

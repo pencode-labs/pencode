@@ -104,9 +104,9 @@ func (editor *Editor) run(parent context.Context, root string, requests <-chan p
 	if err != nil {
 		return err
 	}
-	found := false
-	for _, candidate := range c.Editors {
-		if candidate.ID == editor.LocalID {
+	found := c.ActionService
+	for _, candidate := range c.Actions {
+		if candidate.ID == editor.LocalID && candidate.Location == peb.OpenWith {
 			found = true
 			break
 		}
@@ -157,6 +157,7 @@ func (editor *Editor) run(parent context.Context, root string, requests <-chan p
 				return decodeErr
 			}
 			resourceCtx, finishResources := context.WithTimeout(ctx, StartupTimeout)
+			resources.root, resources.document = root, message.Path
 			assets, prepareErr := resources.prepare(resourceCtx, reply.View, "")
 			finishResources()
 			if prepareErr != nil {

@@ -2,17 +2,11 @@ package peb
 
 import "unicode/utf8"
 
-// Editor selectors use exact basenames or suffixes. Default editors open
-// automatically; optional editors appear in the workbench's Open With menu.
-type Editor struct {
-	ID, Label string
-	Default   bool
-	Selectors []DocumentSelector
-}
-
 type DocumentSelector struct {
 	Match   Match
 	Pattern string
+	// LanguageID overrides a language server's default for this selector.
+	LanguageID string
 }
 
 // EditorMessage contains a host-owned document snapshot. Binary files supply

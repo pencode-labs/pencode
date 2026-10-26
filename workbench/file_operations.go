@@ -82,6 +82,7 @@ func (model *workspaceModel) refreshResourceProject(project *pencodeProject) {
 // a new identity so language services close the old URI before opening the new
 // one, while its buffer, save state and undo history retain their ownership.
 func (model *workspaceModel) relocateProjectResources(source, target *pencodeProject, old, next string) {
+	model.relocateDebugBreakpoints(source, target, old, next)
 	if target != nil && target.Files == nil {
 		target.Files = make(map[string]*openFile)
 	}

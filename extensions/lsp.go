@@ -23,12 +23,19 @@ type LanguageServer struct {
 }
 
 func (s *LanguageServer) Match(name string) bool {
+	return s.DocumentLanguage(name) != ""
+}
+
+func (s *LanguageServer) DocumentLanguage(name string) string {
 	for _, rule := range s.Selectors {
 		if rule.Match == peb.FileName && name == rule.Pattern || rule.Match == peb.FileSuffix && strings.HasSuffix(name, rule.Pattern) {
-			return true
+			if rule.LanguageID != "" {
+				return rule.LanguageID
+			}
+			return s.LanguageID
 		}
 	}
-	return false
+	return ""
 }
 func (s *LanguageServer) Start(ctx context.Context, root string, handler lsp.Handler) (*lsp.Client, error) {
 	options := lsp.Options{
@@ -70,6 +77,9 @@ func loadLanguageServers(id string, servers []peb.LanguageServer) ([]LanguageSer
 			}
 		}
 		for _, rule := range s.Selectors {
+			if strings.ContainsAny(rule.LanguageID, "\x00\r\n") {
+				return nil, fmt.Errorf("invalid selector language ID")
+			}
 			if rule.Match != peb.FileName && rule.Match != peb.FileSuffix || !validRule(peb.IconRule{Match: rule.Match, Pattern: rule.Pattern}) {
 				return nil, fmt.Errorf("invalid language selector %q", rule.Pattern)
 			}

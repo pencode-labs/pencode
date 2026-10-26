@@ -62,6 +62,7 @@ type treeEntry struct {
 type openFile struct {
 	document         *client.Document
 	editorView       pencodeEditorView
+	editorSplit      bool
 	editorID         string
 	editorGeneration uint64
 	customEditor     *extensions.Editor
@@ -82,6 +83,8 @@ type pencodeEdit struct {
 }
 
 type pencodeProject struct {
+	debugBreakpoints        map[string][]pencodeBreakpoint
+	debugBreakpointRevision uint64
 	tree                    pencodeTreeView
 	historyKey              string
 	index                   uint64
@@ -121,6 +124,7 @@ type workspaceModel struct {
 	actions                             pencodeActionState
 	output                              *output.Store
 	bottom                              pencodeBottomPanel
+	debug                               pencodeDebugState
 	ports                               *pencodePorts
 	portUI                              pencodePortUI
 	terminals                           *pencodeTerminals
@@ -130,10 +134,6 @@ type workspaceModel struct {
 	editorGeneration                    uint64
 	customDocuments                     map[*openFile]*pencodeCustomDocument
 	customClose                         pencodeCloseRequest
-	editorOptions                       []htmlui.VNode
-	editorOptionsFile                   *openFile
-	editorOptionsGeneration             uint64
-	editorOptionsID                     string
 	editorHeader                        pencodeEditorHeader
 	session                             *Session
 	market                              *pencodeMarketplace
@@ -519,6 +519,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	debugDefinition, err := newDebugRowDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	directoryDefinition, err := newProjectDirectoryDefinition(content)
 	if err != nil {
 		return nil, err
@@ -545,6 +549,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if context.Props != nil && context.Props.Model != nil && context.Props.Screen == pencodeWorkspace {
 					context.Props.Model.renderBottomPanel(view, problemDefinition)
 					context.Props.Model.renderPorts(view, portDefinition)
+					context.Props.Model.renderDebugger(view, debugDefinition)
 				}
 			},
 			HandleEvent: handlePencodeRootEvent,
@@ -966,8 +971,11 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		return
 	}
 	switch context.Ref {
-	case "editor-tool-select":
-		model.selectEditor(context.Event.Value)
+	case "editor-split":
+		model.toggleEditorSplit()
+		markPencodeRootDirty(context, model)
+	case "editor-text":
+		model.selectEditor(pencodeTextEditor)
 		markPencodeRootDirty(context, model)
 	case "window-close":
 		if model.requestWindowClose() {
@@ -1409,6 +1417,9 @@ func (model *workspaceModel) discardProject(project *pencodeProject) {
 		return
 	}
 	model.cancelProjectFileIO(project)
+	if model.debug.project == project || model.debug.configProject == project {
+		model.closeDebugger()
+	}
 	wasActive := index == model.activeProjectIndex
 	project.stopScan()
 	project.sourceControl.stop()
@@ -1939,6 +1950,7 @@ func (model *workspaceModel) applyFileContent(file *openFile, project *pencodePr
 		file.document.Update(file.Content, value, start, oldSuffix, newSuffix)
 	}
 	file.Content = value
+	model.rebaseDebugBreakpoints(project, file, value, start, oldSuffix, newSuffix)
 	model.rebaseFindScope(file, start, oldSuffix, newSuffix)
 	file.Dirty = file.Content != file.savedContent
 	if project != nil {
@@ -2144,6 +2156,9 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	}
 	model.updateTabWheel(context.World, state)
 	changed := model.updateBottomPanelResize(context.World, state)
+	if model.updateDebugPointer(context.World, state) {
+		changed = true
+	}
 	if model.updateTerminalPointer(context.World, state) {
 		changed = true
 	}
@@ -2407,7 +2422,7 @@ func handlePencodeWindowControl(app *module.Host, id string) {
 
 type pencodeIconRasterScale struct{}
 
-func (pencodeIconRasterScale) SVGTextureRasterScale() int { return 4 }
+func (pencodeIconRasterScale) SVGTextureRasterScale(_, _ int) int { return 4 }
 
 type pencodeIconProvider struct {
 	content  *module.Content

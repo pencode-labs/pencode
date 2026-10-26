@@ -17,6 +17,7 @@ Pencode brings editing, language tools, a terminal, Git, and native process exte
 | Editing | Tabs, undo/redo, find and replace, quick file opening, soft wrapping, and a piece-tree text buffer |
 | Language tools | Incremental syntax highlighting; LSP completion, diagnostics, navigation, rename, formatting, and code actions, depending on the language server |
 | Terminal | Multiple shell sessions, Linux/macOS PTY, Windows ConPTY, Unicode, true color, and scrollback |
+| Debugger | DAP sessions, Go/Delve quick start, breakpoints, stepping, call stacks, variables, and expression evaluation in local and SSH workspaces |
 | Git | Staging, commits, branch and history views, file comparisons, and a three-way merge editor |
 | Remote work | System OpenSSH connections, with file operations, terminals, language servers, and extensions running on the workspace host |
 | Customization | System fonts, VS Code JSON/JSONC color themes, file icon themes, and syntax capture mappings |
@@ -31,7 +32,7 @@ The extension manager currently installs from local directories; there is no onl
 - Go **1.27.0 or newer**.
 - An Onix checkout next to this repository, named `onix`. The current `go.mod` uses `replace github.com/diiyw/onix => ../onix`.
 - The native development libraries required by Onix for desktop builds; see `docs/desktop-builds.md` in the Onix checkout.
-- System `git` for source control and OpenSSH `ssh` for remote connections. Install language servers separately on the workspace host.
+- System `git` for source control and OpenSSH `ssh` for remote connections. The Go extension installs its tools automatically; other language servers depend on their extensions.
 - Fonts installed on the GUI host. Pencode does not bundle fonts.
 
 Expected layout:
@@ -87,13 +88,13 @@ git submodule foreach 'go test ./...'
 ```text
 Desktop workbench (Onix)
         │
-        │ CS v3: local process pipes or SSH stdin/stdout
+        │ CS v7: local process pipes or SSH stdin/stdout
         ▼
 Pencode server
         ├── Files, documents, indexing, and syntax parsing
         ├── Git and terminal processes
         ├── Language servers (LSP)
-        └── Extension processes (peb v6)
+        └── Extension processes (peb v8)
 ```
 
 The GUI owns interactive text buffers, undo history, layout, and rendering. The server owns filesystem access, indexing, syntax parsing, Git, PTYs, language servers, and extension processes. Local sessions start a child server; SSH sessions use the same protocol over an encrypted stream without opening a server port.
@@ -113,14 +114,14 @@ For remote workspaces, settings and extensions belong to the workspace host; sys
 
 ## Extensions
 
-Extensions are executable programs communicating with the server through **peb v6**, a binary protocol over stdin/stdout. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
+Extensions are executable programs communicating with the server through **peb v8**, a binary protocol over stdin/stdout. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
 
 Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host and include an executable and a `resources/extension.json` manifest. Use the extension manager's local-directory installation flow to register one.
 
 The examples are Git submodules, each maintained in a public MIT-licensed repository under `pencode-labs`:
 
-- [Go language tools](https://github.com/pencode-labs/go): registers `gopls`, which must be installed separately.
-- [Markdown editor](https://github.com/pencode-labs/markdown-editor): custom source editing and preview.
+- [Go language tools](https://github.com/pencode-labs/go): provides Go language and debug support, automatically installing `gopls` and Delve when missing.
+- [Markdown preview](https://github.com/pencode-labs/markdown-preview): read-only preview with native source editing and optional split layout.
 - [Material file icons](https://github.com/pencode-labs/material-icons): a file icon theme.
 - [Extension UI](https://github.com/pencode-labs/ui-demo): actions, dialogs, menus, popups, and panels.
 
@@ -130,7 +131,7 @@ For an existing checkout, initialize the submodules with `git submodule update -
 (cd extensions/go && go build -o bin/go .)
 ```
 
-The current protocol is v6. Older extensions must be rebuilt with the current SDK.
+The current extension protocol is peb v8 (CS v7). Older extensions must be rebuilt with the current SDK.
 
 ## Documentation
 
@@ -139,6 +140,7 @@ The current protocol is v6. Older extensions must be rebuilt with the current SD
 | [CS protocol](protocol/README.md) | Framing, requests, limits, and lifecycle | Chinese |
 | [Extension protocol and SDK](peb/README.md) | Contributions, editors, actions, and UI | Chinese |
 | [LSP support](lsp/README.md) | Language server implementation and development | Chinese |
+| [Debugger](debugger/README.md) | Go quick start, debug configurations, and architecture | English |
 | [Historical implementation notes](docs/implementation-notes.zh-CN.md) | Editor behavior, themes, SSH, design decisions, and earlier verification records | Chinese |
 
 The historical notes retain commands from the former Onix monorepo layout. Use this README for the current layout and build limitations. English translations of the technical guides are welcome.

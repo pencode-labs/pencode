@@ -4,6 +4,7 @@ package actions
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"unicode"
@@ -25,8 +26,20 @@ type Registry struct {
 }
 
 func Validate(a peb.Action) error {
-	if a.ID == "" || len(a.ID) > 512 || strings.ContainsFunc(a.ID, unicode.IsSpace) || strings.ContainsAny(a.ID, "\x00<>\"'") || a.Location > peb.TitleBarRight || a.Text == "" && a.Tooltip == "" {
+	if a.ID == "" || len(a.ID) > 512 || strings.ContainsFunc(a.ID, unicode.IsSpace) || strings.ContainsAny(a.ID, "\x00<>\"'") || a.Location > peb.OpenWith || a.Text == "" && a.Tooltip == "" {
 		return fmt.Errorf("invalid action %q", a.ID)
+	}
+	if a.Location == peb.OpenWith {
+		if len(a.Selectors) == 0 {
+			return fmt.Errorf("open-with action requires document selectors")
+		}
+		for _, rule := range a.Selectors {
+			if (rule.Match != peb.FileName && rule.Match != peb.FileSuffix) || rule.Pattern == "" || rule.Pattern == "." || rule.Pattern == ".." || strings.ContainsAny(rule.Pattern, "/\\\u0000") || rule.Match == peb.FileSuffix && !strings.HasPrefix(rule.Pattern, ".") {
+				return fmt.Errorf("invalid open-with selector %q", rule.Pattern)
+			}
+		}
+	} else if a.Default || len(a.Selectors) != 0 {
+		return fmt.Errorf("document associations require an open-with action")
 	}
 	for _, color := range [...]string{a.Color, a.IconColor} {
 		if color == "" {
@@ -63,6 +76,7 @@ func (r *Registry) Register(d Definition) error {
 	if r.indices == nil {
 		r.indices = make(map[string]int)
 	}
+	d.Selectors = slices.Clone(d.Selectors)
 	r.indices[d.ID] = len(r.entries)
 	r.entries = append(r.entries, d)
 	r.revision++
@@ -83,10 +97,11 @@ func (r *Registry) Update(a peb.Action) error {
 		r.mu.Unlock()
 		return fmt.Errorf("unknown action %q", a.ID)
 	}
-	if r.entries[i].Action == a {
+	if r.entries[i].Action.Equal(a) {
 		r.mu.Unlock()
 		return nil
 	}
+	a.Selectors = slices.Clone(a.Selectors)
 	r.entries[i].Action = a
 	r.revision++
 	wake := r.wake

@@ -36,7 +36,11 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
    "icon.foreground":"#2468ac80", "button.foreground":"#135790",
    "problemsErrorIcon.foreground":"#e81123", "problemsWarningIcon.foreground":"#bf8803",
    "problemsInfoIcon.foreground":"#1a85ff", "editorHint.foreground":"#6c6c6c",
-   "list.activeSelectionForeground":"#cc00dd", "tab.activeForeground":"#112233", "tab.inactiveForeground":"#aabbcc"
+   "list.activeSelectionForeground":"#cc00dd", "tab.activeForeground":"#112233", "tab.inactiveForeground":"#aabbcc",
+   "debugIcon.startForeground":"#388e3c", "debugIcon.continueForeground":"#007acc",
+   "debugIcon.pauseForeground":"#a06c00", "debugIcon.restartForeground":"#a06c00",
+   "debugIcon.stepOverForeground":"#007acc", "debugIcon.stepIntoForeground":"#008070",
+   "debugIcon.stepOutForeground":"#8544ad", "debugIcon.stopForeground":"#c42b2b", "debugIcon.breakpointForeground":"#c42b2b"
   }
  }`)}}, "resources/icons.json")
 	if err != nil {

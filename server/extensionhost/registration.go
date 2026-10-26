@@ -116,6 +116,9 @@ func exchange(p io.ReadWriter) (peb.Contributions, error) {
 	if err != nil {
 		return c, err
 	}
+	if err := validateDebugAdapters(c.DebugAdapters); err != nil {
+		return c, err
+	}
 	return c, w.Write(peb.Shutdown, 0, nil)
 }
 

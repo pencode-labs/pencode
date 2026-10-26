@@ -111,6 +111,15 @@ func (x *Extension) ReadResource(ctx context.Context, name string, limit int64) 
 	return data, d.Done()
 }
 
+// ReadWorkspaceFile reads a document asset through the workspace connection.
+// Paths are resolved and confined to root by the workspace server.
+func (x *Extension) ReadWorkspaceFile(ctx context.Context, root, name string, limit int) ([]byte, error) {
+	if limit < 1 || limit > protocol.MaxMessage-4096 {
+		return nil, fs.ErrInvalid
+	}
+	return x.client.readFile(ctx, root, name, false, limit)
+}
+
 // ReadResources batches names and pages the response at the server's byte
 // budget. Large resources can never exceed a protocol message.
 func (x *Extension) ReadResources(ctx context.Context, names []string, limit int64) (map[string][]byte, error) {

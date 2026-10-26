@@ -6,11 +6,10 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/peb"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func TestPencodeEditorHeaderPathCache(t *testing.T) {
@@ -40,12 +39,12 @@ func TestPencodeEditorHeaderPathCache(t *testing.T) {
 	check("/workspace/other", "other", "main.go", []string{"other", "main.go"})
 }
 
-func TestPencodeEditorHeaderSelectorVisibility(t *testing.T) {
+func TestPencodeEditorOpenWithToolbarVisibility(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
 	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	step := func(wantHeader, wantSelector bool) {
+	step := func(wantHeader, wantTools bool) {
 		t.Helper()
 		markPencodeRootDirtyByModel(model.fontResources, model)
 		if _, err := app.Step(); err != nil {
@@ -55,7 +54,7 @@ func TestPencodeEditorHeaderSelectorVisibility(t *testing.T) {
 		for _, item := range []struct {
 			id      string
 			visible bool
-		}{{"editor-header", wantHeader}, {"editor-tool-select", wantSelector}} {
+		}{{"editor-header", wantHeader}, {"editor-tools", wantTools}, {"editor-text", wantTools}, {"editor-split", wantTools}} {
 			node, ok := model.fontResources.HTMLNode(model.surface, item.id)
 			if !ok {
 				t.Fatalf("missing %s", item.id)
@@ -66,22 +65,30 @@ func TestPencodeEditorHeaderSelectorVisibility(t *testing.T) {
 			}
 			if item.id == "editor-header" {
 				headerBounds = bounds
-			} else if visible && (bounds.Y < headerBounds.Y || bounds.Y+bounds.Height > headerBounds.Y+headerBounds.Height) {
-				t.Fatalf("selector outside header: header=%+v selector=%+v", headerBounds, bounds)
+			} else if visible {
+				if item.id == "editor-split" {
+					if bounds.Y < headerBounds.Y || bounds.Y+bounds.Height > headerBounds.Y+headerBounds.Height {
+						t.Fatalf("split button outside header: %+v", bounds)
+					}
+				} else {
+					body := editorContextBounds(t, model, "editor-body")
+					if bounds.Y < body.Y || bounds.X+bounds.Width > body.X+body.Width || bounds.Y+bounds.Height > body.Y+body.Height {
+						t.Fatalf("toolbar outside code area: %+v", bounds)
+					}
+				}
 			}
 		}
 	}
 	step(true, false)
-	model.importEditors([]extensions.Editor{{Editor: peb.Editor{
-		ID: "test/source", Label: "Source preview",
+	model.importEditors([]extensions.Editor{{Action: peb.Action{
+		ID: "test/source", Text: "Source preview", Location: peb.OpenWith,
 		Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}},
 	}}})
 	step(true, true)
-	entity, ok := model.fontResources.HTMLControl(model.surface, "editor-tool-select")
-	control, exists := module.ContentGet[htmlui.Control](model.fontResources, entity)
-	if !ok || !exists || len(control.Options) != 2 || control.Value != pencodeTextEditor {
-		t.Fatalf("incorrect available editors: %+v", control)
+	if model.actions.openWithCount != 1 {
+		t.Fatal("missing open-with action")
 	}
+	editorContextBounds(t, model, "action-test/source")
 	model.removeEditors("test/")
 	step(true, false)
 	project := model.activeProjectState()

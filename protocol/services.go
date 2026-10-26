@@ -42,6 +42,8 @@ const (
 	StreamCloseWrite
 	GitRepositories
 	TextSearch
+	DebugAdapterOpen
+	DebugTerminalOpen
 )
 
 type Port struct {

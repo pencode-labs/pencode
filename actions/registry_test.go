@@ -26,7 +26,7 @@ func TestRegistryLifecycleAndReentrantHandlers(t *testing.T) {
 		t.Fatal("duplicate accepted")
 	}
 	rows, revision := r.Snapshot(nil, 0)
-	if len(rows) != 1 || rows[0] != a {
+	if len(rows) != 1 || !rows[0].Equal(a) {
 		t.Fatal(rows)
 	}
 	if allocs := testing.AllocsPerRun(100, func() { rows, revision = r.Snapshot(rows, revision) }); allocs != 0 {

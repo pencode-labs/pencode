@@ -16,6 +16,7 @@ type pencodeTheme struct {
 	label            string
 	theme            *syntax.Theme
 	css              string
+	variables        map[string]string
 	icons            map[pencodeIconKey]string
 	border, guide    graphics.ColorRGBA
 	link             graphics.ColorRGBA
@@ -50,11 +51,19 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"find-next-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"find-close-icon", "icons/close.svg", "icon.foreground"},
 	{"output-clear-icon", "icons/clear-all.svg", "icon.foreground"},
+	{"debug-clear-icon", "icons/clear-all.svg", "icon.foreground"},
 	{"terminal-new-icon", "icons/add.svg", "icon.foreground"},
 	{"panel-close-icon", "icons/close.svg", "icon.foreground"},
 	{"lsp-close-icon", "icons/close.svg", "icon.foreground"},
 	{"lsp-previous-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"lsp-next-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"debug-reload-icon", "icons/refresh-cw.svg", "debugIcon.restartForeground"},
+	{"debug-start-icon", "icons/debug-start.svg", "debugIcon.startForeground"},
+	{"debug-continue-icon", "icons/debug-continue.svg", "debugIcon.continueForeground"},
+	{"debug-next-icon", "icons/debug-step-over.svg", "debugIcon.stepOverForeground"},
+	{"debug-stepIn-icon", "icons/debug-step-into.svg", "debugIcon.stepIntoForeground"},
+	{"debug-stepOut-icon", "icons/debug-step-out.svg", "debugIcon.stepOutForeground"},
+	{"debug-stop-icon", "icons/debug-stop.svg", "debugIcon.stopForeground"},
 }
 
 // Missing component colors inherit their parent surface before using the
@@ -115,6 +124,18 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return dark
 		}
 		switch key {
+		case "debugIcon.startForeground":
+			return decoration(syntax.Color{R: 137, G: 209, B: 133, A: 255}, syntax.Color{R: 56, G: 142, B: 60, A: 255}), nil
+		case "debugIcon.continueForeground", "debugIcon.stepOverForeground":
+			return decoration(syntax.Color{R: 117, G: 190, B: 255, A: 255}, syntax.Color{R: 0, G: 122, B: 204, A: 255}), nil
+		case "debugIcon.stepIntoForeground":
+			return decoration(syntax.Color{R: 78, G: 201, B: 176, A: 255}, syntax.Color{R: 0, G: 128, B: 112, A: 255}), nil
+		case "debugIcon.stepOutForeground":
+			return decoration(syntax.Color{R: 197, G: 157, B: 241, A: 255}, syntax.Color{R: 133, G: 68, B: 173, A: 255}), nil
+		case "debugIcon.pauseForeground", "debugIcon.restartForeground":
+			return decoration(syntax.Color{R: 220, G: 180, B: 92, A: 255}, syntax.Color{R: 160, G: 108, B: 0, A: 255}), nil
+		case "debugIcon.stopForeground", "debugIcon.breakpointForeground":
+			return decoration(syntax.Color{R: 244, G: 112, B: 112, A: 255}, syntax.Color{R: 196, G: 43, B: 43, A: 255}), nil
 		case "editorError.foreground", "problemsErrorIcon.foreground":
 			return decoration(syntax.Color{R: 244, G: 135, B: 113, A: 255}, syntax.Color{R: 232, G: 17, B: 35, A: 255}), nil
 		case "editorWarning.foreground", "problemsWarningIcon.foreground":
@@ -164,7 +185,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 	var css strings.Builder
 	var variables strings.Builder
 	variables.WriteString("\n.pencode-root {")
-	seenVariables := make(map[string]bool)
+	resolvedVariables := make(map[string]string)
 	css.Grow(len(source))
 	// Resolve the CSS template once; frames and theme switches reuse the result.
 	const prefix = "var(--vscode-"
@@ -183,8 +204,8 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 		css.WriteString(value.Hex())
-		if !seenVariables[name] {
-			seenVariables[name] = true
+		if _, ok := resolvedVariables[name]; !ok {
+			resolvedVariables[name] = value.Hex()
 			variables.WriteString("--vscode-")
 			variables.WriteString(name)
 			variables.WriteByte(':')
@@ -195,7 +216,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 	}
 	variables.WriteByte('}')
 	css.WriteString(variables.String())
-	result := pencodeTheme{id: id, theme: theme, css: css.String(), icons: make(map[pencodeIconKey]string, len(pencodeThemeIcons)+6)}
+	result := pencodeTheme{id: id, theme: theme, css: css.String(), variables: resolvedVariables, icons: make(map[pencodeIconKey]string, len(pencodeThemeIcons)+6)}
 	addIcon := func(key pencodeIconKey) error {
 		if _, exists := result.icons[key]; exists {
 			return nil
@@ -224,6 +245,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 	}
 	// Retained rows and tabs select their foreground without rebuilding SVGs.
 	for _, key := range [...]pencodeIconKey{
+		{"icons/debug-pause.svg", "debugIcon.pauseForeground"},
 		{"icons/git-commit.svg", "button.foreground"},
 		{"icons/refresh-cw.svg", "button.foreground"},
 		{"icons/arrow-right.svg", "button.foreground"},
@@ -296,6 +318,39 @@ func (model *workspaceModel) themedIcon(source, foreground string) string {
 		}
 	}
 	return source
+}
+
+// The native CSS renderer consumes concrete colors. Resolve extension theme
+// tokens at view creation, using the same palette as the workbench stylesheet.
+func (theme *pencodeTheme) resolveCSS(source string) string {
+	const prefix = "var(--vscode-"
+	if theme == nil || !strings.Contains(source, prefix) {
+		return source
+	}
+	var resolved strings.Builder
+	resolved.Grow(len(source))
+	for {
+		before, rest, found := strings.Cut(source, prefix)
+		resolved.WriteString(before)
+		if !found {
+			break
+		}
+		name, after, closed := strings.Cut(rest, ")")
+		if !closed {
+			resolved.WriteString(prefix)
+			resolved.WriteString(rest)
+			break
+		}
+		if value, ok := theme.variables[name]; ok {
+			resolved.WriteString(value)
+		} else {
+			resolved.WriteString(prefix)
+			resolved.WriteString(name)
+			resolved.WriteByte(')')
+		}
+		source = after
+	}
+	return resolved.String()
 }
 
 func (model *workspaceModel) syncWorkbenchTheme(world *module.Content) {

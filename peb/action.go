@@ -2,10 +2,11 @@ package peb
 
 import (
 	"context"
+	"slices"
 	"sync"
 )
 
-// ActionLocation identifies the four workbench button slots.
+// ActionLocation identifies workbench button slots, including document views.
 type ActionLocation uint32
 
 const (
@@ -13,14 +14,25 @@ const (
 	LeftContextMenu
 	RightContextMenu
 	TitleBarRight
+	OpenWith
 )
 
 // Action is a complete button description. Updates replace the description;
 // empty fields clear their previous values. Icon is an SVG resource path.
+// OpenWith actions use Selectors to match documents and Default to opt into
+// automatic activation. Their view is served by Handlers.Editor, not Action.
 type Action struct {
 	ID, Text, Tooltip, Icon, Color, IconColor, IconStyle string
 	Location                                             ActionLocation
 	Disabled, Hidden                                     bool
+	Default                                              bool
+	Selectors                                            []DocumentSelector
+}
+
+// Equal compares full descriptions, including document associations.
+func (a Action) Equal(b Action) bool {
+	rules := slices.Equal(a.Selectors, b.Selectors)
+	return rules && a.ID == b.ID && a.Text == b.Text && a.Tooltip == b.Tooltip && a.Icon == b.Icon && a.Color == b.Color && a.IconColor == b.IconColor && a.IconStyle == b.IconStyle && a.Location == b.Location && a.Disabled == b.Disabled && a.Hidden == b.Hidden && a.Default == b.Default
 }
 
 // ActionContext uses absolute paths; Caret and Anchor are Unicode rune offsets.
@@ -36,7 +48,7 @@ type ActionChange struct {
 }
 
 func encodeAction(e *encoder, a Action) {
-	if a.Location > TitleBarRight {
+	if a.Location > OpenWith {
 		e.err = ErrProtocol
 	}
 	e.str(a.ID)
@@ -49,10 +61,24 @@ func encodeAction(e *encoder, a Action) {
 	e.number(uint32(a.Location))
 	e.number(boolNumber(a.Disabled))
 	e.number(boolNumber(a.Hidden))
+	e.number(boolNumber(a.Default))
+	e.count(len(a.Selectors))
+	for _, rule := range a.Selectors {
+		e.number(uint32(rule.Match))
+		e.str(rule.Pattern)
+		e.str(rule.LanguageID)
+	}
 }
 func decodeAction(d *decoder) Action {
 	a := Action{ID: d.str(), Text: d.str(), Tooltip: d.str(), Icon: d.str(), Color: d.str(), IconColor: d.str(), IconStyle: d.str(), Location: ActionLocation(d.number()), Disabled: d.boolean(), Hidden: d.boolean()}
-	if a.Location > TitleBarRight {
+	a.Default = d.boolean()
+	if n := d.count(); n != 0 {
+		a.Selectors = make([]DocumentSelector, n)
+	}
+	for i := range a.Selectors {
+		a.Selectors[i] = DocumentSelector{Match: Match(d.number()), Pattern: d.str(), LanguageID: d.str()}
+	}
+	if a.Location > OpenWith {
 		d.err = ErrProtocol
 	}
 	return a

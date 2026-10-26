@@ -8,10 +8,14 @@ import (
 
 	"github.com/diiyw/onix/syntax"
 	htmlui "github.com/diiyw/onix/ui/html"
-	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/v2/parser"
+	goldmarkhtml "github.com/yuin/goldmark/v2/renderer/html"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
+
+var hoverMarkdownParser = parser.New()
+var hoverMarkdownRenderer = goldmarkhtml.New()
 
 type pencodeHoverJob struct {
 	result          json.RawMessage
@@ -125,7 +129,8 @@ func (model *workspaceModel) appendLanguageHover(value any) {
 		model.appendLanguageHover(text)
 	case string:
 		var markup bytes.Buffer
-		if err := goldmark.Convert([]byte(value), &markup); err != nil {
+		document := hoverMarkdownParser.ParseStringSource(value)
+		if err := hoverMarkdownRenderer.RenderStringSource(&markup, value, document); err != nil {
 			appendNode(htmlui.TextVNode(0, "pre", value))
 			return
 		}

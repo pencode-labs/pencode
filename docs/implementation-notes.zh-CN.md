@@ -196,7 +196,7 @@ go test ./workbench -run '^$' \
 
 ## 扩展
 
-Pencode 通过 stdin/stdout 上的 **peb（Pencode Extension Binary）** 协议加载本机扩展。支持字体、文件图标主题、编辑器和工作台颜色主题，以及可按文件类型选择的 HTML/CSS 编辑工具、标准 stdio LSP 语言服务和可实时更新的 action 按钮。二进制帧、字段编码和 Go SDK 说明见 [peb v6 协议](../peb/README.md)。
+Pencode 通过 stdin/stdout 上的 **peb（Pencode Extension Binary）** 协议加载本机扩展。支持字体、文件图标主题、编辑器和工作台颜色主题，以及可按文件类型选择的 HTML/CSS 编辑工具、标准 stdio LSP 语言服务和可实时更新的 action 按钮。二进制帧、字段编码和 Go SDK 说明见 [peb v7 协议](../peb/README.md)。
 
 点击右上角设置按钮左侧的扩展图标打开「扩展市场」。目前使用本地扩展：可以搜索已安装列表、查看名称/版本/发布者/描述，点击「从本地目录安装」选择扩展目录，或在详情中启用、禁用和卸载扩展。操作在后台执行，完成后即时加载或移除对应主题、文件图标和编辑工具；禁用或卸载当前主题时自动回到内置外观。禁用保留扩展文件，启用前会验证加载，失败时保持禁用状态。
 
@@ -228,7 +228,7 @@ my-extension/
 
 扩展源由 GUI 文件夹选择器指定，按 32 KiB 分块上传到 server 暂存目录；注册探测和 GUI 资源校验通过后再发布，保留源目录。符号链接、特殊文件、无效协议和损坏资源会使安装失败；已安装的同名扩展不会被覆盖。损坏扩展仍显示在列表中，可直接卸载。
 
-仓库提供 [Markdown 编辑示例](../extensions/markdown-editor/main.go) 与 [Material Design 图标示例](../extensions/material-icons/main.go)，分别展示自定义编辑工具和文件图标主题，构建方法见下文对应章节。选择保存在用户配置目录的 `pencode/resources/settings.json` 的 `theme` 与 `iconTheme` 字段；异步注册完成后会恢复上次选择。
+仓库提供 [Markdown 编辑示例](../extensions/markdown-preview/main.go) 与 [Material Design 图标示例](../extensions/material-icons/main.go)，分别展示自定义编辑工具和文件图标主题，构建方法见下文对应章节。选择保存在用户配置目录的 `pencode/resources/settings.json` 的 `theme` 与 `iconTheme` 字段；异步注册完成后会恢复上次选择。
 
 ## LSP 语言服务
 
@@ -248,7 +248,7 @@ cp -R extensions/go/resources "$pencode_extension_dir/"
 
 快捷键：`Ctrl+Space` 补全、`Ctrl+Shift+Space` 参数提示、`F12` 定义、`Shift+F12` 引用、`Ctrl+F12` 实现、`F2` 重命名、`Alt+Shift+F` 格式化、`Ctrl+.` 代码操作。选择结果按钮应用补全或跳转；重命名在输入框输入新名称后确认。编辑结果使用现有撤销和保存流程。
 
-协议 SDK、能力范围和验证方式见 [LSP 开发文档](../lsp/README.md)。peb 已升级为 v6，已有扩展需要重新构建。
+协议 SDK、能力范围和验证方式见 [LSP 开发文档](../lsp/README.md)。peb 已升级为 v7，已有扩展需要重新构建。
 
 ## 字体
 
@@ -262,18 +262,18 @@ macOS / iOS 优先 Menlo，其次 Monaco、Courier New；Windows / Linux 等平�
 
 ## 自定义文件编辑工具
 
-状态栏的「打开方式」可以选择匹配文件类型的工具，或回到文本编辑器。扩展可以注册默认关联，自行渲染 HTML/CSS 并接收控件事件；修改接入宿主的未保存提示、保存、撤销和重做。每个文件保留独立会话，扩展通信在后台执行。二进制文件目前支持扩展按路径读取查看，暂不支持写回。当前协议为 peb v6，旧扩展需要重新构建。
+代码区右上角的浮动图标组提供匹配文件类型的打开方式；只有源码时隐藏，透明度为 30%，悬停或聚焦时为 100%。点击图标替换代码区，路径栏的双栏按钮可同时显示源码与扩展视图。扩展通过 `Contributions.Actions` 注册 `Location: peb.OpenWith`，并提供文件关联、图标和视图处理函数。扩展可以注册默认关联，自行渲染 HTML/CSS 并接收控件事件；修改接入宿主的未保存提示、保存、撤销和重做。每个文件保留独立会话，扩展通信在后台执行。二进制文件目前支持扩展按路径读取查看，暂不支持写回。当前协议为 peb v7，旧扩展需要重新构建。
 
-[Markdown 示例](../extensions/markdown-editor/main.go) 展示源码编辑与预览。在仓库根目录构建到本地扩展目录后，打开扩展市场刷新，打开 `.md` 文件并选择「Markdown 编辑与预览」：
+[Markdown 示例](../extensions/markdown-preview/main.go) 提供只读 Markdown 预览。在仓库根目录构建到本地扩展目录后，打开扩展市场刷新，打开 `.md` 文件并点击「Markdown 预览」图标：
 
 ```sh
-pencode_extension_dir="$HOME/.pencode/extensions/markdown-editor"
+pencode_extension_dir="$HOME/.pencode/extensions/markdown-preview"
 mkdir -p "$pencode_extension_dir/bin"
-cp -R extensions/markdown-editor/resources "$pencode_extension_dir/"
-(cd extensions/markdown-editor && GOWORK=off go build -o "$pencode_extension_dir/bin/markdown-editor" .)
+cp -R extensions/markdown-preview/resources "$pencode_extension_dir/"
+(cd extensions/markdown-preview && GOWORK=off go build -o "$pencode_extension_dir/bin/markdown-preview" .)
 ```
 
-源码编辑保留输入控件与光标，点击「刷新预览」更新右侧 Markdown。扩展开发与事件协议见 [自定义文件编辑工具 API](../peb/README.md#自定义文件编辑工具)。
+源码编辑由宿主管理，双栏模式下修改源码会自动同步预览。扩展开发与事件协议见 [自定义文件编辑工具 API](../peb/README.md#自定义文件编辑工具)。
 
 ## Material Design 图标扩展
 
@@ -417,7 +417,7 @@ git submodule foreach 'GOWORK=off go test ./... && GOWORK=off go vet ./...'
 
 支持自定义文本、提示、SVG 图标、文本颜色、图标颜色和图标 CSS 样式，以及禁用、隐藏、移动和移除。扩展可通过 `ActionPublisher.Update` 主动实时创建或更新按钮，无需点击；`Remove` 删除按钮。原生注册表同样支持后台线程更新，并自动唤醒 UI。扩展退出、禁用或卸载会清理其按钮和进程。
 
-具体字段、完整替换语义、点击上下文和原生/扩展开发示例见 [Action API](../peb/README.md#actions)。此功能将协议升级为 **peb v6**，已有扩展需要使用当前 SDK 重新构建。
+具体字段、完整替换语义、点击上下文和原生/扩展开发示例见 [Action API](../peb/README.md#actions)。此功能将协议升级为 **peb v7**，已有扩展需要使用当前 SDK 重新构建。
 
 ## 扩展弹窗、菜单与 Panel
 
@@ -430,4 +430,4 @@ mkdir -p extensions/ui-demo/bin
 (cd extensions/ui-demo && GOWORK=off go build -o bin/ui-demo .)
 ```
 
-在扩展市场选择「从本地目录安装」，选择 `extensions/ui-demo`。安装后点击标题栏「UI 示例」，即可打开菜单、表单弹窗、自由定位浮窗和 Panel；浮窗中的按钮可切换工作区坐标与 action 锚点，并保留搜索输入；勾选「点击外部关闭」可实时切换关闭策略。当前协议为 **peb v6**，已有扩展需用当前 SDK 重新构建。
+在扩展市场选择「从本地目录安装」，选择 `extensions/ui-demo`。安装后点击标题栏「UI 示例」，即可打开菜单、表单弹窗、自由定位浮窗和 Panel；浮窗中的按钮可切换工作区坐标与 action 锚点，并保留搜索输入；勾选「点击外部关闭」可实时切换关闭策略。当前协议为 **peb v7**，已有扩展需用当前 SDK 重新构建。

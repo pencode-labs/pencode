@@ -1,4 +1,4 @@
-// Package peb implements Pencode Extension Binary protocol version 6.
+// Package peb implements Pencode Extension Binary protocol version 8.
 // Frames and payloads use little endian integers; stdout is reserved for frames.
 package peb
 
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version    = 6
+	Version    = 8
 	HeaderSize = 16
 	MaxPayload = 4 << 20
 	MaxString  = 64 << 10
@@ -47,7 +47,8 @@ const (
 	LanguageServers
 	Actions
 	ExtensionUI
-	Capabilities = FileIcons | EditorThemes | CustomEditors | Fonts | LanguageServers | Actions | ExtensionUI
+	DebugAdapters
+	Capabilities = FileIcons | EditorThemes | CustomEditors | Fonts | LanguageServers | Actions | ExtensionUI | DebugAdapters
 )
 
 var ErrProtocol = errors.New("peb: invalid protocol message")
@@ -186,9 +187,9 @@ type Contributions struct {
 	Actions         []Action
 	Themes          []Theme
 	IconThemes      []IconTheme
-	Editors         []Editor
 	Fonts           []Font
 	LanguageServers []LanguageServer
+	DebugAdapters   []DebugAdapter
 }
 
 type encoder struct {
@@ -310,17 +311,6 @@ func EncodeContributions(dst []byte, v Contributions) ([]byte, error) {
 			e.str(r.Path)
 		}
 	}
-	e.count(len(v.Editors))
-	for _, editor := range v.Editors {
-		e.str(editor.ID)
-		e.str(editor.Label)
-		e.number(boolNumber(editor.Default))
-		e.count(len(editor.Selectors))
-		for _, rule := range editor.Selectors {
-			e.number(uint32(rule.Match))
-			e.str(rule.Pattern)
-		}
-	}
 	e.count(len(v.Fonts))
 	for _, f := range v.Fonts {
 		e.str(f.ID)
@@ -334,6 +324,7 @@ func EncodeContributions(dst []byte, v Contributions) ([]byte, error) {
 		encodeAction(&e, a)
 	}
 	e.number(boolNumber(v.ActionService))
+	encodeDebugAdapters(&e, v.DebugAdapters)
 	return e.data, e.err
 }
 
@@ -360,17 +351,6 @@ func DecodeContributions(data []byte) (Contributions, error) {
 		}
 	}
 	if n := d.count(); n != 0 {
-		v.Editors = make([]Editor, n)
-	}
-	for i := range v.Editors {
-		editor := &v.Editors[i]
-		editor.ID, editor.Label, editor.Default = d.str(), d.str(), d.boolean()
-		editor.Selectors = make([]DocumentSelector, d.count())
-		for j := range editor.Selectors {
-			editor.Selectors[j] = DocumentSelector{Match(d.number()), d.str()}
-		}
-	}
-	if n := d.count(); n != 0 {
 		v.Fonts = make([]Font, n)
 	}
 	for i := range v.Fonts {
@@ -384,6 +364,7 @@ func DecodeContributions(data []byte) (Contributions, error) {
 		v.Actions[i] = decodeAction(&d)
 	}
 	v.ActionService = d.boolean()
+	v.DebugAdapters = decodeDebugAdapters(&d)
 	return v, d.done()
 }
 
@@ -430,14 +411,23 @@ func ServeExtension(input io.Reader, output io.Writer, contributions Contributio
 	if err != nil {
 		return err
 	}
+	hasViews, hasActions := false, false
+	for _, a := range contributions.Actions {
+		if a.Location == OpenWith {
+			hasViews = true
+		} else {
+			hasActions = true
+		}
+	}
 	if len(contributions.Themes) > 0 && hello.Capabilities&EditorThemes == 0 ||
 		len(contributions.IconThemes) > 0 && hello.Capabilities&FileIcons == 0 ||
 		len(contributions.Fonts) > 0 && hello.Capabilities&Fonts == 0 ||
 		len(contributions.LanguageServers) > 0 && hello.Capabilities&LanguageServers == 0 ||
+		len(contributions.DebugAdapters) > 0 && hello.Capabilities&DebugAdapters == 0 ||
 		(contributions.ActionService || len(contributions.Actions) > 0) && hello.Capabilities&Actions == 0 ||
-		len(contributions.Actions) > 0 && handlers.Action == nil ||
+		hasActions && handlers.Action == nil ||
 		handlers.UIEvent != nil && hello.Capabilities&ExtensionUI == 0 ||
-		len(contributions.Editors) > 0 && (hello.Capabilities&CustomEditors == 0 || handlers.Editor == nil) {
+		hasViews && (hello.Capabilities&CustomEditors == 0 || handlers.Editor == nil) {
 		data, _ := EncodeFailure(nil, "unsupported extension capabilities")
 		return w.Write(Failure, f.ID, data)
 	}

@@ -55,13 +55,21 @@ func TestGoLanguageExtensionRegistration(t *testing.T) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, output)
 	}
-	// Exercise the PATH fallback independently of a locally installed GOPATH/bin/gopls.
+	// Registration must succeed without installed tools or running go env.
 	t.Setenv("GOPATH", t.TempDir())
 	bundle, err := Load(ctx, extensionBackend(t, filepath.Dir(root)), "go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bundle.LanguageServers) != 1 || bundle.LanguageServers[0].remote.Info.Path != root || bundle.LanguageServers[0].Command != "gopls" {
+	if len(bundle.LanguageServers) != 1 || bundle.LanguageServers[0].remote.Info.Path != root || bundle.LanguageServers[0].Command != "bin/go" || bundle.Actions == nil {
 		t.Fatalf("%+v", bundle)
+	}
+	server := &bundle.LanguageServers[0]
+	if len(server.Args) != 2 || server.Args[1] != "gopls" || server.DocumentLanguage("go.mod") != "go.mod" || server.DocumentLanguage("go.work") != "go.work" {
+		t.Fatalf("invalid Go launcher or document types: %+v", server)
+	}
+	adapters := server.remote.Contributions.DebugAdapters
+	if len(adapters) != 1 || adapters[0].ID != "Delve" || adapters[0].Command != "bin/go" || adapters[0].Args[1] != "dlv" {
+		t.Fatalf("missing Delve launcher: %+v", adapters)
 	}
 }

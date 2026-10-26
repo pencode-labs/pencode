@@ -903,6 +903,43 @@ textarea:focus {
     pointer-events: none;
 }
 
+.pencode-debug-panel .pencode-panel-toolbar { position: relative; top: auto; right: auto; max-width: none; padding: 4px 6px; border-radius: 0; border-bottom: 1px solid var(--vscode-editorGroup-border); opacity: 1; }
+.pencode-debug-tools { display: flex; align-items: center; flex: 1; min-width: 0; gap: 4px; overflow-x: auto; }
+.pencode-debug-config { min-width: 130px; max-width: 230px; flex-shrink: 0; height: 26px; padding: 0 24px 0 8px; border: 1px solid var(--vscode-dropdown-border); border-radius: 3px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); font: inherit; cursor: pointer; }
+.pencode-debug-config:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.pencode-debug-tools .pencode-icon-button { flex-shrink: 0; width: 28px; height: 26px; padding: 5px; }
+.pencode-debug-tools .pencode-icon-button img { width: 16px; height: 16px; }
+.pencode-debug-tools button:disabled, .pencode-debug-config:disabled, .pencode-debug-evaluate button:disabled { opacity: .4; }
+.pencode-debug-config:disabled { cursor: default; }
+.pencode-debug-tools, .pencode-debug-stack, .pencode-debug-values, .pencode-debug-output, .pencode-debug-console { scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+.pencode-debug-pane { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.pencode-debug-columns { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.pencode-debug-stack, .pencode-debug-values, .pencode-debug-output { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--vscode-editorGroup-border); }
+.pencode-debug-stack { width: 27%; }
+.pencode-debug-values { width: 33%; }
+.pencode-debug-output { display: flex; flex-direction: column; flex: 1; border-right: 0; }
+.pencode-debug-columns h3 { flex-shrink: 0; margin: 0; padding: 5px 8px; font-size: calc(11rem / 14); font-weight: 600; color: var(--vscode-descriptionForeground); }
+.pencode-debug-columns .pencode-debug-threads-heading { padding: 0; }
+.pencode-debug-section-toggle { display: flex; align-items: center; gap: 4px; width: 100%; padding: 5px 8px; border: 0; border-radius: 0; color: inherit; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.pencode-debug-section-toggle:hover { background: var(--vscode-list-hoverBackground); }
+.pencode-debug-section-toggle:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.pencode-debug-console-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding-right: 4px; }
+.pencode-debug-console-heading .pencode-icon-button { width: 24px; height: 24px; padding: 4px; }
+.pencode-debug-row { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 24px; padding: 3px 8px; border: 0; border-radius: 0; color: var(--vscode-editor-foreground); background: transparent; text-align: left; font-family: monospace; font-size: calc(12rem / 14); }
+.pencode-debug-row:hover { background: var(--vscode-list-hoverBackground); }
+.pencode-debug-row.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.pencode-debug-toggle { width: 10px; flex-shrink: 0; }
+.pencode-debug-label { flex-shrink: 0; white-space: nowrap; }
+.pencode-debug-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .7; }
+.pencode-debug-console { flex: 1; min-height: 0; overflow: auto; font-family: monospace; font-size: calc(12rem / 14); line-height: 1.5; }
+.pencode-debug-console pre { margin: 0; padding: 4px 8px; white-space: pre-wrap; font: inherit; }
+.pencode-debug-console .pencode-debug-row { align-items: flex-start; }
+.pencode-debug-console .pencode-debug-label { flex-shrink: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pencode-debug-console .pencode-debug-detail { overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; opacity: 1; }
+.pencode-debug-evaluate { display: flex; flex-shrink: 0; padding: 4px; gap: 4px; }
+.pencode-debug-evaluate input { min-width: 0; flex: 1; height: 26px; padding: 3px 6px; border: 1px solid var(--vscode-input-border); border-radius: 3px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
+.pencode-debug-evaluate button { border: 0; border-radius: 3px; padding: 3px 8px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+
 .pencode-editor {
     position: absolute;
     top: 0;
@@ -1885,33 +1922,60 @@ textarea:focus {
     margin-right: 4px;
     object-fit: contain;
 }
+#editor-split { width: 20px; height: 20px; min-height: 20px; min-width: 20px; padding: 1px; }
 .pencode-editor-tools {
-    flex: 0 0 auto;
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    z-index: 10;
     display: flex;
     align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border-radius: 6px;
+    background: var(--vscode-editorWidget-background);
+    opacity: .3;
 }
-.pencode-editor-tools select {
-    width: auto;
-    height: 22px;
-    padding: 0 24px 0 6px;
+.pencode-editor-tools:hover,
+.pencode-editor-tools:focus-within {
+    opacity: 1;
+}
+.pencode-open-with-actions { display: flex; gap: 4px; }
+.pencode-editor-tools .pencode-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    margin: 0;
+    padding: 5px;
     border: 1px solid transparent;
-    color: var(--vscode-descriptionForeground);
-    background: transparent;
-    font: inherit;
-    cursor: pointer;
-}
-.pencode-editor-tools select:hover {
+    border-radius: 4px;
     color: var(--vscode-foreground);
+    background: transparent;
+}
+.pencode-editor-tools .pencode-action img { width: 16px; height: 16px; }
+.pencode-editor-tools .pencode-action:hover,
+.pencode-editor-tools .pencode-action[aria-pressed="true"],
+#editor-split[aria-pressed="true"] {
     background: var(--vscode-toolbar-hoverBackground);
 }
-.pencode-editor-tools select:focus-visible {
+.pencode-editor-tools .pencode-action:focus-visible {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: -1px;
+}
+[data-editor-split] > .pencode-editor { right: 50%; }
+[data-editor-split] > .pencode-custom-editor {
+    left: 50%;
+    border-left: 1px solid var(--vscode-editorGroup-border);
 }
 .pencode-custom-editor {
     position: absolute;
     inset: 0;
     overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
     color: var(--vscode-foreground);
     background: var(--vscode-editor-background);
 }

@@ -1,10 +1,10 @@
-# peb v6 — Pencode Extension Binary
+# peb v8 — Pencode Extension Binary
 
-peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）和 `ExtensionUI`（弹窗、菜单与 Panel）。
+peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）和 `DebugAdapters`（调试适配器）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **6**，已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **8**，已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
 
 ## 帧
 
@@ -13,7 +13,7 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 | 偏移 | 长度 | 字段 |
 | --- | --- | --- |
 | 0 | 4 | magic：`70 65 62 00`（`peb\0`） |
-| 4 | 2 | version：`6` |
+| 4 | 2 | version：`8` |
 | 6 | 2 | kind：见下表 |
 | 8 | 4 | request ID |
 | 12 | 4 | payload 字节数，不含头部，最大 4 MiB |
@@ -43,17 +43,17 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 ```text
 Initialize {
   host: string                  // 当前为 "pencode"
-  capabilities: u32             // FileIcons=1, EditorThemes=2, CustomEditors=4, Fonts=8, LanguageServers=16, Actions=32, ExtensionUI=64，当前为 127
+  capabilities: u32             // FileIcons=1, EditorThemes=2, CustomEditors=4, Fonts=8, LanguageServers=16, Actions=32, ExtensionUI=64, DebugAdapters=128，当前为 255
 }
 
 Register {
   themes: array<Theme>
   iconThemes: array<IconTheme>
-  editors: array<Editor>
   fonts: array<Font>
   languageServers: array<LanguageServer>
   actions: array<Action>
   actionService: u32             // boolean；允许初始按钮列表为空，之后主动注册
+  debugAdapters: array<DebugAdapter>
 }
 
 Theme {
@@ -90,6 +90,13 @@ LanguageServer {
   selectors: array<DocumentSelector>
   initializationOptions: text    // 空字符串或标准 JSON
   configuration: text            // 空字符串或标准 JSON
+}
+
+DebugAdapter {
+  id: string                    // 例如 Delve，与调试配置的 adapter 对应
+  label: string
+  command: string               // PATH、绝对路径或相对扩展目录
+  args: array<string>           // 启动前缀，位于适配器固定参数和用户参数之前
 }
 
 Failure {
@@ -166,12 +173,15 @@ func main() {
 
 ## 自定义文件编辑工具
 
-使用 `peb.ServeEditors(stdin, stdout, contributions, handler)`，在 `Contributions.Editors` 注册：
+使用 `peb.ServeEditors(stdin, stdout, contributions, handler)`，在 `Contributions.Actions` 注册类型为 `OpenWith` 的 action：
 
 ```go
-peb.Editor{
+peb.Action{
     ID: "markdown",
-    Label: "Markdown 编辑与预览",
+    Text: "Markdown 预览",
+    Tooltip: "Markdown 预览",
+    Icon: "resources/preview.svg",
+    Location: peb.OpenWith,
     Default: false,
     Selectors: []peb.DocumentSelector{
         {Match: peb.FileSuffix, Pattern: ".md"},
@@ -180,7 +190,7 @@ peb.Editor{
 }
 ```
 
-编辑器 ID/label 使用主题相同的校验规则，宿主 ID 为 `extensions/<扩展 ID>/<工具 ID>`，消息内 Editor 使用扩展本地 ID。selector 只允许 FileName、FileSuffix，必须非空；区分大小写。文本文件默认使用内置编辑器，`Default: true` 声明自动打开。精确文件名优先于后缀，较长后缀优先，相同优先级按宿主工具 ID 排序。二进制文件自动选择匹配工具。用户可在状态栏的「打开方式」选择任一匹配工具或文本编辑器；选择只保留在当前打开的文件中。
+打开方式使用 action 的 ID、图标与提示校验规则，宿主 ID 为 `extensions/<扩展 ID>/<工具 ID>`，消息内 Editor 使用扩展本地 ID。selector 只允许 FileName、FileSuffix，必须非空；区分大小写。文本文件默认使用内置编辑器，`Default: true` 声明自动打开。精确文件名优先于后缀，较长后缀优先，相同优先级按宿主工具 ID 排序。二进制文件自动选择匹配工具。代码区右上角浮动显示匹配的打开方式图标，默认透明度为 30%，悬停或键盘聚焦时为 100%。只有内置代码编辑器时不显示图标组；存在扩展打开方式时显示代码按钮，点击可返回源码。点击扩展图标默认替换整个代码区；路径栏的双栏按钮可同时显示左侧源码与右侧扩展视图，再次点击保留当前扩展为单栏。选择和布局只保留在当前打开的文件中。
 
 handler 接收 `EditorMessage`：Editor、文件绝对 Path、宿主当前 Content、Binary 和 Event。`open` 请求创建视图，`documentchange` 表示撤销、重做或从磁盘重新加载后同步文档。HTML 事件提供 Kind、data-ref、Value、Checked、Selected、Anchor、Focus、InputType 和 Data。宿主串行提交事件，每次均附最新文档快照；切换标签后回复仍应用到所属文件。与宿主新内容冲突的过期回复会丢弃并重新同步。
 
@@ -199,8 +209,7 @@ handler 接收 `EditorMessage`：Editor、文件绝对 Path、宿主当前 Conte
 编辑工具新增的 payload 按以下顺序编码。bool 使用 u32，严格只接受 0/1；text 为 u32 字节数 + UTF-8，最大 2 MiB；普通 string 仍为 64 KiB，单帧总大小仍为 4 MiB。
 
 ```text
-Editor { id: string, label: string, default: bool, selectors: array<DocumentSelector> }
-DocumentSelector { match: u32, pattern: string }
+DocumentSelector { match: u32, pattern: string, languageId: string }
 EditorRequest {
   editor: string, path: string, content: text, binary: bool,
   kind: string, ref: string, value: text, inputType: string, data: text,
@@ -214,7 +223,7 @@ EditorResponse {
 }
 ```
 
-完整运行示例见 [Markdown 编辑工具](../extensions/markdown-editor/main.go)。源码输入只回复 Content，保留 textarea；点击「刷新预览」时用当前宿主快照重建 Markdown 预览。
+完整运行示例见 [Markdown 预览](../extensions/markdown-preview/main.go)。插件只提供只读预览，在 `open` 和 `documentchange` 时渲染最新宿主快照；源码编辑和双栏布局由宿主管理。
 
 ## 语言服务扩展
 
@@ -236,13 +245,14 @@ selector 使用与编辑工具相同的 `FileName` / `FileSuffix` 规则，不�
 
 ## Actions
 
-原生代码和扩展使用相同的 `peb.Action` 描述按钮。四个位置为 `StatusBar=0`（状态栏）、`LeftContextMenu=1`（左侧文件树右键菜单）、`RightContextMenu=2`（右侧编辑区右键菜单）和 `TitleBarRight=3`（标题栏右侧）。按钮按注册顺序排列；更新位置后移动到对应区域。禁用或隐藏的按钮不会执行；禁用、卸载扩展及进程异常退出时清理其所有 action。
+原生代码和扩展使用相同的 `peb.Action` 描述按钮。位置为 `StatusBar=0`（状态栏）、`LeftContextMenu=1`（左侧文件树右键菜单）、`RightContextMenu=2`（右侧编辑区右键菜单）、`TitleBarRight=3`（标题栏右侧）和 `OpenWith=4`（代码区右上角打开方式图标）。按钮按注册顺序排列；更新位置后移动到对应区域。禁用或隐藏的按钮不会执行；禁用、卸载扩展及进程异常退出时清理其所有 action。
 
 ```text
 Action {
   id, text, tooltip, icon, color, iconColor, iconStyle: string
   location: u32
-  disabled, hidden: u32          // boolean，只允许 0 或 1
+  disabled, hidden, default: u32 // boolean，只允许 0 或 1
+  selectors: array<DocumentSelector> // OpenWith 必须提供文件名或后缀；其他类型为空
 }
 ActionInvoke {
   id, projectPath, path: string
@@ -418,3 +428,9 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 ```
 
 可构建的完整示例见 [UI Demo](../extensions/ui-demo/main.go)，包含 action 菜单、表单弹窗、自由定位浮窗、点击外部关闭选项、输入与提交事件、Panel 更新和关闭事件。
+
+## 调试工具
+
+`Contributions.DebugAdapters` 为 workspace server 提供调试启动命令。Go 扩展注册 `Delve`，以自身的 `--tool dlv` 启动器按需安装工具。显式配置的 command 优先；同一 adapter ID 有多个提供者时返回冲突。禁用、卸载和断开连接会取消启动并回收对应适配器进程。
+
+`DocumentSelector` 在 match、pattern 后增加 `languageId:string`，为空则继承 LanguageServer.LanguageID，允许同一 gopls 会话分别用 go、go.mod、go.work 打开文档。

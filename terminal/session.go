@@ -63,6 +63,33 @@ func OpenProcess(directory string, cols, rows int) (Process, error) {
 	return startNative(directory, max(2, min(cols, 1000)), max(1, min(rows, 500)))
 }
 
+// OpenCommand starts argv directly in a PTY; no shell parses program arguments.
+// A nil environment value removes the inherited variable, as required by DAP.
+func OpenCommand(directory string, args []string, env map[string]*string, cols, rows int) (Process, int, error) {
+	if len(args) == 0 || args[0] == "" {
+		return nil, 0, errors.New("terminal command is empty")
+	}
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = directory
+	cmd.Env = make([]string, 0, len(os.Environ())+len(env)+3)
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, overridden := env[key]; !overridden {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	for key, value := range env {
+		if value != nil {
+			cmd.Env = append(cmd.Env, key+"="+*value)
+		}
+	}
+	p, err := startNativeCommand(cmd, max(2, min(cols, 1000)), max(1, min(rows, 500)))
+	if err != nil {
+		return nil, 0, err
+	}
+	return p, p.(interface{ PID() int }).PID(), nil
+}
+
 // Attach keeps VT queues local while the process can live on another machine.
 func Attach(cols, rows int, wake func(), open func() (Process, error)) *Session {
 	s := &Session{cols: cols, rows: rows, wake: wake, signal: make(chan struct{}, 1), done: make(chan struct{}), output: byteRing{data: make([]byte, 256<<10)}, input: byteRing{data: make([]byte, 64<<10)}}

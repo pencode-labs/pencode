@@ -17,6 +17,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 | 代码编辑 | 标签页、撤销／重做、查找替换、快速打开、软换行和 piece tree 文本缓冲 |
 | 语言工具 | 增量语法高亮，以及 LSP 补全、诊断、导航、重命名、格式化和代码操作，具体取决于语言服务器能力 |
 | 内置终端 | 多 shell 会话，Linux/macOS PTY、Windows ConPTY，Unicode、真彩色和滚屏历史 |
+| 调试 | DAP 会话、Go／Delve 快速启动、断点、单步、调用栈、变量和表达式求值，支持本地与 SSH 工作区 |
 | Git | 暂存、提交、分支与历史视图、文件比较和三方合并编辑器 |
 | 远程开发 | 使用系统 OpenSSH 连接工作区，文件操作、终端、语言服务器和扩展在工作区所在设备运行 |
 | 个性化 | 系统字体、VS Code JSON/JSONC 格式颜色主题、文件图标主题和语法 capture 映射 |
@@ -31,7 +32,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 - Go **1.27.0 或更新版本**。
 - 在本仓库旁准备名为 `onix` 的 Onix 源码目录。当前 `go.mod` 使用 `replace github.com/diiyw/onix => ../onix`。
 - Onix 桌面构建所需的平台原生开发库，具体见 Onix 源码中的 `docs/desktop-builds.md`。
-- Git 功能需要系统 `git`，远程连接需要 OpenSSH `ssh`。语言服务器需在工作区所在设备上单独安装。
+- Git 功能需要系统 `git`，远程连接需要 OpenSSH `ssh`。Go 扩展会自动安装所需工具；其他语言服务器由对应扩展决定。
 - GUI 所在设备需安装可用字体，Pencode 不随程序打包字体。
 
 预期目录布局：
@@ -87,13 +88,13 @@ git submodule foreach 'go test ./...'
 ```text
 桌面工作台（Onix）
         │
-        │ CS v3：本地子进程管道或 SSH stdin/stdout
+        │ CS v7：本地子进程管道或 SSH stdin/stdout
         ▼
 Pencode 服务端
         ├── 文件、文档、索引与语法解析
         ├── Git 与终端进程
         ├── 语言服务器（LSP）
-        └── 扩展进程（peb v6）
+        └── 扩展进程（peb v8）
 ```
 
 GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理文件系统、索引、语法解析、Git、PTY、语言服务器和扩展进程。本地会话启动子服务进程，SSH 会话通过加密字节流使用同一协议，无需开放服务端端口。
@@ -113,14 +114,14 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 ## 扩展
 
-扩展是独立可执行程序，通过 stdin/stdout 上的二进制协议 **peb v6** 与服务端通信，日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
+扩展是独立可执行程序，通过 stdin/stdout 上的二进制协议 **peb v8** 与服务端通信，日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
 
 扩展安装在服务端的 `~/.pencode/extensions/<扩展 ID>/`，包含可执行文件和 `resources/extension.json` 清单。可通过扩展管理器的本地目录安装流程注册扩展。
 
 以下示例均为 Git 子模块，各自在 `pencode-labs` 下的公开仓库维护，采用 MIT 协议：
 
-- [Go 语言工具](https://github.com/pencode-labs/go)：注册 `gopls`，需另行安装该语言服务器。
-- [Markdown 编辑器](https://github.com/pencode-labs/markdown-editor)：自定义源码编辑与预览。
+- [Go 语言工具](https://github.com/pencode-labs/go)：提供 Go 语言和调试支持，缺少 `gopls`、Delve 时自动安装。
+- [Markdown 预览](https://github.com/pencode-labs/markdown-preview)：只读预览，支持与宿主源码编辑器双栏显示。
 - [Material 文件图标](https://github.com/pencode-labs/material-icons)：文件图标主题。
 - [扩展 UI](https://github.com/pencode-labs/ui-demo)：工作台按钮、弹窗、菜单、浮窗与面板。
 
@@ -130,7 +131,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 (cd extensions/go && go build -o bin/go .)
 ```
 
-当前协议为 v6，旧扩展需要使用当前 SDK 重新构建。
+当前扩展协议为 peb v8（CS v7），旧扩展需要使用当前 SDK 重新构建。
 
 ## 文档
 
@@ -139,6 +140,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 | [CS 协议](protocol/README.md) | 帧格式、请求、预算与生命周期 | 中文 |
 | [扩展协议与 SDK](peb/README.md) | 扩展贡献、编辑器、按钮与 UI | 中文 |
 | [LSP 支持](lsp/README.md) | 语言服务实现与开发说明 | 中文 |
+| [调试系统](debugger/README.md) | Go 快速启动、项目调试配置与架构 | English |
 | [历史实现说明](docs/implementation-notes.zh-CN.md) | 编辑器行为、主题、SSH、设计决策和迁移前的验证记录 | 中文 |
 
 历史说明保留了原 Onix 仓库布局下的命令。当前目录结构与构建限制以本首页为准。欢迎协助翻译深入的技术指南。

@@ -226,13 +226,15 @@
         <nav data-ref="editor-path" class="pencode-editor-path" aria-label="当前文件路径">
           <ol data-ref="editor-path-segments"></ol>
         </nav>
-        <div data-ref="editor-tools" class="pencode-editor-tools" hidden>
-          <select id="editor-tool-select" data-ref="editor-tool-select" aria-label="选择文件打开方式"></select>
-        </div>
+        <button id="editor-split" data-ref="editor-split" class="pencode-icon-button" type="button" title="切换双栏布局" aria-label="切换双栏布局" aria-pressed="false" hidden><img data-ref="editor-split-icon" src="icons/split-horizontal.svg" alt=""></button>
       </div>
       <div id="editor-body" data-ref="editor-body" class="pencode-editor-body">
+        <div id="editor-tools" data-ref="editor-tools" class="pencode-editor-tools" role="toolbar" aria-label="文件打开方式" hidden>
+          <button id="editor-text" data-ref="editor-text" class="pencode-action" type="button" title="代码编辑器" aria-label="代码编辑器" aria-pressed="true" hidden><img data-ref="editor-text-icon" src="icons/code.svg" alt=""></button>
+          <div data-ref="actions-open-with" class="pencode-open-with-actions"></div>
+        </div>
         <section id="source-content" data-ref="source-content" class="sc-workspace" aria-label="Source Control 编辑区" hidden></section>
-        <section data-ref="custom-editor" class="pencode-custom-editor" aria-label="扩展编辑器" hidden>
+        <section id="custom-editor" data-ref="custom-editor" class="pencode-custom-editor" aria-label="扩展编辑器" hidden>
           <p data-ref="custom-editor-status" role="status"></p>
           <div data-ref="custom-editor-content" class="pencode-custom-editor-content"></div>
         </section>
@@ -373,6 +375,16 @@
               <select id="output-source" data-ref="output-source" aria-label="输出信息源"></select>
               <button data-ref="output-clear" class="pencode-icon-button" type="button" title="清除当前信息源" aria-label="清除当前信息源"><img data-ref="output-clear-icon" src="icons/clear-all.svg" alt=""></button>
             </div>
+            <div data-ref="debug-tools" class="pencode-debug-tools" hidden>
+              <select id="debug-config" data-ref="debug-config" class="pencode-debug-config" aria-label="调试配置"></select>
+              <button id="debug-reload" data-ref="debug-reload" class="pencode-icon-button" type="button" title="刷新调试配置" aria-label="刷新调试配置"><img data-ref="debug-reload-icon" alt=""></button>
+              <button id="debug-start" data-ref="debug-start" class="pencode-icon-button" type="button" title="启动调试 (F5)" aria-label="启动调试"><img data-ref="debug-start-icon" alt=""></button>
+              <button id="debug-continue" data-ref="debug-continue" class="pencode-icon-button" type="button" title="继续 (F5)" aria-label="继续"><img data-ref="debug-continue-icon" alt=""></button>
+              <button id="debug-next" data-ref="debug-next" class="pencode-icon-button" type="button" title="单步跳过 (F10)" aria-label="单步跳过"><img data-ref="debug-next-icon" alt=""></button>
+              <button id="debug-stepIn" data-ref="debug-stepIn" class="pencode-icon-button" type="button" title="步入 (F11)" aria-label="步入"><img data-ref="debug-stepIn-icon" alt=""></button>
+              <button id="debug-stepOut" data-ref="debug-stepOut" class="pencode-icon-button" type="button" title="步出 (Shift+F11)" aria-label="步出"><img data-ref="debug-stepOut-icon" alt=""></button>
+              <button id="debug-stop" data-ref="debug-stop" class="pencode-icon-button" type="button" title="停止 / 分离 (Shift+F5)" aria-label="停止或分离"><img data-ref="debug-stop-icon" alt=""></button>
+            </div>
             <button id="panel-close" data-ref="panel-close" class="pencode-panel-close pencode-icon-button" type="button" aria-label="收起面板" title="收起面板"><img data-ref="panel-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
           </div>
         </header>
@@ -404,6 +416,13 @@
         <section id="output-pane" data-ref="output-pane" class="pencode-output-pane" aria-labelledby="status-output" hidden>
           <textarea id="output-content" data-ref="output-content" readonly wrap="soft" spellcheck="false" aria-label="输出信息" placeholder="当前信息源暂无输出"></textarea>
         </section>
+        <section id="debug-pane" data-ref="debug-pane" class="pencode-debug-pane" role="tabpanel" aria-labelledby="status-debug" hidden>
+          <div class="pencode-debug-columns">
+            <section class="pencode-debug-stack"><h3 class="pencode-debug-threads-heading"><button id="debug-toggle-threads" data-ref="debug-toggle-threads" class="pencode-debug-section-toggle" type="button" aria-expanded="false" aria-controls="debug-threads"><span data-ref="debug-threads-toggle" class="pencode-debug-toggle">▸</span>线程</button></h3><div id="debug-threads" data-ref="debug-threads" hidden></div><h3>调用栈</h3><div data-ref="debug-frames"></div><h3>断点</h3><div data-ref="debug-breakpoints"></div></section>
+            <section class="pencode-debug-values"><h3>变量</h3><div data-ref="debug-variables"></div></section>
+            <section class="pencode-debug-output"><div class="pencode-debug-console-heading"><h3>Debug Console</h3><button id="debug-clear" data-ref="debug-clear" class="pencode-icon-button" type="button" title="清空 Debug Console" aria-label="清空 Debug Console"><img data-ref="debug-clear-icon" src="icons/clear-all.svg" alt=""></button></div><div class="pencode-debug-console"><pre id="debug-console" data-ref="debug-console"></pre><div data-ref="debug-evaluations"></div></div><div class="pencode-debug-evaluate"><input id="debug-expression" data-ref="debug-expression" type="text" placeholder="输入表达式，Enter 求值" aria-label="调试表达式" autocomplete="off" spellcheck="false"><button id="debug-evaluate" data-ref="debug-evaluate" type="button">求值</button></div></section>
+          </div>
+        </section>
       </section>
       <footer id="statusbar" class="pencode-statusbar">
         <div data-ref="status-panel-buttons" class="pencode-statusbar-buttons">
@@ -411,6 +430,7 @@
           <button id="status-problems" data-ref="status-problems" type="button" aria-controls="bottom-panel" aria-expanded="false">Problems <span data-ref="status-problem-count" class="pencode-problem-count">0</span></button>
           <button id="status-terminal" data-ref="status-terminal" type="button" aria-controls="bottom-panel" aria-expanded="false" title="切换终端 (Ctrl+`)">Terminal</button>
           <button id="status-output" data-ref="status-output" type="button" aria-controls="bottom-panel" aria-expanded="false">Output</button>
+          <button id="status-debug" data-ref="status-debug" type="button" aria-controls="debug-pane" aria-expanded="false" title="启动调试 (F5)">Debug</button>
           <button id="status-ports" data-ref="status-ports" type="button" aria-controls="bottom-panel" aria-expanded="false" hidden>Ports</button>
         </div>
         <div data-ref="actions-statusbar" class="pencode-actions pencode-actions-statusbar" role="group" aria-label="状态栏操作"></div>

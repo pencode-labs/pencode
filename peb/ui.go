@@ -10,7 +10,8 @@ const (
 	Dialog UIKind = iota
 	ContextMenu
 	Panel
-	Popup // Nonmodal floating window; workspace interaction remains available.
+	Popup        // Nonmodal floating window; workspace interaction remains available.
+	Notification // Bottom-right message stack; never takes focus when opened.
 )
 
 // UIPosition selects the origin for Placement.X/Y, in workspace CSS pixels.
@@ -31,7 +32,7 @@ type UIPlacement struct {
 }
 
 func (p UIPlacement) valid(kind UIKind) bool {
-	if p.Mode > PositionAnchor || p.Width < 0 || p.Height < 0 || kind == Panel && p != (UIPlacement{}) {
+	if p.Mode > PositionAnchor || p.Width < 0 || p.Height < 0 || (kind == Panel || kind == Notification) && p != (UIPlacement{}) {
 		return false
 	}
 	for _, n := range [...]float32{p.X, p.Y, p.Width, p.Height} {
@@ -56,11 +57,14 @@ type UI struct {
 	// CloseOnOutsideClick dismisses a Popup on an outside pointer press.
 	// False keeps it open. ContextMenu always dismisses on outside presses.
 	CloseOnOutsideClick bool
+	// AutoCloseMS dismisses a Notification after this many milliseconds. Zero
+	// keeps it open until closed by the user or extension. Updates reset the timer.
+	AutoCloseMS uint32
 }
 
 // UIEvent carries DOM events and "open", "close", "visibilitychange".
 // visibilitychange uses Event.Value="visible" or "hidden".
-// Close reasons are "extension", "button", "escape", "outside", "replace".
+// Close reasons are "extension", "button", "escape", "outside", "replace", "timeout".
 // Context is the action invocation that opened this surface.
 type UIEvent struct {
 	ID, Reason string
@@ -70,7 +74,7 @@ type UIEvent struct {
 
 func EncodeUI(dst []byte, v UI) ([]byte, error) {
 	e := encoder{data: dst[:0]}
-	if v.Kind > Popup || !v.Placement.valid(v.Kind) || v.ID == "" || !v.Close && v.Title == "" {
+	if !v.valid() {
 		e.err = ErrProtocol
 	}
 	e.str(v.ID)
@@ -84,6 +88,7 @@ func EncodeUI(dst []byte, v UI) ([]byte, error) {
 	e.number(math.Float32bits(v.Placement.Width))
 	e.number(math.Float32bits(v.Placement.Height))
 	e.number(boolNumber(v.CloseOnOutsideClick))
+	e.number(v.AutoCloseMS)
 	encodeActionContext(&e, v.Context)
 	encodeView(&e, v.View)
 	return e.data, e.err
@@ -97,11 +102,16 @@ func DecodeUI(data []byte) (UI, error) {
 	v := UI{ID: d.str(), Title: d.str(), Anchor: d.str(), Kind: UIKind(d.number()), Close: d.boolean()}
 	v.Placement = UIPlacement{Mode: UIPosition(d.number()), X: math.Float32frombits(d.number()), Y: math.Float32frombits(d.number()), Width: math.Float32frombits(d.number()), Height: math.Float32frombits(d.number())}
 	v.CloseOnOutsideClick = d.boolean()
+	v.AutoCloseMS = d.number()
 	v.Context, v.View = decodeActionContext(&d), decodeView(&d)
-	if v.Kind > Popup || !v.Placement.valid(v.Kind) || v.ID == "" || !v.Close && v.Title == "" {
+	if !v.valid() {
 		d.err = ErrProtocol
 	}
 	return v, d.done()
+}
+
+func (v UI) valid() bool {
+	return v.Kind <= Notification && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (v.AutoCloseMS == 0 || v.Kind == Notification)
 }
 
 func EncodeUIEvent(dst []byte, v UIEvent) ([]byte, error) {

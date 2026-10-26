@@ -2633,6 +2633,42 @@ textarea:focus {
 .pencode-extension-overlays { position: absolute; inset: 0; z-index: 48; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .pencode-extension-dialog, .pencode-extension-popup, .pencode-extension-menu { pointer-events: auto; }
 
+.pencode-extension-notifications {
+    position: absolute;
+    right: 12px;
+    bottom: 48px;
+    z-index: 46;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 400px;
+    max-width: calc(100% - 24px);
+    max-height: calc(100% - 96px);
+    overflow: auto;
+    pointer-events: none;
+}
+.pencode-extension-notification {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    min-width: 0;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 6px;
+    color: var(--vscode-editorWidget-foreground);
+    background: var(--vscode-editorWidget-background);
+    box-shadow: 0 4px 12px var(--vscode-widget-shadow);
+    pointer-events: auto;
+}
+.pencode-extension-notification .pencode-extension-header { gap: 8px; padding: 8px 12px 0; }
+.pencode-extension-notification .pencode-extension-header strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.pencode-extension-notification .pencode-extension-header button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; }
+.pencode-extension-notification .pencode-extension-header button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.pencode-extension-notification .pencode-extension-content { overflow-wrap: anywhere; padding: 4px 12px 12px; }
+.pencode-extension-notification p { margin: 4px 0 12px; }
+.pencode-extension-notification button { padding: 4px 12px; border: 0; border-radius: 3px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.pencode-extension-notification button:hover { background: var(--vscode-button-hoverBackground); }
+.pencode-extension-notification button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
 .pencode-ports-panel .pencode-panel-toolbar { position: relative; top: auto; right: auto; max-width: none; padding: 3px 6px 3px 12px; border-radius: 0; border-bottom: 1px solid var(--vscode-editorGroup-border); opacity: 1; }
 .pencode-ports-tools { display: flex; flex: 1; align-items: center; gap: 4px; min-height: 28px; }
 .pencode-ports-title { margin-right: auto; font-size: calc(11rem / 14); font-weight: 600; text-transform: uppercase; }

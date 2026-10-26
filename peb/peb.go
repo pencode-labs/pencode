@@ -1,4 +1,4 @@
-// Package peb implements Pencode Extension Binary protocol version 8.
+// Package peb implements Pencode Extension Binary protocol version 9.
 // Frames and payloads use little endian integers; stdout is reserved for frames.
 package peb
 
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version    = 8
+	Version    = 9
 	HeaderSize = 16
 	MaxPayload = 4 << 20
 	MaxString  = 64 << 10

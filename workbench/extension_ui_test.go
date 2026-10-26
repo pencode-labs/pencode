@@ -16,11 +16,11 @@ import (
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/peb"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func TestPencodeExtensionUIProcess(t *testing.T) {
@@ -28,14 +28,25 @@ func TestPencodeExtensionUIProcess(t *testing.T) {
 		return
 	}
 	var publisher *peb.ActionPublisher
-	err := peb.ServeExtension(os.Stdin, os.Stdout, peb.Contributions{Actions: []peb.Action{{ID: "tools", Text: "Tools", Location: peb.TitleBarRight}}}, peb.Handlers{
+	err := peb.ServeExtension(os.Stdin, os.Stdout, peb.Contributions{Actions: []peb.Action{{ID: "tools", Text: "Tools", Location: peb.TitleBarRight}, {ID: "notifications", Text: "Notify", Location: peb.TitleBarRight}}}, peb.Handlers{
 		ActivateActions: func(_ context.Context, p *peb.ActionPublisher) { publisher = p },
 		Action: func(c peb.ActionContext) error {
+			if c.ID == "notifications" {
+				if err := publisher.Show(peb.UI{ID: "notice", Title: "Build complete", Kind: peb.Notification, View: &peb.EditorView{
+					HTML:   `<p>Custom notification content</p><button data-ref="retry" type="button">Retry</button>`,
+					Events: []peb.EditorBinding{{Ref: "retry", Kind: "click"}},
+				}}); err != nil {
+					return err
+				}
+				return publisher.Show(peb.UI{ID: "timed", Title: "Auto close", Kind: peb.Notification, AutoCloseMS: 60000, View: &peb.EditorView{HTML: `<p>Temporary notification</p>`}})
+			}
 			return publisher.Show(peb.UI{ID: "tools", Title: "Tools", Kind: peb.ContextMenu, Anchor: c.ID, View: &peb.EditorView{HTML: `<button data-ref="open" role="menuitem" type="button">Open dialog</button><button data-ref="popup" role="menuitem" type="button">Open popup</button>`, Events: []peb.EditorBinding{{Ref: "open", Kind: "click"}, {Ref: "popup", Kind: "click"}}}})
 		},
 		UIEvent: func(event peb.UIEvent) error {
 			fmt.Fprintf(os.Stderr, "UI %s %s %s %s %s\n", event.ID, event.Event.Kind, event.Reason, event.Context.ID, event.Event.Value)
 			switch {
+			case event.ID == "notice" && event.Event.Kind == "click":
+				return publisher.Show(peb.UI{ID: "notice", Title: "Notification action: " + event.Event.Ref, Kind: peb.Notification})
 			case event.ID == "tools" && event.Event.Kind == "click" && event.Event.Ref == "popup":
 				return publisher.Show(peb.UI{ID: "market", Title: "Extension market", Kind: peb.Popup, Placement: peb.UIPlacement{Mode: peb.PositionAbsolute, X: 96, Y: 120, Width: 420, Height: 280}, View: &peb.EditorView{HTML: `<label for="pencode-extension-query">Search</label><input id="pencode-extension-query" data-ref="query">`, Events: []peb.EditorBinding{{Ref: "query", Kind: "input"}, {Ref: "query", Kind: "focus"}, {Ref: "query", Kind: "blur"}}}})
 			case event.ID == "market" && event.Event.Kind == "input":
@@ -456,6 +467,137 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	if _, ok := model.fontResources.HTMLNode(model.surface, popup.rootID); ok {
 		t.Fatal("outside dismissal retained popup DOM")
 	}
+	// Notifications coexist with overlays, stack above the status bar, and never
+	// take focus on arrival. Exercise the real process protocol and DOM events.
+	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/tools")
+	wait(func() bool { return model.actions.ui.overlay != nil })
+	editorContextClick(t, app, model, state, model.actions.ui.overlay.focus[1].id)
+	wait(func() bool { return model.actions.ui.overlay != nil && model.actions.ui.overlay.ui.Kind == peb.Popup })
+	menu = model.actions.ui.overlay
+	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/notifications")
+	wait(func() bool { return len(model.actions.ui.surfaces) == 3 })
+	var notice, timed *pencodeExtensionSurface
+	for _, s := range model.actions.ui.surfaces {
+		switch s.ui.ID {
+		case "notice":
+			notice = s
+		case "timed":
+			timed = s
+		}
+	}
+	if notice == nil || timed == nil || model.actions.ui.overlay != menu {
+		t.Fatal("notifications replaced the active overlay")
+	}
+	settle()
+	if notice.needsFocus || timed.needsFocus || notice.ownsFocus(model.fontResources) || timed.ownsFocus(model.fontResources) {
+		t.Fatal("notification arrival stole focus")
+	}
+	first := editorContextBounds(t, model, notice.rootID)
+	second := editorContextBounds(t, model, timed.rootID)
+	root = editorContextBounds(t, model, "pencode-root")
+	status := editorContextBounds(t, model, "statusbar")
+	if first.X < root.Width/2 || first.X+first.Width > root.Width || second.Y < first.Y+first.Height || second.Y+second.Height > status.Y {
+		t.Fatalf("notifications are not stacked at bottom right: first=%+v second=%+v status=%+v", first, second, status)
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		model.syncExtensionUI(model.fontResources)
+		model.updateExtensionUI(model.fontResources, state)
+		model.expireExtensionNotifications(time.Now())
+	}); allocs != 0 {
+		t.Fatalf("idle notifications allocated %g", allocs)
+	}
+	model.closeExtensionSurface(menu, "extension", true)
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	settle()
+	noticeDefinition := notice.definition
+	editorContextClick(t, app, model, state, notice.focus[0].id)
+	wait(func() bool { return notice.ui.Title == "Notification action: retry" })
+	if notice.definition != noticeDefinition || notice.invocation.context.ID != "notifications" {
+		t.Fatal("notification update lost controls or action context")
+	}
+	wait(func() bool {
+		logs, _ := bundle.Actions.Output.Snapshot()
+		return strings.Contains(logs, "UI notice click  notifications")
+	})
+	// An update resets expiry, including after an old deadline already woke us.
+	oldDeadline := timed.expiresAt
+	err = model.applyExtensionUI("ui-fixture", model.actions.sessions["ui-fixture"], peb.UI{ID: "timed", Title: "Still working", Kind: peb.Notification, AutoCloseMS: 120000})
+	if err != nil || !timed.expiresAt.After(oldDeadline) {
+		t.Fatal("notification update did not reset expiry", err)
+	}
+	if model.expireExtensionNotifications(oldDeadline) || !timed.live() {
+		t.Fatal("old deadline dismissed the updated notification")
+	}
+	focused := model.fontResources.FocusedControl()
+	if !model.expireExtensionNotifications(timed.expiresAt) || timed.live() || !notice.live() || model.fontResources.FocusedControl() != focused {
+		t.Fatal("expiry removed the wrong notification or stole focus")
+	}
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	wait(func() bool {
+		logs, _ := bundle.Actions.Output.Snapshot()
+		return strings.Contains(logs, "UI timed close timeout notifications")
+	})
+	// Only a focused notification consumes Escape; ordinary editor Escape leaves it open.
+	model.fontResources.Focus(model.editor.control)
+	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
+	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
+	settle()
+	if !notice.live() {
+		t.Fatal("editor Escape dismissed an unfocused notification")
+	}
+	editorContextClick(t, app, model, state, notice.closeID)
+	wait(func() bool {
+		logs, _ := bundle.Actions.Output.Snapshot()
+		return !notice.live() && strings.Contains(logs, "UI notice close button notifications")
+	})
+	// Reopen and close via Escape, then leave notifications open for unload cleanup.
+	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/notifications")
+	wait(func() bool { return len(model.actions.ui.surfaces) == 2 })
+	notice = model.actions.ui.surfaces[0]
+	settle()
+	control, ok = model.fontResources.HTMLControl(model.surface, notice.closeID)
+	if !ok || !model.fontResources.Focus(control) {
+		t.Fatal("cannot focus notification close button")
+	}
+	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
+	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
+	wait(func() bool {
+		logs, _ := bundle.Actions.Output.Snapshot()
+		return !notice.live() && strings.Contains(logs, "UI notice close escape notifications")
+	})
+	// A full notification stack scrolls to the latest message and respects the
+	// shared surface budget, including on a narrow viewport.
+	for i := len(model.actions.ui.surfaces); i < maxExtensionSurfaces; i++ {
+		if err := model.applyExtensionUI("ui-fixture", model.actions.sessions["ui-fixture"], peb.UI{
+			ID: fmt.Sprintf("stack-%d", i), Title: "Stacked notification", Kind: peb.Notification,
+			View: &peb.EditorView{HTML: `<p>Notification content</p>`},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := model.applyExtensionUI("ui-fixture", model.actions.sessions["ui-fixture"], peb.UI{
+		ID: "overflow", Title: "Over budget", Kind: peb.Notification, View: &peb.EditorView{HTML: `<p>Overflow</p>`},
+	}); err == nil {
+		t.Fatal("notification bypassed the surface limit")
+	}
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	resize(480, 360)
+	settle()
+	notifications := editorContextBounds(t, model, "pencode-extension-notifications")
+	root = editorContextBounds(t, model, "pencode-root")
+	if notifications.X < root.X || notifications.Y < root.Y || notifications.X+notifications.Width > root.X+root.Width || notifications.Y+notifications.Height > root.Y+root.Height {
+		t.Fatalf("notification stack escaped small viewport: %+v in %+v", notifications, root)
+	}
+	node, _ := model.fontResources.HTMLNode(model.surface, "pencode-extension-notifications")
+	area, scrolling := node.ScrollContainer()
+	scroll, hasScroll := ecs.Get[scene.UIScroll](app.World, area)
+	if !scrolling || !hasScroll || scroll.Position.Y() >= 0 || math.Abs(float64(scroll.Position.Y()+scroll.ContentSize.Y()-scroll.ViewportSize.Y())) > .2 {
+		t.Fatalf("new notifications were not revealed: %+v", scroll)
+	}
+	resize(1440, 900)
+	model.closeExtensionSurface(model.actions.ui.surfaces[0], "extension", false)
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	settle()
 	// Unloading an extension removes all retained surfaces and controls.
 	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/tools")
 	wait(func() bool { return model.actions.ui.overlay != nil })

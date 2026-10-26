@@ -15,16 +15,18 @@ import (
 )
 
 type pencodeActionState struct {
-	ui            pencodeExtensionUIState
-	local         *actions.Registry
-	revision      uint64
-	snapshot      []peb.Action
-	rows          []pencodeActionProps
-	theme         *pencodeTheme
-	owner         *workspaceModel
-	file          *openFile
-	fileName      string
-	openWithCount int
+	notifications    []pencodeNotification
+	notificationView *htmlui.Definition[pencodeNotificationProps, struct{}]
+	ui               pencodeExtensionUIState
+	local            *actions.Registry
+	revision         uint64
+	snapshot         []peb.Action
+	rows             []pencodeActionProps
+	theme            *pencodeTheme
+	owner            *workspaceModel
+	file             *openFile
+	fileName         string
+	openWithCount    int
 	// Context references include the existing built-in items and visible actions.
 	leftRefs, rightRefs []string
 	sessions            map[string]*extensions.ActionSession
@@ -277,6 +279,7 @@ func (model *workspaceModel) registerExtensionAction(a peb.Action, session *exte
 	}
 }
 func (model *workspaceModel) removeActions(id string) {
+	model.clearNotifications(id)
 	model.removeEditors("extensions/" + id + "/")
 	model.clearExtensionUI(id)
 	if session := model.actions.sessions[id]; session != nil {
@@ -286,6 +289,7 @@ func (model *workspaceModel) removeActions(id string) {
 	model.actionRegistry().RemovePrefix("extensions/" + id + "/")
 }
 func (model *workspaceModel) closeActions() {
+	model.clearNotifications("")
 	model.clearExtensionUI("")
 	for _, session := range model.actions.sessions {
 		session.Close()
@@ -307,6 +311,10 @@ func (model *workspaceModel) pollActions() bool {
 					goto nextSession
 				}
 				changed = true
+				if result.Notification != nil {
+					model.showNotification(id, session, *result.Notification)
+					continue
+				}
 				if result.Err != nil {
 					model.extensionFeedback = fmt.Sprintf("扩展 %s action：%v", id, result.Err)
 					model.logOutput("Extension: "+id, model.extensionFeedback)

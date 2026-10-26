@@ -590,6 +590,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	model.renderFolderSearch(view)
 	model.renderActions(view, actionDefinition)
 	model.renderExtensionUI(view)
+	model.renderNotifications(view)
 	model.renderMarketplace(view, marketDefinition)
 	model.renderConnection(view, connectionDefinition)
 	view.Event("open-quick-search", htmlui.EventClick)

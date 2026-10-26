@@ -61,7 +61,7 @@ func TestPencodeActionsRenderClickUpdateAndRemove(t *testing.T) {
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	languageInteractionStep(t, app)
 	editorContextClick(t, app, model, state, "action-native/1")
-	if len(calls) != 3 || model.fileContext.open || calls[2].Path != filepath.Join(project.Path, "main.go") || calls[2].Directory {
+	if len(calls) != 3 || model.fileContext.open || calls[2].Path != filepath.ToSlash(filepath.Join(project.Path, "main.go")) || calls[2].Directory {
 		t.Fatalf("left context click: %+v", calls)
 	}
 	editorContextOpen(t, app, model, 5, 2, 100, 20)

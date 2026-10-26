@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,11 +17,13 @@ import (
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/peb"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
+	"github.com/pencode-labs/pencode/server"
 )
 
 func TestPencodeExtensionUIProcess(t *testing.T) {
@@ -29,8 +32,14 @@ func TestPencodeExtensionUIProcess(t *testing.T) {
 	}
 	var publisher *peb.ActionPublisher
 	err := peb.ServeExtension(os.Stdin, os.Stdout, peb.Contributions{Actions: []peb.Action{{ID: "tools", Text: "Tools", Location: peb.TitleBarRight}}}, peb.Handlers{
-		ActivateActions: func(_ context.Context, p *peb.ActionPublisher) { publisher = p },
+		ActivateActions: func(_ context.Context, p *peb.ActionPublisher) {
+			publisher = p
+			_ = p.Notify(peb.Notification{ID: "tools", Title: "Tools", Message: "Install failed", Error: true, Action: "retry", ActionText: "Retry"})
+		},
 		Action: func(c peb.ActionContext) error {
+			if c.ID == "retry" {
+				return publisher.Notify(peb.Notification{ID: "tools", Title: "Tools", Message: "Ready"})
+			}
 			return publisher.Show(peb.UI{ID: "tools", Title: "Tools", Kind: peb.ContextMenu, Anchor: c.ID, View: &peb.EditorView{HTML: `<button data-ref="open" role="menuitem" type="button">Open dialog</button><button data-ref="popup" role="menuitem" type="button">Open popup</button>`, Events: []peb.EditorBinding{{Ref: "open", Kind: "click"}, {Ref: "popup", Kind: "click"}}}})
 		},
 		UIEvent: func(event peb.UIEvent) error {
@@ -102,21 +111,23 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	directory := t.TempDir()
-	if err := os.Mkdir(filepath.Join(directory, "resources"), 0755); err != nil {
+	installed := t.TempDir()
+	directory := filepath.Join(installed, "ui-fixture")
+	if err := os.MkdirAll(filepath.Join(directory, "resources"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Link(executable, filepath.Join(directory, "fixture")); err != nil {
+	entry := "fixture" + filepath.Ext(executable)
+	if err := os.Link(executable, filepath.Join(directory, entry)); err != nil {
 		source, err := os.Open(executable)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		target, err := os.OpenFile(filepath.Join(directory, "fixture"), os.O_CREATE|os.O_WRONLY, 0755)
+		target, err := os.OpenFile(filepath.Join(directory, entry), os.O_CREATE|os.O_WRONLY, 0755)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +140,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 			t.Fatal(closeErr)
 		}
 	}
-	manifest, err := json.Marshal(extensions.Manifest{ID: "ui-fixture", Entry: "fixture", Args: []string{"-test.run=^TestPencodeExtensionUIProcess$", "--", "pencode-ui-fixture"}})
+	manifest, err := json.Marshal(extensions.Manifest{ID: "ui-fixture", Entry: entry, Args: []string{"-test.run=^TestPencodeExtensionUIProcess$", "--", "pencode-ui-fixture"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +150,18 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "resources/preview.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="red"/></svg>`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, bundle, err := extensions.Install(context.Background(), model.session.backend, directory)
+	a, b := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = server.Serve(t.Context(), b, server.Options{ExtensionDirectory: installed})
+	}()
+	backend, err := client.New(t.Context(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { backend.Close(); <-done })
+	bundle, err := extensions.Load(t.Context(), backend, "ui-fixture")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,6 +182,14 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	wait(func() bool {
 		_, ok := model.fontResources.HTMLControl(model.surface, "action-extensions/ui-fixture/tools")
 		return ok
+	})
+	wait(func() bool { return len(model.actions.notifications) == 1 })
+	if model.actions.ui.overlay != nil {
+		t.Fatal("background notification opened an overlay")
+	}
+	editorContextClick(t, app, model, state, "notification/ui-fixture/tools/action")
+	wait(func() bool {
+		return len(model.actions.notifications) == 1 && model.actions.notifications[0].message.Message == "Ready"
 	})
 	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/tools")
 	wait(func() bool { return model.actions.ui.overlay != nil })

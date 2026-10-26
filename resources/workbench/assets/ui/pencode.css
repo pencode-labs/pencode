@@ -2148,6 +2148,7 @@ textarea:focus {
     justify-content: flex-end;
     margin: 0 16px;
     height: 24px;
+    overflow: hidden;
 }
 .pencode-action {
     display: flex;
@@ -2632,6 +2633,39 @@ textarea:focus {
 .pencode-extension-panel .pencode-extension-header button { display: none; }
 .pencode-extension-overlays { position: absolute; inset: 0; z-index: 48; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .pencode-extension-dialog, .pencode-extension-popup, .pencode-extension-menu { pointer-events: auto; }
+
+.pencode-notifications {
+    position: absolute;
+    right: 12px;
+    bottom: 40px;
+    z-index: 47;
+    width: 380px;
+    max-width: calc(100% - 24px);
+    max-height: calc(100% - 92px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: auto;
+    pointer-events: none;
+}
+.pencode-notification {
+    flex: 0 0 auto;
+    padding: 12px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 6px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    box-shadow: 0 4px 12px var(--vscode-widget-shadow);
+    pointer-events: auto;
+}
+.pencode-notification header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pencode-notification header strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pencode-notification header button { flex: 0 0 auto; padding: 3px 6px; color: var(--vscode-descriptionForeground); }
+.pencode-notification header button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.pencode-notification.error header strong { color: var(--vscode-errorForeground); }
+.pencode-notification p { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 18px; }
+.pencode-notification-action { padding: 4px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.pencode-notification-action:hover { background: var(--vscode-button-hoverBackground); }
 
 .pencode-ports-panel .pencode-panel-toolbar { position: relative; top: auto; right: auto; max-width: none; padding: 3px 6px 3px 12px; border-radius: 0; border-bottom: 1px solid var(--vscode-editorGroup-border); opacity: 1; }
 .pencode-ports-tools { display: flex; flex: 1; align-items: center; gap: 4px; min-height: 28px; }

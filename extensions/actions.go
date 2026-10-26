@@ -27,11 +27,12 @@ type ActionExtension struct {
 	remote  *client.Extension
 }
 type ActionResult struct {
-	Change peb.ActionChange
-	UI     *peb.UI
-	Assets map[string][]byte
-	Icons  map[string][]byte
-	Err    error
+	Change       peb.ActionChange
+	Notification *peb.Notification
+	UI           *peb.UI
+	Assets       map[string][]byte
+	Icons        map[string][]byte
+	Err          error
 	// Fatal marks a disconnected process; its actions must be removed.
 	Fatal bool
 }
@@ -238,6 +239,15 @@ func (extension *ActionExtension) run(parent context.Context, requests <-chan ac
 			return err
 		}
 		switch f.Kind {
+		case peb.NotificationUpdate:
+			n, decodeErr := peb.DecodeNotification(f.Payload)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if !validID(n.ID) || n.Action != "" && !validID(n.Action) {
+				return peb.ErrProtocol
+			}
+			publish(ActionResult{Notification: &n})
 		case peb.UIUpdate:
 			ui, decodeErr := peb.DecodeUI(f.Payload)
 			if decodeErr != nil {

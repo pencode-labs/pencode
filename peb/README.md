@@ -33,6 +33,7 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 | 11 | UIUpdate | 扩展 → 宿主 | `0`，打开、更新或关闭扩展界面 |
 | 12 | UIRequest | 宿主 → 扩展 | 与 action 共用递增的非零 ID，携带控件或生命周期事件 |
 | 13 | UIResponse | 扩展 → 宿主 | 原样返回 UIRequest 的 ID，payload 为空 |
+| 14 | NotificationUpdate | 扩展 → 宿主 | `0`，显示、更新或关闭右下角通知 |
 
 版本不符、未知 kind、非法 ID、超大帧、截断数据和非法 payload 均终止本次注册。扩展进程启动、握手与退出总计最多 5 秒；失败或关闭会话会关闭管道、终止并回收子进程。GUI 使用最多 4 个资源加载 worker，server 当前串行执行扩展注册与安装控制操作；最多发现 64 个已安装扩展。stderr 持续读取，最多保留 4096 字节诊断。
 
@@ -102,7 +103,19 @@ DebugAdapter {
 Failure {
   message: string
 }
+
+NotificationUpdate {
+  id: string                    // 扩展内唯一；相同 ID 更新原通知
+  title: string                 // 非关闭通知必填
+  message: string               // 纯文本，非关闭通知必填
+  action: string                // 可选的本地 action ID，不必注册工作台按钮
+  actionText: string            // 与 action 同时填写
+  error: u32                    // boolean；错误使用 alert 和主题错误颜色
+  close: u32                    // boolean；按 ID 关闭通知
+}
 ```
+
+action 会话可通过 `publisher.Notify(peb.Notification{ID: "tools", Title: "Go", Message: "工具安装失败", Error: true, Action: "retry", ActionText: "重试"})` 发布宿主管理的通用通知，无需提供 HTML/CSS 或 `UIEvent`。按钮通过 `Handlers.Action` 接收 `ActionContext.ID="retry"`。通知不抢占焦点、不替换扩展弹窗，支持用户关闭；扩展卸载或会话结束时自动清理。最多保留 8 条通知，超出时移除最早的通知；更新已有通知不改变顺序。传入 `Notification{ID: "tools", Close: true}` 可主动关闭。
 
 字体、主题和图标主题的 ID 分别唯一，只允许小写字母、数字、`.`、`-`，长度为 1–128 字节，不能为 `.` 或 `..`。label 必须非空。宿主将它们注册为 `extensions/<扩展 ID>/<贡献 ID>`，各类贡献各自使用独立的选择器。扩展应只返回宿主声明支持的能力。
 

@@ -36,7 +36,8 @@ func TestPencodeExtensionUIProcess(t *testing.T) {
 		Action: func(c peb.ActionContext) error {
 			if c.ID == "notifications" {
 				if err := publisher.Show(peb.UI{ID: "notice", Title: "Build complete", Kind: peb.Notification, View: &peb.EditorView{
-					HTML:   `<p>Custom notification content</p><button data-ref="retry" type="button">Retry</button>`,
+					HTML:   `<p>Custom notification content</p><div class="actions"><button data-ref="retry" type="button">Retry</button><button data-ref="logs" data-pencode-action="show-output" type="button">View Logs</button></div>`,
+					CSS:    `.actions { display: flex; gap: 8px; }`,
 					Events: []peb.EditorBinding{{Ref: "retry", Kind: "click"}},
 				}}); err != nil {
 					return err
@@ -74,6 +75,68 @@ func TestPencodeExtensionUIProcess(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+func TestPencodeExtensionUISceneTransfer(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	model := session.active.model
+	process := &extensions.ActionSession{}
+	for _, ui := range []peb.UI{
+		{ID: "notice", Kind: peb.Notification},
+		{ID: "timed", Kind: peb.Notification, AutoCloseMS: 60000},
+		{ID: "panel", Kind: peb.Panel},
+		{ID: "popup", Kind: peb.Popup},
+	} {
+		ui.View = &peb.EditorView{HTML: `<button data-ref="run" type="button">Run</button>`}
+		if err := model.applyExtensionUI("scene-test", process, ui); err != nil {
+			t.Fatal(err)
+		}
+	}
+	notice, timed := model.actions.ui.surfaces[0], model.actions.ui.surfaces[1]
+	panel, popup := model.actions.ui.panel, model.actions.ui.overlay
+	switchTo := func(screen pencodeScreen) {
+		t.Helper()
+		previous := session.active
+		previous.model.screen = screen
+		if err := app.Modules().UpdateFrame(1.0 / 60); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.Modules().Dispatch(); err != nil {
+			t.Fatal(err)
+		}
+		model = session.active.model
+		if session.active == previous {
+			t.Fatal("scene did not switch")
+		}
+		if len(previous.model.actions.ui.surfaces) != 0 || previous.model.actions.ui.panel != nil || previous.model.actions.ui.overlay != nil {
+			t.Fatal("previous scene retained extension UI ownership")
+		}
+		for _, surface := range model.actions.ui.surfaces {
+			if surface.model != model || !surface.live() {
+				t.Fatal("extension surface did not follow the active model")
+			}
+		}
+		if model.actions.ui.panel != panel || model.actions.ui.overlay != popup {
+			t.Fatal("scene switch lost panel or popup")
+		}
+	}
+	switchTo(pencodeLauncher)
+	// Event handlers close through the surface's model. It must be the same
+	// model whose deadlines are polled on the next frame.
+	notice.model.closeExtensionSurface(notice, "button", false)
+	if notice.live() || len(model.actions.ui.surfaces) != 3 {
+		t.Fatal("close event did not remove the active notification")
+	}
+	if !model.expireExtensionNotifications(timed.expiresAt) || timed.live() || len(model.actions.ui.surfaces) != 2 {
+		t.Fatal("expiry did not remove the active notification")
+	}
+	switchTo(pencodeWorkspace)
+	switchTo(pencodeLauncher)
+	switchTo(pencodeWorkspace)
+	model.clearExtensionUI("scene-test")
+	if model.expireExtensionNotifications(time.Now()) || panel.live() || popup.live() || len(model.actions.ui.surfaces) != 0 {
+		t.Fatal("cleanup retained extension UI after scene switches")
+	}
 }
 
 func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
@@ -526,6 +589,32 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	settle()
 	noticeDefinition := notice.definition
+	// Host actions select the owning extension's logs even when Output was
+	// closed or showing another source with a filter. No extension RPC is needed.
+	for _, panel := range []pencodePanel{pencodePanelClosed, pencodePanelOutput} {
+		model.bottom.active = panel
+		model.bottom.source = model.outputStore().Channel("pencode")
+		model.bottom.filter = "hidden-log-filter"
+		model.syncOutput()
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		settle()
+		r := editorContextBounds(t, model, notice.focus[1].id)
+		x, y := float64(r.X+r.Width/2), float64(r.Y+r.Height/2)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		settle()
+		if model.bottom.active != pencodePanelOutput || model.bottom.source != bundle.Actions.Output || model.bottom.filter != "" {
+			t.Fatal("view logs did not reveal the extension output")
+		}
+		editorContextBounds(t, model, "bottom-panel")
+		editorContextBounds(t, model, "output-pane")
+		logs, _ := bundle.Actions.Output.Snapshot()
+		if model.bottom.outputText != logs || notice.ui.Title != "Build complete" || !notice.live() {
+			t.Fatal("view logs changed the notification or hid output")
+		}
+	}
 	editorContextClick(t, app, model, state, notice.focus[0].id)
 	wait(func() bool { return notice.ui.Title == "Notification action: retry" })
 	if notice.definition != noticeDefinition || notice.invocation.context.ID != "notifications" {

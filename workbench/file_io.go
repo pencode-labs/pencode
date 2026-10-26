@@ -382,6 +382,7 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 	}
 }
 func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, preview, reveal bool, navigation *fileNavigation) error {
+	m.actions.ui.editor = nil
 	if p != nil && !m.projectLive(p) {
 		return fmt.Errorf("项目已关闭")
 	}
@@ -467,6 +468,7 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 	if n == nil || f == nil {
 		return
 	}
+	m.actions.ui.editor = nil
 	if n.searchMatch != nil {
 		m.finishSearchNavigation(p, f, n)
 		return

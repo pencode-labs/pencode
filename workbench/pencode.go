@@ -37,11 +37,10 @@ import (
 )
 
 const (
-	pencodeTitlebarHeight     float32 = 40
-	pencodeTitlebarInset      float32 = 1 // Root border.
-	pencodeViewportWidth      float64 = 1440
-	pencodeWindowBorderRadius float32 = 12
-	pencodeHighlightDebounce          = 50 * time.Millisecond
+	pencodeTitlebarHeight    float32 = 40
+	pencodeTitlebarInset     float32 = 1 // Root border.
+	pencodeViewportWidth     float64 = 1440
+	pencodeHighlightDebounce         = 50 * time.Millisecond
 )
 
 type pencodeScreen uint8
@@ -281,6 +280,7 @@ type treeProps struct {
 
 type tabProps struct {
 	Model     *workspaceModel
+	Surface   *pencodeExtensionSurface
 	Theme     *pencodeTheme
 	Icons     *pencodeFileIcons
 	Project   *pencodeProject
@@ -334,10 +334,17 @@ func spawnPencodeWindowBorder(world *module.Content, color graphics.ColorRGBA) e
 	ecs.Put(&bundle, sceneapi.UIStackIndex(1<<30))
 	ecs.Put(&bundle, sceneapi.Size2D{})
 	// Keep the window outline outside the HTML zoom and overflow hierarchy.
-	// Its radius is larger than the native clip so the antialiased arc survives.
+	// Match the surface's corner radius so the antialiased edges stay aligned.
 	ecs.Put(&bundle, sceneapi.NewUIBorder2D(sceneapi.OutlinedRoundedRectShape2D(
-		graphics.ColorRGBA{}, color, pencodeWindowBorderRadius, 1)))
+		graphics.ColorRGBA{}, color, pencodeWindowBorderRadius(1), 1)))
 	return world.Spawn(bundle)
+}
+
+func pencodeWindowBorderRadius(pixelRatio float32) float32 {
+	if runtime.GOOS == "windows" {
+		return 12 * pixelRatio
+	}
+	return 12
 }
 
 func seedPencodeViewport(world *module.Content, app *module.Host) {
@@ -805,7 +812,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		} else {
 			view.Attr("editor", "hidden", "")
 		}
-		if model.activeFile() == nil {
+		if model.activeFile() == nil && model.actions.ui.editor == nil {
 			view.RemoveAttr("editor-empty", "hidden")
 		} else {
 			view.Attr("editor-empty", "hidden", "")
@@ -837,11 +844,12 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 			htmlui.AppendComponentChild(view, "file-tabs",
 				componentKey(file.Path),
 				tabDefinition,
-				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty, HasErrors: model.fileHasErrors(project, file.Path)},
+				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: model.actions.ui.editor == nil && file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty, HasErrors: model.fileHasErrors(project, file.Path)},
 				struct{}{},
 			)
 		}
 	}
+	model.renderExtensionTabs(view, tabDefinition)
 	model.renderSourceWorkspace(view)
 }
 
@@ -1084,6 +1092,18 @@ func handleTabEvent(context *module.ContentEventContext[tabProps, struct{}]) {
 		return
 	}
 	props := context.Props
+	if props.Surface != nil {
+		if props.Model.closing.action != pencodeCloseNone {
+			return
+		}
+		if context.Ref == "close" {
+			props.Model.closeExtensionSurface(props.Surface, "button", true)
+		} else if context.Ref == "select" {
+			props.Model.selectExtensionTab(props.Surface)
+		}
+		markPencodeRootDirtyByModel(context.World, props.Model)
+		return
+	}
 	if props.Project == nil {
 		return
 	}
@@ -1797,6 +1817,7 @@ func (model *workspaceModel) selectProjectTab(project *pencodeProject, relative 
 	if model == nil || project == nil || project.Files[relative] == nil {
 		return
 	}
+	model.actions.ui.editor = nil
 	model.cancelFileOpens()
 	model.activateProject(project)
 	if project.sourceControl.visible() {
@@ -1821,6 +1842,7 @@ func (model *workspaceModel) selectTab(relative string) {
 	if model.files[relative] == nil {
 		return
 	}
+	model.actions.ui.editor = nil
 	model.cancelFileOpens()
 	model.activePath = relative
 	model.status = ""
@@ -2224,7 +2246,7 @@ func (model *workspaceModel) setActiveStatus(status string) {
 }
 
 func (model *workspaceModel) activeFile() *openFile {
-	if model == nil {
+	if model == nil || model.actions.ui.editor != nil {
 		return nil
 	}
 	if project := model.activeProjectState(); project != nil {

@@ -12,15 +12,17 @@ const (
 	Panel
 	Popup        // Nonmodal floating window; workspace interaction remains available.
 	Notification // Bottom-right message stack; never takes focus when opened.
+	EditorTab    // Document-independent tab in the editor area.
 )
 
 // UIPosition selects the origin for Placement.X/Y, in workspace CSS pixels.
 type UIPosition uint32
 
 const (
-	PositionDefault  UIPosition = iota // Center dialogs/popups; anchor context menus.
-	PositionAbsolute                   // Workspace top-left.
-	PositionAnchor                     // Action's bottom-left, falling back to its captured location.
+	PositionDefault     UIPosition = iota // Center dialogs/popups; anchor context menus.
+	PositionAbsolute                      // Workspace top-left.
+	PositionAnchor                        // Action's bottom-left, falling back to its captured location.
+	PositionAnchorAbove                   // Above the anchor's top-left; falls below when space is insufficient.
 )
 
 // UIPlacement controls an overlay's position and size. X/Y offset the selected
@@ -32,7 +34,7 @@ type UIPlacement struct {
 }
 
 func (p UIPlacement) valid(kind UIKind) bool {
-	if p.Mode > PositionAnchor || p.Width < 0 || p.Height < 0 || (kind == Panel || kind == Notification) && p != (UIPlacement{}) {
+	if p.Mode > PositionAnchorAbove || p.Width < 0 || p.Height < 0 || (kind == Panel || kind == Notification || kind == EditorTab) && p != (UIPlacement{}) {
 		return false
 	}
 	for _, n := range [...]float32{p.X, p.Y, p.Width, p.Height} {
@@ -44,9 +46,13 @@ func (p UIPlacement) valid(kind UIKind) bool {
 }
 
 // UI replaces a surface's description. A nil View retains its controls, focus
-// and scroll. Anchor is a local action ID. Close removes the surface.
+// and scroll. Anchor is a local action ID, or "ui:<surface ID>#<data-ref>" for
+// a focusable control in another surface owned by this extension.
+// Close removes the surface.
 // Empty Context.ID inherits the current Action/UIEvent context; background
 // workers should pass their saved Context explicitly. Title names the surface.
+// EditorTab opens selected. Updates with a View retain selection; a nil View
+// explicitly reveals an existing tab. Closing a tab emits the usual close event.
 type UI struct {
 	ID, Title, Anchor string
 	Kind              UIKind
@@ -111,7 +117,7 @@ func DecodeUI(data []byte) (UI, error) {
 }
 
 func (v UI) valid() bool {
-	return v.Kind <= Notification && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (v.AutoCloseMS == 0 || v.Kind == Notification)
+	return v.Kind <= EditorTab && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (v.AutoCloseMS == 0 || v.Kind == Notification)
 }
 
 func EncodeUIEvent(dst []byte, v UIEvent) ([]byte, error) {

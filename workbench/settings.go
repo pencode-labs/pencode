@@ -389,6 +389,14 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 		updated := module.ContentMut[scene.Size2D](world, model.windowBorder)
 		updated.Width, updated.Height = width, height
 	}
+	pixelRatio := float32(1)
+	if model.app != nil && model.app.Context != nil {
+		pixelRatio = float32(model.app.Context.DevicePixelRatio())
+	}
+	radius := pencodeWindowBorderRadius(pixelRatio)
+	if border, ok := module.ContentGet[scene.UIBorder2D](world, model.windowBorder); ok && border.Shape.Radius != radius {
+		module.ContentMut[scene.UIBorder2D](world, model.windowBorder).Shape.Radius = radius
+	}
 	htmlWidth, htmlHeight := float32(0), float32(0)
 	if model.settings.Zoom != pencodeDefaultZoom {
 		htmlWidth, htmlHeight = width/zoom, height/zoom

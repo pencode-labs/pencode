@@ -72,6 +72,7 @@ func (a *workspaceModel) sourceAction(id string) {
 		return
 	}
 	if strings.HasPrefix(id, "sc-tab:") {
+		a.actions.ui.editor = nil
 		s.Active, s.RestoreScroll = strings.TrimPrefix(id, "sc-tab:"), true
 		s.Selection++
 		a.sourceChanged()

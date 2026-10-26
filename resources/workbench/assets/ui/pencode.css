@@ -15,10 +15,6 @@ body {
     font-family: ui;
 }
 
-body {
-    border-radius: 12px;
-}
-
 /* Center UI labels on the selected face's cap edge and alphabetic baseline. */
 .pencode-root span,
 .pencode-root kbd {
@@ -63,7 +59,7 @@ textarea:focus {
     display: flex;
     flex-direction: column;
     border: 1px solid transparent;
-    border-radius: 12px;
+    /* The native surface rounds the background independently of UI zoom. */
     background: var(--vscode-editor-background);
     color: var(--vscode-foreground);
 }
@@ -2662,7 +2658,7 @@ textarea:focus {
 }
 .pencode-extension-notification .pencode-extension-header { gap: 8px; padding: 8px 12px 0; }
 .pencode-extension-notification .pencode-extension-header strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
-.pencode-extension-notification .pencode-extension-header button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; }
+.pencode-extension-notification .pencode-extension-header button { width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; }
 .pencode-extension-notification .pencode-extension-header button:hover { background: var(--vscode-toolbar-hoverBackground); }
 .pencode-extension-notification .pencode-extension-content { overflow-wrap: anywhere; padding: 4px 12px 12px; }
 .pencode-extension-notification p { margin: 4px 0 12px; }
@@ -2713,3 +2709,7 @@ textarea:focus {
 .pencode-ports-edit-hint { flex-shrink: 0; color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); }
 .pencode-ports-message { flex-shrink: 0; margin: 0; padding: 0 12px 8px; color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); }
 .pencode-ports-message.error { color: var(--vscode-errorForeground); }
+
+.pencode-extension-editor-slot { position: absolute; inset: 0; min-width: 0; min-height: 0; background: var(--vscode-editor-background); }
+.pencode-extension-editor { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--vscode-editor-foreground); }
+.pencode-extension-editor > .pencode-extension-content { flex: 1; }

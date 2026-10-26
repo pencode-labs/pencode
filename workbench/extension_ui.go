@@ -13,6 +13,7 @@ import (
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/output"
 	"github.com/pencode-labs/pencode/peb"
 )
 
@@ -27,15 +28,20 @@ type pencodeExtensionUIState struct {
 	surfaces            []*pencodeExtensionSurface
 	invocations         map[string]pencodeExtensionInvocation
 	overlay, panel      *pencodeExtensionSurface
+	editor              *pencodeExtensionSurface
 	wrapper             *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
 	revealNotifications bool
 }
 type pencodeExtensionSurfaceProps struct {
 	Surface  *pencodeExtensionSurface
+	Theme    *pencodeTheme
 	Revision uint64
 	Visible  bool
 }
-type pencodeExtensionFocus struct{ ref, id string }
+type pencodeExtensionFocus struct {
+	ref, id    string
+	showOutput bool
+}
 type pencodeExtensionSurface struct {
 	model                          *workspaceModel
 	session                        *extensions.ActionSession
@@ -43,13 +49,18 @@ type pencodeExtensionSurface struct {
 	ui                             peb.UI
 	invocation                     pencodeExtensionInvocation
 	definition                     *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
+	view                           *peb.EditorView
+	theme                          *pencodeTheme
 	bindings                       []peb.EditorBinding
 	focus                          []pencodeExtensionFocus
+	output                         *output.Channel
 	focused                        int
 	revision                       uint64
 	prefix, rootID, closeID, style string
+	contentID                      string
 	x, y                           float32
 	needsFocus, visible            bool
+	revealEnd                      bool
 	expiresAt                      time.Time
 }
 
@@ -99,13 +110,17 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 		}
 		return nil
 	}
+	anchor, err := model.extensionUIAnchor(owner, ui.Anchor)
+	if err != nil {
+		return err
+	}
 	fresh := surface == nil
 	if fresh {
-		if len(state.surfaces) >= maxExtensionSurfaces && (ui.Kind == peb.Panel || ui.Kind == peb.Notification || state.overlay == nil) {
+		if len(state.surfaces) >= maxExtensionSurfaces && (ui.Kind == peb.Panel || ui.Kind == peb.Notification || ui.Kind == peb.EditorTab || state.overlay == nil) {
 			return fmt.Errorf("扩展 UI 数量超过 %d", maxExtensionSurfaces)
 		}
 		prefix := "pencode-extension-ui/" + owner + "/" + ui.ID + "/"
-		surface = &pencodeExtensionSurface{model: model, session: session, owner: owner, ui: peb.UI{Kind: ui.Kind}, prefix: prefix, rootID: prefix + "surface", closeID: prefix + "close", focused: -1}
+		surface = &pencodeExtensionSurface{model: model, session: session, owner: owner, ui: peb.UI{Kind: ui.Kind}, prefix: prefix, rootID: prefix + "surface", closeID: prefix + "close", contentID: prefix + "content", revealEnd: ui.Kind == peb.EditorTab, focused: -1}
 	} else if surface.ui.Kind != ui.Kind {
 		return fmt.Errorf("更新 UI 不能改变 Kind")
 	}
@@ -136,11 +151,11 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 		state.surfaces = append(state.surfaces, surface)
 	}
 	if ui.Anchor != "" {
-		surface.invocation.anchor = "action-extensions/" + owner + "/" + ui.Anchor
+		surface.invocation.anchor = anchor
 	} else if surface.invocation.context.ID != "" {
 		surface.invocation.anchor = "action-extensions/" + owner + "/" + surface.invocation.context.ID
 	}
-	if ui.Kind != peb.Notification {
+	if ui.Kind != peb.Notification && ui.Kind != peb.EditorTab {
 		surface.updateStyle()
 	}
 	surface.expiresAt = time.Time{}
@@ -151,6 +166,10 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 			if model.app != nil && model.app.WakeAt != nil {
 				model.app.WakeAt(surface.expiresAt)
 			}
+		}
+	} else if ui.Kind == peb.EditorTab {
+		if fresh || ui.View == nil {
+			model.selectExtensionTab(surface)
 		}
 	} else if ui.Kind == peb.Panel {
 		state.panel = surface
@@ -167,7 +186,7 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 		}
 		model.dismissLanguageContext()
 	}
-	surface.needsFocus = ui.Kind != peb.Notification && (fresh || ui.View != nil)
+	surface.needsFocus = ui.Kind != peb.Notification && ui.Kind != peb.EditorTab && (fresh || ui.View != nil)
 	if fresh {
 		surface.visible = true
 		surface.send(peb.EditorEvent{Kind: "open"}, "")
@@ -175,8 +194,40 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 	return nil
 }
 
+func (model *workspaceModel) extensionUIAnchor(owner, anchor string) (string, error) {
+	if anchor == "" {
+		return "", nil
+	}
+	if target, ok := strings.CutPrefix(anchor, "ui:"); ok {
+		id, ref, valid := strings.Cut(target, "#")
+		if valid && ref != "" {
+			for _, s := range model.actions.ui.surfaces {
+				if s.owner == owner && s.ui.ID == id {
+					for _, f := range s.focus {
+						if f.ref == ref {
+							return f.id, nil
+						}
+					}
+				}
+			}
+		}
+		return "", fmt.Errorf("扩展 UI 锚点不存在: %s", anchor)
+	}
+	return "action-extensions/" + owner + "/" + anchor, nil
+}
+
 func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
+	if s.ui.Kind == peb.EditorTab && s.live() && s.model.fontResources != nil {
+		if node, ok := s.model.fontResources.HTMLNode(s.model.surface, s.contentID); ok {
+			if area, ok := node.ScrollContainer(); ok {
+				if scroll, ok := module.ContentGet[scene.UIScroll](s.model.fontResources, area); ok {
+					s.revealEnd = scroll.ContentSize.Y()-scroll.ViewportSize.Y()+scroll.Position.Y() < 24
+				}
+			}
+		}
+	}
 	focus := make([]pencodeExtensionFocus, 0, len(view.Events))
+	var channel *output.Channel
 	if err := validateExtensionView(view, func(node *dom.Node, hidden bool) {
 		if ref, _ := node.Attr("data-ref"); ref != "" {
 			_, disabled := node.Attr("disabled")
@@ -189,18 +240,26 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				if id == "" {
 					id = s.prefix + "control-" + ref
 				}
-				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id})
+				action, _ := node.Attr("data-pencode-action")
+				showOutput := node.Data == "button" && action == "show-output"
+				if showOutput {
+					channel = s.model.outputStore().Channel("Extension: " + s.owner)
+				}
+				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, showOutput: showOutput})
 			}
 		}
 	}); err != nil {
 		return err
 	}
-	definition, err := htmlui.DefineScoped(htmlui.NewTemplate(view.HTML), view.CSS, htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{
+	definition, err := htmlui.DefineScoped(htmlui.NewTemplate(view.HTML), s.model.workbenchTheme.resolveCSS(view.CSS), htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{
 		Render: func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], target *htmlui.View) {
 			surface := c.Props.Surface
 			for _, f := range surface.focus {
 				target.Attr(f.ref, "id", f.id)
 				target.Event(f.ref, htmlui.EventFocus)
+				if f.showOutput {
+					target.Event(f.ref, htmlui.EventClick)
+				}
 			}
 			for _, binding := range surface.bindings {
 				target.Event(binding.Ref, htmlui.EventKind(binding.Kind))
@@ -212,6 +271,17 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				return
 			}
 			event := c.Event
+			if event.Kind == htmlui.EventClick {
+				for _, f := range surface.focus {
+					if f.ref == c.Ref && f.showOutput {
+						p := &surface.model.bottom
+						p.active, p.source, p.filter = pencodePanelOutput, surface.output, ""
+						p.options = p.options[:0]
+						markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
+						return
+					}
+				}
+			}
 			if event.Kind == htmlui.EventFocus {
 				for i, f := range surface.focus {
 					if f.ref == c.Ref {
@@ -232,12 +302,17 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 		return err
 	}
 	s.definition, s.bindings, s.focus = definition, view.Events, focus
+	s.view, s.theme = view, s.model.workbenchTheme
+	s.output = channel
 	s.focused = -1
 	return nil
 }
 
 func (s *pencodeExtensionSurface) live() bool {
 	state := &s.model.actions.ui
+	if s.ui.Kind == peb.EditorTab {
+		return state.editor == s
+	}
 	if s.ui.Kind == peb.Notification {
 		for _, candidate := range state.surfaces {
 			if candidate == s {
@@ -250,12 +325,14 @@ func (s *pencodeExtensionSurface) live() bool {
 }
 
 func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurfaceProps, struct{}], error) {
-	return htmlui.DefineScoped(htmlui.NewTemplate(`<section data-ref="surface"><header data-ref="header" class="pencode-extension-header"><strong data-ref="title"></strong><button data-ref="close" type="button" aria-label="关闭">×</button></header><div data-ref="content" class="pencode-extension-content"></div></section>`), "", htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{
+	return htmlui.DefineScoped(htmlui.NewTemplate(`<section data-ref="surface"><header data-ref="header" class="pencode-extension-header"><strong data-ref="title"></strong><button data-ref="close" class="pencode-icon-button" type="button" title="关闭" aria-label="关闭"><img data-ref="close-icon" class="pencode-close-icon" alt=""></button></header><div data-ref="content" class="pencode-extension-content"></div></section>`), "", htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{
 		Render: func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], view *htmlui.View) {
 			s := c.Props.Surface
 			view.Attr("surface", "id", s.rootID)
+			view.Attr("content", "id", s.contentID)
 			view.Attr("surface", "aria-label", s.ui.Title)
 			view.Attr("close", "id", s.closeID)
+			view.Attr("close-icon", "src", s.model.themedIcon("icons/close.svg", "icon.foreground"))
 			view.Text("title", s.ui.Title)
 			view.Event("close", htmlui.EventClick)
 			view.Event("close", htmlui.EventFocus)
@@ -272,8 +349,11 @@ func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurface
 			case peb.Notification:
 				role, class = "status", "pencode-extension-notification"
 				view.Attr("surface", "aria-live", "polite")
+			case peb.EditorTab:
+				class = "pencode-extension-editor"
+				view.Attr("header", "hidden", "")
 			}
-			if s.ui.Kind != peb.Panel && s.ui.Kind != peb.Notification {
+			if s.ui.Kind != peb.Panel && s.ui.Kind != peb.Notification && s.ui.Kind != peb.EditorTab {
 				view.Attr("surface", "style", s.style)
 			}
 			view.Attr("surface", "role", role)
@@ -303,15 +383,23 @@ func (model *workspaceModel) renderExtensionUI(view *htmlui.View) {
 	dialog := state.overlay != nil && state.overlay.ui.Kind == peb.Dialog
 	setPanelVisible(view, "extension-modal-shade", dialog)
 	for _, s := range state.surfaces {
+		if s.view != nil && s.theme != model.workbenchTheme {
+			if err := s.setView(s.view); err != nil {
+				model.logOutput("Extension: "+s.owner, err.Error())
+			}
+		}
 		slot := "extension-overlays"
 		if s.ui.Kind == peb.Panel {
 			slot = "extension-pane"
 		} else if s.ui.Kind == peb.Notification {
 			slot = "extension-notifications"
+		} else if s.ui.Kind == peb.EditorTab {
+			slot = "extension-editor"
 		}
-		htmlui.AppendComponentChild(view, slot, componentKey(s.rootID), state.wrapper, pencodeExtensionSurfaceProps{Surface: s, Revision: s.revision, Visible: s.live()}, struct{}{})
+		htmlui.AppendComponentChild(view, slot, componentKey(s.rootID), state.wrapper, pencodeExtensionSurfaceProps{Surface: s, Theme: model.workbenchTheme, Revision: s.revision, Visible: s.live()}, struct{}{})
 	}
 	setPanelVisible(view, "extension-pane", model.bottom.active == pencodePanelExtension)
+	setPanelVisible(view, "extension-editor", state.editor != nil)
 }
 
 func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, reason string, restore bool) {
@@ -330,6 +418,9 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 	}
 	if state.overlay == s {
 		state.overlay = nil
+	}
+	if state.editor == s {
+		state.editor = nil
 	}
 	if state.panel == s {
 		state.panel = nil
@@ -357,6 +448,9 @@ func (model *workspaceModel) clearExtensionUI(owner string) {
 		// No lifecycle RPC after unload/disconnect.
 		if state.overlay == s {
 			state.overlay = nil
+		}
+		if state.editor == s {
+			state.editor = nil
 		}
 		if state.panel == s {
 			state.panel = nil
@@ -438,11 +532,25 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) {
 		if !visible {
 			continue
 		}
+		if s.ui.Kind == peb.EditorTab && s.revealEnd {
+			if node, ok := world.HTMLNode(model.surface, s.contentID); ok {
+				if area, ok := node.ScrollContainer(); ok {
+					if scroll := module.ContentMut[scene.UIScroll](world, area); scroll != nil {
+						scroll.Position[1] = -max(0, scroll.ContentSize.Y()-scroll.ViewportSize.Y())
+						scroll.Momentum[1] = 0
+						s.revealEnd = false
+						if model.app != nil {
+							model.app.RequestRender()
+						}
+					}
+				}
+			}
+		}
 		if model.closing.action != pencodeCloseNone {
-			s.needsFocus = s.ui.Kind != peb.Notification
+			s.needsFocus = s.ui.Kind != peb.Notification && s.ui.Kind != peb.EditorTab
 			continue
 		}
-		if s.ui.Kind != peb.Panel && s.ui.Kind != peb.Notification {
+		if s.ui.Kind != peb.Panel && s.ui.Kind != peb.Notification && s.ui.Kind != peb.EditorTab {
 			menu, menuOK := world.HTMLNode(model.surface, s.rootID)
 			root, rootOK := world.HTMLNode(model.surface, "pencode-extension-overlays")
 			if menuOK && rootOK {
@@ -452,11 +560,14 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) {
 				x, y := float32(0), float32(0)
 				switch {
 				case placement.Mode == peb.PositionAbsolute:
-				case placement.Mode == peb.PositionAnchor || s.ui.Kind == peb.ContextMenu && placement.Mode == peb.PositionDefault:
+				case placement.Mode == peb.PositionAnchor || placement.Mode == peb.PositionAnchorAbove || s.ui.Kind == peb.ContextMenu && placement.Mode == peb.PositionDefault:
 					x, y = s.invocation.x-viewport.X, s.invocation.y-viewport.Y
 					if anchor, ok := world.HTMLNode(model.surface, s.invocation.anchor); ok {
 						if rect, ok := anchor.Bounds(); ok {
 							x, y = rect.X-viewport.X, rect.Y+rect.Height-viewport.Y
+							if placement.Mode == peb.PositionAnchorAbove && rect.Y-viewport.Y-bounds.Height+placement.Y >= 4 {
+								y = rect.Y - viewport.Y - bounds.Height
+							}
 						}
 					}
 				default:
@@ -482,7 +593,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) {
 				}
 			}
 		}
-		if s.ui.Kind != peb.Panel {
+		if s.ui.Kind != peb.Panel && s.ui.Kind != peb.EditorTab {
 			for _, f := range s.focus {
 				s.bindKeys(world, f.id)
 			}

@@ -15,6 +15,7 @@ type pencodeTabScroll struct {
 	sourceKey                   string
 	area                        ecs.Entity
 	file                        *openFile
+	extension                   *pencodeExtensionSurface
 	project                     *pencodeProject
 	terminal                    *pencodeTerminal
 	viewportWidth, contentWidth float32
@@ -36,7 +37,7 @@ func (model *workspaceModel) syncTabScroll(world *module.Content) {
 	if scroll == nil {
 		return
 	}
-	next := pencodeTabScroll{area: area, file: model.activeFile(), project: model.activeProjectState(), viewportWidth: scroll.ViewportSize.X(), contentWidth: scroll.ContentSize.X()}
+	next := pencodeTabScroll{area: area, file: model.activeFile(), extension: model.actions.ui.editor, project: model.activeProjectState(), viewportWidth: scroll.ViewportSize.X(), contentWidth: scroll.ContentSize.X()}
 	s := model.sourceState()
 	if s.Active != "" {
 		next.sourceKey = s.Active

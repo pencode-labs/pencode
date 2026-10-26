@@ -387,6 +387,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 				s.Tabs = append(s.Tabs, tab)
 			}
 			if result.Selection == s.Selection {
+				m.actions.ui.editor = nil
 				s.Active, s.RestoreScroll = tab.Key, true
 			}
 		}

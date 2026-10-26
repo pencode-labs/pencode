@@ -6,6 +6,7 @@ import (
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/module"
 	html "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 type Mod struct {
@@ -93,6 +94,13 @@ func (m *Mod) Enter(c *module.Context, _ module.SceneStartup) error {
 		previous.model.releaseSyntaxWorker(true)
 		local := *m.model
 		*m.model = *previous.model
+		// Surface callbacks must mutate the foreground list, not a stale copy
+		// whose backing array is shared with the active model.
+		previous.model.actions.ui = pencodeExtensionUIState{}
+		for _, surface := range m.model.actions.ui.surfaces {
+			surface.model = m.model
+			surface.needsFocus = surface.ui.Kind != peb.Notification && surface.ui.Kind != peb.EditorTab
+		}
 		m.model.root, m.model.surface, m.model.fontResources = local.root, local.surface, c.Content()
 		m.model.windowBorder = local.windowBorder
 		m.model.editor = local.editor

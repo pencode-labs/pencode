@@ -11,7 +11,7 @@
     "title": "pencode",
     "icon": "icons/pencode.svg",
     "titleBarHeight": 58,
-    "cornerRadius": 11,
+    "cornerRadius": 12,
     "decorations": "none",
     "border": true,
     "resizable": true,

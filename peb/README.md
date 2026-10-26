@@ -1,4 +1,4 @@
-# peb v8 — Pencode Extension Binary
+# peb v9 — Pencode Extension Binary
 
 peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）和 `DebugAdapters`（调试适配器）。
 
@@ -10,29 +10,29 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 
 所有整数都是无符号小端整数。每帧由固定 16 字节头部和 payload 组成；流允许任意拆包、粘包。读取方必须精确读取指定长度。
 
-| 偏移 | 长度 | 字段 |
-| --- | --- | --- |
-| 0 | 4 | magic：`70 65 62 00`（`peb\0`） |
-| 4 | 2 | version：`9` |
-| 6 | 2 | kind：见下表 |
-| 8 | 4 | request ID |
-| 12 | 4 | payload 字节数，不含头部，最大 4 MiB |
+| 偏移 | 长度 | 字段                                 |
+| ---- | ---- | ------------------------------------ |
+| 0    | 4    | magic：`70 65 62 00`（`peb\0`）      |
+| 4    | 2    | version：`9`                         |
+| 6    | 2    | kind：见下表                         |
+| 8    | 4    | request ID                           |
+| 12   | 4    | payload 字节数，不含头部，最大 4 MiB |
 
-| kind | 名称 | 方向 | request ID |
-| --- | --- | --- | --- |
-| 1 | Initialize | 宿主 → 扩展 | 非零，当前宿主使用 `1` |
-| 2 | Register | 扩展 → 宿主 | 原样返回 Initialize 的 ID |
-| 3 | Shutdown | 宿主 → 扩展 | 必须为 `0`，payload 必须为空 |
-| 4 | Failure | 扩展 → 宿主 | 原样返回请求 ID |
-| 5 | EditorRequest | 宿主 → 扩展 | 非零，当前会话内递增 |
-| 6 | EditorResponse | 扩展 → 宿主 | 原样返回 EditorRequest 的 ID |
-| 7 | ActionActivate | 宿主 → 扩展 | `0`，payload 为空，仅发送一次 |
-| 8 | ActionInvoke | 宿主 → 扩展 | 非零，当前 action 会话内递增 |
-| 9 | ActionResponse | 扩展 → 宿主 | 原样返回 ActionInvoke 的 ID，payload 为空 |
-| 10 | ActionUpdate | 扩展 → 宿主 | `0`，无需等待点击即可推送 |
-| 11 | UIUpdate | 扩展 → 宿主 | `0`，打开、更新或关闭扩展界面 |
-| 12 | UIRequest | 宿主 → 扩展 | 与 action 共用递增的非零 ID，携带控件或生命周期事件 |
-| 13 | UIResponse | 扩展 → 宿主 | 原样返回 UIRequest 的 ID，payload 为空 |
+| kind | 名称           | 方向        | request ID                                          |
+| ---- | -------------- | ----------- | --------------------------------------------------- |
+| 1    | Initialize     | 宿主 → 扩展 | 非零，当前宿主使用 `1`                              |
+| 2    | Register       | 扩展 → 宿主 | 原样返回 Initialize 的 ID                           |
+| 3    | Shutdown       | 宿主 → 扩展 | 必须为 `0`，payload 必须为空                        |
+| 4    | Failure        | 扩展 → 宿主 | 原样返回请求 ID                                     |
+| 5    | EditorRequest  | 宿主 → 扩展 | 非零，当前会话内递增                                |
+| 6    | EditorResponse | 扩展 → 宿主 | 原样返回 EditorRequest 的 ID                        |
+| 7    | ActionActivate | 宿主 → 扩展 | `0`，payload 为空，仅发送一次                       |
+| 8    | ActionInvoke   | 宿主 → 扩展 | 非零，当前 action 会话内递增                        |
+| 9    | ActionResponse | 扩展 → 宿主 | 原样返回 ActionInvoke 的 ID，payload 为空           |
+| 10   | ActionUpdate   | 扩展 → 宿主 | `0`，无需等待点击即可推送                           |
+| 11   | UIUpdate       | 扩展 → 宿主 | `0`，打开、更新或关闭扩展界面                       |
+| 12   | UIRequest      | 宿主 → 扩展 | 与 action 共用递增的非零 ID，携带控件或生命周期事件 |
+| 13   | UIResponse     | 扩展 → 宿主 | 原样返回 UIRequest 的 ID，payload 为空              |
 
 版本不符、未知 kind、非法 ID、超大帧、截断数据和非法 payload 均终止本次注册。扩展进程启动、握手与退出总计最多 5 秒；失败或关闭会话会关闭管道、终止并回收子进程。GUI 使用最多 4 个资源加载 worker，server 当前串行执行扩展注册与安装控制操作；最多发现 64 个已安装扩展。stderr 持续读取，最多保留 4096 字节诊断。
 
@@ -106,13 +106,13 @@ Failure {
 
 字体、主题和图标主题的 ID 分别唯一，只允许小写字母、数字、`.`、`-`，长度为 1–128 字节，不能为 `.` 或 `..`。label 必须非空。宿主将它们注册为 `extensions/<扩展 ID>/<贡献 ID>`，各类贡献各自使用独立的选择器。扩展应只返回宿主声明支持的能力。
 
-| match | Go 常量 | pattern | 匹配对象 |
-| --- | --- | --- | --- |
-| 0 | DefaultFile | 空字符串 | 默认文件 |
-| 1 | FileName | 完整文件名，例如 `go.mod` | 文件 basename |
-| 2 | FileSuffix | 带前导点，例如 `.go`、`.d.ts` | 文件名后缀 |
-| 3 | DefaultFolder | 空字符串 | 默认目录 |
-| 4 | FolderName | 完整目录名，例如 `src` | 目录 basename |
+| match | Go 常量       | pattern                       | 匹配对象      |
+| ----- | ------------- | ----------------------------- | ------------- |
+| 0     | DefaultFile   | 空字符串                      | 默认文件      |
+| 1     | FileName      | 完整文件名，例如 `go.mod`     | 文件 basename |
+| 2     | FileSuffix    | 带前导点，例如 `.go`、`.d.ts` | 文件名后缀    |
+| 3     | DefaultFolder | 空字符串                      | 默认目录      |
+| 4     | FolderName    | 完整目录名，例如 `src`        | 目录 basename |
 
 匹配区分大小写。文件名精确匹配优先，再匹配最长后缀，再使用默认文件图标；目录名精确匹配优先于默认目录图标。同一类型和 pattern 重复时，最后一条规则生效。未命中且未声明默认规则时，使用 Pencode 内置图标。pattern 不能包含路径分隔符。
 
@@ -169,7 +169,6 @@ func main() {
 `Reader` 复用帧缓冲区，`Frame.Payload` 只在下次 `Read` 前有效；各 `Decode*` 函数返回的字符串拥有独立存储。`Encode*` 函数接受可复用的目标切片。`Reader` / `Writer` 各自应由一个 goroutine 使用。
 
 完整示例及安装步骤见 [Pencode README](../README.md#扩展)。
-
 
 ## 自定义文件编辑工具
 
@@ -318,24 +317,25 @@ session.Actions.Remove(action.ID)
 
 `ActionPublisher.Show(peb.UI{...})` 打开或更新扩展界面，`CloseUI(id)` 关闭；`Handlers.UIEvent` 接收控件和生命周期事件。必须注册 `UIEvent`，否则 `Show` 返回 `ErrProtocol`。这些界面复用 action 的常驻进程，I/O、图片读取和资源校验在后台执行。
 
-| Kind | 行为 |
-| --- | --- |
-| `peb.Dialog` | 居中的模态弹窗；包含标题、关闭按钮、焦点循环及 Esc 关闭 |
-| `peb.Notification` | 右下角堆叠通知；包含关闭按钮，不抢焦点，可设置自动关闭及自定义内容与操作 |
-| `peb.Popup` | 类似扩展市场的非模态浮窗；支持坐标、锚点、宽高与关闭按钮；可操作背后的工作区，焦点在浮窗内时 Esc 关闭 |
-| `peb.ContextMenu` | 锚定 action 的菜单；自动限制在工作区内，支持方向键、Tab、Esc 和点击外部关闭 |
-| `peb.Panel` | 使用可调整高度的底部工作台面板；支持工具栏关闭、Esc 关闭及切换可见性 |
+| Kind               | 行为                                                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `peb.Dialog`       | 居中的模态弹窗；包含标题、关闭按钮、焦点循环及 Esc 关闭                                               |
+| `peb.Notification` | 右下角堆叠通知；包含关闭按钮，不抢焦点，可设置自动关闭及自定义内容与操作                              |
+| `peb.Popup`        | 类似扩展市场的非模态浮窗；支持坐标、锚点、宽高与关闭按钮；可操作背后的工作区，焦点在浮窗内时 Esc 关闭 |
+| `peb.ContextMenu`  | 锚定 action 的菜单；自动限制在工作区内，支持方向键、Tab、Esc 和点击外部关闭                           |
+| `peb.Panel`        | 使用可调整高度的底部工作台面板；支持工具栏关闭、Esc 关闭及切换可见性                                  |
 
-`UI.ID` 属于扩展自身命名空间，遵循 action 本地 ID 规则。`Title` 必须非空，用作界面的可访问名称。`Anchor` 是本扩展的 action ID，打开时留空采用触发 action；文件树和编辑器菜单中的 action 也可作为锚点。首次打开必须提供 `View`，以后 `View:nil` 保留现有视图和输入状态；非空 `View` 替换 HTML/CSS 和事件绑定。其余描述字段完整替换，同一 ID 的 `Kind` 在关闭前不能改变。
+`UI.ID` 属于扩展自身命名空间，遵循 action 本地 ID 规则。`Title` 必须非空，用作界面的可访问名称。`Anchor` 是本扩展的 action ID，打开时留空采用触发 action；文件树和编辑器菜单中的 action 也可作为锚点。也可用 `ui:<surface ID>#<data-ref>` 锚定本扩展另一界面的可聚焦控件（该界面须已打开）。首次打开必须提供 `View`，以后 `View:nil` 保留现有视图和输入状态；非空 `View` 替换 HTML/CSS 和事件绑定。其余描述字段完整替换，同一 ID 的 `Kind` 在关闭前不能改变。
 
 浮层使用 `UI.Placement` 设置位置和大小，单位为工作区 CSS 像素（随工作区缩放）：
 
-| 字段 | 含义 |
-| --- | --- |
-| `Mode: peb.PositionDefault` | Dialog/Popup 居中，ContextMenu 锚定 action；X/Y 是偏移 |
-| `Mode: peb.PositionAbsolute` | X/Y 是相对工作区左上角的坐标 |
-| `Mode: peb.PositionAnchor` | X/Y 是相对 Anchor action 左下角的偏移；锚点不可用时采用触发位置 |
-| `Width`, `Height` | 浮层宽高；0 使用默认大小；负数及非有限数值无效 |
+| 字段                         | 含义                                                            |
+| ---------------------------- | --------------------------------------------------------------- |
+| `Mode: peb.PositionDefault`  | Dialog/Popup 居中，ContextMenu 锚定 action；X/Y 是偏移          |
+| `Mode: peb.PositionAbsolute` | X/Y 是相对工作区左上角的坐标                                    |
+| `Mode: peb.PositionAnchor`   | X/Y 是相对 Anchor action 左下角的偏移；锚点不可用时采用触发位置 |
+| `Mode: peb.PositionAnchorAbove` | 在锚点左上方显示，Y 相对菜单底边；上方空间不足时改在下方显示 |
+| `Width`, `Height`            | 浮层宽高；0 使用默认大小；负数及非有限数值无效                  |
 
 打开后可发送相同 ID、`View:nil` 更新位置和大小，保留输入、选区和滚动。坐标可为负数，最终位置和大小受工作区边界约束；窗口变化后会重新按请求的位置定位，锚定浮层跟随 action。`Panel` 使用底部布局，`Notification` 使用右下角通知布局，两者 Placement 必须为零值。Popup 的 Tab 使用原生焦点遍历；焦点移到工作区后不会截获工作区快捷键。
 
@@ -361,6 +361,8 @@ err = publisher.Show(peb.UI{
 ```
 
 通知使用相同的 `View` 和 `UIEvent`，支持自定义 HTML/CSS、表单与多个操作按钮。`AutoCloseMS` 仅适用于 Notification：0（默认）持续显示，正数指定自动关闭的毫秒数，关闭时发送 `Reason="timeout"`。更新同一 ID 会重置计时；传 0 取消自动关闭。通知始终可以点击关闭按钮或调用 `CloseUI` 关闭；焦点在通知控件内时支持 Esc，编辑器中的 Esc 不会关闭通知。自动关闭和关闭按钮不会移走其他控件的焦点。
+
+在扩展 UI 中添加 `<button data-ref="logs" data-pencode-action="show-output" type="button">查看日志</button>`，工作台会直接打开 Output 并选中当前扩展的 `Extension: <id>` 通道，清空日志过滤条件。此按钮无需声明 `Events`，点击由工作台处理，不发送 `UIEvent`；禁用和隐藏按钮不触发操作。
 
 ```go
 err := publisher.Show(peb.UI{
@@ -413,11 +415,11 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 
 生命周期事件无需显式订阅：
 
-| `e.Event.Kind` | 内容 |
-| --- | --- |
-| `open` | 新界面已被宿主接受；同一 ID 的更新不会重复触发 |
-| `close` | `e.Reason` 为 `extension`、`button`、`escape`、`outside`、`replace` 或 `timeout` |
-| `visibilitychange` | `e.Event.Value` 为 `visible` 或 `hidden`，用于 Panel 切换 |
+| `e.Event.Kind`     | 内容                                                                             |
+| ------------------ | -------------------------------------------------------------------------------- |
+| `open`             | 新界面已被宿主接受；同一 ID 的更新不会重复触发                                   |
+| `close`            | `e.Reason` 为 `extension`、`button`、`escape`、`outside`、`replace` 或 `timeout` |
+| `visibilitychange` | `e.Event.Value` 为 `visible` 或 `hidden`，用于 Panel 切换                        |
 
 每个事件附带 `e.ID` 和打开界面时的 `e.Context`（项目、文件路径、目录标记及选区）。SDK 在 `Action` 和 `UIEvent` handler 中自动继承当前上下文；后台任务应保存并显式传入 `UI.Context`，避免使用后来触发的 action 上下文。已打开界面的上下文保持到关闭。异步控件事件无法同步取消浏览器默认行为，当前不支持 JavaScript 或任意键盘、指针事件订阅。
 
@@ -428,9 +430,9 @@ UI payload 的字段顺序如下。`ActionContext` 与 `ActionInvoke` 编码一�
 ```text
 UIUpdate {
   id, title, anchor: string
-  kind: u32                     // Dialog=0, ContextMenu=1, Panel=2, Popup=3, Notification=4
+  kind: u32                     // Dialog=0, ContextMenu=1, Panel=2, Popup=3, Notification=4, EditorTab=5
   close: bool
-  placementMode: u32            // Default=0, Absolute=1, Anchor=2
+  placementMode: u32            // Default=0, Absolute=1, Anchor=2, AnchorAbove=3
   x, y, width, height: f32      // IEEE 754，小端
   closeOnOutsideClick: bool    // Popup 点击外部是否关闭，默认 false
   autoCloseMS: u32             // Notification 自动关闭毫秒数，0 持续显示
@@ -453,3 +455,18 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 `Contributions.DebugAdapters` 为 workspace server 提供调试启动命令。Go 扩展注册 `Delve`，以自身的 `--tool dlv` 启动器按需安装工具。显式配置的 command 优先；同一 adapter ID 有多个提供者时返回冲突。禁用、卸载和断开连接会取消启动并回收对应适配器进程。
 
 `DocumentSelector` 在 match、pattern 后增加 `languageId:string`，为空则继承 LanguageServer.LanguageID，允许同一 gopls 会话分别用 go、go.mod、go.work 打开文档。
+
+### 独立编辑器标签页
+
+`peb.EditorTab` 为会话、工具结果等不对应文件的视图创建编辑器标签页，`Title` 同时作为标签标题。同一扩展内的 `ID` 标识独立标签，`Placement` 必须为零值。事件继续通过 `UIEvent` 发送。
+
+```go
+publisher.Show(peb.UI{
+    ID: "conversation-123", Title: "实现搜索功能", Kind: peb.EditorTab,
+    View: &peb.EditorView{HTML: `<article><p>聊天记录</p></article>`},
+})
+```
+
+首次创建自动选中。带 `View` 的更新替换记录并更新标题，保留当前标签选择；更新后台会话不会抢走正在编辑的文件。发送相同 ID、`View:nil` 则主动选中已有标签。切换时发送 `visibilitychange`，关闭标签时发送 `close`；扩展卸载会清理其标签。标签页关闭不要求扩展终止后台任务，扩展可自行管理会话持久化和任务生命周期。
+
+扩展 UI 的 CSS 支持与自定义编辑器相同的 `var(--vscode-...)` 主题变量，随 IDE 主题变更重新解析。

@@ -4,7 +4,7 @@ peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写�
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **8**，已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **9**，已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
 
 ## 帧
 
@@ -13,7 +13,7 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 | 偏移 | 长度 | 字段 |
 | --- | --- | --- |
 | 0 | 4 | magic：`70 65 62 00`（`peb\0`） |
-| 4 | 2 | version：`8` |
+| 4 | 2 | version：`9` |
 | 6 | 2 | kind：见下表 |
 | 8 | 4 | request ID |
 | 12 | 4 | payload 字节数，不含头部，最大 4 MiB |
@@ -33,7 +33,6 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 | 11 | UIUpdate | 扩展 → 宿主 | `0`，打开、更新或关闭扩展界面 |
 | 12 | UIRequest | 宿主 → 扩展 | 与 action 共用递增的非零 ID，携带控件或生命周期事件 |
 | 13 | UIResponse | 扩展 → 宿主 | 原样返回 UIRequest 的 ID，payload 为空 |
-| 14 | NotificationUpdate | 扩展 → 宿主 | `0`，显示、更新或关闭右下角通知 |
 
 版本不符、未知 kind、非法 ID、超大帧、截断数据和非法 payload 均终止本次注册。扩展进程启动、握手与退出总计最多 5 秒；失败或关闭会话会关闭管道、终止并回收子进程。GUI 使用最多 4 个资源加载 worker，server 当前串行执行扩展注册与安装控制操作；最多发现 64 个已安装扩展。stderr 持续读取，最多保留 4096 字节诊断。
 
@@ -103,19 +102,7 @@ DebugAdapter {
 Failure {
   message: string
 }
-
-NotificationUpdate {
-  id: string                    // 扩展内唯一；相同 ID 更新原通知
-  title: string                 // 非关闭通知必填
-  message: string               // 纯文本，非关闭通知必填
-  action: string                // 可选的本地 action ID，不必注册工作台按钮
-  actionText: string            // 与 action 同时填写
-  error: u32                    // boolean；错误使用 alert 和主题错误颜色
-  close: u32                    // boolean；按 ID 关闭通知
-}
 ```
-
-action 会话可通过 `publisher.Notify(peb.Notification{ID: "tools", Title: "Go", Message: "工具安装失败", Error: true, Action: "retry", ActionText: "重试"})` 发布宿主管理的通用通知，无需提供 HTML/CSS 或 `UIEvent`。按钮通过 `Handlers.Action` 接收 `ActionContext.ID="retry"`。通知不抢占焦点、不替换扩展弹窗，支持用户关闭；扩展卸载或会话结束时自动清理。最多保留 8 条通知，超出时移除最早的通知；更新已有通知不改变顺序。传入 `Notification{ID: "tools", Close: true}` 可主动关闭。
 
 字体、主题和图标主题的 ID 分别唯一，只允许小写字母、数字、`.`、`-`，长度为 1–128 字节，不能为 `.` 或 `..`。label 必须非空。宿主将它们注册为 `extensions/<扩展 ID>/<贡献 ID>`，各类贡献各自使用独立的选择器。扩展应只返回宿主声明支持的能力。
 
@@ -327,13 +314,14 @@ session.Actions.Remove(action.ID)
 
 `actions` 包路径为 `github.com/pencode-labs/pencode/actions`。原生注册 ID 在整个 registry 中唯一，重复注册返回错误；`Update` 更新已有按钮，`Remove` 删除按钮。未变化的注册表快照、UI 描述同步以及复用缓冲区后的编码路径保持零分配。
 
-## 弹窗、上下文菜单与 Panel
+## 弹窗、上下文菜单、Panel 与通知
 
 `ActionPublisher.Show(peb.UI{...})` 打开或更新扩展界面，`CloseUI(id)` 关闭；`Handlers.UIEvent` 接收控件和生命周期事件。必须注册 `UIEvent`，否则 `Show` 返回 `ErrProtocol`。这些界面复用 action 的常驻进程，I/O、图片读取和资源校验在后台执行。
 
 | Kind | 行为 |
 | --- | --- |
 | `peb.Dialog` | 居中的模态弹窗；包含标题、关闭按钮、焦点循环及 Esc 关闭 |
+| `peb.Notification` | 右下角堆叠通知；包含关闭按钮，不抢焦点，可设置自动关闭及自定义内容与操作 |
 | `peb.Popup` | 类似扩展市场的非模态浮窗；支持坐标、锚点、宽高与关闭按钮；可操作背后的工作区，焦点在浮窗内时 Esc 关闭 |
 | `peb.ContextMenu` | 锚定 action 的菜单；自动限制在工作区内，支持方向键、Tab、Esc 和点击外部关闭 |
 | `peb.Panel` | 使用可调整高度的底部工作台面板；支持工具栏关闭、Esc 关闭及切换可见性 |
@@ -349,7 +337,7 @@ session.Actions.Remove(action.ID)
 | `Mode: peb.PositionAnchor` | X/Y 是相对 Anchor action 左下角的偏移；锚点不可用时采用触发位置 |
 | `Width`, `Height` | 浮层宽高；0 使用默认大小；负数及非有限数值无效 |
 
-打开后可发送相同 ID、`View:nil` 更新位置和大小，保留输入、选区和滚动。坐标可为负数，最终位置和大小受工作区边界约束；窗口变化后会重新按请求的位置定位，锚定浮层跟随 action。`Panel` 使用底部布局，Placement 必须为零值。Popup 的 Tab 使用原生焦点遍历；焦点移到工作区后不会截获工作区快捷键。
+打开后可发送相同 ID、`View:nil` 更新位置和大小，保留输入、选区和滚动。坐标可为负数，最终位置和大小受工作区边界约束；窗口变化后会重新按请求的位置定位，锚定浮层跟随 action。`Panel` 使用底部布局，`Notification` 使用右下角通知布局，两者 Placement 必须为零值。Popup 的 Tab 使用原生焦点遍历；焦点移到工作区后不会截获工作区快捷键。
 
 `UI.CloseOnOutsideClick` 控制 Popup 点击外部的行为：`false`（默认）保持打开，`true` 关闭并发送 `Event.Kind="close"`、`Reason="outside"` 的 UIEvent。鼠标按下或触摸按下时检测；即使焦点已经移到工作区，配置仍然生效。关闭保留底层点击和焦点。可用 `View:nil` 实时修改该配置；其余描述字段完整替换，后续更新需继续传入希望保留的值。此字段只影响 Popup；ContextMenu 始终点击外部关闭，Dialog/Panel 使用各自的关闭行为，关闭按钮、Esc 和 `CloseUI` 也保留原有行为。
 
@@ -372,7 +360,24 @@ err = publisher.Show(peb.UI{
 })
 ```
 
-工作台最多保留 32 个扩展界面，同时展示一个弹窗、浮窗或菜单，以及一个底部 Panel。打开新的浮层会关闭原来的浮层，关闭原因为 `replace`。底部面板切换保留扩展视图，返回后继续接收事件。禁用、卸载、重新加载扩展或进程异常退出会移除所属界面，退出后的进程不再接收生命周期事件。
+通知使用相同的 `View` 和 `UIEvent`，支持自定义 HTML/CSS、表单与多个操作按钮。`AutoCloseMS` 仅适用于 Notification：0（默认）持续显示，正数指定自动关闭的毫秒数，关闭时发送 `Reason="timeout"`。更新同一 ID 会重置计时；传 0 取消自动关闭。通知始终可以点击关闭按钮或调用 `CloseUI` 关闭；焦点在通知控件内时支持 Esc，编辑器中的 Esc 不会关闭通知。自动关闭和关闭按钮不会移走其他控件的焦点。
+
+```go
+err := publisher.Show(peb.UI{
+    ID: "build-result", Title: "构建完成", Kind: peb.Notification,
+    AutoCloseMS: 5000, // 省略则一直显示，等待手动关闭或扩展调用 CloseUI。
+    View: &peb.EditorView{
+        HTML: `<p>构建成功，可以查看结果。</p><button data-ref="open" type="button">查看结果</button>`,
+        Events: []peb.EditorBinding{{Ref: "open", Kind: "click"}},
+    },
+})
+// 在 Handlers.UIEvent 中处理自定义操作；是否关闭由扩展决定。
+// if e.ID == "build-result" && e.Event.Kind == "click" && e.Event.Ref == "open" {
+//     return publisher.CloseUI(e.ID)
+// }
+```
+
+工作台最多保留 32 个扩展界面（包含通知），同时展示一个弹窗、浮窗或菜单、一个底部 Panel，以及多条堆叠通知。通知独立显示，打开通知不会替换浮层、关闭其他界面或移动焦点。打开新的浮层会关闭原来的浮层，关闭原因为 `replace`。底部面板切换保留扩展视图，返回后继续接收事件。禁用、卸载、重新加载扩展或进程异常退出会移除所属界面，退出后的进程不再接收生命周期事件。
 
 ```go
 var ui *peb.ActionPublisher
@@ -411,7 +416,7 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 | `e.Event.Kind` | 内容 |
 | --- | --- |
 | `open` | 新界面已被宿主接受；同一 ID 的更新不会重复触发 |
-| `close` | `e.Reason` 为 `extension`、`button`、`escape`、`outside` 或 `replace` |
+| `close` | `e.Reason` 为 `extension`、`button`、`escape`、`outside`、`replace` 或 `timeout` |
 | `visibilitychange` | `e.Event.Value` 为 `visible` 或 `hidden`，用于 Panel 切换 |
 
 每个事件附带 `e.ID` 和打开界面时的 `e.Context`（项目、文件路径、目录标记及选区）。SDK 在 `Action` 和 `UIEvent` handler 中自动继承当前上下文；后台任务应保存并显式传入 `UI.Context`，避免使用后来触发的 action 上下文。已打开界面的上下文保持到关闭。异步控件事件无法同步取消浏览器默认行为，当前不支持 JavaScript 或任意键盘、指针事件订阅。
@@ -423,11 +428,12 @@ UI payload 的字段顺序如下。`ActionContext` 与 `ActionInvoke` 编码一�
 ```text
 UIUpdate {
   id, title, anchor: string
-  kind: u32                     // Dialog=0, ContextMenu=1, Panel=2, Popup=3
+  kind: u32                     // Dialog=0, ContextMenu=1, Panel=2, Popup=3, Notification=4
   close: bool
   placementMode: u32            // Default=0, Absolute=1, Anchor=2
   x, y, width, height: f32      // IEEE 754，小端
   closeOnOutsideClick: bool    // Popup 点击外部是否关闭，默认 false
+  autoCloseMS: u32             // Notification 自动关闭毫秒数，0 持续显示
   context: ActionContext
   hasView: bool
   // hasView=true: html: text, css: text, events: array<{ref: string, kind: string}>
@@ -440,7 +446,7 @@ UIRequest {
 UIResponse {}                   // 成功应答；错误使用 Failure
 ```
 
-可构建的完整示例见 [UI Demo](../extensions/ui-demo/main.go)，包含 action 菜单、表单弹窗、自由定位浮窗、点击外部关闭选项、输入与提交事件、Panel 更新和关闭事件。
+可构建的完整示例见 [UI Demo](../extensions/ui-demo/main.go)，包含 action 菜单、表单弹窗、自由定位浮窗、点击外部关闭选项、输入与提交事件、Panel 更新、通知自定义操作、自动关闭和关闭事件。
 
 ## 调试工具
 

@@ -167,6 +167,9 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 	if m.model.pollActions() {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
+	if m.model.expireExtensionNotifications(time.Now()) {
+		markPencodeRootDirtyByModel(c.Content(), m.model)
+	}
 	if m.model.pollMarketplace() {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}

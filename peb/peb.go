@@ -1,4 +1,4 @@
-// Package peb implements Pencode Extension Binary protocol version 8.
+// Package peb implements Pencode Extension Binary protocol version 9.
 // Frames and payloads use little endian integers; stdout is reserved for frames.
 package peb
 
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version    = 8
+	Version    = 9
 	HeaderSize = 16
 	MaxPayload = 4 << 20
 	MaxString  = 64 << 10
@@ -35,7 +35,6 @@ const (
 	UIUpdate
 	UIRequest
 	UIResponse
-	NotificationUpdate
 )
 
 type Capability uint32
@@ -56,7 +55,7 @@ var ErrProtocol = errors.New("peb: invalid protocol message")
 
 // Frame.Payload is borrowed until the next Read. Request IDs correlate replies;
 // Initialize/Register/Failure use the same nonzero ID. Shutdown, ActionActivate
-// and unsolicited ActionUpdate/UIUpdate/NotificationUpdate messages use zero.
+// and unsolicited ActionUpdate/UIUpdate notifications use zero.
 type Frame struct {
 	Kind    Kind
 	ID      uint32
@@ -124,7 +123,7 @@ func validFrame(kind Kind, id uint32, size int) bool {
 	if kind == ActionActivate {
 		return id == 0 && size == 0
 	}
-	if kind == ActionUpdate || kind == UIUpdate || kind == NotificationUpdate {
+	if kind == ActionUpdate || kind == UIUpdate {
 		return id == 0
 	}
 	if kind == ActionResponse || kind == UIResponse {

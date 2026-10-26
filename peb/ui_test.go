@@ -180,3 +180,36 @@ func TestUIServiceUpdatesDuringEventsAndCancelsPublisher(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNotificationCodec(t *testing.T) {
+	ui := UI{ID: "build", Title: "构建完成", Kind: Notification, AutoCloseMS: 5000, View: &EditorView{
+		HTML:   `<p>构建完成</p><button data-ref="open">查看结果</button>`,
+		Events: []EditorBinding{{Ref: "open", Kind: "click"}},
+	}}
+	data, err := EncodeUI(nil, ui)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeUI(data)
+	if err != nil || !reflect.DeepEqual(got, ui) {
+		t.Fatal(got, err)
+	}
+	if n := testing.AllocsPerRun(100, func() { data, _ = EncodeUI(data, ui) }); n != 0 {
+		t.Fatalf("notification encoding allocated %g", n)
+	}
+	for i := range len(data) {
+		if _, err := DecodeUI(data[:i]); err == nil {
+			t.Fatalf("accepted notification truncation %d", i)
+		}
+	}
+	// Notifications use host placement; expiry belongs only to notifications.
+	ui.Placement.X = 1
+	if _, err := EncodeUI(nil, ui); err == nil {
+		t.Fatal("accepted positioned notification")
+	}
+	ui.Placement = UIPlacement{}
+	ui.Kind = Popup
+	if _, err := EncodeUI(nil, ui); err == nil {
+		t.Fatal("accepted expiring popup")
+	}
+}

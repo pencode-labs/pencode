@@ -210,7 +210,7 @@ func TestSourceControlRefreshLeavesDiffEditorWritable(t *testing.T) {
 	tab := &sourceTab{Key: "changes::" + name, Path: name, Kind: "changes", Result: "package demo\n", Saved: "package demo\n"}
 	s.Snapshot.Repository = r
 	s.Tabs, s.Active = []*sourceTab{tab}, tab.Key
-	s.NextRefresh = time.Now().Add(time.Hour)
+	s.RefreshStarted, s.RefreshPending = true, false
 	s.Done, s.JobKind = make(chan sourceResult, 1), sourceRefresh
 	m.sourceChanged()
 	languageInteractionStep(t, app)

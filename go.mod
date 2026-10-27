@@ -6,6 +6,7 @@ replace github.com/diiyw/onix => ../onix
 
 require (
 	github.com/diiyw/onix v0.0.0-00010101000000-000000000000
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-gl/mathgl v1.2.0
 	github.com/odvcencio/gotreesitter v0.56.0
 	github.com/yuin/goldmark/v2 v2.1.9

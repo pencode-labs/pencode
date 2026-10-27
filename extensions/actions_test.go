@@ -2,6 +2,7 @@ package extensions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,12 +48,70 @@ func TestActionHelperProcess(t *testing.T) {
 			}
 			return publisher.Remove(action.ID)
 		},
+		UIEvent: func(event peb.UIEvent) error {
+			return publisher.Show(peb.UI{ID: "models", Title: "Models", Kind: peb.ContextMenu, Anchor: event.Event.Value})
+		},
 	})
 	if err != nil {
 		os.Exit(1)
 	}
 	os.Exit(0)
 }
+
+func TestActionSessionUIAnchors(t *testing.T) {
+	backend, _ := actionFixture(t)
+	bundle, err := Load(context.Background(), backend, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		anchor string
+		valid  bool
+	}{
+		{"", true},
+		{"run", true},
+		{"ui:composer#model-settings", true},
+		{"ui:composer#model/Fixture", true},
+		{"ui:composer#@peb-focus-0", true},
+		{"../run", false},
+		{"ui:../composer#model-settings", false},
+		{"ui:#model-settings", false},
+		{"ui:composer#", false},
+		{"ui:composer", false},
+	} {
+		t.Run(tc.anchor, func(t *testing.T) {
+			session := bundle.Actions.Start(nil)
+			defer session.Close()
+			if !session.SubmitUI(peb.UIEvent{ID: "composer", Event: peb.EditorEvent{Kind: "click", Ref: "model-settings", Value: tc.anchor}}) {
+				t.Fatal("UI event rejected")
+			}
+			deadline := time.After(5 * time.Second)
+			for {
+				select {
+				case result, ok := <-session.Results:
+					if !ok {
+						t.Fatal("session closed without a result")
+					}
+					if result.Err != nil {
+						if tc.valid || !result.Fatal || !errors.Is(result.Err, peb.ErrProtocol) {
+							t.Fatalf("unexpected session error: %+v", result)
+						}
+						return
+					}
+					if result.UI != nil {
+						if !tc.valid || result.UI.ID != "models" || result.UI.Anchor != tc.anchor {
+							t.Fatalf("unexpected UI: %+v", result.UI)
+						}
+						return
+					}
+				case <-deadline:
+					t.Fatal("UI update timed out")
+				}
+			}
+		})
+	}
+}
+
 func TestActionSessionLiveUpdateClickAndClose(t *testing.T) {
 	backend, _ := actionFixture(t)
 	var logs output.Store

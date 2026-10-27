@@ -19,6 +19,14 @@ import (
 
 const maxActions = 256
 
+func validUIAnchor(anchor string) bool {
+	if target, ok := strings.CutPrefix(anchor, "ui:"); ok {
+		id, ref, found := strings.Cut(target, "#")
+		return found && validID(id) && ref != ""
+	}
+	return anchor == "" || validID(anchor)
+}
+
 // ActionExtension retains a validated process entry for its live button session.
 type ActionExtension struct {
 	Output  *output.Channel
@@ -243,7 +251,7 @@ func (extension *ActionExtension) run(parent context.Context, requests <-chan ac
 			if decodeErr != nil {
 				return decodeErr
 			}
-			if !validID(ui.ID) || ui.Anchor != "" && !validID(ui.Anchor) {
+			if !validID(ui.ID) || !validUIAnchor(ui.Anchor) {
 				return peb.ErrProtocol
 			}
 			resourceCtx, finish := context.WithTimeout(ctx, StartupTimeout)

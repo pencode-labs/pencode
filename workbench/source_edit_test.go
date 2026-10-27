@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 
 	"github.com/diiyw/onix/input"
@@ -190,7 +189,7 @@ func TestSourceDiffRestoresFileEditorPointerAndInput(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)
 	m.languages = nil
 	s := m.sourceState()
-	s.NextRefresh = time.Now().Add(time.Hour)
+	s.RefreshStarted, s.RefreshPending = true, false
 	editor := m.editor.control
 	for _, kind := range []string{"initial", "changes", "staged", "history"} {
 		t.Run(kind, func(t *testing.T) {

@@ -24,9 +24,8 @@ func sourceWait(t *testing.T, app *onix.App, m *workspaceModel) {
 		languageInteractionStep(t, app)
 		time.Sleep(time.Millisecond)
 	}
-	// Interaction tests drive refresh explicitly; wall-clock polling must not
-	// start a new job during layout or between pointer and text input events.
-	m.sourceState().NextRefresh = time.Now().Add(time.Hour)
+	// Interaction tests drive refresh explicitly between input events.
+	m.sourceState().RefreshStarted, m.sourceState().RefreshPending = true, false
 	languageInteractionStep(t, app)
 	if m.sourceState().Done != nil {
 		t.Fatal("Git job did not complete")
@@ -67,7 +66,7 @@ func TestSourceControlStatusCountWithoutPanel(t *testing.T) {
 	if err := os.Remove(filepath.Join(r.Root, "resources/new.go")); err != nil {
 		t.Fatal(err)
 	}
-	s.NextRefresh = time.Time{}
+	s.RefreshPending = true
 	languageInteractionStep(t, app)
 	sourceWait(t, app, m)
 	if s.changeCountText != "0" || len(s.Snapshot.Commits) != 1 || s.Snapshot.Branch != "main" {
@@ -251,7 +250,7 @@ func TestSourceControlPencodeInteraction(t *testing.T) {
 	if panel.Height < 100 || panel.Y+panel.Height > status.Y+1 {
 		t.Fatalf("small viewport panel=%+v status=%+v", panel, status)
 	}
-	s.NextRefresh = time.Now().Add(time.Hour)
+	s.RefreshStarted, s.RefreshPending = true, false
 	for range 3 {
 		languageInteractionStep(t, app)
 	}
@@ -504,7 +503,7 @@ func TestSourceControlProjectIsolationAndLateResult(t *testing.T) {
 func TestSourceControlDiffWindowAndIdle(t *testing.T) {
 	m := &workspaceModel{}
 	s := m.sourceState()
-	s.NextRefresh = time.Now().Add(time.Hour)
+	s.RefreshStarted, s.RefreshPending = true, false
 	s.Active = "changes::large.go"
 	tab := &sourceTab{Key: s.Active, Path: "large.go", Kind: "changes", Rows: make([]sourceDiffRow, 10000), FirstRow: 400}
 	s.Tabs = []*sourceTab{tab}

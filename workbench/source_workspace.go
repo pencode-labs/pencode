@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
@@ -100,7 +99,7 @@ type pencodeSourceControl struct {
 	RefreshCancel                           context.CancelFunc
 	Cancel                                  context.CancelFunc
 	Context                                 context.Context
-	NextRefresh                             time.Time
+	RefreshPending, RefreshStarted          bool
 	CommitMessage, SelectedHash             string
 	MessageMultiline, MessageFocus          bool
 	MessageAnchor, MessageCaret             int
@@ -203,7 +202,7 @@ func (s *pencodeSourceControl) stop() {
 	s.Context = nil
 	s.Done = nil
 	s.RepositoriesLoaded = false
-	s.NextRefresh = time.Time{}
+	s.RefreshPending, s.RefreshStarted = false, false
 }
 func (m *workspaceModel) sourceState() *pencodeSourceControl {
 	if p := m.activeProjectState(); p != nil {
@@ -257,6 +256,7 @@ func (m *workspaceModel) refreshSourceControl() {
 	if s.Done != nil || m.projectPath == "" {
 		return
 	}
+	s.RefreshPending, s.RefreshStarted = false, true
 	if s.Context == nil {
 		s.Context, s.Cancel = context.WithCancel(context.Background())
 	}
@@ -418,7 +418,6 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 		if result.Reload && project != nil {
 			m.reloadSourceFiles(project)
 		}
-		s.NextRefresh = time.Now().Add(5 * time.Second)
 		return true
 	default:
 		return false
@@ -452,14 +451,9 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		s.MenuOpen, s.BranchMenuOpen, s.RepositoryMenuOpen = false, false, false
 		changed = true
 	}
-	if m.projectPath != "" && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen && !s.RepositoryMenuOpen {
-		if time.Now().After(s.NextRefresh) {
-			m.refreshSourceControl()
-			changed = true
-		}
-		if m.app != nil && m.app.WakeAt != nil && s.Done == nil {
-			m.app.WakeAt(s.NextRefresh)
-		}
+	if m.projectPath != "" && (s.RefreshPending || !s.RefreshStarted) && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen && !s.RepositoryMenuOpen {
+		m.refreshSourceControl()
+		changed = true
 	}
 	if !s.visible() && m.bottom.active != pencodePanelSourceControl && !s.modal() {
 		return changed

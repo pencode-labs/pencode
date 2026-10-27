@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
@@ -34,7 +33,6 @@ func (a *workspaceModel) sourceAction(id string) {
 	if id == "sc-notice-close" {
 		s.Notice = ""
 		s.FocusedModal, s.FocusedTab = "", ""
-		s.NextRefresh = time.Now().Add(5 * time.Second)
 		a.sourceChanged()
 		return
 	}

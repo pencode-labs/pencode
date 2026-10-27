@@ -199,6 +199,7 @@ handler 接收 `EditorMessage`：Editor、文件绝对 Path、宿主当前 Conte
 - `Content == nil` 不修改文档；指向空字符串表示清空。修改由宿主统一管理 dirty、保存与撤销/重做。
 - `View.Events` 显式订阅 `{Ref, Kind}`，支持 click、input、change、focus、blur、submit、reset。Ref 必须对应 HTML 的 data-ref。异步事件不能同步阻止默认行为，因此暂不开放 beforeinput 取消接口。
 - HTML 使用 Onix 现有 HTML/CSS 渲染器。CSS 按组件隔离，元素 id 必须以 `pencode-extension-` 开头，避免占用工作台控件 ID。可继承工作台 CSS 使用的 `--vscode-*` 颜色变量，主题切换保留组件样式。
+- 按钮的 `title` 会由宿主显示为 IDE 风格的悬浮提示；未设置 `title` 时使用 `aria-label`。图标按钮应提供简短的功能说明。Action 按钮使用 `Tooltip`，留空时使用 `Text`。
 - `img src` 可使用 `resources/` 下的 SVG、PNG、JPEG 或 WebP 相对路径，也可使用本扩展的 `peb://<扩展 ID>/resources/...`。GUI 后台从 server 批量读取并校验，再改写成缓存的 `peb://` URI；每张最大 4 MiB、每边不超过 2048 像素、每视图合计 8 MiB / 64 项 / 4 MP。SVG 按原始尺寸栅格化。资源获取最长 5 秒，文件大小、尺寸和路径限制失败会终止当前视图。CSS 保持内联文本，不增加外部样式表或脚本执行能力。
 
 初次回复必须提供 View。扩展在 server 进程中处理事件，当前没有 JavaScript、VS Code API、任意键盘/指针事件订阅或增量 DOM 消息 API。二进制文件只提供 server 路径 Path、Binary=true、空 Content，扩展可在远程环境中按路径读取；第一版不支持二进制内容写回，宿主文本保存不会触碰这些文件。

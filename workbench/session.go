@@ -3,6 +3,7 @@ package workbench
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/module"
@@ -90,6 +91,7 @@ func (s *Session) syncLayout() {
 	model.focusQuickControls(model.fontResources, model.surface)
 	model.focusConnectionPassword(model.fontResources)
 	defer model.syncInputContext(model.fontResources)
+	defer model.syncTooltip(model.fontResources, time.Now())
 	if s.active.screen != pencodeWorkspace {
 		return
 	}

@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
@@ -72,7 +71,6 @@ func (s *pencodeSourceControl) selectRepository(repository sourceRepository) {
 	s.GraphFirst, s.GraphScrollY, s.RestoreGraph = 0, 0, true
 	s.MenuOpen, s.BranchMenuOpen, s.RepositoryMenuOpen = false, false, false
 	s.Selection++
-	s.NextRefresh = time.Time{}
 }
 
 func (m *workspaceModel) switchSourceRepository(root string, follow bool) bool {

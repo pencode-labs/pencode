@@ -111,6 +111,7 @@ func (m *Mod) Enter(c *module.Context, _ module.SceneStartup) error {
 		m.model.highlightRevision = local.highlightRevision
 		m.model.lastFileClick = 0
 		m.model.inputContext = pencodeInputContext{}
+		m.model.tooltip = pencodeTooltip{}
 		m.model.resetHighlight()
 	}
 	m.model.screen = m.screen
@@ -215,6 +216,7 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 	}
 	activePath := m.model.activePath
 	treeChanged := m.model.pollProjectScans()
+	treeChanged = m.model.pollProjectWatches() || treeChanged
 	quickChanged := m.model.pollQuickMatches()
 	folderChanged := m.model.pollFolderSearch()
 	hoverChanged := m.model.pollHoverMarkup()
@@ -283,6 +285,7 @@ func (m *Mod) Destroy(c *module.Context) error {
 				*m.model.highlightCache = pencodeHighlightCache{}
 			}
 			for _, project := range m.model.projects {
+				project.stopWatch()
 				project.sourceControl.stop()
 				for _, file := range project.Files {
 					file.closeDocument()

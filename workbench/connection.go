@@ -194,6 +194,7 @@ func (model *workspaceModel) retireConnection(closeBackend bool) {
 	}
 	for _, project := range model.projects {
 		project.stopScan()
+		project.stopWatch()
 		project.sourceControl.stop()
 		project.index = 0
 		for _, file := range project.Files {
@@ -502,6 +503,7 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 				file.document.Update("", file.Content, -1, 0, 0)
 			}
 		}
+		model.startProjectWatch(project)
 		model.startProjectScan(project, false)
 	}
 	c.workspaceProfile, c.namespace = result.profile, result.profile.Namespace()
@@ -561,6 +563,7 @@ func renderPencodeConnection(c module.ContentRenderContext[pencodeConnectionProp
 	view.Attr("dot", "class", dotClass)
 	view.Text("name", p.Profile.Label())
 	view.Text("host", p.Profile.SSH.Host)
+	view.Attr("project", "id", fmt.Sprintf("connection-project-%d", p.Index))
 	view.Attr("more", "id", fmt.Sprintf("connection-more-%d", p.Index))
 	view.Attr("more-icon", "src", p.Model.themedIcon("icons/ellipsis.svg", "icon.foreground"))
 	view.Attr("project-icon", "src", p.Model.themedIcon("icons/folder-opened.svg", "icon.foreground"))

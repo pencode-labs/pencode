@@ -46,6 +46,8 @@ text/directory 只接受 0/1；ResourceTransfer flags 的 bit 0 表示移动，b
 
 ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存服务端用户配置目录下的 `pencode/resources`。读取返回目录路径及相对文件名和字节内容，包含 `settings.json`、`highlights.json` 与 `themes/` 下的 JSON/JSONC 文件；总量限制 16 MiB、4096 个文件。保存只接受 JSON 对象并替换 `settings.json`，不接受文件名或目录参数。GUI 在打开远程项目时使用这份配置，系统字体仍由 GUI 主机提供。
 
+WorkspaceWatch 首次调用安装根目录的递归文件事件监听，并返回两个变化位用于初始快照；后续调用阻塞到有事件或请求被取消。目录树与 Git 变化分别按事件时间限频，每秒最多通知一次，窗口内的密集事件允许丢弃，不使用定时器补发。跳过 `node_modules`、`dist` 以及 Git 的对象、日志、hooks 目录和锁文件；工作区关闭或连接断开时释放监听。客户端仅在事件到来后刷新，已有扫描与 Git 任务期间的变化合并成一次待刷新状态。
+
 | operation | 参数 | Reply |
 | --- | --- | --- |
 | DirectoryBrowse | directory:string（root 为空） | path:string, parent:string, count:u32, {name:string}[]（只含子目录） |
@@ -53,6 +55,7 @@ ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存
 | SettingsSave | data:bytes（JSON object） | 空 |
 | GitCommand | args:string[] | output:bytes |
 | GitRepositories | 空 | count:u32, {root:string}[]（项目及其子目录内的仓库） |
+| WorkspaceWatch | 空（root 为工作区目录） | changes:u32（位 0：目录树；位 1：Git 状态） |
 | FileRead | path:string, links:u32, limit:u32 | content:bytes |
 | FileSave | path:string, diskBaseline:string, result:string | 空 |
 | DiffPatch | left:bytes, right:bytes | unifiedPatch:bytes |

@@ -172,7 +172,7 @@ func TestPencodeScanBatchesInvalidateQuickOpen(t *testing.T) {
 	}
 	project := &pencodeProject{Path: root, Files: make(map[string]*openFile)}
 	connectPencodeProject(t, project)
-	project.scan = newBackendProjectScan(project.backend, root, false, nil)
+	project.scan = newBackendProjectScan(project.backend, root, false, nil, nil)
 	t.Cleanup(project.stopScan)
 	model := workspaceModel{backend: project.backend, projects: []*pencodeProject{project}, activeProjectIndex: 0, quickQuery: "file-2999"}
 	model.refreshQuickMatches()

@@ -372,7 +372,7 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	if document.model != nil {
 		theme = document.model.workbenchTheme
 	}
-	definition, err := htmlui.DefineScoped(htmlui.NewTemplate(view.HTML), theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
+	definition, err := htmlui.DefineScoped(tooltipTemplate(view.HTML, fmt.Sprintf("pencode-extension-editor/%p/", document)), theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
 		Render: func(context htmlui.RenderContext[*pencodeCustomDocument, struct{}], target *htmlui.View) {
 			for _, event := range (*context.Props).bindings {
 				target.Event(event.Ref, htmlui.EventKind(event.Kind))

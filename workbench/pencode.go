@@ -102,6 +102,8 @@ type pencodeProject struct {
 	PreviewPath             string
 	Status                  string
 	scan                    *pencodeProjectScan
+	watch                   *pencodeProjectWatch
+	treePending             bool
 }
 
 type workspaceModel struct {
@@ -141,6 +143,7 @@ type workspaceModel struct {
 	fontResources                       *module.Content
 	root                                ecs.Entity
 	surface                             ecs.Entity
+	tooltip                             pencodeTooltip
 	windowBorder                        ecs.Entity
 	projectPath                         string
 	projectName                         string
@@ -425,6 +428,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				view.Attr("tree", "id", props.TreeID)
 				view.Attr("tree", "aria-busy", boolAttribute(props.Project.scan != nil))
 				view.Attr("toggle", "aria-expanded", boolAttribute(!props.Project.Collapsed))
+				view.Attr("close", "id", props.TreeID+"-close")
 				view.Attr("close", "aria-label", "关闭项目 "+props.Project.Name)
 				view.Text("name", props.Project.Name)
 				if props.Project.Collapsed {
@@ -472,6 +476,11 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					view.Attr("select", "aria-label", props.Name)
 					view.Attr("close", "title", "关闭文件")
 				}
+				closeID := props.Path
+				if props.Project != nil {
+					closeID = props.Project.Path + ":" + closeID
+				}
+				view.Attr("close", "id", "file-tab-close:"+closeID)
 				view.Attr("tab", "class", className)
 				iconForeground := "tab.inactiveForeground"
 				if props.Active {
@@ -539,7 +548,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.root, err = module.ContentDefine[appProps, appState](content,
-		htmlui.NewTemplate(page),
+		tooltipTemplate(page, ""),
 		"",
 		module.ContentBehavior[appProps, appState]{
 			Render: func(context module.ContentRenderContext[appProps, appState], view *htmlui.View) {
@@ -589,6 +598,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	for _, icon := range pencodeThemeIcons {
 		view.Attr(icon.ref, "src", model.themedIcon(icon.source, icon.foreground))
 	}
+	model.renderTooltip(view)
 	model.renderLanguageTools(view)
 	model.renderLanguageEditorPopups(view)
 	model.renderCloseDialog(view)
@@ -1259,6 +1269,7 @@ func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace p
 	if model.session != nil && model.session.connection != nil {
 		project.historyKey = model.session.connection.namespace + workspace.Path
 	}
+	model.startProjectWatch(project)
 	model.startProjectScan(project, true)
 	model.projects = append(model.projects, project)
 	model.activeProjectIndex = len(model.projects) - 1
@@ -1442,6 +1453,7 @@ func (model *workspaceModel) discardProject(project *pencodeProject) {
 	}
 	wasActive := index == model.activeProjectIndex
 	project.stopScan()
+	project.stopWatch()
 	project.sourceControl.stop()
 	model.closeTerminal(project.Path)
 	for _, file := range project.Files {

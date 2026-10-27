@@ -3,10 +3,10 @@ package workbench
 import (
 	"context"
 	"fmt"
-	"github.com/pencode-labs/pencode/protocol"
 	"time"
 
 	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 const (
@@ -33,7 +33,7 @@ type pencodeProjectScan struct {
 	initial bool
 }
 
-func newBackendProjectScan(backend *client.Client, root string, initial bool, wake func()) *pencodeProjectScan {
+func newBackendProjectScan(backend *client.Client, root string, initial bool, wake func(), ready <-chan struct{}) *pencodeProjectScan {
 	ctx, cancel := context.WithCancel(context.Background())
 	scan := &pencodeProjectScan{cancel: cancel, initial: initial, results: make(chan *pencodeTreeBatch, 2), buffers: make(chan *pencodeTreeBatch, 2)}
 	for range 2 {
@@ -41,6 +41,13 @@ func newBackendProjectScan(backend *client.Client, root string, initial bool, wa
 	}
 	go func() {
 		defer close(scan.results)
+		if ready != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ready:
+			}
+		}
 		id, err := backend.OpenIndex(ctx, root)
 		complete := false
 		defer func() {
@@ -120,7 +127,11 @@ func (model *workspaceModel) startProjectScan(project *pencodeProject, initial b
 			wake = func() { wakeAt(time.Now()) }
 		}
 	}
-	project.scan = newBackendProjectScan(project.backend, project.Path, initial, wake)
+	var ready <-chan struct{}
+	if project.watch != nil {
+		ready = project.watch.ready
+	}
+	project.scan = newBackendProjectScan(project.backend, project.Path, initial, wake, ready)
 }
 
 func (model *workspaceModel) pollProjectScans() bool {

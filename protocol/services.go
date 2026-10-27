@@ -44,6 +44,14 @@ const (
 	TextSearch
 	DebugAdapterOpen
 	DebugTerminalOpen
+	WorkspaceWatch
+)
+
+type WorkspaceChange uint32
+
+const (
+	WorkspaceTreeChanged WorkspaceChange = 1 << iota
+	WorkspaceGitChanged
 )
 
 type Port struct {

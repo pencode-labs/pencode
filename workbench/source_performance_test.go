@@ -3,7 +3,6 @@ package workbench
 import (
 	"os"
 	"testing"
-	"time"
 )
 
 // Uses the same headless fixture as the editor benchmarks. Point
@@ -30,7 +29,7 @@ func BenchmarkPencodeSourceControl(b *testing.B) {
 		b.Fatal(err)
 	}
 	s := m.sourceState()
-	s.Snapshot, s.NextRefresh = snapshot, time.Now().Add(time.Hour)
+	s.Snapshot, s.RefreshStarted = snapshot, true
 	step := func() {
 		b.Helper()
 		if _, err := app.Step(); err != nil {

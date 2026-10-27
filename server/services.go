@@ -22,6 +22,7 @@ type services struct {
 	background             sync.WaitGroup
 	streams                map[uint64]*serviceStream
 	indexes                map[uint64]*serviceIndex
+	watches                map[string]*workspaceWatch
 	syntaxMu               sync.Mutex
 	syntax                 map[uint64]*syntaxSession
 	extensions             *extensionService
@@ -32,12 +33,16 @@ func newServices(ctx context.Context, options Options) *services {
 	configureSyntaxMemory()
 	s := &services{ctx: ctx, roots: make(map[string]bool), projects: make(map[uint64]string), derived: make(map[string]string), streams: make(map[uint64]*serviceStream), indexes: make(map[uint64]*serviceIndex), syntax: make(map[uint64]*syntaxSession)}
 	s.extensions = &extensionService{owner: s, directory: options.ExtensionDirectory, entries: make(map[uint64]*extensionEntry)}
+	s.watches = make(map[string]*workspaceWatch)
 	s.configurationDirectory = options.ConfigurationDirectory
 	return s
 }
 func (s *services) close() {
 	s.extensions.close()
 	s.mu.Lock()
+	for _, watch := range s.watches {
+		watch.cancel()
+	}
 	for _, p := range s.streams {
 		p.close()
 	}
@@ -129,12 +134,17 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 			return err
 		}
 		return browseDirectory(ctx, directory, e)
-	case protocol.GitCommand, protocol.GitRepositories, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen, protocol.TextSearch:
+	case protocol.GitCommand, protocol.GitRepositories, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen, protocol.TextSearch, protocol.WorkspaceWatch:
 		if root == "" {
 			return protocol.ErrProtocol
 		}
 	}
 	switch op {
+	case protocol.WorkspaceWatch:
+		if err := d.Done(); err != nil {
+			return err
+		}
+		return s.watchWorkspace(ctx, root, e)
 	case protocol.DebugAdapterOpen:
 		return s.openDebugAdapter(ctx, root, &d, e)
 	case protocol.DebugTerminalOpen:
@@ -168,6 +178,10 @@ func (s *services) closeWorkspace(id uint64) {
 	root := s.projects[id]
 	delete(s.projects, id)
 	delete(s.roots, root)
+	if watch := s.watches[root]; watch != nil {
+		watch.cancel()
+		delete(s.watches, root)
+	}
 	for derived, owner := range s.derived {
 		if owner == root {
 			replacement := ""

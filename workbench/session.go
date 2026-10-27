@@ -79,11 +79,18 @@ func (s *Session) ScrollSystem() ecs.SystemConfig {
 func (s *Session) LayoutSystem() ecs.SystemConfig {
 	return ecs.SystemConfig{
 		Name: "sync_pencode_editor_layout", After: []string{"sync_ui_global_transform_after_layout"},
-		System: func(*ecs.SystemContext) error { s.syncLayout(); return nil },
+		System: func(context *ecs.SystemContext) error {
+			if s.syncLayout() {
+				// Extension scroll restoration runs after layout. Apply it to the
+				// retained visuals before this frame reaches paint.
+				return engineui.SyncAfterLayout(context.World)
+			}
+			return nil
+		},
 	}
 }
 
-func (s *Session) syncLayout() {
+func (s *Session) syncLayout() (scrollChanged bool) {
 	if s.active == nil {
 		return
 	}
@@ -108,7 +115,7 @@ func (s *Session) syncLayout() {
 			model.editor.syncHighlight(value, field, model)
 		}
 	}
-	model.syncExtensionUI(model.fontResources)
+	scrollChanged = model.syncExtensionUI(model.fontResources)
 	model.focusFileContext(model.fontResources)
 	model.focusFindInput(model.fontResources, model.surface)
 	model.focusFolderSearch(model.fontResources)
@@ -122,6 +129,7 @@ func (s *Session) syncLayout() {
 	model.editor.findPaint.sync(model.fontResources, model)
 	model.constrainLanguagePopups(model.fontResources)
 	model.editor.saveView(model.fontResources, model)
+	return
 }
 
 func (s *Session) Register(registry *module.Registry) error {

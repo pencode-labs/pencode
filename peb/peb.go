@@ -1,4 +1,4 @@
-// Package peb implements Pencode Extension Binary protocol version 9.
+// Package peb implements Pencode Extension Binary protocol version 10.
 // Frames and payloads use little endian integers; stdout is reserved for frames.
 package peb
 
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version    = 9
+	Version    = 10
 	HeaderSize = 16
 	MaxPayload = 4 << 20
 	MaxString  = 64 << 10
@@ -35,6 +35,8 @@ const (
 	UIUpdate
 	UIRequest
 	UIResponse
+	SettingsRequest
+	SettingsResponse
 )
 
 type Capability uint32
@@ -48,7 +50,8 @@ const (
 	Actions
 	ExtensionUI
 	DebugAdapters
-	Capabilities = FileIcons | EditorThemes | CustomEditors | Fonts | LanguageServers | Actions | ExtensionUI | DebugAdapters
+	ExtensionSettings
+	Capabilities = FileIcons | EditorThemes | CustomEditors | Fonts | LanguageServers | Actions | ExtensionUI | DebugAdapters | ExtensionSettings
 )
 
 var ErrProtocol = errors.New("peb: invalid protocol message")
@@ -126,10 +129,10 @@ func validFrame(kind Kind, id uint32, size int) bool {
 	if kind == ActionUpdate || kind == UIUpdate {
 		return id == 0
 	}
-	if kind == ActionResponse || kind == UIResponse {
+	if kind == ActionResponse || kind == UIResponse || kind == SettingsResponse {
 		return id != 0 && size == 0
 	}
-	if kind == UIRequest {
+	if kind == UIRequest || kind == SettingsRequest {
 		return id != 0
 	}
 	return kind >= Initialize && kind <= ActionInvoke && id != 0
@@ -190,6 +193,7 @@ type Contributions struct {
 	Fonts           []Font
 	LanguageServers []LanguageServer
 	DebugAdapters   []DebugAdapter
+	Settings        []Setting
 }
 
 type encoder struct {
@@ -291,6 +295,9 @@ func DecodeHello(data []byte) (Hello, error) {
 
 func EncodeContributions(dst []byte, v Contributions) ([]byte, error) {
 	e := encoder{data: dst[:0]}
+	if ValidateSettings(v.Settings) != nil {
+		return e.data, ErrProtocol
+	}
 	e.count(len(v.Themes))
 	for _, t := range v.Themes {
 		e.str(t.ID)
@@ -325,6 +332,7 @@ func EncodeContributions(dst []byte, v Contributions) ([]byte, error) {
 	}
 	e.number(boolNumber(v.ActionService))
 	encodeDebugAdapters(&e, v.DebugAdapters)
+	encodeSettings(&e, v.Settings)
 	return e.data, e.err
 }
 
@@ -365,6 +373,7 @@ func DecodeContributions(data []byte) (Contributions, error) {
 	}
 	v.ActionService = d.boolean()
 	v.DebugAdapters = decodeDebugAdapters(&d)
+	v.Settings = decodeSettings(&d)
 	return v, d.done()
 }
 
@@ -424,6 +433,7 @@ func ServeExtension(input io.Reader, output io.Writer, contributions Contributio
 		len(contributions.Fonts) > 0 && hello.Capabilities&Fonts == 0 ||
 		len(contributions.LanguageServers) > 0 && hello.Capabilities&LanguageServers == 0 ||
 		len(contributions.DebugAdapters) > 0 && hello.Capabilities&DebugAdapters == 0 ||
+		len(contributions.Settings) > 0 && hello.Capabilities&ExtensionSettings == 0 ||
 		(contributions.ActionService || len(contributions.Actions) > 0) && hello.Capabilities&Actions == 0 ||
 		hasActions && handlers.Action == nil ||
 		handlers.UIEvent != nil && hello.Capabilities&ExtensionUI == 0 ||
@@ -460,6 +470,23 @@ func ServeExtension(input io.Reader, output io.Writer, contributions Contributio
 		kind := EditorResponse
 		var handleErr error
 		switch f.Kind {
+		case SettingsRequest:
+			values, decodeErr := DecodeSettingValues(f.Payload)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if len(values) != len(contributions.Settings) {
+				return ErrProtocol
+			}
+			for _, setting := range contributions.Settings {
+				if setting.Validate(values[setting.ID]) != nil {
+					return ErrProtocol
+				}
+			}
+			if handlers.Settings != nil {
+				handleErr = handlers.Settings(values)
+			}
+			kind, data = SettingsResponse, data[:0]
 		case EditorRequest:
 			if handlers.Editor == nil {
 				return ErrProtocol

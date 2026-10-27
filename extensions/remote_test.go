@@ -48,7 +48,7 @@ func TestRemoteExtensionInstallEnableDisableAndRevoke(t *testing.T) {
 		t.Fatal("installation did not publish a server-owned registration")
 	}
 	old := bundle.Actions.remote
-	session := bundle.Actions.Start(nil)
+	session := bundle.Actions.Start(nil, nil)
 	defer session.Close()
 	select {
 	case result := <-session.Results:

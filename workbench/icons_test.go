@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -9,6 +10,9 @@ import (
 	"github.com/diiyw/onix/render"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 // Capture uploads in memory; no window, editor process or screenshot is used.
@@ -180,4 +184,58 @@ func TestPencodeIconsFollowSelectionAndTabState(t *testing.T) {
 	model.selectTheme("dark-plus")
 	step()
 	assertIcons()
+}
+
+func TestExtensionUIReusesIDEIconTextures(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	model, provider := session.active.model, session.active.icons
+	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := model.applyExtensionUI("icons", &extensions.ActionSession{}, peb.UI{
+		ID: "icons", Kind: peb.EditorTab, View: &peb.EditorView{
+			HTML: `<main class="codex-workspace"><div class="codex-history-header"><button id="pencode-extension-edit-button" class="codex-icon-button"><img id="pencode-extension-edit" data-ref="edit" data-pencode-icon="edit" alt=""></button><div data-ref="region" data-pencode-region><button id="pencode-extension-refresh-button" class="codex-icon-button"><img id="pencode-extension-refresh" data-ref="refresh" data-pencode-icon="refresh-cw" alt=""></button></div></div></main>`,
+			CSS:  string(css),
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, theme := range []string{"light-plus", "dark-plus"} {
+		model.selectTheme(theme)
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		if _, err := app.Step(); err != nil {
+			t.Fatal(err)
+		}
+		for _, icon := range []struct{ id, source string }{
+			{"pencode-extension-edit", "icons/edit.svg"},
+			{"pencode-extension-refresh", "icons/refresh-cw.svg"},
+		} {
+			bounds := editorContextBounds(t, model, icon.id)
+			if bounds.Width != 16 || bounds.Height != 16 {
+				t.Fatalf("%s size = %gx%g", icon.id, bounds.Width, bounds.Height)
+			}
+			texture, ok := provider.ResolveHTMLImage(model.themedIcon(icon.source, "icon.foreground"))
+			if !ok {
+				t.Fatalf("missing IDE texture for %s", icon.source)
+			}
+			if x, y := texture.RasterScale(); x != 4 || y != 4 || !texture.Mipmapped() {
+				t.Fatalf("%s must use IDE 4x sampling and mipmaps", icon.source)
+			}
+			found := false
+			for entity, access := range module.ContentQuery[scene.Sprite2D](model.fontResources) {
+				parent, ok := module.ContentGet[scene.Parent](model.fontResources, entity)
+				if !ok {
+					continue
+				}
+				control, ok := module.ContentGet[htmlui.Control](model.fontResources, parent.Entity)
+				if ok && control.ID == icon.id+"-button" {
+					found = found || access.Ref().Texture == texture
+				}
+			}
+			if !found {
+				t.Fatalf("%s did not render the shared %s texture", theme, icon.source)
+			}
+		}
+	}
 }

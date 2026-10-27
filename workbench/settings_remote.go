@@ -8,14 +8,17 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/client"
-	"github.com/pencode-labs/pencode/configuration"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/configuration"
 )
 
 func (model *workspaceModel) applyConfiguration(snapshot configuration.Snapshot, remote bool) {
 	model.settings = parsePencodeSettings(snapshot.Files["settings.json"])
+	for _, group := range model.extensionSettings {
+		model.rebuildExtensionSettings(group)
+	}
 	model.settingsPath = path.Join(snapshot.Directory, "settings.json")
 	model.settingsRemote, model.settingsFeedback, model.capturingShortcut = remote, "", false
 	model.themes, model.workbenchTheme, model.syntaxTheme, model.syntaxDefinitions = nil, nil, nil, nil

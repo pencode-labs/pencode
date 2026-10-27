@@ -166,9 +166,12 @@ func renderPencodeAction(context module.ContentRenderContext[pencodeActionProps,
 	}
 	if a.Location == peb.OpenWith {
 		view.Attr("run", "aria-pressed", strconv.FormatBool(props.Active))
-		view.Attr("text", "hidden", "")
 	} else {
 		view.RemoveAttr("run", "aria-pressed")
+	}
+	if a.Location == peb.OpenWith || a.Text == "" {
+		view.Attr("text", "hidden", "")
+	} else {
 		view.RemoveAttr("text", "hidden")
 		view.Text("text", a.Text)
 	}
@@ -257,7 +260,7 @@ func (model *workspaceModel) importActions(extension *extensions.ActionExtension
 	}
 	prefix := "extensions/" + extension.ID + "/"
 	extension.Output = model.outputStore().Channel("Extension: " + extension.ID)
-	session := extension.Start(model.backgroundWake())
+	session := extension.Start(model.extensionSettingValues(extension.ID), model.backgroundWake())
 	state.sessions[extension.ID] = session
 	for _, a := range extension.Actions {
 		model.registerExtensionAction(a, session, prefix)

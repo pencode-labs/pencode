@@ -46,6 +46,7 @@ type ActionResult struct {
 type ActionSession struct {
 	Results  <-chan ActionResult
 	Done     <-chan struct{}
+	settings chan peb.SettingValues
 	requests chan actionRequest
 	cancel   context.CancelFunc
 	remote   *client.Extension
@@ -53,14 +54,19 @@ type ActionSession struct {
 }
 
 type actionRequest struct {
-	action peb.ActionContext
-	event  peb.UIEvent
-	ui     bool
+	action   peb.ActionContext
+	event    peb.UIEvent
+	settings peb.SettingValues
+	ui       bool
 }
 
 // Editor binds a live Open With action to the extension's document process.
 func (s *ActionSession) Editor(a peb.Action) Editor {
 	return Editor{Action: a, LocalID: strings.TrimPrefix(a.ID, "extensions/"+s.remote.Info.ID+"/"), remote: s.remote, Output: s.output}
+}
+
+func (s *ActionSession) SubmitSettings(values peb.SettingValues) bool {
+	return submitSettings(s.settings, s.Done, values)
 }
 
 func (s *ActionSession) Submit(c peb.ActionContext) bool { return s.submit(actionRequest{action: c}) }
@@ -85,10 +91,10 @@ func (s *ActionSession) Close() {
 		s.cancel()
 	}
 }
-func (extension *ActionExtension) Start(wake func()) *ActionSession {
+func (extension *ActionExtension) Start(values peb.SettingValues, wake func()) *ActionSession {
 	ctx, cancel := context.WithCancel(context.Background())
 	results, done := make(chan ActionResult, 16), make(chan struct{})
-	s := &ActionSession{Results: results, Done: done, requests: make(chan actionRequest, 64), cancel: cancel, remote: extension.remote, output: extension.Output}
+	s := &ActionSession{Results: results, Done: done, settings: make(chan peb.SettingValues, 1), requests: make(chan actionRequest, 64), cancel: cancel, remote: extension.remote, output: extension.Output}
 	go func() {
 		defer close(done)
 		defer close(results)
@@ -102,7 +108,7 @@ func (extension *ActionExtension) Start(wake func()) *ActionSession {
 			case <-ctx.Done():
 			}
 		}
-		if err := extension.run(ctx, s.requests, publish); err != nil && ctx.Err() == nil {
+		if err := extension.run(ctx, values, s.settings, s.requests, publish); err != nil && ctx.Err() == nil {
 			publish(ActionResult{Err: err, Fatal: true})
 		}
 	}()
@@ -142,7 +148,7 @@ func loadAction(files *resourceFiles, extensionID string, a peb.Action, icons ma
 	return a, nil
 }
 
-func (extension *ActionExtension) run(parent context.Context, requests <-chan actionRequest, publish func(ActionResult)) (err error) {
+func (extension *ActionExtension) run(parent context.Context, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan actionRequest, publish func(ActionResult)) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stream, stderr, closeProcess, err := openExtensionProcess(ctx, extension.remote, "", extension.Output)
@@ -177,6 +183,11 @@ func (extension *ActionExtension) run(parent context.Context, requests <-chan ac
 	if !contributions.ActionService {
 		return peb.ErrProtocol
 	}
+	values = peb.ResolveSettings(contributions.Settings, values)
+	data, err = exchangeSettings(&r, &w, data, values, 2)
+	if err != nil {
+		return err
+	}
 	if err = w.Write(peb.ActionActivate, 0, nil); err != nil {
 		return err
 	}
@@ -198,43 +209,49 @@ func (extension *ActionExtension) run(parent context.Context, requests <-chan ac
 		defer requestDeadline.Stop()
 		requestDeadline.Stop()
 		var buffer []byte
-		id := uint32(1)
+		id := uint32(2)
 		for {
+			var request actionRequest
 			select {
 			case <-ctx.Done():
 				return
-			case request := <-requests:
+			case values := <-settings:
+				request.settings = values
+			case request = <-requests:
+			}
+			id++
+			if id == 0 {
 				id++
-				if id == 0 {
-					id++
-				}
-				pending.Store(id)
-				requestDeadline.Reset(StartupTimeout)
-				var writeErr error
-				kind, response := peb.ActionInvoke, peb.ActionResponse
-				if request.ui {
-					kind, response = peb.UIRequest, peb.UIResponse
-					buffer, writeErr = peb.EncodeUIEvent(buffer, request.event)
-				} else {
-					buffer, writeErr = peb.EncodeActionContext(buffer, request.action)
-				}
-				responseKind.Store(uint32(response))
-				if writeErr == nil {
-					writeErr = w.Write(kind, id, buffer)
-				}
-				if writeErr != nil {
+			}
+			pending.Store(id)
+			requestDeadline.Reset(StartupTimeout)
+			var writeErr error
+			kind, response := peb.ActionInvoke, peb.ActionResponse
+			if request.settings != nil {
+				kind, response = peb.SettingsRequest, peb.SettingsResponse
+				buffer, writeErr = peb.EncodeSettingValues(buffer, request.settings)
+			} else if request.ui {
+				kind, response = peb.UIRequest, peb.UIResponse
+				buffer, writeErr = peb.EncodeUIEvent(buffer, request.event)
+			} else {
+				buffer, writeErr = peb.EncodeActionContext(buffer, request.action)
+			}
+			responseKind.Store(uint32(response))
+			if writeErr == nil {
+				writeErr = w.Write(kind, id, buffer)
+			}
+			if writeErr != nil {
+				cancel()
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case replyID := <-completions:
+				requestDeadline.Stop()
+				if replyID != id {
 					cancel()
 					return
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case replyID := <-completions:
-					requestDeadline.Stop()
-					if replyID != id {
-						cancel()
-						return
-					}
 				}
 			}
 		}
@@ -291,7 +308,7 @@ func (extension *ActionExtension) run(parent context.Context, requests <-chan ac
 				added = map[string][]byte{change.Action.Icon: icons[change.Action.Icon]}
 			}
 			publish(ActionResult{Change: change, Icons: added})
-		case peb.ActionResponse, peb.UIResponse:
+		case peb.ActionResponse, peb.UIResponse, peb.SettingsResponse:
 			if responseKind.Load() != uint32(f.Kind) {
 				return peb.ErrProtocol
 			}

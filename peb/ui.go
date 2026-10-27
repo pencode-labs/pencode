@@ -68,10 +68,12 @@ type UI struct {
 	AutoCloseMS uint32
 }
 
-// UIEvent carries DOM events and "open", "close", "visibilitychange".
+// UIEvent carries DOM events and "open", "close", "visibilitychange", "projectchange".
 // visibilitychange uses Event.Value="visible" or "hidden".
+// projectchange notifies EditorTab surfaces when the active project changes.
+// Its Context contains the new ProjectPath and clears file-specific fields.
 // Close reasons are "extension", "button", "escape", "outside", "replace", "timeout".
-// Context is the action invocation that opened this surface.
+// Context is the action invocation that opened this surface, updated by projectchange.
 type UIEvent struct {
 	ID, Reason string
 	Context    ActionContext

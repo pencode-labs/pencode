@@ -190,7 +190,7 @@ func (model *workspaceModel) customDocument() *pencodeCustomDocument {
 	if document.project != nil {
 		root = document.project.Path
 	}
-	document.process = provider.Start(root, model.backgroundWake())
+	document.process = provider.Start(root, model.extensionSettingValues(extensionOwner(provider.ID)), model.backgroundWake())
 	model.customDocuments[file] = document
 	document.enqueue(peb.EditorEvent{Kind: "open"})
 	document.dispatch()

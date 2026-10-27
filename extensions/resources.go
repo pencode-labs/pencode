@@ -35,6 +35,8 @@ type Theme struct {
 // Bundle owns all imported assets. No extension directory remains open after
 // registration, and rendering performs no disk reads for extension icons.
 type Bundle struct {
+	ID, Label       string
+	Settings        []peb.Setting
 	Actions         *ActionExtension
 	Themes          []Theme
 	IconThemes      []peb.IconTheme
@@ -116,8 +118,11 @@ func loadBundle(source fs.FS, id string, c peb.Contributions) (result *Bundle, f
 	if err != nil {
 		return nil, err
 	}
+	if err := peb.ValidateSettings(c.Settings); err != nil {
+		return nil, err
+	}
 	files := resourceFiles{source: source, cache: make(map[string][]byte)}
-	bundle := &Bundle{Icons: make(map[string][]byte), LanguageServers: servers}
+	bundle := &Bundle{ID: id, Label: id, Settings: c.Settings, Icons: make(map[string][]byte), LanguageServers: servers}
 	if len(c.Actions) > maxActions {
 		return nil, fmt.Errorf("too many extension actions")
 	}

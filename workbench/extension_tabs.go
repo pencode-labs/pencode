@@ -5,6 +5,19 @@ import (
 	"github.com/pencode-labs/pencode/peb"
 )
 
+func (model *workspaceModel) syncExtensionProject(previous string) {
+	if previous == model.projectPath {
+		return
+	}
+	for _, surface := range model.actions.ui.surfaces {
+		if surface.ui.Kind != peb.EditorTab {
+			continue
+		}
+		surface.invocation.context = peb.ActionContext{ID: surface.invocation.context.ID, ProjectPath: model.projectPath}
+		surface.send(peb.EditorEvent{Kind: "projectchange"}, "")
+	}
+}
+
 func (model *workspaceModel) selectExtensionTab(surface *pencodeExtensionSurface) {
 	if model.closing.action != pencodeCloseNone {
 		return

@@ -1424,6 +1424,15 @@ textarea:focus {
     color: var(--vscode-list-activeSelectionForeground);
 }
 
+.pencode-settings-nav { overflow: auto; }
+.pencode-settings-extension-nav { padding-left: 26px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pencode-extension-setting { padding: 10px 0; }
+.pencode-setting-copy { flex: 1; min-width: 0; }
+.pencode-setting-description { margin: 6px 0 0; color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); line-height: 1.5; }
+.pencode-setting-input { width: 180px; max-width: 50%; height: 28px; padding: 4px 8px; border: 1px solid var(--vscode-input-border); border-radius: 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; }
+.pencode-setting-input:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.pencode-extension-setting .pencode-settings-select { max-width: 50%; }
+
 .pencode-settings-main {
     flex: 1;
     min-width: 0;
@@ -2737,3 +2746,5 @@ textarea:focus {
     overflow-wrap: anywhere;
     pointer-events: none;
 }
+
+.pencode-extension-editor > .pencode-extension-fill { padding: 0; overflow: hidden; }

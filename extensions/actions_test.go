@@ -80,7 +80,7 @@ func TestActionSessionUIAnchors(t *testing.T) {
 		{"ui:composer", false},
 	} {
 		t.Run(tc.anchor, func(t *testing.T) {
-			session := bundle.Actions.Start(nil)
+			session := bundle.Actions.Start(nil, nil)
 			defer session.Close()
 			if !session.SubmitUI(peb.UIEvent{ID: "composer", Event: peb.EditorEvent{Kind: "click", Ref: "model-settings", Value: tc.anchor}}) {
 				t.Fatal("UI event rejected")
@@ -120,7 +120,7 @@ func TestActionSessionLiveUpdateClickAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	extension := bundle.Actions
-	session := extension.Start(nil)
+	session := extension.Start(nil, nil)
 	defer session.Close()
 	receive := func() ActionResult {
 		t.Helper()

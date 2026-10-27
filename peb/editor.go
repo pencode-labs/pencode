@@ -32,6 +32,24 @@ type EditorReply struct {
 	Content *string
 }
 
+// Extension UI fragments can use img with data-ref and data-pencode-icon="name"
+// to reuse a built-in IDE icon with its theme color, raster scale and texture
+// cache; omit src.
+// EditorTab fragments can use data-pencode-layout="fill" to fill the editor
+// without host padding or scrolling. An element with data-ref and
+// data-pencode-scroll="end" follows new output until the user scrolls up;
+// changing its data-pencode-scroll-key reveals the end of a different transcript.
+// data-pencode-scroll="preserve" retains another scroll area's position while
+// its data-pencode-scroll-key stays the same.
+// A container with data-ref and data-pencode-region updates its children
+// independently. Changes confined to regions preserve the surrounding DOM,
+// including native input focus and selection. Nested regions update together.
+// A container with data-ref and data-pencode-focus="input-ref" focuses the
+// named control when its blank area is clicked, preserving child control focus.
+// A textarea with data-ref and data-pencode-autosize grows with its native text
+// layout. Use border-box sizing and CSS min/max-height to bound its height.
+// data-pencode-submit-on-enter="form" submits the named form binding on Enter;
+// Shift+Enter inserts a newline, and IME confirmation keeps its native behavior.
 type EditorView struct {
 	HTML, CSS string
 	Events    []EditorBinding

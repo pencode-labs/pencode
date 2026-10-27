@@ -36,6 +36,11 @@ func (model *workspaceModel) unloadExtension(id string) {
 }
 
 func (model *workspaceModel) unloadContributions(prefix, sourcePrefix string) {
+	for i := len(model.extensionSettings) - 1; i >= 0; i-- {
+		if group := model.extensionSettings[i]; strings.HasPrefix("extensions/"+group.id+"/", prefix) {
+			model.removeExtensionSettings(group.id)
+		}
+	}
 	model.removeLanguageServers(prefix)
 	model.removeEditors(prefix)
 	selected, active := model.settings.Theme, "monokai"
@@ -257,6 +262,7 @@ func (model *workspaceModel) importExtension(bundle *extensions.Bundle) error {
 	model.rebuildIconThemeOptions()
 	model.selectIconTheme(model.settings.IconTheme)
 	model.importLanguageServers(bundle.LanguageServers)
+	model.importExtensionSettings(bundle.ID, bundle.Label, bundle.Settings)
 	model.importActions(bundle.Actions)
 	model.importEditors(bundle.Editors)
 	model.importFonts(bundle.Fonts)

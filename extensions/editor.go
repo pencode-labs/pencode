@@ -22,14 +22,15 @@ type EditorResult struct {
 type EditorSession struct {
 	Results  <-chan EditorResult
 	Done     <-chan struct{}
+	settings chan peb.SettingValues
 	requests chan peb.EditorMessage
 	cancel   context.CancelFunc
 }
 
-func (editor *Editor) Start(root string, wake func()) *EditorSession {
+func (editor *Editor) Start(root string, values peb.SettingValues, wake func()) *EditorSession {
 	ctx, cancel := context.WithCancel(context.Background())
 	results, done := make(chan EditorResult, 1), make(chan struct{})
-	s := &EditorSession{Results: results, Done: done, requests: make(chan peb.EditorMessage, 1), cancel: cancel}
+	s := &EditorSession{Results: results, Done: done, settings: make(chan peb.SettingValues, 1), requests: make(chan peb.EditorMessage, 1), cancel: cancel}
 	go func() {
 		defer close(done)
 		defer close(results)
@@ -43,11 +44,15 @@ func (editor *Editor) Start(root string, wake func()) *EditorSession {
 			case <-ctx.Done():
 			}
 		}
-		if err := editor.run(ctx, root, s.requests, publish); err != nil && ctx.Err() == nil {
+		if err := editor.run(ctx, root, values, s.settings, s.requests, publish); err != nil && ctx.Err() == nil {
 			publish(EditorResult{Err: err})
 		}
 	}()
 	return s
+}
+
+func (s *EditorSession) SubmitSettings(values peb.SettingValues) bool {
+	return submitSettings(s.settings, s.Done, values)
 }
 
 func (s *EditorSession) Submit(message peb.EditorMessage) bool {
@@ -71,7 +76,7 @@ func (s *EditorSession) Close() {
 	}
 }
 
-func (editor *Editor) run(parent context.Context, root string, requests <-chan peb.EditorMessage, publish func(EditorResult)) (err error) {
+func (editor *Editor) run(parent context.Context, root string, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan peb.EditorMessage, publish func(EditorResult)) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stream, stderr, closeProcess, err := openExtensionProcess(ctx, editor.remote, root, editor.Output)
@@ -114,13 +119,29 @@ func (editor *Editor) run(parent context.Context, root string, requests <-chan p
 	if !found {
 		return fmt.Errorf("editor %s is no longer registered", editor.ID)
 	}
+	values = peb.ResolveSettings(c.Settings, values)
+	data, err = exchangeSettings(&r, &w, data, values, 2)
+	if err != nil {
+		return err
+	}
 	deadline.Stop()
 	resources := viewResources{remote: editor.remote, cache: make(map[string]viewResource)}
-	id := uint32(1)
+	id := uint32(2)
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case values := <-settings:
+			id++
+			if id == 0 {
+				id++
+			}
+			deadline.Reset(StartupTimeout)
+			data, err = exchangeSettings(&r, &w, data, values, id)
+			deadline.Stop()
+			if err != nil {
+				return err
+			}
 		case message := <-requests:
 			id++
 			if id == 0 {

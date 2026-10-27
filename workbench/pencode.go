@@ -189,6 +189,10 @@ type workspaceModel struct {
 	settingsRemote                      bool
 	settingsOpen                        bool
 	settingsShortcuts                   bool
+	settingsExtensions                  bool
+	settingsExtensionsExpanded          bool
+	settingsExtension                   string
+	extensionSettings                   []*pencodeExtensionSettings
 	sidebarHidden                       bool
 	capturingShortcut                   bool
 	captureAction                       pencodeShortcutAction
@@ -527,6 +531,14 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	settingNav, err := newSettingNavDefinition(content)
+	if err != nil {
+		return nil, err
+	}
+	settingRow, err := newSettingDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	problemDefinition, err := newProblemGroupDefinition(content)
 	if err != nil {
 		return nil, err
@@ -556,6 +568,9 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					return
 				}
 				renderPencodeRoot(context, view, definitions.project, definitions.tab, definitions.market, definitions.connect, definitions.action)
+				if context.Props != nil && context.Props.Model != nil {
+					context.Props.Model.renderExtensionSettings(view, settingNav, settingRow)
+				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderInputContext(view, inputContextDefinition)
 				}
@@ -1300,6 +1315,7 @@ func (model *workspaceModel) syncActiveProjectFields() {
 	if model == nil {
 		return
 	}
+	previous := model.projectPath
 	project := model.activeProjectState()
 	if project == nil {
 		model.revealProject, model.revealPath = nil, ""
@@ -1311,6 +1327,7 @@ func (model *workspaceModel) syncActiveProjectFields() {
 		model.tabs = nil
 		model.activePath = ""
 		model.allDirectoriesCollapsed = false
+		model.syncExtensionProject(previous)
 		return
 	}
 	if (model.projectPath != project.Path || model.activePath != project.ActivePath) &&
@@ -1326,6 +1343,7 @@ func (model *workspaceModel) syncActiveProjectFields() {
 	model.activePath = project.ActivePath
 	model.allDirectoriesCollapsed = project.AllDirectoriesCollapsed
 	model.status = project.Status
+	model.syncExtensionProject(previous)
 }
 
 func (model *workspaceModel) setProjectStatus(project *pencodeProject, status string) {

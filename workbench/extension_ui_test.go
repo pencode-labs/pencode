@@ -64,7 +64,7 @@ func TestPencodeExtensionUIProcess(t *testing.T) {
 				if err := publisher.CloseUI("form"); err != nil {
 					return err
 				}
-				return publisher.Show(peb.UI{ID: "result", Title: "Result", Kind: peb.Panel, View: &peb.EditorView{HTML: `<img src="resources/preview.svg" alt="Preview"><button data-ref="done" type="button">Done</button>`, Events: []peb.EditorBinding{{Ref: "done", Kind: "click"}}}})
+				return publisher.Show(peb.UI{ID: "result", Title: "Result", Kind: peb.Panel, View: &peb.EditorView{HTML: `<img src="resources/preview.svg" alt="Preview"><button data-ref="done" type="button">Done</button><form data-ref="chat"><textarea data-ref="prompt" data-pencode-submit-on-enter="chat"></textarea><textarea data-ref="notes"></textarea></form>`, CSS: `textarea { width: 240px; height: 48px; }`, Events: []peb.EditorBinding{{Ref: "done", Kind: "click"}, {Ref: "prompt", Kind: "input"}, {Ref: "chat", Kind: "submit"}}}})
 			case event.ID == "result" && event.Event.Kind == "click":
 				return publisher.CloseUI("result")
 			}
@@ -324,6 +324,68 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	})
 	if panel.definition != panelDefinition {
 		t.Fatal("panel switch replaced the view")
+	}
+	prompt, ok := model.fontResources.HTMLControl(model.surface, panel.focus[1].id)
+	if !ok || !model.fontResources.Focus(prompt) {
+		t.Fatalf("chat input could not receive focus: control=%v ok=%v focus=%+v panel=%+v", prompt, ok, panel.focus, model.bottom.active)
+	}
+	pressEnter := func(shift input.KeyCode) {
+		t.Helper()
+		if shift != 0 {
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: shift})
+		}
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEnter})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEnter})
+		if shift != 0 {
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: shift})
+		}
+		languageInteractionStep(t, app)
+	}
+	value := func() string {
+		field, _ := ecs.Get[engineui.TextField](app.World, prompt)
+		return field.Value
+	}
+	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "last character"})
+	pressEnter(0)
+	wait(func() bool {
+		logs, _ := bundle.Actions.Output.Snapshot()
+		return strings.Contains(logs, "UI result submit ")
+	})
+	if value() != "last character" {
+		t.Fatalf("Enter lost pending text or inserted a newline: %q", value())
+	}
+	for _, shift := range []input.KeyCode{input.KeyLeftShift, input.KeyRightShift} {
+		pressEnter(shift)
+	}
+	if value() != "last character\n\n" {
+		t.Fatalf("Shift+Enter did not insert newlines: %q", value())
+	}
+	state.Enqueue(input.Event{Kind: input.EventTextComposition, Composition: input.TextComposition{Text: "ni", Active: true}})
+	pressEnter(0)
+	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEnter})
+	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "你"})
+	languageInteractionStep(t, app)
+	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEnter})
+	languageInteractionStep(t, app)
+	if value() != "last character\n\n你" {
+		t.Fatalf("IME confirmation changed the draft: %q", value())
+	}
+	pressEnter(0)
+	wait(func() bool {
+		logs, _ := bundle.Actions.Output.Snapshot()
+		return strings.Count(logs, "UI result submit ") >= 2
+	})
+	if logs, _ := bundle.Actions.Output.Snapshot(); strings.Count(logs, "UI result submit ") != 2 || !strings.Contains(logs, "last character\n\n你") {
+		t.Fatalf("Enter did not submit the latest draft exactly once, or Shift/IME Enter submitted: %s", logs)
+	}
+	notes, ok := model.fontResources.HTMLControl(model.surface, panel.focus[2].id)
+	if !ok || !model.fontResources.Focus(notes) {
+		t.Fatal("ordinary textarea could not receive focus")
+	}
+	pressEnter(0)
+	if field, _ := ecs.Get[engineui.TextField](app.World, notes); field.Value != "\n" {
+		t.Fatalf("ordinary textarea lost native Enter behavior: %q", field.Value)
 	}
 	if allocs := testing.AllocsPerRun(100, func() { model.syncExtensionUI(model.fontResources) }); allocs != 0 {
 		t.Fatalf("unchanged UI allocated %g", allocs)

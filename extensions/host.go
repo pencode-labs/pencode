@@ -124,6 +124,7 @@ func importRemote(ctx context.Context, remote *client.Extension) (*Bundle, error
 	if err != nil {
 		return nil, err
 	}
+	bundle.Label = remote.Info.Label()
 	var channel *output.Channel
 	if logs := output.FromContext(ctx); logs != nil {
 		channel = logs.Channel("Extension: " + remote.Info.ID)

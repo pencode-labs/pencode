@@ -25,7 +25,7 @@ func TestGoldenWireAndFragmentedIO(t *testing.T) {
 	if err := w.Write(Initialize, 0x12345678, payload); err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(wire.Bytes()); got != "7065620009000100785634120f0000000700000070656e636f6465ff000000" {
+	if got := hex.EncodeToString(wire.Bytes()); got != "706562000a000100785634120f0000000700000070656e636f6465ff010000" {
 		t.Fatalf("wire format changed: %s", got)
 	}
 	if err := w.Write(Shutdown, 0, nil); err != nil {

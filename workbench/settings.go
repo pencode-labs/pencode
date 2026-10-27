@@ -17,6 +17,7 @@ import (
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/pencode-labs/pencode/configuration"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 const (
@@ -96,6 +97,7 @@ type pencodeSettings struct {
 	IconTheme   string                       `json:"iconTheme"`
 	Zoom        int                          `json:"zoom"`
 	Bindings    map[string]pencodeKeybinding `json:"bindings"`
+	Extensions  map[string]peb.SettingValues `json:"extensions,omitempty"`
 }
 
 func defaultPencodeSettings() pencodeSettings {
@@ -170,6 +172,7 @@ func parsePencodeSettings(data []byte) pencodeSettings {
 	if saved.Theme != "" {
 		settings.Theme = saved.Theme
 	}
+	settings.Extensions = saved.Extensions
 	settings.IconTheme = saved.IconTheme
 	for _, definition := range pencodeShortcutDefinitions {
 		binding := saved.Bindings[definition.id]
@@ -419,6 +422,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		if context.Ref == definition.ref {
 			model.settingsOpen = true
 			model.settingsShortcuts = true
+			model.settingsExtensions = false
 			model.capturingShortcut = true
 			model.captureAction = pencodeShortcutAction(action)
 			model.settingsFeedback = ""
@@ -440,7 +444,16 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		model.settingsOpen = false
 		model.capturingShortcut = false
 		return true
+	case "settings-extensions-nav":
+		model.settingsExtensionsExpanded = !model.settingsExtensionsExpanded
+		model.settingsExtensions, model.settingsShortcuts, model.capturingShortcut = true, false, false
+		model.settingsFeedback = ""
+		return true
+	case "reset-extension-settings":
+		model.resetExtensionSettings()
+		return true
 	case "settings-appearance-nav", "settings-shortcuts-nav":
+		model.settingsExtensions = false
 		model.settingsShortcuts = context.Ref == "settings-shortcuts-nav"
 		model.capturingShortcut = false
 		model.settingsFeedback = ""

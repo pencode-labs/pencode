@@ -104,10 +104,13 @@
       <nav id="settings-category-nav" class="pencode-settings-nav" aria-label="设置分类">
         <button id="settings-appearance-nav" data-ref="settings-appearance-nav" class="pencode-settings-nav-item active" type="button" aria-current="page">外观</button>
         <button id="settings-shortcuts-nav" data-ref="settings-shortcuts-nav" class="pencode-settings-nav-item" type="button">快捷键</button>
+        <button id="settings-extensions-nav" data-ref="settings-extensions-nav" class="pencode-settings-nav-item" type="button" aria-expanded="false" aria-controls="settings-extension-list"><span data-ref="settings-extensions-toggle" aria-hidden="true">›</span> 扩展</button>
+        <div id="settings-extension-list" data-ref="settings-extension-list"></div>
       </nav>
       <div id="settings-main" class="pencode-settings-main">
         <header class="pencode-settings-main-header">
           <h3 data-ref="settings-page-title">外观</h3>
+          <button data-ref="reset-extension-settings" class="pencode-settings-reset" type="button" hidden>恢复扩展默认设置</button>
           <button id="reset-shortcuts" data-ref="reset-shortcuts" class="pencode-settings-reset" type="button" hidden>恢复默认快捷键</button>
         </header>
         <div data-ref="settings-feedback" class="pencode-settings-feedback" role="status" aria-live="polite" hidden></div>
@@ -161,6 +164,10 @@
               <button data-ref="zoom-increase" type="button" title="放大界面" aria-label="放大界面">+</button>
             </div>
           </div>
+        </section>
+        <section id="settings-extensions-pane" data-ref="settings-extensions-pane" aria-label="扩展设置" hidden>
+          <p data-ref="settings-extensions-empty" class="pencode-setting-description"></p>
+          <div data-ref="settings-extension-fields"></div>
         </section>
         <section id="settings-shortcuts-pane" data-ref="settings-shortcuts-pane" aria-label="快捷键设置" hidden>
           <div class="pencode-settings-row"><span>保存文件</span><button data-ref="shortcut-save" class="pencode-settings-binding" type="button"></button></div>

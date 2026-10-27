@@ -1,10 +1,75 @@
-# peb v9 — Pencode Extension Binary
+# peb v10 — Pencode Extension Binary
 
-peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）和 `DebugAdapters`（调试适配器）。
+peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）和 `ExtensionSettings`（扩展配置）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **9**，已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **10**，已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
+
+## 扩展配置
+
+扩展通过 `Contributions.Settings` 注册配置项。在设置左侧展开“扩展”，仅列出已启用、加载成功且声明了配置项的扩展；点击名称后，右侧显示对应表单。界面沿用 IDE 的输入框、下拉框、复选框和主题颜色。文本在提交更改时保存，布尔和下拉选项立即保存；支持恢复当前扩展的默认设置。
+
+```go
+contributions := peb.Contributions{
+    Settings: []peb.Setting{
+        {ID: "name", Label: "名称", Description: "扩展显示名称",
+            Type: peb.SettingString, Default: json.RawMessage(`"Pencode"`)},
+        {ID: "enabled", Label: "启用", Type: peb.SettingBoolean,
+            Default: json.RawMessage(`true`)},
+        {ID: "scale", Label: "比例", Type: peb.SettingNumber,
+            Default: json.RawMessage(`1.5`)},
+        {ID: "limit", Label: "数量", Type: peb.SettingInteger,
+            Default: json.RawMessage(`10`)},
+        {ID: "mode", Label: "模式", Type: peb.SettingString,
+            Default: json.RawMessage(`"auto"`),
+            Options: []peb.SettingOption{{Value: "auto", Label: "自动"}, {Value: "manual", Label: "手动"}}},
+    },
+}
+handlers := peb.Handlers{
+    Settings: func(values peb.SettingValues) error {
+        name, err := peb.DecodeSetting[string](values, "name")
+        if err != nil { return err }
+        // 保存 name 供后续 action 或编辑器请求使用。
+        _ = name
+        return nil
+    },
+}
+err := peb.ServeExtension(os.Stdin, os.Stdout, contributions, handlers)
+```
+
+`SettingString=0`、`SettingBoolean=1`、`SettingNumber=2`、`SettingInteger=3`；整数为有符号 64 位整数，数字必须可表示为有限的 float64。`Default` 必填且必须匹配类型。`Options` 仅用于字符串，提供选项时默认值和用户值必须在选项中。每个扩展最多 256 项，每项最多 256 个选项，ID 在扩展内部唯一，不允许 `/`、`\` 或 NUL；Label 必填，Description 可选。重复 ID、重复选项、未知类型和非法默认值会拒绝注册。
+
+宿主在 `Register` 成功后、`ActionActivate` 或首次 `EditorRequest` 前，向声明配置的扩展发送一次 `SettingsRequest`；修改或恢复默认时，向正在运行的 action 和文件编辑器进程发送新的完整快照。新启动的进程直接获得最新配置。`Handlers.Settings` 与其他处理函数串行执行，收到的 map 与 JSON 数据归扩展所有，可以保留；初次回调时 action publisher 尚未激活。回调返回错误时回复 `Failure`，运行期错误通过现有扩展诊断通路报告。注册探测只读取声明，不调用此回调。
+
+值按扩展 ID 隔离，写入工作区宿主的用户 `settings.json`：
+
+```json
+{"extensions":{"ui-demo":{"name":"Pencode"}}}
+```
+
+远程工作区沿用服务端配置保存通路。未显式设置或不再符合声明的值使用默认值；停用、卸载扩展会移除设置导航，但保留已保存值，以便重新启用或安装。未识别的扩展和配置键也会保留。配置快照仅包含当前声明的键。等待发送的快照合并为最新一次，空闲轮询与已缓存配置查询不分配内存。
+
+配置在二进制帧中编码，JSON 只用于单个值，以保留其类型：
+
+```text
+Setting {
+  id: string
+  label: string
+  description: string
+  type: u32
+  default: string              // JSON scalar
+  options: array<SettingOption>
+}
+SettingOption { value: string, label: string }
+SettingsRequest {
+  values: array<SettingValue>
+}
+SettingValue { id: string, value: string } // value 为 JSON scalar
+SettingsResponse {}                         // 空 payload
+```
+
+同一快照不能重复 ID，且必须恰好覆盖声明的配置项。所有字符串、数组和 payload 仍受 PEB 的通用大小上限约束。此变更将 PEB 升级为 v10，现有扩展需要用当前 SDK 重新构建。
 
 ## 帧
 
@@ -13,7 +78,7 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 | 偏移 | 长度 | 字段                                 |
 | ---- | ---- | ------------------------------------ |
 | 0    | 4    | magic：`70 65 62 00`（`peb\0`）      |
-| 4    | 2    | version：`9`                         |
+| 4    | 2    | version：`10`                         |
 | 6    | 2    | kind：见下表                         |
 | 8    | 4    | request ID                           |
 | 12   | 4    | payload 字节数，不含头部，最大 4 MiB |
@@ -33,6 +98,8 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 | 11   | UIUpdate       | 扩展 → 宿主 | `0`，打开、更新或关闭扩展界面                       |
 | 12   | UIRequest      | 宿主 → 扩展 | 与 action 共用递增的非零 ID，携带控件或生命周期事件 |
 | 13   | UIResponse     | 扩展 → 宿主 | 原样返回 UIRequest 的 ID，payload 为空              |
+| 14   | SettingsRequest | 宿主 → 扩展 | 非零，完整配置快照，与所在会话的请求共用 ID 序列 |
+| 15   | SettingsResponse | 扩展 → 宿主 | 原样返回 SettingsRequest 的 ID，payload 为空 |
 
 版本不符、未知 kind、非法 ID、超大帧、截断数据和非法 payload 均终止本次注册。扩展进程启动、握手与退出总计最多 5 秒；失败或关闭会话会关闭管道、终止并回收子进程。GUI 使用最多 4 个资源加载 worker，server 当前串行执行扩展注册与安装控制操作；最多发现 64 个已安装扩展。stderr 持续读取，最多保留 4096 字节诊断。
 
@@ -43,7 +110,7 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 ```text
 Initialize {
   host: string                  // 当前为 "pencode"
-  capabilities: u32             // FileIcons=1, EditorThemes=2, CustomEditors=4, Fonts=8, LanguageServers=16, Actions=32, ExtensionUI=64, DebugAdapters=128，当前为 255
+  capabilities: u32             // FileIcons=1, EditorThemes=2, CustomEditors=4, Fonts=8, LanguageServers=16, Actions=32, ExtensionUI=64, DebugAdapters=128, ExtensionSettings=256，当前为 511
 }
 
 Register {
@@ -54,6 +121,7 @@ Register {
   actions: array<Action>
   actionService: u32             // boolean；允许初始按钮列表为空，之后主动注册
   debugAdapters: array<DebugAdapter>
+  settings: array<Setting>
 }
 
 Theme {
@@ -421,8 +489,9 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 | `open`             | 新界面已被宿主接受；同一 ID 的更新不会重复触发                                   |
 | `close`            | `e.Reason` 为 `extension`、`button`、`escape`、`outside`、`replace` 或 `timeout` |
 | `visibilitychange` | `e.Event.Value` 为 `visible` 或 `hidden`，用于 Panel 切换                        |
+| `projectchange`    | 活动项目变化时通知 EditorTab，`e.Context.ProjectPath` 为新项目目录；关闭最后一个项目时为空 |
 
-每个事件附带 `e.ID` 和打开界面时的 `e.Context`（项目、文件路径、目录标记及选区）。SDK 在 `Action` 和 `UIEvent` handler 中自动继承当前上下文；后台任务应保存并显式传入 `UI.Context`，避免使用后来触发的 action 上下文。已打开界面的上下文保持到关闭。异步控件事件无法同步取消浏览器默认行为，当前不支持 JavaScript 或任意键盘、指针事件订阅。
+每个事件附带 `e.ID` 和打开界面时的 `e.Context`（项目、文件路径、目录标记及选区）。EditorTab 收到 `projectchange` 后更新上下文的项目目录，并清空文件路径、目录标记及选区。SDK 在 `Action` 和 `UIEvent` handler 中自动继承当前上下文；后台任务应保存并显式传入 `UI.Context`，避免使用后来触发的 action 上下文。异步控件事件无法同步取消浏览器默认行为，当前不支持 JavaScript 或任意键盘、指针事件订阅。
 
 UI 和 action 请求共享串行队列及 5 秒请求超时，handler 内可以继续推送界面更新；不要在 handler 中等待后续用户事件。空闲轮询和复用缓冲区的编码保持零分配；创建或替换视图、解码字符串与加载资源有必要的分配。
 

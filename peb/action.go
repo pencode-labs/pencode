@@ -150,6 +150,9 @@ func (p *ActionPublisher) change(change ActionChange) error {
 // ActivateActions runs once, only in the workbench action process. Start any
 // background work there; return promptly and stop when ctx is canceled.
 type Handlers struct {
+	// Settings runs before activation/first document request and on each change.
+	// The snapshot owns its data and may be retained by the extension.
+	Settings        func(SettingValues) error
 	Editor          func(EditorMessage) (EditorReply, error)
 	Action          func(ActionContext) error
 	UIEvent         func(UIEvent) error

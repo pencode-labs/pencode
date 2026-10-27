@@ -70,12 +70,13 @@ func TestExtensionEditorTabsRetainSelectionAndFile(t *testing.T) {
 	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	file, project := m.activeFile(), m.activeProjectState()
 	process := &extensions.ActionSession{}
+	results := make(chan extensions.ActionResult, 1)
+	process.Results = results
+	m.actions.sessions = map[string]*extensions.ActionSession{"codex-test": process}
+	t.Cleanup(func() { delete(m.actions.sessions, "codex-test") })
 	show := func(id, title, text string) {
 		t.Helper()
-		if err := m.applyExtensionUI("codex-test", process, peb.UI{ID: id, Title: title, Kind: peb.EditorTab, View: &peb.EditorView{HTML: `<p>` + text + `</p><button data-ref="compose" type="button">继续对话</button>`, CSS: `p { color: var(--vscode-editor-foreground); }`, Events: []peb.EditorBinding{{Ref: "compose", Kind: "click"}}}}); err != nil {
-			t.Fatal(err)
-		}
-		markPencodeRootDirtyByModel(world, m)
+		results <- extensions.ActionResult{UI: &peb.UI{ID: id, Title: title, Kind: peb.EditorTab, View: &peb.EditorView{HTML: `<p>` + text + `</p><button data-ref="compose" type="button">继续对话</button>`, CSS: `p { color: var(--vscode-editor-foreground); }`, Events: []peb.EditorBinding{{Ref: "compose", Kind: "click"}}}}}
 		languageInteractionStep(t, app)
 	}
 	show("one", "First task", "first reply")
@@ -94,6 +95,10 @@ func TestExtensionEditorTabsRetainSelectionAndFile(t *testing.T) {
 	if m.actions.ui.editor != two {
 		t.Fatal("background reply stole tab selection")
 	}
+	show("one", "Renamed first task", "more background output")
+	if m.actions.ui.editor != two {
+		t.Fatal("retained background update stole tab selection")
+	}
 	var tabCount int
 	for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](world) {
 		p := access.Get().Props
@@ -107,15 +112,28 @@ func TestExtensionEditorTabsRetainSelectionAndFile(t *testing.T) {
 	if tabCount != 2 {
 		t.Fatalf("got %d chat tabs", tabCount)
 	}
-	if err := m.applyExtensionUI("codex-test", process, peb.UI{ID: "one", Title: "Renamed first task", Kind: peb.EditorTab}); err != nil {
-		t.Fatal(err)
-	}
+	results <- extensions.ActionResult{UI: &peb.UI{ID: "one", Title: "Renamed first task", Kind: peb.EditorTab}}
+	languageInteractionStep(t, app)
 	if m.actions.ui.editor != one {
 		t.Fatal("nil View did not reveal the existing tab")
 	}
 	m.selectProjectTab(project, file.Path)
 	if m.actions.ui.editor != nil || m.activeFile() != file {
 		t.Fatal("file tab did not restore source editing")
+	}
+	markPencodeRootDirtyByModel(world, m)
+	setPencodeEditorValue(world, m.surface, m.activeContent())
+	languageInteractionStep(t, app)
+	sourceWait(t, app, m)
+	settlePencodeHighlight(t, m)
+	languageInteractionStep(t, app)
+	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](world, m.root)
+	editor, _ := module.ContentGet[htmlui.Control](world, m.editor.control)
+	show("one", "Renamed first task", "output while editing a file")
+	currentRoot, _ := module.ContentGet[htmlui.Component[appProps, appState]](world, m.root)
+	currentEditor, _ := module.ContentGet[htmlui.Control](world, m.editor.control)
+	if m.activeFile() != file || currentRoot.State.Revision != root.State.Revision || currentEditor.RenderRevision != editor.RenderRevision {
+		t.Fatalf("background chat update refreshed the active file editor: file retained %t, root %d -> %d, editor %d -> %d", m.activeFile() == file, root.State.Revision, currentRoot.State.Revision, editor.RenderRevision, currentEditor.RenderRevision)
 	}
 	m.selectExtensionTab(one)
 	m.closeExtensionSurface(one, "button", false)

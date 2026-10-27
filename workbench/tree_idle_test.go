@@ -9,8 +9,43 @@ import (
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/input"
+	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
+	htmlui "github.com/diiyw/onix/ui/html"
 )
+
+func TestPencodeTreeHoverKeepsWorkbenchStable(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	model := session.active.model
+	project := model.activeProjectState()
+	resourceTestWrite(t, project, "folder/child.txt", "child")
+	model.startProjectScan(project, false)
+	waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	for range 4 {
+		languageInteractionStep(t, app)
+	}
+	app.SetRenderMode(onix.RenderOnDemand)
+	app.SetIdleEnabled(true)
+	state, _ := ecs.GetResource[*input.State](app.World)
+	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](model.fontResources, model.root)
+	editor, _ := module.ContentGet[htmlui.Control](model.fontResources, model.editor.control)
+	for range 3 {
+		for _, path := range []string{"folder", "main.go", "folder"} {
+			bounds := editorContextBounds(t, model, model.projectTreeRowID(project, path))
+			for _, offset := range []float32{40, 60, 80} {
+				scale := float64(model.settings.Zoom) / 100
+				state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(bounds.X+offset) * scale, Y: float64(bounds.Y+bounds.Height/2) * scale})
+				languageInteractionStep(t, app)
+				after, _ := module.ContentGet[htmlui.Component[appProps, appState]](model.fontResources, model.root)
+				control, _ := module.ContentGet[htmlui.Control](model.fontResources, model.editor.control)
+				if after.State.Revision != root.State.Revision || control.RenderRevision != editor.RenderRevision {
+					t.Fatalf("tree hover refreshed workbench: revision %d -> %d, editor %d -> %d", root.State.Revision, after.State.Revision, editor.RenderRevision, control.RenderRevision)
+				}
+			}
+		}
+	}
+}
 
 func TestPencodeTreeClickPublishesWithoutMouseMove(t *testing.T) {
 	app, session := newPencodeTestApp(t)

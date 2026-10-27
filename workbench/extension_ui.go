@@ -66,6 +66,7 @@ type pencodeExtensionSurface struct {
 	ui                             peb.UI
 	invocation                     pencodeExtensionInvocation
 	definition                     *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
+	styles                         *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
 	view                           *peb.EditorView
 	regions                        []pencodeExtensionRegion
 	theme                          *pencodeTheme
@@ -417,7 +418,15 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			}
 		},
 	}
-	css := s.model.workbenchTheme.resolveCSS(view.CSS)
+	// Keep CSS mounted independently. Content and region templates
+	// inherit its scope without changing the workbench stylesheet on each update.
+	styles := s.styles
+	if styles == nil || s.theme != s.model.workbenchTheme || s.view.CSS != view.CSS {
+		styles, err = htmlui.DefineScoped(htmlui.NewTemplate(""), s.model.workbenchTheme.resolveCSS(view.CSS), htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{})
+		if err != nil {
+			return err
+		}
+	}
 	for i := range regions {
 		region := &regions[i]
 		if s.theme == s.model.workbenchTheme && s.view != nil && s.view.CSS == view.CSS {
@@ -429,7 +438,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			}
 		}
 		if region.definition == nil {
-			region.definition, err = htmlui.DefineScoped(htmlui.NewTemplate(region.html), css, behavior)
+			region.definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(region.html), behavior)
 			if err != nil {
 				return err
 			}
@@ -437,7 +446,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	}
 	definition := s.definition
 	if replace {
-		definition, err = htmlui.DefineScoped(htmlui.NewTemplate(template), css, behavior)
+		definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(template), behavior)
 		if err != nil {
 			return err
 		}
@@ -454,6 +463,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 		s.inputID, s.inputValue = "", ""
 	}
 	s.definition, s.bindings, s.focus, s.regions = definition, view.Events, focus, regions
+	s.styles = styles
 	s.focusTargets, s.icons = focusTargets, icons
 	s.view, s.theme = view, s.model.workbenchTheme
 	s.output = channel
@@ -545,6 +555,7 @@ func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurface
 			if !c.Props.Visible {
 				view.Attr("surface", "hidden", "")
 			}
+			htmlui.AppendComponentChild(view, "content", 0, s.styles, *c.Props, struct{}{})
 			htmlui.AppendComponentChild(view, "content", 1, s.definition, *c.Props, struct{}{})
 		},
 		HandleEvent: func(c *htmlui.ComponentEventContext[pencodeExtensionSurfaceProps, struct{}]) {
@@ -560,6 +571,30 @@ func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurface
 			markPencodeRootDirtyByModel(s.model.fontResources, s.model)
 		},
 	})
+}
+
+// Content publications update the mounted wrapper directly, retaining the
+// explorer, source editor and other extension tabs outside this surface.
+func (model *workspaceModel) refreshExtensionSurface(s *pencodeExtensionSurface) bool {
+	world := model.fontResources
+	if world == nil {
+		return false
+	}
+	for entity, access := range module.ContentQuery[htmlui.Component[pencodeExtensionSurfaceProps, struct{}]](world) {
+		component := access.Get()
+		if component.Definition != model.actions.ui.wrapper || component.Props.Surface != s {
+			continue
+		}
+		module.ContentMut[htmlui.Component[pencodeExtensionSurfaceProps, struct{}]](world, entity).Props = pencodeExtensionSurfaceProps{
+			Surface: s, Theme: model.workbenchTheme, Revision: s.revision, Visible: s.live(),
+		}
+		module.ContentUpdateState[pencodeExtensionSurfaceProps, struct{}](world, entity, func(*struct{}) {})
+		if model.app != nil {
+			model.app.RequestRender()
+		}
+		return true
+	}
+	return false
 }
 
 func (model *workspaceModel) renderExtensionUI(view *htmlui.View) {

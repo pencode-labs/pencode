@@ -34,6 +34,10 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 	m.app.GetViewport = func() (int, int) { return 1024, 768 }
 	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
 	process := &extensions.ActionSession{}
+	results := make(chan extensions.ActionResult, 1)
+	process.Results = results
+	m.actions.sessions = map[string]*extensions.ActionSession{"codex": process}
+	t.Cleanup(func() { delete(m.actions.sessions, "codex") })
 	draft := "draft"
 	show := func(details string) {
 		t.Helper()
@@ -41,19 +45,28 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 		if details != "" {
 			bindings = append(bindings, peb.EditorBinding{Ref: "item/cmd", Kind: "click"})
 		}
-		if err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
+		results <- extensions.ActionResult{UI: &peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
 			HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-scroll="end" data-pencode-scroll-key="task"><article class="codex-chat">` + strings.Repeat(`<section class="codex-message"><p>Earlier message</p></section>`, 40) + `<section class="codex-activity-group" data-ref="activity/cmd/region" data-pencode-region><button class="codex-activity-summary" data-ref="activity/cmd" type="button">运行了命令</button>` + details + `</section><section id="pencode-extension-last-reply" class="codex-message"><p>Completed</p></section></article></div><section class="codex-composer"><textarea data-ref="prompt" class="codex-prompt">` + draft + `</textarea></section></section></main>`,
 			CSS:  string(css), Events: bindings,
-		}}); err != nil {
-			t.Fatal(err)
-		}
-		markPencodeRootDirtyByModel(w, m)
+		}}}
 	}
 	show("")
 	for range 3 {
 		languageInteractionStep(t, app)
 	}
+	sourceWait(t, app, m)
 	s := m.actions.ui.editor
+	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](w, m.root)
+	editor, _ := module.ContentGet[htmlui.Control](w, m.editor.control)
+	tree, ok := w.HTMLNode(m.surface, m.projectTreeRowID(m.activeProjectState(), "main.go"))
+	if !ok {
+		t.Fatal("missing file tree row")
+	}
+	treeControl, ok := w.HTMLControl(m.surface, m.projectTreeRowID(m.activeProjectState(), "main.go"))
+	if !ok {
+		t.Fatal("missing file tree control")
+	}
+	treeRender, _ := module.ContentGet[htmlui.Control](w, treeControl)
 	definition := s.definition
 	transcript, ok := w.HTMLNode(m.surface, s.prefix+"control-transcript")
 	if !ok {
@@ -81,6 +94,16 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 		// Check the first rendered frame as well as the settled layout.
 		for frame := range 3 {
 			languageInteractionStep(t, app)
+			currentRoot, _ := module.ContentGet[htmlui.Component[appProps, appState]](w, m.root)
+			currentEditor, _ := module.ContentGet[htmlui.Control](w, m.editor.control)
+			currentTree, ok := w.HTMLNode(m.surface, m.projectTreeRowID(m.activeProjectState(), "main.go"))
+			currentTreeRender, _ := module.ContentGet[htmlui.Control](w, treeControl)
+			if currentTreeRender.RenderRevision != treeRender.RenderRevision {
+				t.Fatalf("tree control refreshed: %d -> %d", treeRender.RenderRevision, currentTreeRender.RenderRevision)
+			}
+			if currentRoot.State.Revision != root.State.Revision || currentEditor.RenderRevision != editor.RenderRevision || !ok || currentTree != tree {
+				t.Fatalf("activity toggle refreshed workbench on toggle %d frame %d: root %d -> %d, editor %d -> %d, tree retained %t", toggle, frame, root.State.Revision, currentRoot.State.Revision, editor.RenderRevision, currentEditor.RenderRevision, ok && currentTree == tree)
+			}
 			current, ok := w.HTMLNode(m.surface, s.prefix+"control-transcript")
 			if !ok || !rebuild && (current != transcript || s.definition != definition) {
 				t.Fatal("expanding activity rebuilt the transcript")
@@ -94,6 +117,9 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 			}
 			if current, ok := w.HTMLControl(m.surface, s.prefix+"control-prompt"); !ok || !rebuild && current != prompt {
 				t.Fatal("expanding activity rebuilt the composer")
+			}
+			if _, ok := w.HTMLControl(m.surface, s.prefix+"control-item/cmd"); ok != (details != "") {
+				t.Fatal("activity expansion did not update the command control")
 			}
 			scroll, ok := module.ContentGet[scene.UIScroll](w, area)
 			if !ok || scroll.Position.Y() >= 0 || math.Abs(float64(scroll.Position.Y()+scroll.ContentSize.Y()-scroll.ViewportSize.Y())) > 1 {

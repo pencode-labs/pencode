@@ -309,8 +309,8 @@ func (model *workspaceModel) pollActions() bool {
 					changed = true
 					goto nextSession
 				}
-				changed = true
 				if result.Err != nil {
+					changed = true
 					model.extensionFeedback = fmt.Sprintf("扩展 %s action：%v", id, result.Err)
 					model.logOutput("Extension: "+id, model.extensionFeedback)
 					if result.Fatal {
@@ -326,9 +326,22 @@ func (model *workspaceModel) pollActions() bool {
 					model.extensionIcons[source] = data
 				}
 				if result.UI != nil {
+					var retained *pencodeExtensionSurface
+					ui := result.UI
+					if ui.Kind == peb.EditorTab && ui.View != nil && !ui.Close {
+						for _, surface := range model.actions.ui.surfaces {
+							if surface.owner == id && surface.ui.ID == ui.ID && surface.ui.Title == ui.Title {
+								retained = surface
+								break
+							}
+						}
+					}
 					if err := model.applyExtensionUI(id, session, *result.UI); err != nil {
+						changed = true
 						model.extensionFeedback = fmt.Sprintf("扩展 %s UI：%v", id, err)
 						model.logOutput("Extension: "+id, model.extensionFeedback)
+					} else if retained == nil || !model.refreshExtensionSurface(retained) {
+						changed = true
 					}
 					for source, data := range result.Assets {
 						if model.extensionImages == nil {
@@ -338,6 +351,7 @@ func (model *workspaceModel) pollActions() bool {
 					}
 					continue
 				}
+				changed = true
 				change := result.Change
 				// A live description may change its location or associations.
 				if change.Remove {

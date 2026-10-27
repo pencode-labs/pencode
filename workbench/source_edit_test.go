@@ -86,6 +86,9 @@ func TestSourceDiffNativeEditingCopyRevertAndSave(t *testing.T) {
 	if !leftBinding.ReadOnly || rightBinding.ReadOnly {
 		t.Fatal("wrong editor permissions")
 	}
+	if leftBinding.DefaultValue != "" || rightBinding.DefaultValue != "" || leftBinding.Value != left || rightBinding.Value != right {
+		t.Fatal("comparison must bind live text without duplicating it in HTML layout")
+	}
 	valueEntity, _ := module.ContentFindPart[engineui.ValuePart, scene.Text2D](m.fontResources, rightControl)
 	value := module.ContentRef[scene.Text2D](m.fontResources, valueEntity)
 	if value.Value != right || len(value.Spans) == 0 || value.LineLayout == nil {

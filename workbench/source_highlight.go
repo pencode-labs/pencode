@@ -53,9 +53,24 @@ func (m *workspaceModel) renderSourceHighlight() {
 		if h.ready && h.source == source && h.theme == m.syntaxTheme && h.definitions == m.syntaxDefinitions {
 			continue
 		}
+		// The working tree often already has paint in the ordinary editor.
+		// Copy only paint data; the cache and comparison retain separate buffers.
+		if tab.Kind != "merge" && (side == 0 || tab.DiffContent == source) {
+			if file := m.files[tab.Path]; file != nil {
+				if cached, ok := m.highlightCache.get(file, m.syntaxTheme, m.syntaxDefinitions); ok && cached.source == source {
+					h.spans = append(h.spans[:0], cached.spans...)
+					h.source, h.theme, h.definitions, h.ready = source, m.syntaxTheme, m.syntaxDefinitions, true
+					h.revision++
+					continue
+				}
+			}
+		}
 		job := m.highlightRequest
 		if job.sourceDoc != h || job.source != source || job.theme != m.syntaxTheme || job.definitions != m.syntaxDefinitions {
-			m.submitHighlightJob(pencodeHighlightJob{sourceDoc: h, path: tab.Path, source: source, diff: side == 1 && tab.editable() && tab.DiffContent != source, diffBase: tab.Local})
+			m.submitHighlightJob(pencodeHighlightJob{
+				sourceDoc: h, path: tab.Path, source: source, snapshot: side != 2 && (side == 0 || !tab.editable()),
+				lineStyles: tab.Kind == "merge", diff: side == 1 && tab.editable() && tab.DiffContent != source, diffBase: tab.Local,
+			})
 		}
 		return // The single parser processes the active tab's panes in order.
 	}

@@ -130,15 +130,16 @@ func sourceCodeLines(b *sourceVNodeView, tab *sourceTab, left bool) {
 	}
 	b.close()
 	if tab.Kind != "merge" {
-		label, value := "Original code (read only)", tab.Local
+		label := "Original code (read only)"
 		if !left {
-			label, value = "Modified code", tab.sourceText(1)
+			label = "Modified code"
 		}
 		b.open("textarea", "input", "id", id+"-input", "class", "sc-code-input", "wrap", "soft", "spellcheck", "false", "aria-label", label)
 		if left || !tab.editable() {
 			b.attr("readonly", "")
 		}
-		b.content(value)
+		// bindSourceDiffControls supplies the live value, as in the file editor.
+		// Authored text would also shape the entire document in HTML layout.
 		b.close()
 	}
 	b.close()

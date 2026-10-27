@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/client"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	engineui "github.com/diiyw/onix/ui"
+	"github.com/pencode-labs/pencode/client"
 )
 
 type highlightDocument interface {
@@ -22,6 +22,8 @@ type pencodeHighlightJob struct {
 	backend           *client.Client
 	file              *openFile // Identity only; the worker never dereferences UI state.
 	sourceDoc         *sourceHighlight
+	snapshot          bool
+	lineStyles        bool
 	diffBase          string
 	diff              bool
 	path              string
@@ -79,6 +81,12 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		return false
 	}
 	result.job = job
+	if job.snapshot {
+		// Immutable panes are separate documents, not edits to the previous
+		// pane. Do not borrow its AST arenas through incremental parsing.
+		document.Release(true)
+		defer document.Release(true)
+	}
 	result.err = document.Update(job.path, job.source)
 	var tokens []syntax.Token
 	if result.err == nil {
@@ -99,7 +107,7 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		}
 	} else {
 		result.lines = 1
-		if job.sourceDoc != nil {
+		if job.lineStyles {
 			result.lineStarts = append(result.lineStarts, 0)
 		}
 		for offset, character := range job.source {
@@ -109,7 +117,7 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 			result.characters++
 			if character == '\n' {
 				result.lines++
-				if job.sourceDoc != nil {
+				if job.lineStyles {
 					result.lineStarts = append(result.lineStarts, offset+1)
 				}
 			}
@@ -130,7 +138,7 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 			result.spans = appendPencodeSpan(result.spans, scene.TextSpan2D{
 				Start: token.Start, End: token.End, Color: pencodeSyntaxColor(token.Style.Foreground),
 			})
-			if job.sourceDoc != nil && len(result.spans) > count {
+			if job.lineStyles && len(result.spans) > count {
 				result.sourceStyles = append(result.sourceStyles, "color:"+pencodeSyntaxColor(token.Style.Foreground).String())
 			}
 		}

@@ -38,6 +38,7 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"window-maximize-icon", "icons/maximize.svg", "icon.foreground"},
 	{"window-close-icon", "icons/close.svg", "icon.foreground"},
 	{"close-settings-icon", "icons/close.svg", "icon.foreground"},
+	{"settings-extensions-toggle", "icons/chevron-right.svg", "icon.foreground"},
 	{"open-project-icon", "icons/folder-opened.svg", "button.foreground"},
 	{"collapse-directories-icon", "icons/list-collapse.svg", "icon.foreground"},
 	{"reveal-active-file-icon", "icons/locate-fixed.svg", "icon.foreground"},

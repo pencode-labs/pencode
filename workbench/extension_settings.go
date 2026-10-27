@@ -172,7 +172,7 @@ func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencod
 }
 
 func newSettingDefinition(content *module.Content) (*htmlui.Definition[pencodeSettingProps, struct{}], error) {
-	return module.ContentDefine[pencodeSettingProps, struct{}](content, htmlui.NewTemplate(`<div class="pencode-settings-row pencode-extension-setting"><div class="pencode-setting-copy"><label data-ref="label"></label><p data-ref="description" class="pencode-setting-description"></p></div><input data-ref="input" class="pencode-setting-input" type="text"><input data-ref="boolean" type="checkbox" hidden><select data-ref="select" class="pencode-settings-select" hidden></select></div>`), "", module.ContentBehavior[pencodeSettingProps, struct{}]{
+	return module.ContentDefine[pencodeSettingProps, struct{}](content, htmlui.NewTemplate(`<div data-ref="row" class="pencode-settings-row pencode-extension-setting"><div class="pencode-setting-copy"><label data-ref="label"></label><p data-ref="description" class="pencode-setting-description"></p></div><input data-ref="input" class="pencode-setting-input" type="text"><input data-ref="boolean" type="checkbox" hidden><select data-ref="select" class="pencode-settings-select" hidden></select></div>`), "", module.ContentBehavior[pencodeSettingProps, struct{}]{
 		Render: renderExtensionSetting,
 		HandleEvent: func(c *module.ContentEventContext[pencodeSettingProps, struct{}]) {
 			p := c.Props
@@ -199,6 +199,11 @@ func renderExtensionSetting(c module.ContentRenderContext[pencodeSettingProps, s
 	} else if len(s.Options) != 0 {
 		ref = "select"
 	}
+	class := "pencode-settings-row pencode-extension-setting"
+	if ref == "input" {
+		class = "pencode-settings-row pencode-extension-setting pencode-setting-stacked"
+	}
+	view.Attr("row", "class", class)
 	for _, control := range [...]string{"input", "boolean", "select"} {
 		if ref == control {
 			view.RemoveAttr(control, "hidden")
@@ -241,9 +246,7 @@ func (m *workspaceModel) renderExtensionSettings(view *htmlui.View, nav *htmlui.
 		view.Attr("settings-extensions-nav", "aria-current", "page")
 	}
 	view.Attr("settings-extensions-nav", "aria-expanded", boolAttribute(m.settingsExtensionsExpanded))
-	view.Text("settings-extensions-toggle", "›")
 	if m.settingsExtensionsExpanded {
-		view.Text("settings-extensions-toggle", "⌄")
 		for _, group := range m.extensionSettings {
 			htmlui.AppendComponentChild(view, "settings-extension-list", componentKey(group.id), nav, pencodeSettingNavProps{Model: m, Group: group, Selected: m.settingsExtensions && m.settingsExtension == group.id}, struct{}{})
 		}

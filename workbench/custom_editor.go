@@ -588,6 +588,12 @@ func validateExtensionView(view *peb.EditorView, visit func(*dom.Node, bool)) er
 	if err != nil {
 		return err
 	}
+	return validateExtensionTree(view, root, nil, visit)
+}
+
+// Validate retained region trees in their original parent context, including
+// inherited visibility and uniqueness across both template and region nodes.
+func validateExtensionTree(view *peb.EditorView, root *dom.Node, regions map[string]*dom.Node, visit func(*dom.Node, bool)) error {
 	refs := make(map[string]bool)
 	ids := make(map[string]bool)
 	var validate func(*dom.Node, bool) error
@@ -612,7 +618,11 @@ func validateExtensionView(view *peb.EditorView, visit func(*dom.Node, bool)) er
 			}
 			refs[ref] = true
 		}
-		for _, child := range node.Children {
+		children := node.Children
+		if ref, _ := node.Attr("data-ref"); regions[ref] != nil {
+			children = regions[ref].Children
+		}
+		for _, child := range children {
 			if err := validate(child, hidden); err != nil {
 				return err
 			}

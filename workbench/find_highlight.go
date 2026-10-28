@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/diiyw/onix/ecs"
+	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 )
@@ -12,6 +13,7 @@ import (
 type pencodeFindPaint struct {
 	pencodeDiagnosticPaint
 	index int
+	theme *pencodeTheme
 }
 
 func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
@@ -28,17 +30,13 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 	transform, _ := module.ContentGet[scene.UITransform](world, m.editor.text)
 	size, _ := module.ContentGet[scene.Size2D](world, m.editor.control)
 	stack, _ := module.ContentGet[scene.UIStackIndex](world, m.editor.text)
-	color := m.workbenchTheme.link
-	color.A = .24
-	if value, ok := m.syntaxTheme.LookupColor("editor.findMatchHighlightBackground"); ok {
-		color = pencodeSyntaxColor(value)
-	}
+	colors := m.workbenchTheme.findColors
 	key := pencodeDiagnosticPaintKey{
 		layout: pencodeGutterLayoutKey{text.Value, text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
 		file:   m.activeFile(), revision: m.findRevision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
-		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight, ink: text.InkOffsetY, stack: stack, color: color,
+		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight, ink: text.InkOffsetY, stack: stack, color: colors[0],
 	}
-	if key == paint.key && paint.index == m.findIndex {
+	if key == paint.key && paint.index == m.findIndex && paint.theme == m.workbenchTheme {
 		return
 	}
 	if text.LineHeight <= 0 {
@@ -86,18 +84,25 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 				}
 				bounds.X, bounds.Width = x, 2
 			}
-			fill := color
+			fill := colors[0]
 			if i == m.findIndex {
-				fill.A = min(1, fill.A*1.8)
-				if value, ok := m.syntaxTheme.LookupColor("editor.findMatchBackground"); ok {
-					fill = pencodeSyntaxColor(value)
-				}
+				fill = colors[1]
 			}
 			paint.quad(world, &used, stack-1, key.x+bounds.X, y, max(2, bounds.Width), rect.Height, 0, fill)
+			if i == m.findIndex {
+				// Keep the outline above native selection without tinting the code.
+				entity := pencodeDiagnosticEntity(&paint.pencodeDiagnosticPaint, world, &paint.quads, &used, stack+1, scene.NewSprite2D())
+				module.ContentSetIfChanged(world, entity, scene.UITransformFromXY(key.x+bounds.X, y))
+				module.ContentSetIfChanged(world, entity, scene.Size2D{Width: max(2, bounds.Width), Height: rect.Height})
+				sprite := scene.NewSprite2D()
+				sprite.Width, sprite.Height = max(2, bounds.Width), rect.Height
+				sprite.Shape = scene.OutlinedRoundedRectShape2D(graphics.ColorRGBA{}, colors[2], 0, 1)
+				module.ContentSetIfChanged(world, entity, sprite)
+			}
 		}
 	}
 	for _, entity := range paint.quads[used:] {
 		module.ContentSetIfChanged(world, entity, scene.Visibility{})
 	}
-	paint.key, paint.index = key, m.findIndex
+	paint.key, paint.index, paint.theme = key, m.findIndex, m.workbenchTheme
 }

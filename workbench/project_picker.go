@@ -26,6 +26,7 @@ type pencodeProjectPicker struct {
 	configuration        *configuration.Snapshot
 	profile              connection.Profile
 	open, busy           bool
+	autoOpen             bool
 	connectionOpen       bool
 	path, input          string
 	directory, listed    string
@@ -116,7 +117,7 @@ func (model *workspaceModel) readProjectDirectory() {
 		return
 	}
 	if !model.connectionConnected(p.profile) {
-		p.message, p.failed = "SSH 已断开，请重新连接后选择项目", true
+		p.message, p.failed = "远程服务已断开，请重新连接后选择项目", true
 		return
 	}
 	directory := p.directory
@@ -126,7 +127,7 @@ func (model *workspaceModel) readProjectDirectory() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	p.cancel, p.done, p.busy = cancel, make(chan struct{}), true
 	p.message, p.failed = "正在读取目录…", false
-	backend := model.session.connection.links[p.profile.SSH].backend
+	backend := model.session.connection.links[p.profile.Endpoint()].backend
 	results, done, wake := p.results, p.done, model.backgroundWake()
 	readConfiguration := model.backend != backend && p.configurationBackend != backend
 	go func() {
@@ -156,6 +157,7 @@ func (model *workspaceModel) pollProjectPicker() bool {
 			return true
 		}
 		if result.err != nil {
+			p.autoOpen = false
 			p.message, p.failed = "读取目录失败："+result.err.Error(), true
 			return true
 		}
@@ -168,6 +170,10 @@ func (model *workspaceModel) pollProjectPicker() bool {
 			p.configurationBackend = result.backend
 		}
 		p.message, p.failed = "选择项目目录后，点击“打开此目录”", false
+		if p.autoOpen {
+			p.autoOpen = false
+			model.projectPickerEvent("connection-project-open", "")
+		}
 		return true
 	default:
 		return false
@@ -253,6 +259,7 @@ func (model *workspaceModel) projectPickerEvent(ref, value string) {
 	if !p.open {
 		return
 	}
+	p.autoOpen = false
 	switch ref {
 	case "connection-project-path":
 		model.filterProjectDirectory(value)
@@ -270,10 +277,10 @@ func (model *workspaceModel) projectPickerEvent(ref, value string) {
 			return
 		}
 		if !model.connectionConnected(p.profile) {
-			p.message, p.failed = "SSH 已断开，请重新连接后选择项目", true
+			p.message, p.failed = "远程服务已断开，请重新连接后选择项目", true
 			return
 		}
-		backend := c.links[p.profile.SSH].backend
+		backend := c.links[p.profile.Endpoint()].backend
 		if model.session.backend != backend {
 			if len(model.projects) != 0 {
 				p.message, p.failed = "请先关闭当前项目，再打开其他设备的项目", true

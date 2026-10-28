@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,11 +23,15 @@ import (
 	"github.com/pencode-labs/pencode/terminal"
 )
 
+var pencodeDebugEmptyOptions = [...]htmlui.VNode{appearanceOption(0, "", "暂无启动器", true)}
+
 type pencodeBreakpoint struct{ offset, line int }
 type pencodeDebugEvent struct {
 	project *pencodeProject
 	configs []debugger.Config
 	err     error
+	ctx     context.Context
+	edit    bool
 	stream  *client.Process
 	claim   func() bool
 	title   string
@@ -39,7 +44,6 @@ type pencodeDebugState struct {
 	configs                     []debugger.Config
 	options                     []htmlui.VNode
 	selected                    int
-	directory                   string
 	loading, startPending       bool
 	threadsExpanded             bool
 	events                      chan pencodeDebugEvent
@@ -110,46 +114,47 @@ func (m *workspaceModel) debugEvents() chan pencodeDebugEvent {
 }
 
 func (m *workspaceModel) loadDebugConfigs() {
+	m.readDebugConfigs(false)
+}
+
+func (m *workspaceModel) readDebugConfigs(edit bool) {
 	u := &m.debug
 	p := m.activeProjectState()
-	if p == nil || p.backend == nil || u.loading {
+	if u.loading && u.configProject == p {
 		return
 	}
 	if u.cancel != nil {
 		u.cancel()
 	}
+	if p == nil || p.backend == nil {
+		u.configProject, u.configs, u.options = p, nil, nil
+		u.loading, u.startPending, u.message = false, false, ""
+		return
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	u.cancel, u.loading, u.configProject = cancel, true, p
-	u.configs, u.options, u.message = nil, nil, "正在读取调试配置…"
-	// The current package is a useful default even without a debug.json.
-	directory := "."
-	if f := m.activeFile(); f != nil && strings.HasSuffix(f.Name, ".go") {
-		directory = path.Dir(f.Path)
-	}
-	u.directory = directory
+	u.configs, u.options, u.message = nil, nil, ""
 	root := p.Path
-	configuration, _ := json.Marshal(struct {
-		Mode        string `json:"mode"`
-		Program     string `json:"program"`
-		Cwd         string `json:"cwd"`
-		StopOnEntry bool   `json:"stopOnEntry"`
-	}{"debug", path.Join(root, directory), root, false})
-	defaults := []debugger.Config{{Label: "Go：调试当前包", Adapter: "Delve", Request: "launch", Configuration: configuration}}
-	var test map[string]json.RawMessage
-	_ = json.Unmarshal(configuration, &test)
-	test["mode"] = json.RawMessage(`"test"`)
-	configuration, _ = json.Marshal(test)
-	defaults = append(defaults, debugger.Config{Label: "Go：调试当前包测试", Adapter: "Delve", Request: "launch", Configuration: configuration})
 	events, wake, backend := m.debugEvents(), m.backgroundWake(), p.backend
+	workspace := p.workspace.ID
 	go func() {
 		request, stop := context.WithTimeout(ctx, 10*time.Second)
 		defer stop()
 		data, err := backend.WorkFile(request, root, ".pencode/debug.json")
-		configs := defaults
+		if edit && err == nil && data == nil {
+			// An existing directory is fine; SaveFile reports any failure to
+			// create the parent or a conflicting change to the config file.
+			_ = backend.Create(request, workspace, ".pencode", true)
+			err = backend.SaveFile(request, root, ".pencode/debug.json", "", "[]\n")
+			if err == nil {
+				data = []byte("[]\n")
+			}
+		}
+		var configs []debugger.Config
 		if err == nil && data != nil {
 			configs, err = debugger.ParseConfigs(data, root)
 		}
-		event := pencodeDebugEvent{project: p, configs: configs, err: err}
+		event := pencodeDebugEvent{project: p, configs: configs, err: err, ctx: ctx, edit: edit && data != nil}
 		select {
 		case <-ctx.Done():
 			return
@@ -171,13 +176,12 @@ func (m *workspaceModel) startDebug() {
 		u.message = "工作区服务未连接"
 		return
 	}
-	directory := "."
-	if f := m.activeFile(); f != nil && strings.HasSuffix(f.Name, ".go") {
-		directory = path.Dir(f.Path)
-	}
-	if u.configProject != m.activeProjectState() || len(u.configs) == 0 || u.directory != "" && u.directory != directory {
+	if u.configProject != m.activeProjectState() || u.loading {
 		u.startPending = true
 		m.loadDebugConfigs()
+		return
+	}
+	if len(u.configs) == 0 {
 		return
 	}
 	p := u.configProject
@@ -272,6 +276,11 @@ drained:
 func (m *workspaceModel) pollDebugger(world *module.Content) bool {
 	u := &m.debug
 	changed := false
+	if m.bottom.active == pencodePanelDebug && u.configProject != m.activeProjectState() {
+		u.startPending = false
+		m.loadDebugConfigs()
+		changed = true
+	}
 	for u.events != nil {
 		select {
 		case event := <-u.events:
@@ -295,11 +304,16 @@ func (m *workspaceModel) pollDebugger(world *module.Content) bool {
 				t.active = item
 				continue
 			}
-			if event.project != u.configProject {
+			if event.project != u.configProject || event.ctx != nil && event.ctx.Err() != nil {
 				continue
 			}
 			u.loading = false
 			u.message = ""
+			if event.edit && event.project == m.activeProjectState() {
+				if err := m.requestFileOpen(event.project, ".pencode/debug.json", false, true, nil); err != nil {
+					u.message = err.Error()
+				}
+			}
 			if event.err != nil {
 				u.message = event.err.Error()
 				u.startPending = false
@@ -312,7 +326,9 @@ func (m *workspaceModel) pollDebugger(world *module.Content) bool {
 			}
 			if u.startPending {
 				u.startPending = false
-				m.startDebug()
+				if event.project == m.activeProjectState() {
+					m.startDebug()
+				}
 			}
 		default:
 			goto eventsDrained
@@ -384,6 +400,8 @@ func (m *workspaceModel) debugEvent(world *module.Content, ref, value string) bo
 		m.startDebug()
 	case "debug-reload":
 		m.loadDebugConfigs()
+	case "debug-add":
+		m.readDebugConfigs(true)
 	case "debug-config":
 		u.selected, _ = strconv.Atoi(value)
 		u.selected = min(max(0, u.selected), max(0, len(u.configs)-1))
@@ -472,27 +490,24 @@ func (m *workspaceModel) debugShortcut(world *module.Content, state *input.State
 	if m.screen != pencodeWorkspace || m.settingsOpen || m.quickOpen || m.findOpen || m.market != nil && m.market.open {
 		return false
 	}
-	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
 	switch {
-	case state.KeyPressed(input.KeyF5):
-		if shift {
-			return m.debugEvent(world, "debug-stop", "")
-		}
+	case m.commandMatches("debug-stop", state, runtime.GOOS):
+		return m.debugEvent(world, "debug-stop", "")
+	case m.commandMatches("debug-start", state, runtime.GOOS):
 		if m.debug.session != nil && m.debug.view.State < debugger.Ended {
 			return m.debugEvent(world, "debug-continue", "")
 		}
 		return m.debugEvent(world, "debug-start", "")
-	case state.KeyPressed(input.KeyF9):
+	case m.commandMatches("debug-breakpoint", state, runtime.GOOS):
 		m.toggleDebugBreakpoint(world, 0)
 		return true
-	case state.KeyPressed(input.KeyF10) && m.debug.view.State == debugger.Stopped:
+	case m.commandMatches("debug-next", state, runtime.GOOS) && m.debug.view.State == debugger.Stopped:
 		return m.debugEvent(world, "debug-next", "")
-	case state.KeyPressed(input.KeyF11) && m.debug.session != nil && m.debug.view.State == debugger.Stopped:
-		if shift {
-			return m.debugEvent(world, "debug-stepOut", "")
-		}
+	case m.commandMatches("debug-stepIn", state, runtime.GOOS) && m.debug.session != nil && m.debug.view.State == debugger.Stopped:
 		return m.debugEvent(world, "debug-stepIn", "")
-	case state.KeyPressed(input.KeyEnter) && m.bottom.active == pencodePanelDebug && pencodeControlFocused(world, m.surface, "debug-expression"):
+	case m.commandMatches("debug-stepOut", state, runtime.GOOS) && m.debug.session != nil && m.debug.view.State == debugger.Stopped:
+		return m.debugEvent(world, "debug-stepOut", "")
+	case m.commandMatches("debug-evaluate", state, runtime.GOOS) && m.bottom.active == pencodePanelDebug && pencodeControlFocused(world, m.surface, "debug-expression"):
 		return m.debugEvent(world, "debug-evaluate", "")
 	}
 	return false
@@ -715,7 +730,7 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 		return
 	}
 	view.Attr("bottom-panel", "class", "pencode-bottom-panel pencode-debug-panel")
-	for _, ref := range [...]string{"debug-start", "debug-stop", "debug-continue", "debug-next", "debug-stepIn", "debug-stepOut", "debug-evaluate", "debug-reload", "debug-toggle-threads", "debug-clear"} {
+	for _, ref := range [...]string{"debug-start", "debug-stop", "debug-continue", "debug-next", "debug-stepIn", "debug-stepOut", "debug-evaluate", "debug-reload", "debug-add", "debug-toggle-threads", "debug-clear"} {
 		view.Event(ref, htmlui.EventClick)
 	}
 	view.Attr("debug-toggle-threads", "aria-expanded", boolAttribute(u.threadsExpanded))
@@ -727,13 +742,22 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 	setPanelVisible(view, "debug-threads", u.threadsExpanded)
 	view.Event("debug-config", htmlui.EventChange)
 	view.Event("debug-expression", htmlui.EventInput)
-	view.Keyed("debug-config", u.options)
-	view.Attr("debug-config", "value", strconv.Itoa(u.selected))
+	options, selected := u.options, ""
+	if len(u.configs) == 0 {
+		options = pencodeDebugEmptyOptions[:]
+	} else {
+		selected = strconv.Itoa(u.selected)
+	}
+	view.Keyed("debug-config", options)
+	view.Attr("debug-config", "value", selected)
 	view.Attr("debug-expression", "value", u.expression)
+	view.Text("debug-message", u.message)
+	setPanelVisible(view, "debug-message", u.message != "")
 	running := u.session != nil && u.view.State < debugger.Ended
 	stopped := running && u.view.State == debugger.Stopped
-	setContextMenuEnabled(view, "debug-start", !running && !u.loading)
-	setContextMenuEnabled(view, "debug-config", !running && !u.loading)
+	setContextMenuEnabled(view, "debug-start", !running && !u.loading && len(u.configs) != 0)
+	setContextMenuEnabled(view, "debug-config", !running && !u.loading && len(u.configs) != 0)
+	setContextMenuEnabled(view, "debug-add", !running && !u.loading && m.backendConnected() && m.activeProjectState() != nil)
 	setContextMenuEnabled(view, "debug-reload", !running && !u.loading)
 	setContextMenuEnabled(view, "debug-stop", running)
 	setContextMenuEnabled(view, "debug-continue", running && (stopped || u.view.State == debugger.Running))
@@ -742,7 +766,7 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 	}
 	label := "继续"
 	icon, foreground := "icons/debug-continue.svg", "debugIcon.continueForeground"
-	title := "继续 (F5)"
+	title := m.shortcutTitle("继续", "debug-start")
 	if u.view.State == debugger.Running {
 		label = "暂停"
 		title = "暂停执行"
@@ -751,6 +775,9 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 	view.Attr("debug-continue", "aria-label", label)
 	view.Attr("debug-continue", "title", title)
 	view.Attr("debug-continue-icon", "src", m.themedIcon(icon, foreground))
+	for _, command := range [...]struct{ ref, name string }{{"debug-start", "启动调试"}, {"debug-next", "单步跳过"}, {"debug-stepIn", "单步进入"}, {"debug-stepOut", "单步跳出"}, {"debug-stop", "停止 / 分离"}} {
+		view.Attr(command.ref, "title", m.shortcutTitle(command.name, command.ref))
+	}
 	view.Text("debug-console", u.output)
 	m.debugRows()
 	for _, row := range u.rows {

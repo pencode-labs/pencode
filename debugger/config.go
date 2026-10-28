@@ -23,16 +23,16 @@ func ParseConfigs(data []byte, root string) ([]Config, error) {
 	if err := json.Unmarshal(data, &configs); err != nil {
 		return nil, fmt.Errorf("debug.json: %w", err)
 	}
-	if len(configs) == 0 {
-		return nil, fmt.Errorf("debug.json: no configurations")
+	if configs == nil {
+		return nil, fmt.Errorf("debug.json: configurations must be an array")
 	}
 	for i := range configs {
 		c := &configs[i]
 		if c.Label == "" || (c.Request != "launch" && c.Request != "attach") {
 			return nil, fmt.Errorf("debug.json: label and launch/attach request are required")
 		}
-		if c.Adapter != "Delve" && c.Adapter != "stdio" && c.Adapter != "tcp" {
-			return nil, fmt.Errorf("debug.json: unknown adapter %q", c.Adapter)
+		if c.Adapter == "" || len(c.Adapter) > 128 || strings.ContainsAny(c.Adapter, "\x00\r\n/\\") {
+			return nil, fmt.Errorf("debug.json: invalid adapter %q", c.Adapter)
 		}
 		if c.Adapter == "stdio" && c.Command == "" || c.Adapter == "tcp" && c.Address == "" {
 			return nil, fmt.Errorf("debug.json: adapter requires command/address")

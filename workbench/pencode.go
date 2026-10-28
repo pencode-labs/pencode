@@ -109,6 +109,7 @@ type pencodeProject struct {
 type workspaceModel struct {
 	refresh                             pencodeRefresh
 	fullRefresh                         bool
+	selectionPrevious                   string
 	fileIO                              *pencodeFileIO
 	fileClose                           pencodeCloseRequest
 	referenceCancel                     context.CancelFunc
@@ -195,7 +196,9 @@ type workspaceModel struct {
 	extensionSettings                   []*pencodeExtensionSettings
 	sidebarHidden                       bool
 	capturingShortcut                   bool
-	captureAction                       pencodeShortcutAction
+	captureAction                       string
+	keymapName                          string
+	shortcutQuery                       string
 	settingsFeedback                    string
 	defaultFont                         *text.Font
 	defaultFontID                       string
@@ -283,6 +286,7 @@ type treeProps struct {
 	IsDir     bool
 	Openable  bool
 	HasErrors bool
+	Editing   bool
 }
 
 type tabProps struct {
@@ -296,6 +300,7 @@ type tabProps struct {
 	Active    bool
 	Preview   bool
 	Dirty     bool
+	Busy      bool
 	HasErrors bool
 }
 
@@ -372,8 +377,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	definitions := &pencodeDefinitions{}
 	var err error
 	definitions.tree, err = module.ContentDefine[treeProps, struct{}](content,
-		htmlui.NewTemplate(`<button data-ref="row" class="pencode-tree-row" type="button"><img data-ref="arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt=""><img data-ref="icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tree-name"></span></button>`),
-		"",
+		htmlui.NewTemplate(`<button data-ref="row" class="pencode-tree-row" type="button"><img data-ref="arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt=""><img data-ref="icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tree-name"></span></button>`), "",
 		module.ContentBehavior[treeProps, struct{}]{
 			Render: func(context module.ContentRenderContext[treeProps, struct{}], view *htmlui.View) {
 				props := context.Props
@@ -395,6 +399,19 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				view.Attr("name", "class", nameClass)
 				view.Event("row", htmlui.EventClick)
+			},
+			HandleEvent: handleTreeEvent,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	creationDefinition, err := module.ContentDefine[treeProps, struct{}](content,
+		htmlui.NewTemplate(`<div id="file-tree-create" data-ref="create" class="pencode-tree-create"><img data-ref="create-icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><div class="pencode-tree-input"><input id="file-tree-name" data-ref="create-name" type="text" class="pencode-tree-name-input" autocomplete="off" aria-describedby="file-tree-error"><div id="file-tree-error" data-ref="create-error" class="pencode-tree-create-error" role="alert" hidden></div></div></div>`),
+		"",
+		module.ContentBehavior[treeProps, struct{}]{
+			Render: func(context module.ContentRenderContext[treeProps, struct{}], view *htmlui.View) {
+				context.Props.Model.renderFileCreation(view)
 			},
 			HandleEvent: handleTreeEvent,
 		},
@@ -446,7 +463,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					view.Components("tree-window", nil)
 					return
 				}
-				renderPencodeTree(context, view, definitions.tree)
+				renderPencodeTree(context, view, definitions.tree, creationDefinition)
 			},
 			HandleEvent: handleProjectEvent,
 		},
@@ -455,7 +472,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.tab, err = module.ContentDefine[tabProps, struct{}](content,
-		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div>`),
+		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""><span data-ref="busy-icon" class="pencode-tab-busy-icon" aria-hidden="true" hidden><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></button></div>`),
 		"",
 		module.ContentBehavior[tabProps, struct{}]{
 			Render: func(context module.ContentRenderContext[tabProps, struct{}], view *htmlui.View) {
@@ -495,6 +512,12 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					icon = "icons/file-text.svg"
 				}
 				view.Attr("icon", "src", props.Model.themedIcon(icon, iconForeground))
+				if props.Busy {
+					view.Attr("close", "title", "退出会话并关闭标签页")
+				}
+				setPanelVisible(view, "close-icon", !props.Busy)
+				setPanelVisible(view, "busy-icon", props.Busy)
+				view.Attr("tab", "aria-busy", boolAttribute(props.Busy))
 				view.Attr("close-icon", "src", props.Model.themedIcon("icons/close.svg", iconForeground))
 				view.Attr("select", "aria-selected", boolAttribute(props.Active))
 				view.Attr("close", "aria-label", "关闭 "+props.Name)
@@ -531,6 +554,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	shortcutRow, err := newShortcutDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	settingNav, err := newSettingNavDefinition(content)
 	if err != nil {
 		return nil, err
@@ -555,6 +582,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	recentDefinition, err := newRecentProjectDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	inputContextDefinition, err := newInputContextDefinition()
 	if err != nil {
 		return nil, err
@@ -568,8 +599,12 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					return
 				}
 				renderPencodeRoot(context, view, definitions.project, definitions.tab, definitions.market, definitions.connect, definitions.action)
+				if context.Props != nil && context.Props.Model != nil && context.Props.Screen == pencodeLauncher {
+					context.Props.Model.renderRecentProjects(view, recentDefinition)
+				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderExtensionSettings(view, settingNav, settingRow)
+					context.Props.Model.renderShortcutSettings(view, shortcutRow)
 				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderInputContext(view, inputContextDefinition)
@@ -606,7 +641,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	model.syncWorkbenchTheme(context.World)
 	model.syncActions()
 	model.syncProblems()
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		view.Attr("titlebar", "class", "pencode-titlebar native-controls")
 		view.Attr("window-controls", "hidden", "")
 	}
@@ -618,6 +653,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	model.renderLanguageEditorPopups(view)
 	model.renderCloseDialog(view)
 	model.renderFileContext(view)
+	model.renderFileDrag(view)
 	model.renderTabContext(view)
 	model.renderFolderSearch(view)
 	model.renderActions(view, actionDefinition)
@@ -695,9 +731,6 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("quick-open-query", htmlui.EventInput)
 	for _, ref := range pencodeQuickRowRefs {
 		view.Event(ref, htmlui.EventClick)
-	}
-	for _, definition := range pencodeShortcutDefinitions {
-		view.Event(definition.ref, htmlui.EventClick)
 	}
 	view.Attr("editor", "style", model.editorStyle)
 	view.Keyed("theme-select", model.themeOptions)
@@ -786,21 +819,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 			view.Attr(ref, "hidden", "")
 		}
 	}
-	for action, definition := range pencodeShortcutDefinitions {
-		label := model.shortcutLabels[action]
-		className := "pencode-settings-binding"
-		if model.capturingShortcut && model.captureAction == pencodeShortcutAction(action) {
-			label = "按下快捷键…"
-			className += " recording"
-		}
-		view.Text(definition.ref, label)
-		view.Attr(definition.ref, "class", className)
-		ariaLabel := model.shortcutAriaLabels[action]
-		if model.capturingShortcut && model.captureAction == pencodeShortcutAction(action) {
-			ariaLabel = definition.name + "：" + label
-		}
-		view.Attr(definition.ref, "aria-label", ariaLabel)
-	}
+
 	if model.settingsOpen {
 		view.RemoveAttr("settings-panel", "hidden")
 		view.Attr("open-settings", "aria-expanded", "true")
@@ -1078,11 +1097,21 @@ func handleProjectEvent(context *module.ContentEventContext[projectProps, struct
 }
 
 func handleTreeEvent(context *module.ContentEventContext[treeProps, struct{}]) {
-	if context == nil || context.Props == nil || context.Props.Model == nil || context.Props.Project == nil || context.Ref != "row" {
+	if context == nil || context.Props == nil || context.Props.Model == nil || context.Props.Project == nil {
 		return
 	}
 	props := context.Props
 	model := props.Model
+	if props.Editing {
+		if context.Ref == "create-name" && context.Event.Kind == htmlui.EventInput && model.fileContext.inline() && model.fileContext.project == props.Project {
+			model.fileContext.name, model.fileContext.err = context.Event.Value, ""
+			markPencodeRootDirtyByModel(context.World, model)
+		}
+		return
+	}
+	if context.Ref != "row" {
+		return
+	}
 	if model.closing.action != pencodeCloseNone || model.fileDrag.suppressClick {
 		return
 	}
@@ -1109,7 +1138,7 @@ func handleTreeEvent(context *module.ContentEventContext[treeProps, struct{}]) {
 		page = component.Page
 	}
 	setPencodeEditorValue(context.World, page, model.activeContent())
-	markPencodeRootDirtyByModel(context.World, model)
+	model.finishSelectionRefresh(context.World)
 }
 
 func handleTabEvent(context *module.ContentEventContext[tabProps, struct{}]) {
@@ -1152,7 +1181,11 @@ func handleTabEvent(context *module.ContentEventContext[tabProps, struct{}]) {
 		page = component.Page
 	}
 	setPencodeEditorValue(context.World, page, model.activeContent())
-	markPencodeRootDirtyByModel(context.World, model)
+	if context.Ref == "close" {
+		markPencodeRootDirtyByModel(context.World, model)
+	} else {
+		model.finishSelectionRefresh(context.World)
+	}
 }
 
 func markPencodeRootDirty(context *module.ContentEventContext[appProps, appState], model *workspaceModel) {
@@ -1228,7 +1261,7 @@ func setPencodeEditorValue(world *module.Content, page ecs.Entity, value string)
 
 func (model *workspaceModel) chooseProject() {
 	if model != nil && model.session != nil && model.session.connection != nil && model.session.connection.workspaceProfile.Remote() {
-		model.openSSHProject(model.session.connection.workspaceProfile)
+		model.openRemoteProject(model.session.connection.workspaceProfile)
 		return
 	}
 	if model == nil || model.app == nil || model.app.Context == nil {
@@ -1269,6 +1302,7 @@ func (model *workspaceModel) loadProject(directory string) error {
 }
 
 func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace protocol.Workspace) {
+	model.rememberRecentProject(workspace)
 	if index := model.projectIndex(workspace.Path); index >= 0 {
 		model.activeProjectIndex = index
 		model.screen = pencodeWorkspace
@@ -1431,6 +1465,7 @@ func (model *workspaceModel) activateProject(project *pencodeProject) {
 		return
 	}
 	if model.activeProjectIndex != index {
+		model.fullRefresh = true
 		model.cancelFileOpens()
 		model.activeProjectIndex = index
 		model.resetHighlight()
@@ -1683,8 +1718,8 @@ func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 		return
 	}
 	rowIndex := -1
-	for i, index := range project.visibleTreeRows() {
-		if project.Entries[index].Path == relative {
+	for i, index := range project.visibleTreeRows(model) {
+		if index >= 0 && project.Entries[index].Path == relative {
 			rowIndex = i
 			break
 		}
@@ -1847,6 +1882,8 @@ func (model *workspaceModel) selectProjectTab(project *pencodeProject, relative 
 	if model == nil || project == nil || project.Files[relative] == nil {
 		return
 	}
+	before := model.selectionSnapshot()
+	defer func() { model.refreshFileSelection(before) }()
 	model.actions.ui.editor = nil
 	model.cancelFileOpens()
 	model.activateProject(project)
@@ -1894,6 +1931,7 @@ func (model *workspaceModel) discardProjectTab(project *pencodeProject, relative
 		if tab != relative {
 			continue
 		}
+		wasActive := project == model.activeProjectState() && model.actions.ui.editor == nil && !project.sourceControl.visible() && project.ActivePath == relative
 		copy(project.Tabs[index:], project.Tabs[index+1:])
 		project.Tabs[len(project.Tabs)-1] = ""
 		project.Tabs = project.Tabs[:len(project.Tabs)-1]
@@ -1919,6 +1957,10 @@ func (model *workspaceModel) discardProjectTab(project *pencodeProject, relative
 			model.resetHighlight()
 		}
 		model.syncActiveProjectFields()
+		// Extension tabs follow file tabs in the strip.
+		if wasActive && index == len(project.Tabs) {
+			model.selectFirstExtensionTab()
+		}
 		return
 	}
 }
@@ -1942,6 +1984,7 @@ func (model *workspaceModel) discardTab(relative string) {
 		if tab != relative {
 			continue
 		}
+		wasActive := model.actions.ui.editor == nil && !model.sourceState().visible() && model.activePath == relative
 		copy(model.tabs[index:], model.tabs[index+1:])
 		model.tabs[len(model.tabs)-1] = ""
 		model.tabs = model.tabs[:len(model.tabs)-1]
@@ -1962,6 +2005,9 @@ func (model *workspaceModel) discardTab(relative string) {
 		delete(model.files, relative)
 		if model.highlightedPath == relative {
 			model.resetHighlight()
+		}
+		if wasActive && index == len(model.tabs) {
+			model.selectFirstExtensionTab()
 		}
 		return
 	}

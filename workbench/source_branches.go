@@ -375,9 +375,9 @@ func (m *workspaceModel) sourceBranchShortcut(state *input.State) bool {
 	s := m.sourceState()
 	count := len(s.Snapshot.Branches)
 	switch {
-	case state.KeyPressed(input.KeyTab):
+	case m.uiKey(state, input.KeyTab):
 		s.BranchMenuOpen, s.BranchFocus = false, true
-	case state.KeyPressed(input.KeyEscape), state.KeyPressed(input.KeyLeft):
+	case m.uiKey(state, input.KeyEscape), m.uiKey(state, input.KeyLeft):
 		if s.BranchSubmenu {
 			s.BranchSubmenu, s.BranchSubIndex, s.BranchFocus = false, -1, true
 		} else {
@@ -385,19 +385,19 @@ func (m *workspaceModel) sourceBranchShortcut(state *input.State) bool {
 		}
 	case count == 0:
 		return false
-	case s.BranchSubmenu && s.BranchSubIndex >= 0 && state.KeyPressed(input.KeyDown):
+	case s.BranchSubmenu && s.BranchSubIndex >= 0 && m.uiKey(state, input.KeyDown):
 		s.stepBranchAction(1)
 		s.BranchFocus = true
-	case s.BranchSubmenu && s.BranchSubIndex >= 0 && state.KeyPressed(input.KeyUp):
+	case s.BranchSubmenu && s.BranchSubIndex >= 0 && m.uiKey(state, input.KeyUp):
 		s.stepBranchAction(-1)
 		s.BranchFocus = true
-	case state.KeyPressed(input.KeyDown):
+	case m.uiKey(state, input.KeyDown):
 		s.BranchIndex = (s.BranchIndex + 1) % count
 		s.BranchSubmenu, s.BranchFocus = false, true
-	case state.KeyPressed(input.KeyUp):
+	case m.uiKey(state, input.KeyUp):
 		s.BranchIndex = (s.BranchIndex + count - 1) % count
 		s.BranchSubmenu, s.BranchFocus = false, true
-	case state.KeyPressed(input.KeyHome):
+	case m.uiKey(state, input.KeyHome):
 		if s.BranchSubmenu && s.BranchSubIndex >= 0 {
 			s.BranchSubIndex = -1
 			s.stepBranchAction(1)
@@ -405,7 +405,7 @@ func (m *workspaceModel) sourceBranchShortcut(state *input.State) bool {
 			s.BranchIndex, s.BranchSubmenu = 0, false
 		}
 		s.BranchFocus = true
-	case state.KeyPressed(input.KeyEnd):
+	case m.uiKey(state, input.KeyEnd):
 		if s.BranchSubmenu && s.BranchSubIndex >= 0 {
 			s.BranchSubIndex = 0
 			s.stepBranchAction(-1)
@@ -413,9 +413,9 @@ func (m *workspaceModel) sourceBranchShortcut(state *input.State) bool {
 			s.BranchIndex, s.BranchSubmenu = count-1, false
 		}
 		s.BranchFocus = true
-	case state.KeyPressed(input.KeyRight), state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeySpace):
+	case m.uiKey(state, input.KeyRight), m.uiKey(state, input.KeyEnter), m.uiKey(state, input.KeySpace):
 		if s.BranchSubmenu && s.BranchSubIndex >= 0 {
-			if !state.KeyPressed(input.KeyRight) {
+			if !m.uiKey(state, input.KeyRight) {
 				m.sourceAction(sourceBranchActions[s.BranchSubIndex].ID)
 			}
 		} else {

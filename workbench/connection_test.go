@@ -12,10 +12,10 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/remote"
-	"github.com/diiyw/onix/ui"
 )
 
 func TestConnectionMenuAnchoredToButton(t *testing.T) {
@@ -280,7 +280,7 @@ func TestConnectionDialogInputAndCancellation(t *testing.T) {
 	}
 }
 
-func TestSSHConnectionsDoNotChangeCurrentProject(t *testing.T) {
+func TestRemoteConnectionsDoNotChangeCurrentProject(t *testing.T) {
 	model, project := resourceTestModel(t)
 	resourceTestWrite(t, project, "main.go", "package saved\n")
 	openProjectFile(project, "main.go")
@@ -296,37 +296,122 @@ func TestSSHConnectionsDoNotChangeCurrentProject(t *testing.T) {
 		return newPencodeBackend(t), nil
 	}, connection.Profile{})
 	t.Cleanup(s.Close)
-	one := connection.Profile{Name: "one", SSH: remote.Target{Host: "one"}, Directory: "/must-not-open"}
-	two := connection.Profile{Name: "two", SSH: remote.Target{Host: "two"}}
-	for _, profile := range []connection.Profile{one, two} {
+	one := connection.Profile{Name: "one", WebSocket: remote.WebSocketTarget{Address: "ws://one/ws", Token: "token"}, Directory: "/must-not-open"}
+	two := connection.Profile{Name: "two", WebSocket: remote.WebSocketTarget{Address: "ws://two/ws", Token: "token"}}
+	ssh := connection.Profile{SSH: remote.Target{Host: "ssh"}}
+	for _, profile := range []connection.Profile{one, two, ssh} {
 		model.beginConnection(profile, false)
 		if !model.backendConnected() {
-			t.Fatal("SSH dialing blocked local project operations")
+			t.Fatal("remote dialing blocked local project operations")
 		}
 		waitConnection(t, model)
 	}
-	first := s.connection.links[one.SSH].backend
+	first := s.connection.links[one.Endpoint()].backend
 	first.Close()
 	model.pollConnection()
 	waitConnection(t, model)
-	if calls != 3 || !model.connectionConnected(one) || !model.connectionConnected(two) {
-		t.Fatal("independent SSH links did not reconnect")
+	if calls != 4 || !model.connectionConnected(one) || !model.connectionConnected(two) || !model.connectionConnected(ssh) {
+		t.Fatal("independent remote links did not reconnect")
 	}
 	if s.backend != local || model.backend != local || project.backend != local || model.activeFile() != file || file.document != document || file.Content != "package editing\n" || !file.Dirty || len(model.projects) != 1 {
-		t.Fatal("maintaining SSH changed the current project")
+		t.Fatal("maintaining remote connections changed the current project")
 	}
 	if allocations := testing.AllocsPerRun(100, func() { model.pollConnection() }); allocations != 0 {
-		t.Fatalf("idle SSH polling allocated %g times", allocations)
+		t.Fatalf("idle remote polling allocated %g times", allocations)
 	}
-	model.disconnectSSH(one)
+	model.disconnectRemote(one)
 	for range 5 {
 		model.pollConnection()
 	}
-	if calls != 3 || model.connectionConnected(one) || !model.connectionConnected(two) || !model.backendConnected() {
+	if calls != 4 || model.connectionConnected(one) || !model.connectionConnected(two) || !model.connectionConnected(ssh) || !model.backendConnected() {
 		t.Fatal("disconnect affected other connections or reconnected itself")
 	}
 	if err := savePencodeFile(local, project.Path, file); err != nil {
-		t.Fatal("local save failed after SSH changes", err)
+		t.Fatal("local save failed after remote connection changes", err)
+	}
+}
+
+func TestWebSocketConnectionDialog(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		screen pencodeScreen
+	}{{"launcher", pencodeLauncher}, {"workspace", pencodeWorkspace}} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, model, _, state := languageInteractionFixture(t)
+			if tc.screen == pencodeLauncher {
+				model.screen = tc.screen
+				if err := app.Modules().UpdateFrame(1.0 / 60); err != nil {
+					t.Fatal(err)
+				}
+				if err := app.Modules().Dispatch(); err != nil {
+					t.Fatal(err)
+				}
+				languageInteractionStep(t, app)
+				model = model.session.active.model
+			}
+			s := model.session
+			s.ConfigureConnection(nil, connection.Profile{})
+			t.Cleanup(s.Close)
+			markPencodeRootDirtyByModel(model.fontResources, model)
+			languageInteractionStep(t, app)
+			editorContextClick(t, app, model, state, "connection-open")
+			editorContextClick(t, app, model, state, "connection-add")
+			editorContextClick(t, app, model, state, "connection-type")
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyDown})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyDown})
+			languageInteractionStep(t, app)
+			if !s.connection.webSocket {
+				t.Fatal("connection type selector did not select WebSocket")
+			}
+			languageInteractionStep(t, app)
+			for _, field := range []struct{ ref, value string }{
+				{"connection-name", "直连开发机"}, {"connection-address", "ws://localhost:8080/ws"}, {"connection-token", "saved-secret"},
+			} {
+				if tc.screen == pencodeWorkspace && field.ref == "connection-name" {
+					continue
+				}
+				editorContextClick(t, app, model, state, field.ref)
+				entity, ok := model.fontResources.HTMLControl(model.surface, field.ref)
+				control, mounted := module.ContentGet[ui.TextField](model.fontResources, entity)
+				if !ok || !mounted || !control.Focused {
+					t.Fatalf("%s not focused: ok=%v mounted=%v focused=%v", field.ref, ok, mounted, control.Focused)
+				}
+				state.Enqueue(input.Event{Kind: input.EventTextInput, Text: field.value})
+				languageInteractionStep(t, app)
+			}
+			entity, ok := model.fontResources.HTMLControl(model.surface, "connection-token")
+			control, mounted := module.ContentGet[ui.TextField](model.fontResources, entity)
+			if !ok || !mounted || !control.Password {
+				t.Fatal("token input is not masked")
+			}
+			// Hidden SSH fields cannot invalidate a direct connection.
+			s.connection.port = "invalid"
+			editorContextClick(t, app, model, state, "connection-save")
+			profiles := connection.LoadProfiles(connection.ProfilePath())
+			if len(profiles) != 1 || profiles[0].WebSocket.Address != "ws://localhost:8080/ws" || profiles[0].WebSocket.Token != "saved-secret" || profiles[0].SSH != (remote.Target{}) {
+				t.Fatalf("direct connection form did not persist: %s; mode=%v address=%q", s.connection.message, s.connection.webSocket, s.connection.form.WebSocket.Address)
+			}
+			if tc.screen == pencodeWorkspace && profiles[0].Name != profiles[0].WebSocket.Address {
+				t.Fatal("empty display name did not default to the service address")
+			}
+			s.connection.menu = 0
+			model.connectionEvent("connection-menu-edit", "")
+			markPencodeRootDirtyByModel(model.fontResources, model)
+			languageInteractionStep(t, app)
+			languageInteractionStep(t, app)
+			entity, ok = model.fontResources.HTMLControl(model.surface, "connection-type")
+			selector, mounted := module.ContentGet[ui.Selector](model.fontResources, entity)
+			if !ok || !mounted || selector.Selected != 1 {
+				t.Fatalf("editing WebSocket profile selected the wrong transport: selected=%d ok=%v mounted=%v form=%v mode=%v", selector.Selected, ok, mounted, s.connection.formOpen, s.connection.webSocket)
+			}
+			link := &pencodeRemoteLink{profile: profiles[0]}
+			s.connection.links[profiles[0].Endpoint()] = link
+			model.connectionEvent("connection-token", "rotated-secret")
+			model.connectionEvent("connection-save", "")
+			if link.profile.WebSocket.Token != "rotated-secret" || len(s.connection.links) != 1 {
+				t.Fatal("token rotation did not update the existing connection")
+			}
+		})
 	}
 }
 
@@ -366,7 +451,7 @@ func TestSSHPasswordPromptIsFreshOnReconnectAndClearedOnCancel(t *testing.T) {
 		if attempt == 0 {
 			model.beginConnection(profile, false)
 		} else {
-			s.connection.links[profile.SSH].backend.Close()
+			s.connection.links[profile.Endpoint()].backend.Close()
 			model.pollConnection()
 		}
 		waitPrompt()
@@ -469,7 +554,7 @@ func TestConnectionRestoresOnlyWorkspaceOnItsOwnSSHLink(t *testing.T) {
 	t.Cleanup(s.Close)
 	profile := connection.Profile{SSH: remote.Target{Host: "workspace"}}
 	s.connection.workspaceProfile, s.connection.namespace = profile, profile.Namespace()
-	s.connection.links[profile.SSH] = &pencodeSSHLink{profile: profile, backend: project.backend}
+	s.connection.links[profile.Endpoint()] = &pencodeRemoteLink{profile: profile, backend: project.backend}
 	s.backend.Close()
 	model.pollConnection()
 	if !s.connection.restoring {

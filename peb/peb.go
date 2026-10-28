@@ -1,4 +1,4 @@
-// Package peb implements Pencode Extension Binary protocol version 10.
+// Package peb implements Pencode Extension Binary protocol version 13.
 // Frames and payloads use little endian integers; stdout is reserved for frames.
 package peb
 
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version    = 10
+	Version    = 13
 	HeaderSize = 16
 	MaxPayload = 4 << 20
 	MaxString  = 64 << 10
@@ -508,10 +508,11 @@ func ServeExtension(input io.Reader, output io.Writer, contributions Contributio
 			if decodeErr != nil {
 				return decodeErr
 			}
-			publisher.mu.Lock()
-			publisher.action = message.Context
-			publisher.mu.Unlock()
-			handleErr = handlers.UIEvent(message)
+			var handled bool
+			handled, handleErr = publisher.handleViewEvent(message)
+			if !handled && handleErr == nil {
+				handleErr = handlers.UIEvent(message)
+			}
 			kind, data = UIResponse, data[:0]
 		case ActionInvoke:
 			if !active || handlers.Action == nil {

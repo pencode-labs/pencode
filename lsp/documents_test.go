@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -90,5 +91,22 @@ func TestConfigurationSections(t *testing.T) {
 	}
 	if got := string(configurationSection(config, "missing")); got != "null" {
 		t.Fatal(got)
+	}
+}
+
+var benchmarkChange Range
+var benchmarkReplacement string
+
+func BenchmarkIncrementalTail(b *testing.B) {
+	for _, size := range []int{64 << 10, 512 << 10, 2 << 20} {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			line := "let value = 42; // 中文🙂\n"
+			old := strings.Repeat(line, size/len(line))
+			next := old + "x"
+			b.ReportAllocs()
+			for b.Loop() {
+				benchmarkChange, benchmarkReplacement = IncrementalChange(old, next, UTF16)
+			}
+		})
 	}
 }

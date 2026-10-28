@@ -34,7 +34,7 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 		t.Helper()
 		viewport := editorContextBounds(t, model, treeRowID(project.Path))
 		scroll := module.ContentRef[scene.UIScroll](world, project.tree.area)
-		for i, index := range project.visibleTreeRows() {
+		for i, index := range project.visibleTreeRows(model) {
 			if i < project.tree.first || i >= project.tree.end {
 				continue
 			}

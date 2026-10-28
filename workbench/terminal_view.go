@@ -41,6 +41,8 @@ type pencodeTerminalView struct {
 }
 
 func (m *workspaceModel) renderTerminal(view *htmlui.View) {
+	view.Attr("status-terminal", "title", m.shortcutTitle("切换终端", "terminal-toggle"))
+	view.Attr("terminal-new", "title", m.shortcutTitle("新建终端", "terminal-new"))
 	active := m.bottom.active == pencodePanelTerminal
 	view.Attr("status-terminal", "aria-expanded", boolAttribute(active))
 	setPanelVisible(view, "terminal-pane", active)

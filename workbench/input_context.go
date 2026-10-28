@@ -129,18 +129,18 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 			changed = true
 		}
 		if c.open {
-			if state.KeyPressed(input.KeyEnter) || state.KeyPressed(input.KeySpace) {
+			if m.uiKey(state, input.KeyEnter) || m.uiKey(state, input.KeySpace) {
 				c.activate = true
 				return true, true
 			}
-			if state.KeyPressed(input.KeyEscape) || state.KeyPressed(input.KeyTab) {
+			if m.uiKey(state, input.KeyEscape) || m.uiKey(state, input.KeyTab) {
 				c.open, c.restore = false, true
 				return true, true
 			}
 			step := 0
-			if state.KeyPressed(input.KeyDown) {
+			if m.uiKey(state, input.KeyDown) {
 				step = 1
-			} else if state.KeyPressed(input.KeyUp) {
+			} else if m.uiKey(state, input.KeyUp) {
 				step = -1
 			}
 			if step != 0 {

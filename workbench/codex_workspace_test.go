@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/ecs"
+	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
@@ -39,6 +40,13 @@ func TestCodexWorkspaceFollowsActiveProject(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
 	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
 	t.Setenv("PENCODE_CODEX_HISTORY_PROJECTS", "1")
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexModelMenuReopensDuringDismissalUpdate(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
+	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
+	t.Setenv("PENCODE_CODEX_MODEL_MENU", "1")
 	testCodexStatusBarWorkspace(t, "")
 }
 
@@ -144,6 +152,41 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		})
 		return id
 	}
+	if os.Getenv("PENCODE_CODEX_MODEL_MENU") == "1" {
+		modelID := waitControl(surface, "model-settings")
+		for range 3 {
+			editorContextClick(t, app, model, state, modelID)
+			wait(func() bool {
+				return model.actions.ui.overlay != nil && strings.Contains(surface.view.HTML, `aria-label="选择模型" aria-expanded="true"`)
+			})
+			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: 8, Y: 850})
+			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: 8, Y: 850})
+			languageInteractionStep(t, app)
+			if model.actions.ui.overlay != nil {
+				t.Fatal("outside click did not dismiss the model menu")
+			}
+			// The close publication can arrive between pressing the button again
+			// and releasing it. The native click target must survive that update.
+			r := editorContextBounds(t, model, modelID)
+			scale := float64(model.settings.Zoom) / 100
+			x, y := float64(r.X+r.Width/2)*scale, float64(r.Y+r.Height/2)*scale
+			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			wait(func() bool {
+				return strings.Contains(surface.view.HTML, `aria-label="选择模型" aria-expanded="false"`)
+			})
+			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			wait(func() bool { return model.actions.ui.overlay != nil && model.actions.ui.overlay.ui.ID == "models" })
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
+			languageInteractionStep(t, app)
+			wait(func() bool {
+				return model.actions.ui.overlay == nil && strings.Contains(surface.view.HTML, `aria-label="选择模型" aria-expanded="false"`)
+			})
+		}
+		return
+	}
 	if startupGate != "" {
 		for range 2 {
 			waitControl(surface, "prompt")
@@ -166,6 +209,23 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 	if os.Getenv("PENCODE_CODEX_HISTORY_PROJECTS") == "1" {
 		first := model.activeProjectState()
 		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/`+first.Path+`/saved"`) })
+		// Exercise the actual hover target and mouse click, not just the binding.
+		renameID := waitControl(surface, "rename/"+first.Path+"/saved")
+		row := editorContextBounds(t, model, waitControl(surface, "history/"+first.Path+"/saved"))
+		scale := float64(model.settings.Zoom) / 100
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(row.X+12) * scale, Y: float64(row.Y+row.Height/2) * scale})
+		languageInteractionStep(t, app)
+		edit := editorContextBounds(t, model, renameID)
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(edit.X+edit.Width/2) * scale, Y: float64(edit.Y+edit.Height/2) * scale})
+		languageInteractionStep(t, app)
+		editorContextClick(t, app, model, state, renameID)
+		wait(func() bool { return model.actions.ui.overlay != nil && model.actions.ui.overlay.ui.ID == "rename" })
+		if edit.Width != 20 || edit.Height != 20 || math.Abs(float64(edit.Y+edit.Height/2-row.Y-row.Height/2)) > 1 {
+			t.Fatalf("rename button must be a centered 20px square: row=%+v edit=%+v", row, edit)
+		}
+		rename := model.actions.ui.overlay
+		editorContextClick(t, app, model, state, waitControl(rename, "rename-cancel"))
+		wait(func() bool { return model.actions.ui.overlay == nil })
 		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "first project draft"}, "")
 		second := &pencodeProject{Path: t.TempDir(), Name: "Second project", Files: make(map[string]*openFile)}
 		model.projects = append(model.projects, second)

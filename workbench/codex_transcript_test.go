@@ -99,7 +99,7 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 			currentTree, ok := w.HTMLNode(m.surface, m.projectTreeRowID(m.activeProjectState(), "main.go"))
 			currentTreeRender, _ := module.ContentGet[htmlui.Control](w, treeControl)
 			if currentTreeRender.RenderRevision != treeRender.RenderRevision {
-				t.Fatalf("tree control refreshed: %d -> %d", treeRender.RenderRevision, currentTreeRender.RenderRevision)
+				t.Fatalf("tree control refreshed on toggle %d frame %d: %d -> %d", toggle, frame, treeRender.RenderRevision, currentTreeRender.RenderRevision)
 			}
 			if currentRoot.State.Revision != root.State.Revision || currentEditor.RenderRevision != editor.RenderRevision || !ok || currentTree != tree {
 				t.Fatalf("activity toggle refreshed workbench on toggle %d frame %d: root %d -> %d, editor %d -> %d, tree retained %t", toggle, frame, root.State.Revision, currentRoot.State.Revision, editor.RenderRevision, currentEditor.RenderRevision, ok && currentTree == tree)

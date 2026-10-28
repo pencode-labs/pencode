@@ -39,8 +39,8 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 		}
 	}
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}, Directory: directory}
-	session.connection.links[profile.SSH] = &pencodeSSHLink{backend: model.backend, profile: profile}
-	model.openSSHProject(profile)
+	session.connection.links[profile.Endpoint()] = &pencodeRemoteLink{backend: model.backend, profile: profile}
+	model.openRemoteProject(profile)
 	waitProjectPicker(t, model)
 	step := func() {
 		t.Helper()
@@ -127,8 +127,8 @@ func TestProjectPickerLatestInputWinsAndCachedFilteringDoesNotAllocate(t *testin
 		}
 	}
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}, Directory: directory}
-	s.connection.links[profile.SSH] = &pencodeSSHLink{backend: project.backend, profile: profile}
-	model.openSSHProject(profile)
+	s.connection.links[profile.Endpoint()] = &pencodeRemoteLink{backend: project.backend, profile: profile}
+	model.openRemoteProject(profile)
 	// Leave the initial result unpolled while more input arrives.
 	model.connectionEvent("connection-project-path", directory+"/missing/n")
 	model.connectionEvent("connection-project-path", directory+"/app/ne")
@@ -176,7 +176,7 @@ func TestSSHProjectPickerRequiresSelectionAndKeepsCurrentWorkspace(t *testing.T)
 	t.Cleanup(s.Close)
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}, Directory: project.Path}
 	s.connection.workspaceProfile = profile
-	s.connection.links[profile.SSH] = &pencodeSSHLink{backend: project.backend, profile: profile}
+	s.connection.links[profile.Endpoint()] = &pencodeRemoteLink{backend: project.backend, profile: profile}
 	model.chooseProject()
 	waitProjectPicker(t, model)
 	p := &s.connection.picker
@@ -203,7 +203,7 @@ func TestSSHProjectPickerRequiresSelectionAndKeepsCurrentWorkspace(t *testing.T)
 	if err := savePencodeFile(project.backend, project.Path, file); err != nil {
 		t.Fatalf("browsing retired the open document: %v", err)
 	}
-	model.openSSHProject(profile)
+	model.openRemoteProject(profile)
 	waitProjectPicker(t, model)
 	model.browseProjectDirectory(p.path + "/nested")
 	waitProjectPicker(t, model)
@@ -230,11 +230,11 @@ func TestSSHProjectPickerDismissRestoresConnectionVisibility(t *testing.T) {
 	s.ConfigureConnection(nil, connection.Profile{})
 	t.Cleanup(s.Close)
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}, Directory: project.Path}
-	s.connection.links[profile.SSH] = &pencodeSSHLink{backend: project.backend, profile: profile}
+	s.connection.links[profile.Endpoint()] = &pencodeRemoteLink{backend: project.backend, profile: profile}
 	for _, visible := range []bool{false, true} {
 		for _, action := range []string{"connection-project-cancel", "connection-project-close", "escape"} {
 			s.connection.open = visible
-			model.openSSHProject(profile)
+			model.openRemoteProject(profile)
 			if action == "escape" {
 				state := input.NewState()
 				state.PressKey(input.KeyEscape)
@@ -266,11 +266,11 @@ func TestSSHProjectPickerCancelAndFailureKeepLocalBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}, Directory: directory}
-	s.connection.links[profile.SSH] = &pencodeSSHLink{backend: backend, profile: profile}
-	model.openSSHProject(profile)
+	s.connection.links[profile.Endpoint()] = &pencodeRemoteLink{backend: backend, profile: profile}
+	model.openRemoteProject(profile)
 	// Cancellation also drains an in-flight request before the picker is reused.
 	model.connectionEvent("connection-project-cancel", "")
-	model.openSSHProject(profile)
+	model.openRemoteProject(profile)
 	waitProjectPicker(t, model)
 	p := &s.connection.picker
 	model.connectionEvent("connection-project-path", directory+"/missing")
@@ -308,8 +308,8 @@ func TestSSHProjectPickerSwitchesLauncherBackendOnlyOnConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}}
-	s.connection.links[profile.SSH] = &pencodeSSHLink{backend: backend, profile: profile}
-	model.openSSHProject(profile)
+	s.connection.links[profile.Endpoint()] = &pencodeRemoteLink{backend: backend, profile: profile}
+	model.openRemoteProject(profile)
 	waitProjectPicker(t, model)
 	p := &s.connection.picker
 	if p.path != filepath.ToSlash(directory) || s.backend != local || model.backend != local || len(model.projects) != 0 {

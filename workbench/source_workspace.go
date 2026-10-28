@@ -849,7 +849,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.State, goos string) (bool, bool) {
 	s := m.sourceState()
 	if s.modal() {
-		if state.KeyPressed(input.KeyEscape) {
+		if m.uiKey(state, input.KeyEscape) {
 			s.Prompt, s.Notice = "", ""
 			s.FocusedModal, s.FocusedTab = "", ""
 			return true, true
@@ -862,12 +862,11 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	if s.RepositoryMenuOpen {
 		return true, m.sourceRepositoryShortcut(state)
 	}
-	if state.KeyPressed(input.KeyEscape) && s.MenuOpen {
+	if m.uiKey(state, input.KeyEscape) && s.MenuOpen {
 		s.MenuOpen = false
 		return true, true
 	}
-	if m.bottom.active == pencodePanelSourceControl && !s.MessageMultiline && !s.busy() && state.KeyPressed(input.KeyEnter) &&
-		(state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)) {
+	if m.bottom.active == pencodePanelSourceControl && !s.MessageMultiline && !s.busy() && m.commandMatches("source-newline", state, goos) {
 		if entity, ok := world.HTMLControl(m.surface, "sc-message"); ok {
 			if field, ok := module.ContentGet[engineui.TextField](world, entity); ok && field.Focused {
 				start, end := min(field.Anchor, field.Caret), max(field.Anchor, field.Caret)

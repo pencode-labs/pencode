@@ -160,8 +160,10 @@ func PositionAt(text string, offset int, encoding PositionEncoding) (Position, e
 	if offset > 0 && offset < len(text) && text[offset-1] == '\r' && text[offset] == '\n' {
 		return Position{}, fmt.Errorf("lsp: byte offset splits CRLF: %d", offset)
 	}
-	var p Position
-	for i := 0; i < offset; {
+	prefix := text[:offset]
+	p := Position{Line: strings.Count(prefix, "\n")}
+	start := strings.LastIndexByte(prefix, '\n') + 1
+	for i := start; i < offset; {
 		r, size := utf8.DecodeRuneInString(text[i:])
 		if r == '\n' {
 			p.Line++

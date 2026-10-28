@@ -13,6 +13,70 @@ import (
 	"github.com/pencode-labs/pencode/server/extensionhost"
 )
 
+func TestContributedDebugAdapterUsesStdioAndIsRevoked(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses a POSIX shell")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	directory := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(directory, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	launcher := filepath.Join(directory, "bin", "launcher")
+	if err := os.WriteFile(launcher, []byte("#!/bin/sh\nprintf '%s|%s\\n' \"$1\" \"$2\"\nexec /bin/cat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newServices(ctx, Options{ExtensionDirectory: directory})
+	defer s.close()
+	s.roots[directory] = true
+	lifetime, revoke := context.WithCancel(ctx)
+	s.extensions.entries[1] = &extensionEntry{root: root, committed: true, ctx: lifetime, cancel: revoke, registration: extensionhost.Registration{
+		Info:          extensionhost.Installed{Path: directory},
+		Contributions: peb.Contributions{DebugAdapters: []peb.DebugAdapter{{ID: "Xdebug", Label: "PHP", Command: "bin/launcher", Args: []string{"prefix with spaces"}}}},
+	}}
+	var request, response protocol.Encoder
+	request.String("Xdebug")
+	request.String("")
+	request.String("")
+	request.U32(1)
+	request.String("user argument")
+	d := protocol.Decoder{Buffer: request.Buffer}
+	if err := s.openDebugAdapter(ctx, directory, &d, &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.streams) != 2 {
+		t.Fatal("expected data and stderr streams", len(s.streams))
+	}
+	d = protocol.Decoder{Buffer: response.Buffer}
+	stream := s.streams[d.U64()]
+	if stream == nil || stream.extension != 1 {
+		t.Fatal("stream is not owned by the extension", stream)
+	}
+	want := "prefix with spaces|user argument\n"
+	var data protocol.Encoder
+	if err := stream.read(ctx, &data); err != nil {
+		t.Fatal(err)
+	}
+	d = protocol.Decoder{Buffer: data.Buffer}
+	d.U32()
+	if got := string(d.Bytes()); got != want || d.Done() != nil {
+		t.Fatal("adapter arguments or stdio changed", got, d.Done())
+	}
+	s.extensions.mu.Lock()
+	s.extensions.remove(1, s.extensions.entries[1])
+	s.extensions.mu.Unlock()
+	select {
+	case <-stream.done:
+	case <-ctx.Done():
+		t.Fatal("disabled extension did not close its adapter")
+	}
+}
+
 func TestDisablingExtensionCancelsAdapterStartup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses a POSIX shell")

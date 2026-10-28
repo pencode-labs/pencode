@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type pencodeFileContext struct {
 	depth, index                      int
 	x, y                              float32
 	open, needsFocus                  bool
+	pending                           bool
 	dialog, name, title, message, err string
 }
 
@@ -30,12 +32,50 @@ type pencodeFileClipboard struct {
 	cut     bool
 }
 
+func (c *pencodeFileContext) inline() bool {
+	return c.dialog == "new-file" || c.dialog == "new-folder"
+}
+
+func (model *workspaceModel) renderFileCreation(view *htmlui.View) {
+	c := &model.fileContext
+	view.Attr("create", "style", fmt.Sprintf("padding-left:%dpx", 36+c.depth*16))
+	icon := treeIcon(&treeProps{Model: model, Name: c.name, IsDir: c.dialog == "new-folder"})
+	view.Attr("create-icon", "src", model.themedIcon(icon, "icon.foreground"))
+	view.Attr("create-name", "value", c.name)
+	label := "新建文件"
+	if c.dialog == "new-folder" {
+		label = "新建文件夹"
+	}
+	view.Attr("create-name", "aria-label", label)
+	view.Attr("create-name", "aria-invalid", boolAttribute(c.err != ""))
+	if c.pending {
+		view.Attr("create-name", "disabled", "")
+	} else {
+		view.RemoveAttr("create-name", "disabled")
+	}
+	view.Event("create-name", htmlui.EventInput)
+	view.Text("create-error", c.err)
+	if c.err == "" {
+		view.Attr("create-error", "hidden", "")
+	} else {
+		view.RemoveAttr("create-error", "hidden")
+	}
+}
+
 var pencodeFileContextRefs = [...]string{
 	"file-context-open", "file-context-new-file", "file-context-new-folder",
 	"file-context-find",
 	"file-context-cut", "file-context-copy", "file-context-paste",
 	"file-context-copy-path", "file-context-copy-relative", "file-context-rename", "file-context-delete", "file-context-refresh",
 }
+
+var pencodeFileContextHints = func() [len(pencodeFileContextRefs)]struct{ ref string } {
+	var hints [len(pencodeFileContextRefs)]struct{ ref string }
+	for i, ref := range pencodeFileContextRefs {
+		hints[i].ref = ref + "-shortcut"
+	}
+	return hints
+}()
 
 func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 	c := &model.fileContext
@@ -46,8 +86,10 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 		if c.directory {
 			label = "展开 / 折叠"
 		}
-		view.Text("file-context-open", label)
+		view.Text("file-context-open-label", label)
 		for i, ref := range pencodeFileContextRefs {
+			model.ensureSettings()
+			view.Text(pencodeFileContextHints[i].ref, model.settings.Bindings[pencodeFileContextRefs[i]].label(runtime.GOOS))
 			view.Event(ref, htmlui.EventClick)
 			class := ""
 			if i == c.index {
@@ -59,7 +101,7 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 	} else {
 		view.Attr("file-context", "hidden", "")
 	}
-	if c.dialog == "" {
+	if c.dialog == "" || c.inline() {
 		view.Attr("file-dialog", "hidden", "")
 		return
 	}
@@ -111,6 +153,18 @@ func (model *workspaceModel) updateFileContext(world *module.Content, state *inp
 		return true
 	}
 	if c.dialog != "" {
+		if c.inline() && !c.needsFocus && !c.pending && state.MousePressed(input.MouseLeft) {
+			pointer := state.Pointer()
+			zoom := max(float32(model.settings.Zoom)/100, .01)
+			if !model.pointerInsideRefs(world, pointer.X/zoom, pointer.Y/zoom, []string{"file-tree-create"}) {
+				if strings.TrimSpace(c.name) == "" {
+					*c = pencodeFileContext{}
+				} else {
+					model.submitFileDialog(world)
+				}
+				return true
+			}
+		}
 		return false
 	}
 	pointer := state.Pointer()
@@ -143,7 +197,7 @@ func (model *workspaceModel) updateFileContext(world *module.Content, state *inp
 	}
 	bounds, _ := root.Bounds()
 	*c = pencodeFileContext{project: project, path: relative, directory: directory, depth: depth, open: true,
-		x: max(4, min(x-bounds.X, bounds.Width-244)), y: max(4, min(y-bounds.Y, bounds.Height-367))}
+		x: max(4, min(x-bounds.X, bounds.Width-276)), y: max(4, min(y-bounds.Y, bounds.Height-367))}
 	model.lastFileClick = 0
 	return true
 }
@@ -160,6 +214,9 @@ func (model *workspaceModel) fileContextTarget(world *module.Content, x, y float
 func (model *workspaceModel) fileTreeTarget(world *module.Content, x, y float32) (*pencodeProject, string, bool, int) {
 	for _, access := range module.ContentQuery[htmlui.Component[treeProps, struct{}]](world) {
 		props := access.Get().Props
+		if props.Editing {
+			continue
+		}
 		id := props.RowID
 		node, ok := world.HTMLNode(model.surface, id)
 		if !ok {
@@ -213,6 +270,9 @@ func (model *workspaceModel) focusFileContext(world *module.Content) {
 		return
 	}
 	ref := "file-dialog-name"
+	if c.inline() {
+		ref = "file-tree-name"
+	}
 	if c.dialog == "delete" {
 		ref = "file-dialog-cancel"
 	}
@@ -235,25 +295,39 @@ func (model *workspaceModel) focusFileContext(world *module.Content) {
 	}
 }
 
-func (model *workspaceModel) handleFileContextKeys(world *module.Content, state *input.State) bool {
+func (model *workspaceModel) handleFileContextKeys(world *module.Content, state *input.State, goos string) bool {
 	c := &model.fileContext
-	if state.KeyPressed(input.KeyEscape) {
+	if model.uiKey(state, input.KeyEscape) {
 		*c = pencodeFileContext{}
 		return true
 	}
 	if c.dialog != "" {
-		if c.dialog != "delete" && state.KeyPressed(input.KeyEnter) {
+		if c.dialog != "delete" && model.uiKey(state, input.KeyEnter) {
 			model.submitFileDialog(world)
+			return true
+		}
+		if c.inline() && model.uiKey(state, input.KeyTab) {
+			if strings.TrimSpace(c.name) == "" {
+				*c = pencodeFileContext{}
+			} else {
+				model.submitFileDialog(world)
+			}
 			return true
 		}
 		return false
 	}
+	for _, ref := range pencodeFileContextRefs {
+		if model.commandMatches(ref, state, goos) {
+			model.handleFileContextEvent(world, ref, "")
+			return true
+		}
+	}
 	switch {
-	case state.KeyPressed(input.KeyDown):
+	case model.uiKey(state, input.KeyDown):
 		c.index = (c.index + 1) % len(model.fileContextRefs())
-	case state.KeyPressed(input.KeyUp):
+	case model.uiKey(state, input.KeyUp):
 		c.index = (c.index + len(model.fileContextRefs()) - 1) % len(model.fileContextRefs())
-	case state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeySpace):
+	case model.uiKey(state, input.KeyEnter), model.uiKey(state, input.KeySpace):
 		model.handleFileContextEvent(world, model.fileContextRefs()[c.index], "")
 	default:
 		return false
@@ -267,6 +341,9 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 	}
 	c := &model.fileContext
 	if c.dialog != "" {
+		if c.inline() {
+			return false
+		}
 		switch ref {
 		case "file-dialog-name":
 			c.name, c.err = value, ""
@@ -290,11 +367,25 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 		model.openFolderSearch(project, model.fileContextDirectory(), false)
 	case "new-file", "new-folder", "rename", "delete":
 		c.dialog, c.needsFocus, c.err, c.name = action, true, "", ""
+		if c.inline() {
+			c.path, c.directory = model.fileContextDirectory(), true
+			if c.path == "." {
+				c.path = ""
+			}
+			c.depth = 0
+			project.Collapsed = false
+			if project.ExpandedDirs == nil {
+				project.ExpandedDirs = make(map[string]bool)
+			}
+			for parent := c.path; parent != "" && parent != "."; parent = path.Dir(parent) {
+				project.ExpandedDirs[parent] = true
+				c.depth++
+			}
+			project.tree.revision++
+			model.revealProject, model.revealPath = nil, ""
+			break
+		}
 		switch action {
-		case "new-file":
-			c.title = "新建文件"
-		case "new-folder":
-			c.title = "新建文件夹"
 		case "rename":
 			c.title = "重命名"
 		case "delete":
@@ -350,8 +441,16 @@ func (model *workspaceModel) fileContextDirectory() string {
 
 func (model *workspaceModel) submitFileDialog(world *module.Content) {
 	c := &model.fileContext
+	if c.pending {
+		return
+	}
 	if err := model.applyFileDialog(); err != nil {
 		c.err = err.Error()
+		c.needsFocus = true
+		return
+	}
+	if c.inline() {
+		c.pending = true
 		return
 	}
 	*c = pencodeFileContext{}

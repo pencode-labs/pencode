@@ -3,6 +3,7 @@ package workbench
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -69,6 +70,8 @@ type pencodeExtensionSurface struct {
 	styles                         *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
 	view                           *peb.EditorView
 	regions                        []pencodeExtensionRegion
+	tree                           *dom.Node
+	expanded                       []pencodeExtensionExpanded
 	theme                          *pencodeTheme
 	bindings                       []peb.EditorBinding
 	focus                          []pencodeExtensionFocus
@@ -244,9 +247,38 @@ func (model *workspaceModel) extensionUIAnchor(owner, anchor string) (string, er
 }
 
 func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
-	template, regions, err := splitExtensionRegions(view.HTML)
+	template, expanded, err := splitExtensionExpanded(view.HTML)
 	if err != nil {
 		return err
+	}
+	template, regions, err := splitExtensionRegions(template)
+	if err != nil {
+		return err
+	}
+	previous := make(map[string]*pencodeExtensionRegion, len(s.regions))
+	for i := range s.regions {
+		previous[s.regions[i].ref] = &s.regions[i]
+	}
+	trees := make(map[string]*dom.Node, len(regions))
+	for i := range regions {
+		r := &regions[i]
+		if old := previous[r.ref]; old != nil && old.html == r.html {
+			r.tree = old.tree
+		}
+		if r.tree == nil {
+			r.tree, err = dom.Parse(r.html)
+			if err != nil {
+				return err
+			}
+		}
+		trees[r.ref] = r.tree
+	}
+	tree := s.tree
+	if tree == nil || s.definition.Template.Source != template {
+		tree, err = dom.Parse(template)
+		if err != nil {
+			return err
+		}
 	}
 	replace := s.definition == nil || s.definition.Template.Source != template || s.view.CSS != view.CSS || s.theme != s.model.workbenchTheme
 	if replace && s.ui.Kind == peb.EditorTab && s.live() && s.model.fontResources != nil {
@@ -273,7 +305,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	scrolls := make([]pencodeExtensionScroll, 0, len(s.scrolls))
 	followsOutput := false
 	fill := false
-	if err := validateExtensionView(view, func(node *dom.Node, hidden bool) {
+	if err := validateExtensionTree(view, tree, trees, func(node *dom.Node, hidden bool) {
 		if name, ok := node.Attr("data-pencode-icon"); ok {
 			ref, _ := node.Attr("data-ref")
 			source := "icons/" + name + ".svg"
@@ -354,6 +386,9 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	behavior := htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{
 		Render: func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], target *htmlui.View) {
 			surface := c.Props.Surface
+			for _, state := range surface.expanded {
+				target.Attr(state.ref, "aria-expanded", state.value)
+			}
 			for _, icon := range surface.icons {
 				target.Attr(icon.ref, "src", surface.model.themedIcon(icon.source, "icon.foreground"))
 			}
@@ -374,9 +409,6 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			}
 			for _, binding := range surface.bindings {
 				target.Event(binding.Ref, htmlui.EventKind(binding.Kind))
-			}
-			for _, region := range surface.regions {
-				htmlui.AppendComponentChild(target, region.ref, componentKey(region.ref), region.definition, *c.Props, struct{}{})
 			}
 		},
 		HandleEvent: func(c *htmlui.ComponentEventContext[pencodeExtensionSurfaceProps, struct{}]) {
@@ -429,16 +461,11 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	}
 	for i := range regions {
 		region := &regions[i]
-		if s.theme == s.model.workbenchTheme && s.view != nil && s.view.CSS == view.CSS {
-			for _, previous := range s.regions {
-				if region.ref == previous.ref && region.html == previous.html {
-					region.definition = previous.definition
-					break
-				}
-			}
+		if old := previous[region.ref]; old != nil && old.html == region.html && s.theme == s.model.workbenchTheme && s.view.CSS == view.CSS {
+			region.definition = old.definition
 		}
 		if region.definition == nil {
-			region.definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(region.html), behavior)
+			region.definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(strings.Clone(region.html)), behavior)
 			if err != nil {
 				return err
 			}
@@ -446,7 +473,14 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	}
 	definition := s.definition
 	if replace {
-		definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(template), behavior)
+		outer := behavior
+		outer.Render = func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], target *htmlui.View) {
+			behavior.Render(c, target)
+			for _, region := range c.Props.Surface.regions {
+				htmlui.AppendComponentChild(target, region.ref, componentKey(region.ref), region.definition, *c.Props, struct{}{})
+			}
+		}
+		definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(template), outer)
 		if err != nil {
 			return err
 		}
@@ -463,6 +497,8 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 		s.inputID, s.inputValue = "", ""
 	}
 	s.definition, s.bindings, s.focus, s.regions = definition, view.Events, focus, regions
+	s.tree = tree
+	s.expanded = expanded
 	s.styles = styles
 	s.focusTargets, s.icons = focusTargets, icons
 	s.view, s.theme = view, s.model.workbenchTheme
@@ -947,7 +983,7 @@ func (model *workspaceModel) updateExtensionUI(world *module.Content, state *inp
 		}
 	}
 	if s == nil {
-		if model.bottom.active == pencodePanelExtension && model.actions.ui.panel != nil && state.KeyPressed(input.KeyEscape) && !state.Composing() {
+		if model.bottom.active == pencodePanelExtension && model.actions.ui.panel != nil && model.uiKey(state, input.KeyEscape) && !state.Composing() {
 			model.closeExtensionSurface(model.actions.ui.panel, "escape", true)
 			return true, true
 		}
@@ -970,18 +1006,18 @@ func (model *workspaceModel) updateExtensionUI(world *module.Content, state *inp
 	if nonmodal && !s.ownsFocus(world) {
 		return false, false
 	}
-	if state.KeyPressed(input.KeyEscape) && !state.Composing() {
+	if model.uiKey(state, input.KeyEscape) && !state.Composing() {
 		model.closeExtensionSurface(s, "escape", true)
 		return true, true
 	}
-	if !nonmodal && (state.KeyPressed(input.KeyTab) || s.ui.Kind == peb.ContextMenu && (state.KeyPressed(input.KeyDown) || state.KeyPressed(input.KeyUp))) {
+	if !nonmodal && (model.uiKey(state, input.KeyTab) || s.ui.Kind == peb.ContextMenu && (model.uiKey(state, input.KeyDown) || model.uiKey(state, input.KeyUp))) {
 		count := len(s.focus)
 		if s.ui.Kind == peb.Dialog {
 			count++
 		}
 		if count > 0 {
 			step := 1
-			if state.KeyPressed(input.KeyUp) || state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift) {
+			if model.uiKey(state, input.KeyUp) || model.commandMatches("ui-focus-previous", state, runtime.GOOS) {
 				step = -1
 			}
 			for range count {
@@ -1039,8 +1075,7 @@ func (s *pencodeExtensionSurface) interceptKeys(state *input.State) bool {
 	if !s.live() || state.Composing() {
 		return false
 	}
-	if state.KeyPressed(input.KeyEnter) && !state.KeyPressedDuringComposition(input.KeyEnter) &&
-		!state.KeyHeld(input.KeyLeftShift) && !state.KeyHeld(input.KeyRightShift) {
+	if s.model.commandMatches("extension-submit", state, runtime.GOOS) && !state.KeyPressedDuringComposition(input.KeyEnter) {
 		world := s.model.fontResources
 		control := world.FocusedControl()
 		for _, f := range s.focus {
@@ -1081,5 +1116,5 @@ func (s *pencodeExtensionSurface) interceptKeys(state *input.State) bool {
 	if s.ui.Kind == peb.Panel || s.ui.Kind == peb.EditorTab {
 		return false
 	}
-	return state.KeyPressed(input.KeyEscape) || s.ui.Kind != peb.Popup && s.ui.Kind != peb.Notification && state.KeyPressed(input.KeyTab) || s.ui.Kind == peb.ContextMenu && (state.KeyPressed(input.KeyUp) || state.KeyPressed(input.KeyDown))
+	return s.model.uiKey(state, input.KeyEscape) || s.ui.Kind != peb.Popup && s.ui.Kind != peb.Notification && s.model.uiKey(state, input.KeyTab) || s.ui.Kind == peb.ContextMenu && (s.model.uiKey(state, input.KeyUp) || s.model.uiKey(state, input.KeyDown))
 }

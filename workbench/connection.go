@@ -30,7 +30,7 @@ type pencodeConnectionProject struct {
 	files   []*openFile
 }
 
-type pencodeSSHLink struct {
+type pencodeRemoteLink struct {
 	profile     connection.Profile
 	backend     *client.Client
 	watchCancel context.CancelFunc
@@ -57,7 +57,7 @@ type pencodeConnectionResult struct {
 
 type pencodeConnection struct {
 	picker              pencodeProjectPicker
-	links               map[remote.Target]*pencodeSSHLink
+	links               map[connection.Endpoint]*pencodeRemoteLink
 	workspaceProfile    connection.Profile
 	restoring           bool
 	passwordFocus       bool
@@ -68,6 +68,8 @@ type pencodeConnection struct {
 	profile, form       connection.Profile
 	profiles            []connection.Profile
 	port                string
+	webSocket           bool
+	typeOptions         [2]htmlui.VNode
 	open, formOpen      bool
 	busy, launch        bool
 	edit                int
@@ -79,6 +81,7 @@ type pencodeConnection struct {
 	message             string
 	messageError        bool
 	namespace           string
+	recentProject       string
 	results             chan pencodeConnectionResult
 	progress            chan string
 	cancel, watchCancel context.CancelFunc
@@ -89,7 +92,7 @@ func (c *pencodeConnection) setMessage(message string, failed bool) {
 	c.message, c.messageError = message, failed
 }
 
-// ConfigureConnection enables the shared local/SSH lifecycle. Tests may inject
+// ConfigureConnection enables the shared local/remote lifecycle. Tests may inject
 // a dial function without spawning an editor or using an external host.
 func (s *Session) ConfigureConnection(dial func(context.Context, connection.Profile, func(string)) (*client.Client, error), initial connection.Profile) {
 	profiles := connection.LoadProfiles(connection.ProfilePath())
@@ -98,8 +101,9 @@ func (s *Session) ConfigureConnection(dial func(context.Context, connection.Prof
 		form = initial
 	}
 	s.connection = &pencodeConnection{dial: dial, form: form, profiles: profiles, edit: -1, menu: -1, launch: initial.Remote(),
-		results: make(chan pencodeConnectionResult, 1), progress: make(chan string, 1),
-		links: make(map[remote.Target]*pencodeSSHLink), passwords: make(chan *pencodeAuthenticationRequest, 1)}
+		webSocket: initial.WebSocket.Address != "",
+		results:   make(chan pencodeConnectionResult, 1), progress: make(chan string, 1),
+		links: make(map[connection.Endpoint]*pencodeRemoteLink), passwords: make(chan *pencodeAuthenticationRequest, 1)}
 	if form.SSH.Port != 0 {
 		s.connection.port = strconv.Itoa(int(form.SSH.Port))
 	}
@@ -211,7 +215,7 @@ func (model *workspaceModel) beginConnection(profile connection.Profile, retry b
 	}
 	c := s.connection
 	if profile.Remote() {
-		if err := profile.SSH.Validate(); err != nil {
+		if err := profile.Validate(); err != nil {
 			c.setMessage(err.Error(), true)
 			return
 		}
@@ -221,10 +225,10 @@ func (model *workspaceModel) beginConnection(profile connection.Profile, retry b
 	}
 	restore := !profile.Remote()
 	if profile.Remote() {
-		link := c.links[profile.SSH]
+		link := c.links[profile.Endpoint()]
 		if link == nil {
-			link = &pencodeSSHLink{profile: profile}
-			c.links[profile.SSH] = link
+			link = &pencodeRemoteLink{profile: profile}
+			c.links[profile.Endpoint()] = link
 		}
 		restore = s.backend == link.backend && link.backend != nil
 		if !retry {
@@ -379,21 +383,30 @@ func (model *workspaceModel) pollConnection() bool {
 		c.cancel, c.done, c.busy, c.restoring = nil, nil, false, false
 		model.clearConnectionPassword()
 		if result.err != nil {
+			c.recentProject = ""
 			c.setMessage("连接失败："+result.err.Error(), true)
 			c.open = true
-			model.logOutput("SSH", c.message)
+			model.logOutput("远程连接", c.message)
 			return true
 		}
 		if result.profile.Remote() {
-			link := c.links[result.profile.SSH]
+			link := c.links[result.profile.Endpoint()]
 			link.backend, link.profile = result.backend, result.profile
 			link.connectedAt, link.lostHandled = time.Now(), false
-			s.watchSSHLink(link, model.backgroundWake())
+			s.watchRemoteLink(link, model.backgroundWake())
 		}
 		if result.restore {
 			model.acceptConnection(result)
 		} else {
-			c.setMessage("SSH 已连接", false)
+			c.setMessage("远程服务已连接", false)
+		}
+		if directory := c.recentProject; directory != "" {
+			c.recentProject = ""
+			if result.profile.Remote() {
+				model.openRecentRemoteProject(result.profile, directory)
+			} else if err := model.loadProject(directory); err != nil {
+				model.status = err.Error()
+			}
 		}
 		return true
 	default:
@@ -411,7 +424,7 @@ func (model *workspaceModel) pollConnection() bool {
 				link.rapidLosses++
 				if link.rapidLosses > 3 {
 					link.lostHandled, c.open = true, true
-					c.setMessage("连接连续中断，已停止自动重连；请检查 SSH 后手动重连", true)
+					c.setMessage("连接连续中断，已停止自动重连；请检查远程服务后手动重连", true)
 				} else {
 					model.beginConnection(link.profile, true)
 				}
@@ -423,14 +436,14 @@ func (model *workspaceModel) pollConnection() bool {
 	if !c.busy && !c.lostHandled && s.backend != nil {
 		select {
 		case <-s.backend.Done():
-			model.logOutput("SSH", fmt.Sprintf("连接已断开：%v", s.backend.Err()))
+			model.logOutput("远程连接", fmt.Sprintf("连接已断开：%v", s.backend.Err()))
 			if time.Since(c.connectedAt) >= 30*time.Second {
 				c.rapidLosses = 0
 			}
 			c.rapidLosses++
 			if c.rapidLosses > 3 {
 				c.lostHandled, c.open = true, true
-				c.setMessage("连接连续中断，已停止自动重连；请检查 SSH 后手动重连", true)
+				c.setMessage("连接连续中断，已停止自动重连；请检查远程服务后手动重连", true)
 				model.retireConnection(true)
 				return true
 			}
@@ -540,7 +553,7 @@ func (model *workspaceModel) connectionConnected(profile connection.Profile) boo
 	if s == nil || s.connection == nil {
 		return false
 	}
-	link := s.connection.links[profile.SSH]
+	link := s.connection.links[profile.Endpoint()]
 	return link != nil && link.backend != nil && link.backend.Err() == nil && !link.lostHandled
 }
 
@@ -562,7 +575,7 @@ func renderPencodeConnection(c module.ContentRenderContext[pencodeConnectionProp
 	}
 	view.Attr("dot", "class", dotClass)
 	view.Text("name", p.Profile.Label())
-	view.Text("host", p.Profile.SSH.Host)
+	view.Text("host", p.Profile.Address())
 	view.Attr("project", "id", fmt.Sprintf("connection-project-%d", p.Index))
 	view.Attr("more", "id", fmt.Sprintf("connection-more-%d", p.Index))
 	view.Attr("more-icon", "src", p.Model.themedIcon("icons/ellipsis.svg", "icon.foreground"))
@@ -611,7 +624,7 @@ func handlePencodeConnection(c *module.ContentEventContext[pencodeConnectionProp
 	case "project":
 		manager.menu = -1
 		if p.Model.connectionConnected(p.Profile) {
-			p.Model.openSSHProject(p.Profile)
+			p.Model.openRemoteProject(p.Profile)
 		}
 	}
 	markPencodeRootDirtyByModel(c.World, p.Model)
@@ -619,7 +632,7 @@ func handlePencodeConnection(c *module.ContentEventContext[pencodeConnectionProp
 
 func (model *workspaceModel) retryConnection(profile connection.Profile) {
 	model.session.connection.rapidLosses = 0
-	if link := model.session.connection.links[profile.SSH]; link != nil {
+	if link := model.session.connection.links[profile.Endpoint()]; link != nil {
 		link.rapidLosses = 0
 	}
 	model.beginConnection(profile, true)
@@ -630,22 +643,35 @@ func (model *workspaceModel) saveConnectionForm() {
 	profile := c.form
 	profile.Name = strings.TrimSpace(profile.Name)
 	profile.SSH.Host = strings.TrimSpace(profile.SSH.Host)
+	if profile.Name == "" && c.webSocket {
+		profile.Name = strings.TrimSpace(profile.WebSocket.Address)
+	}
 	if profile.Name == "" {
 		c.setMessage("请输入显示名称", true)
 		return
 	}
-	port, err := strconv.ParseUint(strings.TrimSpace(c.port), 10, 16)
-	if strings.TrimSpace(c.port) == "" {
-		port, err = 0, nil
-	}
-	if err != nil || c.port != "" && port == 0 {
-		c.setMessage("SSH 端口必须在 1–65535 之间", true)
-		return
-	}
-	profile.SSH.Port = uint16(port)
-	if err := profile.SSH.Validate(); err != nil {
-		c.setMessage(err.Error(), true)
-		return
+	if c.webSocket {
+		profile.SSH = remote.Target{}
+		profile.WebSocket.Address = strings.TrimSpace(profile.WebSocket.Address)
+		if err := profile.WebSocket.Validate(); err != nil {
+			c.setMessage(err.Error(), true)
+			return
+		}
+	} else {
+		profile.WebSocket = remote.WebSocketTarget{}
+		port, err := strconv.ParseUint(strings.TrimSpace(c.port), 10, 16)
+		if strings.TrimSpace(c.port) == "" {
+			port, err = 0, nil
+		}
+		if err != nil || c.port != "" && port == 0 {
+			c.setMessage("SSH 端口必须在 1–65535 之间", true)
+			return
+		}
+		profile.SSH.Port = uint16(port)
+		if err := profile.SSH.Validate(); err != nil {
+			c.setMessage(err.Error(), true)
+			return
+		}
 	}
 	for index := range c.profiles {
 		if index != c.edit && c.profiles[index].Name == profile.Name {
@@ -669,10 +695,10 @@ func (model *workspaceModel) saveConnectionForm() {
 		return
 	}
 	c.profiles, c.form, c.formOpen, c.edit = profiles, profile, false, -1
-	c.setMessage("已保存 SSH 连接", false)
-	if link := c.links[previous.SSH]; link != nil && previous.SSH == profile.SSH {
+	c.setMessage("已保存远程连接", false)
+	if link := c.links[previous.Endpoint()]; link != nil && previous.Endpoint() == profile.Endpoint() {
 		link.profile = profile
-		if c.workspaceProfile.SSH == profile.SSH {
+		if c.workspaceProfile.Endpoint() == profile.Endpoint() {
 			c.workspaceProfile = profile
 		}
 	} else if active {
@@ -686,7 +712,7 @@ func (model *workspaceModel) removeConnection(index int, profile connection.Prof
 		return
 	}
 	if model.connectionConnected(profile) {
-		c.setMessage("请先退出连接，再删除此 SSH 连接", true)
+		c.setMessage("请先退出连接，再删除此远程连接", true)
 		return
 	}
 	profiles := make([]connection.Profile, len(c.profiles)-1)
@@ -697,7 +723,7 @@ func (model *workspaceModel) removeConnection(index int, profile connection.Prof
 		return
 	}
 	c.profiles = profiles
-	c.setMessage("已删除 SSH 连接", false)
+	c.setMessage("已删除远程连接", false)
 }
 
 func (model *workspaceModel) connectionEvent(ref, value string) bool {
@@ -722,6 +748,7 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 		switch ref {
 		case "connection-menu-edit":
 			c.form, c.formOpen, c.edit = profile, true, index
+			c.webSocket = profile.WebSocket.Address != ""
 			c.port = ""
 			if profile.SSH.Port != 0 {
 				c.port = strconv.Itoa(int(profile.SSH.Port))
@@ -735,7 +762,7 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 			}
 		case "connection-menu-disconnect":
 			if model.connectionConnected(profile) {
-				model.disconnectSSH(profile)
+				model.disconnectRemote(profile)
 			}
 		case "connection-menu-delete":
 			model.removeConnection(index, profile)
@@ -758,6 +785,7 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 		c.open, c.formOpen, c.menu = false, false, -1
 	case "connection-add":
 		c.form, c.port = connection.Profile{}, ""
+		c.webSocket = false
 		c.setMessage("", false)
 		c.formOpen, c.edit, c.menu = true, -1, -1
 	case "connection-form-close", "connection-form-cancel":
@@ -765,6 +793,13 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 		c.setMessage("", false)
 	case "connection-name":
 		c.form.Name = value
+	case "connection-type":
+		c.webSocket = value == "websocket"
+		c.setMessage("", false)
+	case "connection-address":
+		c.form.WebSocket.Address = value
+	case "connection-token":
+		c.form.WebSocket.Token = value
 	case "connection-host":
 		c.form.SSH.Host = value
 	case "connection-port":
@@ -814,7 +849,6 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	}
 	view.Attr("connection-panel", "class", panelClass)
 	view.Attr("connection-open", "title", "远程管理")
-	view.Attr("connection-open-icon", "src", model.themedIcon("icons/remote.svg", "icon.foreground"))
 	view.Attr("connection-close-icon", "src", model.themedIcon("icons/close.svg", "icon.foreground"))
 	view.Attr("connection-form-close-icon", "src", model.themedIcon("icons/close.svg", "icon.foreground"))
 	view.Text("connection-feedback", c.message)
@@ -885,15 +919,48 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	for _, field := range [...]struct{ ref, value string }{
 		{"connection-name", c.form.Name}, {"connection-host", c.form.SSH.Host}, {"connection-port", c.port},
 		{"connection-identity", c.form.SSH.IdentityFile}, {"connection-directory", c.form.Directory},
+		{"connection-address", c.form.WebSocket.Address}, {"connection-token", c.form.WebSocket.Token},
 	} {
 		view.Event(field.ref, htmlui.EventInput)
 		view.Attr(field.ref, "value", field.value)
 	}
+	view.Event("connection-type", htmlui.EventChange)
+	nameLabel := "显示名称"
+	if c.webSocket {
+		nameLabel = "显示名称（可选）"
+	}
+	view.Text("connection-name-label", nameLabel)
+	for _, field := range [...]struct {
+		ref  string
+		show bool
+	}{
+		{"connection-ssh-fields", !c.webSocket}, {"connection-websocket-fields", c.webSocket},
+	} {
+		if field.show {
+			view.RemoveAttr(field.ref, "hidden")
+		} else {
+			view.Attr(field.ref, "hidden", "")
+		}
+	}
+	if c.typeOptions[0].Tag == "" {
+		c.typeOptions = [2]htmlui.VNode{
+			appearanceOption(1, "ssh", "SSH", false),
+			appearanceOption(2, "websocket", "WebSocket 直连", false),
+		}
+	}
+	for i := range c.typeOptions {
+		option := &c.typeOptions[i]
+		option.Attributes = option.Attributes[:1]
+		if (i == 1) == c.webSocket {
+			option.Attributes = append(option.Attributes, htmlui.VNodeAttribute{Name: "selected"})
+		}
+	}
+	view.Keyed("connection-type", c.typeOptions[:])
 	if c.formOpen {
 		view.RemoveAttr("connection-form", "hidden")
-		title := "添加 SSH 连接"
+		title := "添加远程连接"
 		if c.edit >= 0 {
-			title = "编辑 SSH 连接"
+			title = "编辑远程连接"
 		}
 		view.Text("connection-form-title", title)
 	} else {
@@ -910,7 +977,7 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	}
 	for index := range c.profiles {
 		profile := c.profiles[index]
-		htmlui.AppendComponentChild(view, "connection-list", componentKey(profile.Name+"\x00"+profile.SSH.Host), definition,
+		htmlui.AppendComponentChild(view, "connection-list", componentKey(profile.Name+"\x00"+profile.Address()), definition,
 			pencodeConnectionProps{Model: model, Profile: profile, Index: index}, pencodeConnectionState{})
 	}
 	if len(c.profiles) == 0 {
@@ -922,7 +989,7 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	}
 }
 
-func (s *Session) watchSSHLink(link *pencodeSSHLink, wake func()) {
+func (s *Session) watchRemoteLink(link *pencodeRemoteLink, wake func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	link.watchCancel = cancel
 	backend := link.backend
@@ -948,9 +1015,9 @@ func (model *workspaceModel) clearConnectionPassword() {
 	}
 }
 
-func (model *workspaceModel) disconnectSSH(profile connection.Profile) {
+func (model *workspaceModel) disconnectRemote(profile connection.Profile) {
 	c := model.session.connection
-	link := c.links[profile.SSH]
+	link := c.links[profile.Endpoint()]
 	if link == nil {
 		return
 	}
@@ -970,11 +1037,11 @@ func (model *workspaceModel) disconnectSSH(profile connection.Profile) {
 		_ = link.backend.Close()
 		model.session.closeSettingsWriter(link.backend)
 	}
-	c.setMessage("SSH 已断开", false)
+	c.setMessage("远程服务已断开", false)
 }
 
 // Opening a project starts with a directory choice on the connected device.
-func (model *workspaceModel) openSSHProject(profile connection.Profile) {
+func (model *workspaceModel) openRemoteProject(profile connection.Profile) {
 	c := model.session.connection
 	if !model.connectionConnected(profile) {
 		return

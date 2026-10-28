@@ -3,6 +3,7 @@ package workbench
 import (
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
+	"runtime"
 )
 
 func (m *workspaceModel) portsShortcut(world *module.Content, state *input.State) (bool, bool) {
@@ -20,18 +21,16 @@ func (m *workspaceModel) portsShortcut(world *module.Content, state *input.State
 			return false, false
 		}
 		switch {
-		case state.KeyPressed(input.KeyEscape):
+		case m.uiKey(state, input.KeyEscape):
 			m.portEvent("ports-cancel", "")
-		case state.KeyPressed(input.KeyEnter):
+		case m.uiKey(state, input.KeyEnter):
 			m.commitPortEdit()
 		default:
 			return true, false
 		}
 		return true, true
 	}
-	if !state.KeyPressed(input.KeyUp) && !state.KeyPressed(input.KeyDown) && !state.KeyPressed(input.KeyDelete) && !state.KeyPressed(input.KeyBackspace) && !state.KeyPressed(input.KeyF2) && !state.KeyPressed(input.KeyEnter) && !state.KeyPressed(input.KeyC) {
-		return false, false
-	}
+
 	row := m.portRow(u.selected)
 	if row == nil {
 		return false, false
@@ -41,7 +40,7 @@ func (m *workspaceModel) portsShortcut(world *module.Content, state *input.State
 		return false, false
 	}
 	switch {
-	case state.KeyPressed(input.KeyUp), state.KeyPressed(input.KeyDown):
+	case m.uiKey(state, input.KeyUp), m.uiKey(state, input.KeyDown):
 		index := 0
 		for i := range u.rows {
 			if u.rows[i].key == u.selected {
@@ -49,7 +48,7 @@ func (m *workspaceModel) portsShortcut(world *module.Content, state *input.State
 				break
 			}
 		}
-		if state.KeyPressed(input.KeyUp) {
+		if m.uiKey(state, input.KeyUp) {
 			index = max(0, index-1)
 		} else {
 			index = min(len(u.rows)-1, index+1)
@@ -58,13 +57,13 @@ func (m *workspaceModel) portsShortcut(world *module.Content, state *input.State
 		if control, ok := world.HTMLControl(m.surface, portRowRef(u.rows[index])); ok {
 			world.Focus(control)
 		}
-	case state.KeyPressed(input.KeyF2):
+	case m.commandMatches("ports-rename", state, runtime.GOOS):
 		m.editPort("label", *row)
-	case state.KeyPressed(input.KeyDelete), state.KeyPressed(input.KeyBackspace):
+	case m.commandMatches("ports-stop", state, runtime.GOOS), m.commandMatches("ports-stop-alternate", state, runtime.GOOS):
 		m.sendPortCommand(pencodePortCommand{op: "stop", key: row.key})
-	case state.KeyPressed(input.KeyEnter):
+	case m.commandMatches("ports-open", state, runtime.GOOS):
 		m.sendPortCommand(pencodePortCommand{op: "open", key: row.key})
-	case state.KeyPressed(input.KeyC) && (state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl) || state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)):
+	case m.commandMatches("ports-copy", state, runtime.GOOS):
 		m.copyPortAddress(world, *row)
 	default:
 		return false, false

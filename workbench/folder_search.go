@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -359,7 +360,7 @@ func (m *workspaceModel) focusFolderSearch(world *module.Content) {
 	for _, ref := range [...]string{"folder-search-query", "folder-search-replacement"} {
 		if entity, ok := world.HTMLControl(m.surface, ref); ok && !module.ContentHas[engineui.TextFieldKeyHandler](world, entity) {
 			_ = module.ContentInsert(world, entity, engineui.TextFieldKeyHandler{Handle: func(state *input.State) bool {
-				return s.open && !state.Composing() && (state.KeyPressed(input.KeyUp) || state.KeyPressed(input.KeyDown) || state.KeyPressed(input.KeyEnter) || state.KeyPressed(input.KeyEscape) || state.KeyPressed(input.KeyPageUp) || state.KeyPressed(input.KeyPageDown))
+				return s.open && !state.Composing() && (m.uiKey(state, input.KeyUp) || m.uiKey(state, input.KeyDown) || m.uiKey(state, input.KeyEnter) || m.uiKey(state, input.KeyEscape) || m.uiKey(state, input.KeyPageUp) || m.uiKey(state, input.KeyPageDown))
 			}})
 		}
 	}
@@ -502,14 +503,14 @@ func (m *workspaceModel) handleFolderSearchEvent(world *module.Content, ref, val
 }
 
 func (m *workspaceModel) folderSearchKeys(world *module.Content, state *input.State) bool {
-	if state.KeyPressed(input.KeyEscape) {
+	if m.uiKey(state, input.KeyEscape) {
 		m.closeFolderSearch(world)
 		return true
 	}
 	if m.folderSearch.replacing {
 		return false
 	}
-	if option := searchOptionKey(state); option >= 0 {
+	if option := m.searchOptionKey(state); option >= 0 {
 		toggleSearchOption(&m.folderSearch.options, option)
 		if option != 3 {
 			m.startFolderSearch()
@@ -517,17 +518,17 @@ func (m *workspaceModel) folderSearchKeys(world *module.Content, state *input.St
 		return true
 	}
 	switch {
-	case state.KeyPressed(input.KeyDown):
+	case m.uiKey(state, input.KeyDown):
 		m.advanceFolderSearch(1)
-	case state.KeyPressed(input.KeyUp):
+	case m.uiKey(state, input.KeyUp):
 		m.advanceFolderSearch(-1)
-	case state.KeyPressed(input.KeyPageDown):
+	case m.uiKey(state, input.KeyPageDown):
 		m.advanceFolderSearch(folderSearchPageSize)
-	case state.KeyPressed(input.KeyPageUp):
+	case m.uiKey(state, input.KeyPageUp):
 		m.advanceFolderSearch(-folderSearchPageSize)
-	case state.KeyPressed(input.KeyEnter):
+	case m.uiKey(state, input.KeyEnter), m.commandMatches("search-replace-all", state, runtime.GOOS):
 		if pencodeControlFocused(world, m.surface, "folder-search-replacement") {
-			m.replaceFolderSearch(state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl) || state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper))
+			m.replaceFolderSearch(m.commandMatches("search-replace-all", state, runtime.GOOS))
 		} else {
 			m.openFolderSearchMatch(world, m.folderSearch.index)
 		}

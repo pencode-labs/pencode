@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"path/filepath"
+	"runtime"
 	"slices"
 
 	"github.com/diiyw/onix/input"
@@ -167,11 +168,11 @@ func (m *workspaceModel) handleTabContextEvent(world *module.Content, ref string
 func (m *workspaceModel) handleTabContextKeys(world *module.Content, state *input.State) bool {
 	c := &m.tabContext
 	switch {
-	case state.KeyPressed(input.KeyEscape):
+	case m.uiKey(state, input.KeyEscape):
 		c.open = false
-	case state.KeyPressed(input.KeyDown), state.KeyPressed(input.KeyUp), state.KeyPressed(input.KeyTab):
+	case m.uiKey(state, input.KeyDown), m.uiKey(state, input.KeyUp), m.uiKey(state, input.KeyTab):
 		step := 1
-		if state.KeyPressed(input.KeyUp) || state.KeyPressed(input.KeyTab) && (state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)) {
+		if m.uiKey(state, input.KeyUp) || m.commandMatches("ui-focus-previous", state, runtime.GOOS) {
 			step = -1
 		}
 		for range len(pencodeTabContextActions) {
@@ -180,7 +181,7 @@ func (m *workspaceModel) handleTabContextKeys(world *module.Content, state *inpu
 				break
 			}
 		}
-	case state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeySpace):
+	case m.uiKey(state, input.KeyEnter), m.uiKey(state, input.KeySpace):
 		m.handleTabContextEvent(world, pencodeTabContextActions[c.index].ref)
 	default:
 		return false

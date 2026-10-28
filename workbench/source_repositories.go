@@ -183,19 +183,19 @@ func (m *workspaceModel) sourceRepositoryShortcut(state *input.State) bool {
 	s := m.sourceState()
 	count := len(s.Repositories)
 	switch {
-	case state.KeyPressed(input.KeyEscape), state.KeyPressed(input.KeyTab):
+	case m.uiKey(state, input.KeyEscape), m.uiKey(state, input.KeyTab):
 		s.RepositoryMenuOpen, s.RepositoryFocus = false, true
 	case count == 0:
 		return false
-	case state.KeyPressed(input.KeyDown):
+	case m.uiKey(state, input.KeyDown):
 		s.RepositoryIndex = (s.RepositoryIndex + 1) % count
-	case state.KeyPressed(input.KeyUp):
+	case m.uiKey(state, input.KeyUp):
 		s.RepositoryIndex = (s.RepositoryIndex + count - 1) % count
-	case state.KeyPressed(input.KeyHome):
+	case m.uiKey(state, input.KeyHome):
 		s.RepositoryIndex = 0
-	case state.KeyPressed(input.KeyEnd):
+	case m.uiKey(state, input.KeyEnd):
 		s.RepositoryIndex = count - 1
-	case state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeySpace):
+	case m.uiKey(state, input.KeyEnter), m.uiKey(state, input.KeySpace):
 		m.sourceAction("sc-repository:" + s.Repositories[s.RepositoryIndex])
 	default:
 		return false

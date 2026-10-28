@@ -9,7 +9,7 @@ import (
 )
 
 func TestActionCodecAndReusableEncoding(t *testing.T) {
-	change := ActionChange{Action: Action{ID: "build", Text: "构建", Icon: "resources/build.svg", Tooltip: "Build project", Color: "#112233", IconColor: "#abcdef", IconStyle: "opacity:.5", Location: TitleBarRight, Disabled: true}}
+	change := ActionChange{Action: Action{ID: "build", Text: "构建", Icon: "resources/build.svg", Tooltip: "Build project", Color: "#112233", IconColor: "#abcdef", IconStyle: "opacity:.5", Location: TitleBarRight, Shortcut: "Primary+Shift+B", Disabled: true}}
 	data, err := EncodeActionChange(nil, change)
 	if err != nil {
 		t.Fatal(err)

@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -35,11 +36,11 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
 	super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
 	alt := state.KeyHeld(input.KeyLeftAlt) || state.KeyHeld(input.KeyRightAlt)
-	if ctrl && state.KeyPressed(input.KeyGraveAccent) {
+	if m.commandMatches("terminal-toggle", state, runtime.GOOS) || m.commandMatches("terminal-new", state, runtime.GOOS) {
 		return true
 	}
-	copyKey := state.KeyPressed(input.KeyC) && (ctrl && shift || super)
-	pasteKey := state.KeyPressed(input.KeyV) && (ctrl && shift || super) || shift && state.KeyPressed(input.KeyInsert)
+	copyKey := m.commandMatches("terminal-copy", state, runtime.GOOS)
+	pasteKey := m.commandMatches("terminal-paste", state, runtime.GOOS) || m.commandMatches("terminal-paste-alternate", state, runtime.GOOS)
 	if copyKey {
 		m.terminalAction(state, "terminal-copy", m.terminalSelection())
 		return true
@@ -48,13 +49,13 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 		m.terminalAction(state, "terminal-paste", "")
 		return true
 	}
-	if ctrl && shift && state.KeyPressed(input.KeyK) {
+	if m.commandMatches("terminal-clear", state, runtime.GOOS) {
 		m.terminalAction(state, "terminal-clear", "")
 		return true
 	}
-	if shift && (state.KeyPressed(input.KeyPageUp) || state.KeyPressed(input.KeyPageDown)) {
+	if m.commandMatches("terminal-scroll-up", state, runtime.GOOS) || m.commandMatches("terminal-scroll-down", state, runtime.GOOS) {
 		step := s.Rows - 1
-		if state.KeyPressed(input.KeyPageDown) {
+		if m.commandMatches("terminal-scroll-down", state, runtime.GOOS) {
 			step = -step
 		}
 		item.scroll = max(0, min(len(s.History)/s.Cols, item.scroll+step))
@@ -175,16 +176,18 @@ func (m *workspaceModel) terminalShortcut(world *module.Content, state *input.St
 	if m.settingsOpen || m.quickOpen || m.findOpen || m.closing.action != pencodeCloseNone || m.market != nil && m.market.open {
 		return false, false
 	}
-	ctrl := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
-	if ctrl && state.KeyPressed(input.KeyGraveAccent) {
-		if state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift) {
-			m.newTerminal()
-		} else {
-			m.terminalEvent("status-terminal")
-		}
+	if m.commandMatches("terminal-new", state, runtime.GOOS) {
+		m.newTerminal()
 		return true, true
 	}
-	return m.terminalFocused(world), false
+	if m.commandMatches("terminal-toggle", state, runtime.GOOS) {
+		m.terminalEvent("status-terminal")
+		return true, true
+	}
+	if m.terminalFocused(world) {
+		return true, m.handleActionShortcuts(world, state, runtime.GOOS)
+	}
+	return false, false
 }
 func (m *workspaceModel) updateTerminalPointer(world *module.Content, state *input.State) bool {
 	m.terminalView.context.keysHandled = false

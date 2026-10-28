@@ -552,7 +552,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	if s.MessageMultiline {
 		messageTag, messageClass = "textarea", "sc-message sc-message-multiline"
 	}
-	b.open(messageTag, "message", "id", "sc-message", "aria-label", "Commit message", "placeholder", "Message (Shift+Enter for multiple lines)", "class", messageClass)
+	b.open(messageTag, "message", "id", "sc-message", "aria-label", "Commit message", "placeholder", "Commit message", "class", messageClass)
 	if s.busy() {
 		b.attr("readonly", "")
 	}

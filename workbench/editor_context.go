@@ -32,6 +32,9 @@ func (model *workspaceModel) renderEditorContextMenu(view *htmlui.View) {
 	if !ui.contextOpen {
 		return
 	}
+	for _, c := range pencodeEditorClipboardCommands {
+		view.Text(c.ref+"-shortcut", model.commandLabel(c.id))
+	}
 	view.RemoveAttr("lsp-context", "hidden")
 	view.Attr("lsp-context", "style", languagePopupStyle(ui.contextX, ui.contextY))
 	active := model.editorContextRefs()[ui.contextIndex]
@@ -165,21 +168,21 @@ func (model *workspaceModel) handleEditorContextKeys(world *module.Content, stat
 		refs, index = pencodeEditorContextGroups[ui.contextGroup].refs, &ui.contextSubIndex
 	}
 	switch {
-	case state.KeyPressed(input.KeyEscape), state.KeyPressed(input.KeyLeft):
+	case model.uiKey(state, input.KeyEscape), model.uiKey(state, input.KeyLeft):
 		if ui.contextGroup != 0 {
 			ui.contextGroup = 0
 		} else {
 			model.dismissLanguageContext()
 		}
-	case state.KeyPressed(input.KeyDown):
+	case model.uiKey(state, input.KeyDown):
 		*index = (*index + 1) % len(refs)
-	case state.KeyPressed(input.KeyUp):
+	case model.uiKey(state, input.KeyUp):
 		*index = (*index + len(refs) - 1) % len(refs)
-	case state.KeyPressed(input.KeyRight):
+	case model.uiKey(state, input.KeyRight):
 		if ui.contextGroup == 0 && ui.contextIndex >= 9 && ui.contextIndex < len(pencodeEditorContextRefs) {
 			model.openEditorContextGroup(world, ui.contextIndex-8)
 		}
-	case state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeySpace):
+	case model.uiKey(state, input.KeyEnter), model.uiKey(state, input.KeySpace):
 		model.handleEditorContextEvent(world, refs[*index])
 	default:
 		return false

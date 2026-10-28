@@ -9,11 +9,11 @@ import (
 	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
-	"github.com/pencode-labs/pencode/remote"
+	"github.com/pencode-labs/pencode/connection"
 )
 
 type pencodePortsIdentity struct {
-	target    remote.Target
+	target    connection.Endpoint
 	directory string
 }
 type pencodePortUI struct {
@@ -34,6 +34,7 @@ type pencodePortProps struct {
 	Editing, Value string
 	Pending        bool
 	Theme          *pencodeTheme
+	Rename, Stop   pencodeKeybinding
 }
 
 func newPortDefinition(content *module.Content) (*htmlui.Definition[pencodePortProps, struct{}], error) {
@@ -65,6 +66,8 @@ func newPortDefinition(content *module.Content) (*htmlui.Definition[pencodePortP
 
 func renderPortRow(c module.ContentRenderContext[pencodePortProps, struct{}], view *htmlui.View) {
 	p, row := c.Props, c.Props.Row
+	view.Attr("label", "title", p.Model.shortcutTitle("设置端口标签", "ports-rename"))
+	view.Attr("stop", "title", p.Model.shortcutTitle("停止转发端口", "ports-stop"))
 	ref := portRowRef(row)
 	class := "pencode-port-row"
 	if p.Selected {
@@ -191,7 +194,7 @@ func (m *workspaceModel) pollPorts() bool {
 		}
 		return changed
 	}
-	identity := pencodePortsIdentity{m.session.connection.workspaceProfile.SSH, m.projectPath}
+	identity := pencodePortsIdentity{m.session.connection.workspaceProfile.Endpoint(), m.projectPath}
 	if m.ports == nil || m.ports.backend != m.backend || u.owner != identity {
 		m.closePorts()
 		if !u.owned || u.owner != identity {
@@ -199,7 +202,7 @@ func (m *workspaceModel) pollPorts() bool {
 			u.mode, u.editKey, u.value, u.selected = "", "", "", ""
 		}
 		u.owner, u.owned = identity, true
-		options := pencodePortsOptions{sshPort: identity.target.Port}
+		options := pencodePortsOptions{sshPort: identity.target.SSH.Port}
 		if u.resumeReady {
 			options.resume = &u.resume
 		}
@@ -418,6 +421,6 @@ func (m *workspaceModel) renderPorts(view *htmlui.View, definition *htmlui.Defin
 		if row.key == u.editKey {
 			mode, value = u.mode, u.value
 		}
-		htmlui.AppendComponentChild(view, "ports-list", row.id, definition, pencodePortProps{Model: m, Row: row, Selected: row.key == u.selected, Editing: mode, Value: value, Pending: u.pending != 0, Theme: m.workbenchTheme}, struct{}{})
+		htmlui.AppendComponentChild(view, "ports-list", row.id, definition, pencodePortProps{Model: m, Row: row, Rename: m.settings.Bindings["ports-rename"], Stop: m.settings.Bindings["ports-stop"], Selected: row.key == u.selected, Editing: mode, Value: value, Pending: u.pending != 0, Theme: m.workbenchTheme}, struct{}{})
 	}
 }

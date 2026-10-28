@@ -87,7 +87,7 @@ func TestRemoteConfigurationFollowsWorkspaceAndSavesOnServer(t *testing.T) {
 	if model.settings.FontSize != 11 || model.settings.Theme != "dark-plus" || model.backend != local {
 		t.Fatal("connecting changed local settings")
 	}
-	model.openSSHProject(profile)
+	model.openRemoteProject(profile)
 	waitProjectPicker(t, model)
 	model.connectionEvent("connection-project-cancel", "")
 	if model.settings.FontSize != 11 || model.settingsRemote {
@@ -96,7 +96,7 @@ func TestRemoteConfigurationFollowsWorkspaceAndSavesOnServer(t *testing.T) {
 	if model.extensionFeedback == "" {
 		t.Fatal("browsing SSH projects cleared local extension feedback")
 	}
-	model.openSSHProject(profile)
+	model.openRemoteProject(profile)
 	waitProjectPicker(t, model)
 	model.connectionEvent("connection-project-open", "")
 	if err := awaitFileIO(t, model); err != nil {
@@ -150,7 +150,7 @@ func TestConnectionRecoveryReloadsRemoteConfiguration(t *testing.T) {
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}}
 	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) { return next, nil }, connection.Profile{})
 	s.connection.workspaceProfile = profile
-	s.connection.links[profile.SSH] = &pencodeSSHLink{backend: project.backend, profile: profile}
+	s.connection.links[profile.Endpoint()] = &pencodeRemoteLink{backend: project.backend, profile: profile}
 	model.settings = defaultPencodeSettings()
 	model.settings.FontSize = 11
 	t.Cleanup(func() { s.market.stop(); s.extensions.Close(); s.Close() })

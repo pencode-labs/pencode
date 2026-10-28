@@ -49,6 +49,12 @@ func TestActionHelperProcess(t *testing.T) {
 			return publisher.Remove(action.ID)
 		},
 		UIEvent: func(event peb.UIEvent) error {
+			if event.Event.Ref == "stream-test" {
+				return publisher.Show(peb.UI{ID: "stream", Title: "Stream", Kind: peb.EditorTab, View: &peb.EditorView{
+					HTML:   `<main><section data-ref="history" data-pencode-region>` + strings.Repeat("history", 100) + `</section><section data-ref="tail" data-pencode-region><p>` + event.Event.Value + `</p></section><textarea data-ref="prompt">draft</textarea></main>`,
+					Events: []peb.EditorBinding{{Ref: "prompt", Kind: "input"}},
+				}})
+			}
 			return publisher.Show(peb.UI{ID: "models", Title: "Models", Kind: peb.ContextMenu, Anchor: event.Event.Value})
 		},
 	})
@@ -56,6 +62,42 @@ func TestActionHelperProcess(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+func TestActionSessionReconstructsPatchesBeforeResources(t *testing.T) {
+	backend, _ := actionFixture(t)
+	bundle, err := Load(context.Background(), backend, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := bundle.Actions.Start(nil, nil)
+	defer session.Close()
+	for i, value := range []string{"first", "second", "second"} {
+		event := peb.UIEvent{ID: "stream", Event: peb.EditorEvent{Kind: "click", Ref: "stream-test", Value: value}}
+		if i == 2 {
+			event.Event.Kind = "resync"
+		}
+		if !session.SubmitUI(event) {
+			t.Fatal("request rejected")
+		}
+		timer := time.NewTimer(5 * time.Second)
+		var ui *peb.UI
+		for ui == nil {
+			select {
+			case result, ok := <-session.Results:
+				if !ok || result.Err != nil {
+					t.Fatalf("session failed: %+v", result)
+				}
+				ui = result.UI
+			case <-timer.C:
+				t.Fatal("stream update timed out")
+			}
+		}
+		timer.Stop()
+		if ui.Patch != nil || ui.View == nil || ui.ViewVersion != uint32(min(i+1, 2)) || !strings.Contains(ui.View.HTML, "<p>"+value+"</p>") || !strings.Contains(ui.View.HTML, `id="pencode-extension-ui/test/stream/control/0"`) {
+			t.Fatalf("raw transport base was lost during resource preparation: %+v", ui)
+		}
+	}
 }
 
 func TestActionSessionUIAnchors(t *testing.T) {

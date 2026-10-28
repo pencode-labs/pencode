@@ -1,6 +1,8 @@
 package textsearch
 
 import (
+	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -57,5 +59,80 @@ func TestInvalidAndLimitedSearch(t *testing.T) {
 	}
 	if allocations := testing.AllocsPerRun(100, func() { matches = p.FindAll("aaa", matches, 3) }); allocations != 0 {
 		t.Fatal("literal search allocated", allocations)
+	}
+}
+
+func TestLiteralFoldMatchesRegexp(t *testing.T) {
+	for _, text := range []string{"K k K S s ſ Σ σ ς", "你 你好 你_ 你", "aaa", "Go go GO", "中😀中😀", "İ i I ı"} {
+		for _, query := range []string{"k", "S", "σ", "你", "aa", "go", "😀", "i"} {
+			p, _ := Compile(query, Options{})
+			got := p.FindAll(text, nil, -1)
+			want := regexp.MustCompile("(?i)"+regexp.QuoteMeta(query)).FindAllStringIndex(text, -1)
+			if len(got) != len(want) {
+				t.Fatalf("%q/%q: %v != %v", text, query, got, want)
+			}
+			for i, m := range got {
+				if m.Start != want[i][0] || m.End != want[i][1] {
+					t.Fatal(text, query, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestBoundedSearchCountsAndScopes(t *testing.T) {
+	text := strings.Repeat("a ", 1<<19)
+	for _, options := range []Options{{}, {WholeWord: true}, {CaseSensitive: true}} {
+		p, _ := Compile("a", options)
+		dst, count := p.FindRange(text, nil, 0, len(text), 3, true)
+		if len(dst) != 3 || count != 1<<19 {
+			t.Fatal(len(dst), count)
+		}
+		if n := testing.AllocsPerRun(10, func() { dst = p.FindAll(text, dst, 3) }); n != 0 {
+			t.Fatal("warm literal allocation", n)
+		}
+	}
+	for _, options := range []Options{{}, {Regex: true}, {Regex: true, WholeWord: true}} {
+		p, _ := Compile("aa", options)
+		all := p.FindAll("aaa aa", nil, -1)
+		var want []Match
+		for _, m := range all {
+			if m.Start >= 1 && m.End <= 6 {
+				want = append(want, m)
+			}
+		}
+		got, _ := p.FindRange("aaa aa", nil, 1, 6, 3, false)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatal(options, got, want)
+		}
+	}
+	// Filtering must not reinterpret ^, $, empty matches or capture positions.
+	for _, query := range []string{`^`, `$`, `\b`, `(a*)`, `(?:)`, `a|aa`} {
+		p, _ := Compile(query, Options{Regex: true, WholeWord: true})
+		text := "aaa\na a\n"
+		all := p.FindAll(text, nil, -1)
+		for limit := 1; limit < 5; limit++ {
+			got := p.FindAll(text, nil, limit)
+			if !reflect.DeepEqual(got, all[:min(limit, len(all))]) {
+				t.Fatal(query, got, all)
+			}
+		}
+	}
+}
+
+func BenchmarkSearchDense(b *testing.B) {
+	content := strings.Repeat("a ", 1<<19)
+	for _, tc := range []struct {
+		name    string
+		options Options
+	}{{"literal", Options{CaseSensitive: true}}, {"fold", Options{}}, {"whole_word", Options{WholeWord: true}}} {
+		b.Run(tc.name, func(b *testing.B) {
+			p, _ := Compile("a", tc.options)
+			dst := p.FindAll(content, nil, 5000)
+			b.ReportAllocs()
+			for b.Loop() {
+				dst = p.FindAll(content, dst, 5000)
+			}
+		})
 	}
 }

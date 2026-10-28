@@ -86,12 +86,6 @@ func (s *services) openDebugAdapter(ctx context.Context, root string, d *protoco
 	}
 	var stream io.ReadWriteCloser
 	switch adapter {
-	case "stdio":
-		if command == "" {
-			err = protocol.ErrProtocol
-			break
-		}
-		stream, err = transport.StartWithOutput(root, command, childLogs, append(append([]string(nil), prefix...), args...)...)
 	case "tcp":
 		var conn net.Conn
 		conn, err = (&net.Dialer{}).DialContext(startup, "tcp", address)
@@ -141,7 +135,11 @@ func (s *services) openDebugAdapter(ctx context.Context, root string, d *protoco
 		// itself travels only over the socket.
 		go func() { _, _ = io.Copy(childLogs, reader) }()
 	default:
-		err = fmt.Errorf("unknown debug adapter %q", adapter)
+		if command == "" {
+			err = fmt.Errorf("no command or extension provides debug adapter %q", adapter)
+			break
+		}
+		stream, err = transport.StartWithOutput(root, command, childLogs, append(append([]string(nil), prefix...), args...)...)
 	}
 	if adapter != "Delve" || err != nil {
 		_ = childLogs.Close()

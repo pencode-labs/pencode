@@ -33,9 +33,9 @@
 
   <section id="connection-panel" data-ref="connection-panel" class="pencode-connection" role="dialog" aria-labelledby="connection-title" hidden>
     <header class="pencode-connection-header"><h2 id="connection-title">连接</h2><button id="connection-close" data-ref="connection-close" class="pencode-icon-button" type="button" title="关闭远程管理" aria-label="关闭远程管理"><img data-ref="connection-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
-    <div class="pencode-connection-toolbar"><p>来自这台设备的 SSH 连接</p><button id="connection-add" data-ref="connection-add" type="button">添加</button></div>
+    <div class="pencode-connection-toolbar"><p>来自这台设备的远程连接</p><button id="connection-add" data-ref="connection-add" type="button">添加</button></div>
     <div data-ref="connection-list" class="pencode-connection-list" role="list"></div>
-    <p data-ref="connection-empty" class="pencode-connection-empty">还没有 SSH 连接。点击“添加”保存第一台远程设备。</p>
+    <p data-ref="connection-empty" class="pencode-connection-empty">还没有远程连接。点击“添加”保存第一台远程设备。</p>
     <footer class="pencode-connection-footer"><p data-ref="connection-feedback" class="pencode-connection-feedback" role="status" aria-live="polite"></p><button id="connection-cancel" data-ref="connection-cancel" type="button" hidden>取消连接</button></footer>
     <section data-ref="connection-password-form" class="pencode-connection-form" role="dialog" aria-labelledby="connection-password-title" hidden>
       <header class="pencode-connection-header"><h2 id="connection-password-title" data-ref="connection-password-title">SSH 身份验证</h2></header>
@@ -45,11 +45,18 @@
       <footer class="pencode-connection-form-actions"><button id="connection-password-cancel" data-ref="connection-password-cancel" type="button">取消</button><button id="connection-password-submit" data-ref="connection-password-submit" class="primary" type="button">连接</button></footer>
     </section>
     <section data-ref="connection-form" class="pencode-connection-form" aria-labelledby="connection-form-title" hidden>
-      <header class="pencode-connection-header"><h2 id="connection-form-title" data-ref="connection-form-title">添加 SSH 连接</h2><button id="connection-form-close" data-ref="connection-form-close" class="pencode-icon-button" type="button" title="关闭" aria-label="关闭 SSH 表单"><img data-ref="connection-form-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
-      <label for="connection-name">显示名称</label><input id="connection-name" data-ref="connection-name" type="text" placeholder="开发服务器" autocomplete="off" spellcheck="false">
+      <header class="pencode-connection-header"><h2 id="connection-form-title" data-ref="connection-form-title">添加远程连接</h2><button id="connection-form-close" data-ref="connection-form-close" class="pencode-icon-button" type="button" title="关闭" aria-label="关闭连接表单"><img data-ref="connection-form-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
+      <label data-ref="connection-name-label" for="connection-name">显示名称</label><input id="connection-name" data-ref="connection-name" type="text" placeholder="开发服务器" autocomplete="off" spellcheck="false">
+      <label for="connection-type">连接方式</label><select id="connection-type" data-ref="connection-type"></select>
+      <div data-ref="connection-ssh-fields" class="pencode-connection-fields">
       <label for="connection-host">主机名</label><input id="connection-host" data-ref="connection-host" type="text" placeholder="host.com 或 user@host.com" autocomplete="off" spellcheck="false">
       <label for="connection-port">SSH 端口（可选）</label><input id="connection-port" data-ref="connection-port" type="text" inputmode="numeric" placeholder="使用 SSH config">
       <label for="connection-identity">身份文件（可选）</label><input id="connection-identity" data-ref="connection-identity" type="text" placeholder="留空使用 SSH config 或 agent" autocomplete="off" spellcheck="false">
+      </div>
+      <div data-ref="connection-websocket-fields" class="pencode-connection-fields" hidden>
+        <label for="connection-address">服务地址</label><input id="connection-address" data-ref="connection-address" type="text" placeholder="ws://host.com:8080/ws" autocomplete="off" spellcheck="false">
+        <label for="connection-token">Token</label><input id="connection-token" data-ref="connection-token" type="password" autocomplete="off" spellcheck="false">
+      </div>
       <label for="connection-directory">起始目录（可选，用于项目选择）</label><input id="connection-directory" data-ref="connection-directory" type="text" placeholder="~ 或 ~/workspace/app" autocomplete="off" spellcheck="false">
       <footer class="pencode-connection-form-actions"><button data-ref="connection-form-cancel" type="button">取消</button><button id="connection-save" data-ref="connection-save" class="primary" type="button">保存</button></footer>
     </section>
@@ -167,20 +174,12 @@
           <div data-ref="settings-extension-fields"></div>
         </section>
         <section id="settings-shortcuts-pane" data-ref="settings-shortcuts-pane" aria-label="快捷键设置" hidden>
-          <div class="pencode-settings-row"><span>保存文件</span><button data-ref="shortcut-save" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>撤销</span><button data-ref="shortcut-undo" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>重做</span><button data-ref="shortcut-redo" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>查找</span><button data-ref="shortcut-find" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>替换</span><button data-ref="shortcut-replace" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>快速打开文件</span><button data-ref="shortcut-quick-open" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>关闭标签</span><button data-ref="shortcut-close" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>下一个标签</span><button data-ref="shortcut-next" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>上一个标签</span><button data-ref="shortcut-previous" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>切换侧栏</span><button data-ref="shortcut-sidebar" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>放大界面</span><button data-ref="shortcut-zoom-in" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>缩小界面</span><button data-ref="shortcut-zoom-out" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>重置缩放</span><button data-ref="shortcut-zoom-reset" class="pencode-settings-binding" type="button"></button></div>
-          <div class="pencode-settings-row"><span>打开设置</span><button data-ref="shortcut-settings" class="pencode-settings-binding" type="button"></button></div>
+          <div class="pencode-settings-row"><label for="keymap-select">快捷键方案</label><select id="keymap-select" data-ref="keymap-select" class="pencode-settings-select"></select></div>
+          <div class="pencode-settings-row"><label for="keymap-name">方案名称</label><input id="keymap-name" data-ref="keymap-name" class="pencode-settings-select" placeholder="输入新方案名称"></div>
+          <div class="pencode-settings-row pencode-keymap-controls"><button data-ref="keymap-create" class="pencode-settings-binding" type="button">复制为新方案</button><button data-ref="keymap-rename" class="pencode-settings-binding" type="button">重命名</button><button data-ref="keymap-delete" class="pencode-settings-binding" type="button">删除方案</button></div>
+          <p class="pencode-setting-description">点击命令录制快捷键；Backspace 清除，Esc 取消。同一上下文内检测冲突。恢复默认仅影响当前方案。</p>
+          <div class="pencode-settings-row"><label for="shortcut-query">筛选命令</label><input id="shortcut-query" data-ref="shortcut-query" class="pencode-settings-select" placeholder="名称或命令 ID"></div>
+          <div data-ref="settings-shortcut-fields"></div>
         </section>
       </div>
     </div>
@@ -298,10 +297,10 @@
           </div>
         </div>
         <div id="lsp-context" data-ref="lsp-context" class="pencode-editor-context" role="menu" aria-label="编辑操作" hidden>
-          <button id="editor-context-cut" data-ref="editor-context-cut" type="button" role="menuitem" tabindex="-1"><span>剪切</span><span class="pencode-context-hint">Ctrl+X</span></button>
-          <button id="editor-context-copy" data-ref="editor-context-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span class="pencode-context-hint">Ctrl+C</span></button>
-          <button id="editor-context-paste" data-ref="editor-context-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span class="pencode-context-hint">Ctrl+V</span></button>
-          <button id="editor-context-select-all" data-ref="editor-context-select-all" type="button" role="menuitem" tabindex="-1"><span>全选</span><span class="pencode-context-hint">Ctrl+A</span></button>
+          <button id="editor-context-cut" data-ref="editor-context-cut" type="button" role="menuitem" tabindex="-1"><span>剪切</span><span data-ref="editor-context-cut-shortcut" class="pencode-context-hint">Ctrl+X</span></button>
+          <button id="editor-context-copy" data-ref="editor-context-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span data-ref="editor-context-copy-shortcut" class="pencode-context-hint">Ctrl+C</span></button>
+          <button id="editor-context-paste" data-ref="editor-context-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span data-ref="editor-context-paste-shortcut" class="pencode-context-hint">Ctrl+V</span></button>
+          <button id="editor-context-select-all" data-ref="editor-context-select-all" type="button" role="menuitem" tabindex="-1"><span>全选</span><span data-ref="editor-context-select-all-shortcut" class="pencode-context-hint">Ctrl+A</span></button>
           <div class="pencode-context-separator" role="separator"></div>
           <button id="lsp-context-3" data-ref="lsp-context-3" type="button" role="menuitem" tabindex="-1">转到定义</button>
           <button id="lsp-context-7" data-ref="lsp-context-7" type="button" role="menuitem" tabindex="-1">查找引用</button>
@@ -385,6 +384,7 @@
             </div>
             <div data-ref="debug-tools" class="pencode-debug-tools" hidden>
               <select id="debug-config" data-ref="debug-config" class="pencode-debug-config" aria-label="调试配置"></select>
+              <button id="debug-add" data-ref="debug-add" type="button" title="添加启动器，编辑项目调试配置">添加启动器</button>
               <button id="debug-reload" data-ref="debug-reload" class="pencode-icon-button" type="button" title="刷新调试配置" aria-label="刷新调试配置"><img data-ref="debug-reload-icon" alt=""></button>
               <button id="debug-start" data-ref="debug-start" class="pencode-icon-button" type="button" title="启动调试 (F5)" aria-label="启动调试"><img data-ref="debug-start-icon" alt=""></button>
               <button id="debug-continue" data-ref="debug-continue" class="pencode-icon-button" type="button" title="继续 (F5)" aria-label="继续"><img data-ref="debug-continue-icon" alt=""></button>
@@ -425,6 +425,7 @@
           <textarea id="output-content" data-ref="output-content" readonly wrap="soft" spellcheck="false" aria-label="输出信息" placeholder="当前信息源暂无输出"></textarea>
         </section>
         <section id="debug-pane" data-ref="debug-pane" class="pencode-debug-pane" role="tabpanel" aria-labelledby="status-debug" hidden>
+          <p id="debug-message" data-ref="debug-message" class="pencode-panel-empty" role="status" hidden></p>
           <div class="pencode-debug-columns">
             <section class="pencode-debug-stack"><h3 class="pencode-debug-threads-heading"><button id="debug-toggle-threads" data-ref="debug-toggle-threads" class="pencode-debug-section-toggle" type="button" aria-expanded="false" aria-controls="debug-threads"><span data-ref="debug-threads-toggle" class="pencode-debug-toggle">▸</span>线程</button></h3><div id="debug-threads" data-ref="debug-threads" hidden></div><h3>调用栈</h3><div data-ref="debug-frames"></div><h3>断点</h3><div data-ref="debug-breakpoints"></div></section>
             <section class="pencode-debug-values"><h3>变量</h3><div data-ref="debug-variables"></div></section>
@@ -483,28 +484,28 @@
     <button id="tab-context-copy-relative" data-ref="tab-context-copy-relative" type="button" role="menuitem" tabindex="-1">复制相对路径</button>
   </div>
   <div id="terminal-context" data-ref="terminal-context" class="pencode-editor-context pencode-terminal-context" role="menu" aria-label="终端操作" hidden>
-    <button id="terminal-copy" data-ref="terminal-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span class="pencode-context-hint">Ctrl+Shift+C</span></button>
-    <button id="terminal-paste" data-ref="terminal-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span class="pencode-context-hint">Ctrl+Shift+V</span></button>
-    <button id="terminal-clear" data-ref="terminal-clear" type="button" role="menuitem" tabindex="-1"><span>清屏</span><span class="pencode-context-hint">Ctrl+Shift+K</span></button>
+    <button id="terminal-copy" data-ref="terminal-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span data-ref="terminal-copy-shortcut" class="pencode-context-hint">Ctrl+Shift+C</span></button>
+    <button id="terminal-paste" data-ref="terminal-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span data-ref="terminal-paste-shortcut" class="pencode-context-hint">Ctrl+Shift+V</span></button>
+    <button id="terminal-clear" data-ref="terminal-clear" type="button" role="menuitem" tabindex="-1"><span>清屏</span><span data-ref="terminal-clear-shortcut" class="pencode-context-hint">Ctrl+Shift+K</span></button>
   </div>
   <div id="file-context" data-ref="file-context" class="pencode-editor-context pencode-file-context" role="menu" aria-label="文件操作" hidden>
-    <button id="file-context-open" data-ref="file-context-open" type="button" role="menuitem" tabindex="-1">打开</button>
+    <button id="file-context-open" data-ref="file-context-open" type="button" role="menuitem" tabindex="-1"><span id="file-context-open-label" data-ref="file-context-open-label">打开</span><span id="file-context-open-shortcut" data-ref="file-context-open-shortcut" class="pencode-context-hint">Enter</span></button>
     <div class="pencode-context-separator" role="separator"></div>
-    <button id="file-context-new-file" data-ref="file-context-new-file" type="button" role="menuitem" tabindex="-1">新建文件…</button>
-    <button id="file-context-new-folder" data-ref="file-context-new-folder" type="button" role="menuitem" tabindex="-1">新建文件夹…</button>
-    <button id="file-context-find" data-ref="file-context-find" type="button" role="menuitem" tabindex="-1">Find in Folder...</button>
+    <button id="file-context-new-file" data-ref="file-context-new-file" type="button" role="menuitem" tabindex="-1"><span>新建文件</span><span id="file-context-new-file-shortcut" data-ref="file-context-new-file-shortcut" class="pencode-context-hint">Ctrl+N</span></button>
+    <button id="file-context-new-folder" data-ref="file-context-new-folder" type="button" role="menuitem" tabindex="-1"><span>新建文件夹</span><span id="file-context-new-folder-shortcut" data-ref="file-context-new-folder-shortcut" class="pencode-context-hint">Ctrl+Shift+N</span></button>
+    <button id="file-context-find" data-ref="file-context-find" type="button" role="menuitem" tabindex="-1"><span>Find in Folder...</span><span id="file-context-find-shortcut" data-ref="file-context-find-shortcut" class="pencode-context-hint">Ctrl+Shift+F</span></button>
     <div class="pencode-context-separator" role="separator"></div>
-    <button id="file-context-cut" data-ref="file-context-cut" type="button" role="menuitem" tabindex="-1">剪切</button>
-    <button id="file-context-copy" data-ref="file-context-copy" type="button" role="menuitem" tabindex="-1">复制</button>
-    <button id="file-context-paste" data-ref="file-context-paste" type="button" role="menuitem" tabindex="-1">粘贴</button>
+    <button id="file-context-cut" data-ref="file-context-cut" type="button" role="menuitem" tabindex="-1"><span>剪切</span><span id="file-context-cut-shortcut" data-ref="file-context-cut-shortcut" class="pencode-context-hint">Ctrl+X</span></button>
+    <button id="file-context-copy" data-ref="file-context-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span id="file-context-copy-shortcut" data-ref="file-context-copy-shortcut" class="pencode-context-hint">Ctrl+C</span></button>
+    <button id="file-context-paste" data-ref="file-context-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span id="file-context-paste-shortcut" data-ref="file-context-paste-shortcut" class="pencode-context-hint">Ctrl+V</span></button>
     <div class="pencode-context-separator" role="separator"></div>
-    <button id="file-context-copy-path" data-ref="file-context-copy-path" type="button" role="menuitem" tabindex="-1">复制路径</button>
-    <button id="file-context-copy-relative" data-ref="file-context-copy-relative" type="button" role="menuitem" tabindex="-1">复制相对路径</button>
+    <button id="file-context-copy-path" data-ref="file-context-copy-path" type="button" role="menuitem" tabindex="-1"><span>复制路径</span><span id="file-context-copy-path-shortcut" data-ref="file-context-copy-path-shortcut" class="pencode-context-hint">Ctrl+Shift+C</span></button>
+    <button id="file-context-copy-relative" data-ref="file-context-copy-relative" type="button" role="menuitem" tabindex="-1"><span>复制相对路径</span><span id="file-context-copy-relative-shortcut" data-ref="file-context-copy-relative-shortcut" class="pencode-context-hint">Ctrl+Alt+C</span></button>
     <div class="pencode-context-separator" role="separator"></div>
-    <button id="file-context-rename" data-ref="file-context-rename" type="button" role="menuitem" tabindex="-1">重命名…</button>
-    <button id="file-context-delete" data-ref="file-context-delete" type="button" role="menuitem" tabindex="-1">删除…</button>
+    <button id="file-context-rename" data-ref="file-context-rename" type="button" role="menuitem" tabindex="-1"><span>重命名…</span><span id="file-context-rename-shortcut" data-ref="file-context-rename-shortcut" class="pencode-context-hint">F2</span></button>
+    <button id="file-context-delete" data-ref="file-context-delete" type="button" role="menuitem" tabindex="-1"><span>删除…</span><span id="file-context-delete-shortcut" data-ref="file-context-delete-shortcut" class="pencode-context-hint">Delete</span></button>
     <div class="pencode-context-separator" role="separator"></div>
-    <button id="file-context-refresh" data-ref="file-context-refresh" type="button" role="menuitem" tabindex="-1">刷新列表</button>
+    <button id="file-context-refresh" data-ref="file-context-refresh" type="button" role="menuitem" tabindex="-1"><span>刷新列表</span><span id="file-context-refresh-shortcut" data-ref="file-context-refresh-shortcut" class="pencode-context-hint">F5</span></button>
     <div data-ref="actions-left-context" class="pencode-context-actions" role="group" aria-label="扩展操作"></div>
   </div>
   <div id="folder-search" data-ref="folder-search" class="pencode-close-overlay" hidden>
@@ -566,5 +567,6 @@
       </div>
     </section>
   </div>
+  <div id="file-drag-preview" data-ref="file-drag-preview" class="pencode-file-drag-preview" aria-hidden="true" hidden><span data-ref="file-drag-name"></span></div>
   <div id="pencode-tooltip" data-ref="tooltip" class="pencode-tooltip" role="tooltip" hidden></div>
 </div>

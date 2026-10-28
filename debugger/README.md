@@ -8,8 +8,10 @@ debugger for a remote project.
 ## Go quick start
 
 Enable the Go extension to detect/install gopls and Delve automatically. Without
-the extension, install `dlv` in the workspace server’s PATH. Save edited files, open a Go source file, and select **Debug** in the
-status bar. Choose the current package or its tests, set a breakpoint by clicking the
+the extension, install `dlv` in the workspace server’s PATH. Select **Debug** in the
+status bar and click **添加启动器** to open `.pencode/debug.json`. Add a Go launch
+configuration using the examples below, save it, and refresh the debug configurations.
+Choose the configured package or its tests, set a breakpoint by clicking the
 left edge of the gutter or pressing F9, and press F5.
 
 | Action | Shortcut |
@@ -29,8 +31,11 @@ and the `Debugger` Output channel.
 
 ## Project configuration
 
-An optional `.pencode/debug.json` array replaces the two default Go entries.
-Use **刷新配置** after editing it. `configuration` is the adapter's launch/attach
+Launchers come from the project's `.pencode/debug.json` array. Without configured
+launchers, the selector shows **暂无启动器** and starting debug is disabled; no language-specific
+defaults are inserted. **添加启动器** opens the file in the editor, creating an empty
+`[]` array if needed. Add entries to the array and use **刷新调试配置** after saving.
+An empty array is also valid. `configuration` is the adapter's launch/attach
 payload, and `${workspaceFolder}` is expanded recursively in its string values.
 
 ```json
@@ -66,6 +71,11 @@ payload, and `${workspaceFolder}` is expanded recursively in its string values.
 `tcp` requires an `address` such as `127.0.0.1:5678` and connects from the workspace
 machine to an existing adapter. `request` accepts `launch` or `attach`; stopping
 an attach session sends `disconnect` with `terminateDebuggee: false`.
+
+Extensions can also contribute named stdio adapters. Set `adapter` to the
+contributed ID, such as `Xdebug` from the [PHP extension](../extensions/php/README.md),
+and omit `command`/`args` to use its launcher. An explicit `command` overrides the
+launcher. Missing providers and duplicate adapter IDs report an error at startup.
 
 The first version supports one active session, source breakpoints, threads,
 the first 100 stack frames, lazy variable expansion, expression evaluation, and

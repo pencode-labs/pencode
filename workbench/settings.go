@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -88,16 +89,18 @@ var pencodeShortcutDefinitions = [...]pencodeShortcutDefinition{
 }
 
 type pencodeSettings struct {
-	FontSize    int                          `json:"fontSize"`
-	UIFontSize  int                          `json:"uiFontSize"`
-	EditorWidth int                          `json:"editorWidth"`
-	CodeFont    string                       `json:"codeFont"`
-	UIFont      string                       `json:"uiFont"`
-	Theme       string                       `json:"theme"`
-	IconTheme   string                       `json:"iconTheme"`
-	Zoom        int                          `json:"zoom"`
-	Bindings    map[string]pencodeKeybinding `json:"bindings"`
-	Extensions  map[string]peb.SettingValues `json:"extensions,omitempty"`
+	FontSize    int                                     `json:"fontSize"`
+	UIFontSize  int                                     `json:"uiFontSize"`
+	EditorWidth int                                     `json:"editorWidth"`
+	CodeFont    string                                  `json:"codeFont"`
+	UIFont      string                                  `json:"uiFont"`
+	Theme       string                                  `json:"theme"`
+	IconTheme   string                                  `json:"iconTheme"`
+	Zoom        int                                     `json:"zoom"`
+	Bindings    map[string]pencodeKeybinding            `json:"bindings"`
+	Keymap      string                                  `json:"keymap"`
+	Keymaps     map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
+	Extensions  map[string]peb.SettingValues            `json:"extensions,omitempty"`
 }
 
 func defaultPencodeSettings() pencodeSettings {
@@ -105,11 +108,14 @@ func defaultPencodeSettings() pencodeSettings {
 		FontSize: pencodeDefaultFontSize, UIFontSize: pencodeDefaultUIFontSize,
 		EditorWidth: pencodeDefaultEditorWidth,
 		CodeFont:    defaultPencodeFont(runtime.GOOS), UIFont: defaultPencodeFont(runtime.GOOS), Zoom: pencodeDefaultZoom,
-		Theme: "monokai",
+		Theme: "monokai", Keymap: "default",
 	}
 	settings.Bindings = make(map[string]pencodeKeybinding, len(pencodeShortcutDefinitions))
 	for action, definition := range pencodeShortcutDefinitions {
 		settings.Bindings[definition.id] = defaultPencodeBinding(pencodeShortcutAction(action), runtime.GOOS)
+	}
+	for _, entry := range pencodeExtraShortcuts {
+		settings.Bindings[entry.id] = entry.defaultBinding()
 	}
 	return settings
 }
@@ -174,22 +180,24 @@ func parsePencodeSettings(data []byte) pencodeSettings {
 	}
 	settings.Extensions = saved.Extensions
 	settings.IconTheme = saved.IconTheme
-	for _, definition := range pencodeShortcutDefinitions {
-		binding := saved.Bindings[definition.id]
-		if !validPencodeKeybinding(binding) {
+	if saved.Keymap != "" {
+		settings.Keymap = saved.Keymap
+	}
+	settings.Keymaps = saved.Keymaps
+	for name, bindings := range settings.Keymaps {
+		if name == "" || name == settings.Keymap {
+			delete(settings.Keymaps, name)
 			continue
 		}
-		conflict := false
-		for _, other := range pencodeShortcutDefinitions {
-			if other.id != definition.id && samePencodeBinding(binding, settings.Bindings[other.id], runtime.GOOS) {
-				conflict = true
-				break
-			}
-		}
-		if !conflict {
-			settings.Bindings[definition.id] = binding
-		}
+		settings.Keymaps[name] = resolvePencodeBindings(bindings)
 	}
+	if settings.Keymap != "default" && settings.Keymaps["default"] == nil {
+		if settings.Keymaps == nil {
+			settings.Keymaps = make(map[string]map[string]pencodeKeybinding)
+		}
+		settings.Keymaps["default"] = defaultPencodeSettings().Bindings
+	}
+	settings.Bindings = resolvePencodeBindings(saved.Bindings)
 	return settings
 }
 
@@ -234,7 +242,7 @@ func (model *workspaceModel) saveSettings() {
 }
 
 func (binding pencodeKeybinding) matches(state *input.State, goos string) bool {
-	if state == nil || !state.KeyPressed(binding.Key) {
+	if binding.Key == 0 || state == nil || !state.KeyPressed(binding.Key) {
 		return false
 	}
 	control := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
@@ -280,53 +288,37 @@ func (binding pencodeKeybinding) label(goos string) string {
 }
 
 func pencodeKeyLabel(key input.KeyCode) string {
-	switch key {
-	case input.KeyTab:
-		return "Tab"
-	case input.KeyEqual:
-		return "="
-	case input.KeyMinus:
-		return "-"
-	case input.KeyComma:
-		return ","
-	case input.KeySlash:
-		return "/"
-	case input.KeyPageUp:
-		return "PageUp"
-	case input.KeyPageDown:
-		return "PageDown"
-	case input.KeyF2:
-		return "F2"
-	case input.KeyF11:
-		return "F11"
+	if key == 0 {
+		return "未设置"
 	}
-	if key >= input.KeyA && key <= input.KeyZ || key >= input.KeyNum0 && key <= input.KeyNum9 {
-		return string(rune(key))
+	for name, code := range pencodeShortcutKeys {
+		if code == key {
+			return name
+		}
 	}
 	return "?"
 }
 
 func validPencodeKeybinding(binding pencodeKeybinding) bool {
-	if !binding.Primary && !binding.Control && !binding.Super && !binding.Alt && binding.Key != input.KeyF2 && binding.Key != input.KeyF11 {
-		return false
+	if binding.Key == 0 {
+		return binding == (pencodeKeybinding{})
 	}
-	for _, key := range pencodeCaptureKeys {
-		if binding.Key == key {
+	for _, code := range pencodeShortcutKeys {
+		if code == binding.Key {
 			return true
 		}
 	}
 	return false
 }
 
-var pencodeCaptureKeys = [...]input.KeyCode{
-	input.KeyA, input.KeyB, input.KeyC, input.KeyD, input.KeyE, input.KeyF, input.KeyG, input.KeyH,
-	input.KeyI, input.KeyJ, input.KeyK, input.KeyL, input.KeyM, input.KeyN, input.KeyO, input.KeyP,
-	input.KeyQ, input.KeyR, input.KeyS, input.KeyT, input.KeyU, input.KeyV, input.KeyW, input.KeyX,
-	input.KeyY, input.KeyZ, input.KeyNum0, input.KeyNum1, input.KeyNum2, input.KeyNum3, input.KeyNum4,
-	input.KeyNum5, input.KeyNum6, input.KeyNum7, input.KeyNum8, input.KeyNum9, input.KeyTab,
-	input.KeyEqual, input.KeyMinus, input.KeyComma, input.KeySlash, input.KeyPageUp, input.KeyPageDown,
-	input.KeyF2, input.KeyF11,
-}
+var pencodeCaptureKeys = func() []input.KeyCode {
+	keys := make([]input.KeyCode, 0, len(pencodeShortcutKeys))
+	for _, code := range pencodeShortcutKeys {
+		keys = append(keys, code)
+	}
+	slices.Sort(keys)
+	return keys
+}()
 
 func pencodeCapturedBinding(state *input.State, goos string) (pencodeKeybinding, bool) {
 	for _, key := range pencodeCaptureKeys {
@@ -418,13 +410,16 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 
 func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventContext[appProps, appState]) bool {
 	model.ensureSettings()
-	for action, definition := range pencodeShortcutDefinitions {
+	if model.handleKeymapEvent(context) {
+		return true
+	}
+	for _, definition := range pencodeShortcutDefinitions {
 		if context.Ref == definition.ref {
 			model.settingsOpen = true
 			model.settingsShortcuts = true
 			model.settingsExtensions = false
 			model.capturingShortcut = true
-			model.captureAction = pencodeShortcutAction(action)
+			model.captureAction = definition.id
 			model.settingsFeedback = ""
 			return true
 		}
@@ -517,9 +512,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		model.saveSettings()
 		return true
 	case "reset-shortcuts":
-		for action, definition := range pencodeShortcutDefinitions {
-			model.settings.Bindings[definition.id] = defaultPencodeBinding(pencodeShortcutAction(action), runtime.GOOS)
-		}
+		model.settings.Bindings = defaultPencodeSettings().Bindings
 		model.capturingShortcut = false
 		model.refreshSettingsLabels()
 		model.saveSettings()
@@ -534,9 +527,9 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 	}
 	if model.session != nil && model.session.connection != nil && model.session.connection.passwordRequest != nil {
 		switch {
-		case state.KeyPressed(input.KeyEscape):
+		case model.uiKey(state, input.KeyEscape):
 			return model.connectionEvent("connection-password-cancel", "")
-		case state.KeyPressed(input.KeyEnter):
+		case model.uiKey(state, input.KeyEnter):
 			if !model.session.connection.passwordRequest.prompt.Confirm {
 				return model.connectionEvent("connection-password-submit", "")
 			}
@@ -545,9 +538,9 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 	}
 	if model.session != nil && model.session.connection != nil && model.session.connection.open && model.session.connection.picker.open {
 		switch {
-		case state.KeyPressed(input.KeyEscape):
+		case model.uiKey(state, input.KeyEscape):
 			return model.connectionEvent("connection-project-cancel", "")
-		case state.KeyPressed(input.KeyEnter):
+		case model.uiKey(state, input.KeyEnter):
 			if world != nil {
 				if entity, ok := world.HTMLControl(model.surface, "connection-project-path"); ok {
 					if field, ok := module.ContentGet[engineui.TextField](world, entity); ok && field.Focused {
@@ -564,22 +557,22 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 	}
 	if model.fileContext.open || model.fileContext.dialog != "" {
 		model.languageUI.keysHandled = model.fileContext.open
-		return model.handleFileContextKeys(world, state)
+		return model.handleFileContextKeys(world, state, goos) || model.handleActionShortcuts(world, state, goos)
 	}
 	if model.folderSearch.open {
 		return model.folderSearchKeys(world, state)
 	}
 	if model.closing.action != pencodeCloseNone {
-		if state.KeyPressed(input.KeyEscape) {
+		if model.uiKey(state, input.KeyEscape) {
 			model.clearCloseRequest()
 			return true
 		}
 		return false
 	}
-	if model.debugShortcut(world, state) {
+	model.ensureSettings()
+	if !model.capturingShortcut && model.debugShortcut(world, state) {
 		return true
 	}
-	model.ensureSettings()
 	if handled, changed := model.portsShortcut(world, state); handled {
 		return changed
 	}
@@ -590,7 +583,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		return changed
 	}
 	if model.market != nil && model.market.open {
-		if state.KeyPressed(input.KeyEscape) {
+		if model.uiKey(state, input.KeyEscape) {
 			model.closeMarketplace()
 			return true
 		}
@@ -601,104 +594,103 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			model.capturingShortcut = false
 			return true
 		}
+		if state.KeyPressed(input.KeyBackspace) {
+			model.settings.Bindings[model.captureAction] = pencodeKeybinding{}
+			model.capturingShortcut = false
+			model.refreshSettingsLabels()
+			model.saveSettings()
+			return true
+		}
 		binding, ok := pencodeCapturedBinding(state, goos)
 		if !ok {
 			return false
 		}
 		if !validPencodeKeybinding(binding) {
-			model.settingsFeedback = "请使用 Ctrl/Alt 或功能键"
-			if goos == "darwin" {
-				model.settingsFeedback = "请使用 Cmd/Option 或功能键"
-			}
 			return true
 		}
-		for action, definition := range pencodeShortcutDefinitions {
-			if pencodeShortcutAction(action) != model.captureAction && samePencodeBinding(binding, model.settings.Bindings[definition.id], goos) {
-				model.settingsFeedback = "快捷键已用于" + definition.name
-				return true
-			}
+		if conflict := model.shortcutConflict(model.captureAction, binding, goos); conflict != "" {
+			model.settingsFeedback = "快捷键已用于" + conflict
+			return true
 		}
-		definition := pencodeShortcutDefinitions[model.captureAction]
-		model.settings.Bindings[definition.id] = binding
+		model.settings.Bindings[model.captureAction] = binding
 		model.capturingShortcut = false
 		model.refreshSettingsLabels()
 		model.saveSettings()
 		return true
 	}
-	if model.settingsOpen && state.KeyPressed(input.KeyEscape) {
+	if model.settingsOpen && model.uiKey(state, input.KeyEscape) {
 		model.settingsOpen = false
 		return true
 	}
 	if model.quickOpen {
-		if state.KeyPressed(input.KeyEscape) {
+		if model.uiKey(state, input.KeyEscape) {
 			model.closeQuickOpen(world)
 			return true
 		}
-		if state.KeyPressed(input.KeyEnter) {
+		if model.uiKey(state, input.KeyEnter) {
 			model.openQuickMatch(world, model.quickIndex)
 			return true
 		}
-		if state.KeyPressed(input.KeyDown) {
+		if model.uiKey(state, input.KeyDown) {
 			model.advanceQuickMatch(1)
 			return true
 		}
-		if state.KeyPressed(input.KeyUp) {
+		if model.uiKey(state, input.KeyUp) {
 			model.advanceQuickMatch(-1)
 			return true
 		}
 	}
 	if model.findOpen {
-		if option := searchOptionKey(state); option >= 0 {
+		if option := model.searchOptionKey(state); option >= 0 {
 			toggleSearchOption(&model.findOptions, option)
 			model.refreshFindMatches()
 			model.findFromCaret(world)
 			return true
 		}
-		if state.KeyPressed(input.KeyEscape) {
+		if model.uiKey(state, input.KeyEscape) {
 			model.closeFind(world)
 			return true
 		}
-		if state.KeyPressed(input.KeyEnter) && (pencodeControlFocused(world, model.surface, "find-query") || pencodeControlFocused(world, model.surface, "replace-query")) {
+		if (model.uiKey(state, input.KeyEnter) || model.commandMatches("search-previous", state, goos) || model.commandMatches("search-replace-all", state, goos)) && (pencodeControlFocused(world, model.surface, "find-query") || pencodeControlFocused(world, model.surface, "replace-query")) {
 			if pencodeControlFocused(world, model.surface, "replace-query") {
-				model.replaceFindMatch(world, state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl) || state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper))
+				model.replaceFindMatch(world, model.commandMatches("search-replace-all", state, goos))
 				return true
 			}
 			step := 1
-			if state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift) {
+			if model.commandMatches("search-previous", state, goos) {
 				step = -1
 			}
 			model.advanceFind(world, step)
 			return true
 		}
 	}
-	if state.KeyPressed(input.KeyF3) && model.textEditorActive() {
-		step := 1
-		if state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift) {
-			step = -1
+	if model.textEditorActive() {
+		if model.commandMatches("find-previous", state, goos) {
+			model.advanceFind(world, -1)
+			return true
 		}
-		model.advanceFind(world, step)
+		if model.commandMatches("find-next", state, goos) {
+			model.advanceFind(world, 1)
+			return true
+		}
+	}
+	if model.commandMatches("folder-find", state, goos) || model.commandMatches("folder-replace", state, goos) {
+		model.openFolderSearch(model.activeProjectState(), "", model.commandMatches("folder-replace", state, goos))
 		return true
 	}
-	primary := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
-	if goos == "darwin" {
-		primary = state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
-	}
-	if primary && (state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)) && (state.KeyPressed(input.KeyF) || state.KeyPressed(input.KeyH)) {
-		model.openFolderSearch(model.activeProjectState(), "", state.KeyPressed(input.KeyH))
+	if model.editorClipboardShortcut(world, state, goos) {
 		return true
 	}
 	if model.handleLanguageKeys(world, state) {
 		return true
 	}
-	if model.bottom.active != pencodePanelClosed && state.KeyPressed(input.KeyEscape) {
+	if model.bottom.active != pencodePanelClosed && model.commandMatches("panel-close", state, goos) {
 		model.handleBottomPanelEvent(world, "panel-close", "")
 		return true
 	}
-	if state.KeyPressed(input.KeyTab) &&
-		!state.KeyHeld(input.KeyLeftControl) && !state.KeyHeld(input.KeyRightControl) &&
-		!state.KeyHeld(input.KeyLeftSuper) && !state.KeyHeld(input.KeyRightSuper) &&
-		!state.KeyHeld(input.KeyLeftAlt) && !state.KeyHeld(input.KeyRightAlt) {
-		if model.indentEditorSelection(world, state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)) {
+	if model.commandMatches("editor-indent", state, goos) || model.commandMatches("editor-outdent", state, goos) {
+		if model.indentEditorSelection(world, model.commandMatches("editor-outdent", state, goos)) {
+			model.languageUI.keysHandled = true
 			return true
 		}
 	}
@@ -708,7 +700,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			return true
 		}
 	}
-	return false
+	return model.handleActionShortcuts(world, state, goos)
 }
 
 func samePencodeBinding(a, b pencodeKeybinding, goos string) bool {

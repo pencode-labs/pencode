@@ -6,14 +6,17 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
+	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 type pencodeFileDrag struct {
 	source, target        *pencodeProject
 	path, directory       string
 	x, y                  float32
+	previewX, previewY    float32
 	depth                 int
 	active, suppressClick bool
+	positioned            bool
 	expandAt              time.Time
 }
 
@@ -21,12 +24,47 @@ func (drag *pencodeFileDrag) isTarget(project *pencodeProject, directory string)
 	return drag.active && drag.target == project && drag.directory == directory
 }
 
+func (model *workspaceModel) renderFileDrag(view *htmlui.View) {
+	drag := &model.fileDrag
+	setPanelVisible(view, "file-drag-preview", drag.active)
+	if drag.active {
+		view.Text("file-drag-name", path.Base(drag.path))
+	}
+}
+
+func (model *workspaceModel) syncFileDragPreview(world *module.Content) {
+	drag := &model.fileDrag
+	if !drag.active {
+		return
+	}
+	preview, found := world.HTMLNode(model.surface, "file-drag-preview")
+	root, rootFound := world.HTMLNode(model.surface, "pencode-root")
+	if !found || !rootFound {
+		return
+	}
+	size, measured := preview.Bounds()
+	viewport, _ := root.Bounds()
+	if !measured {
+		return
+	}
+	x := max(4, min(drag.x+12, viewport.Width-size.Width-4))
+	y := drag.y + 16
+	if y+size.Height > viewport.Height-4 {
+		y = drag.y - size.Height - 8
+	}
+	y = max(4, y)
+	if !drag.positioned || drag.previewX != x || drag.previewY != y {
+		drag.previewX, drag.previewY, drag.positioned = x, y, true
+		world.HTMLSetOffset(model.surface, "file-drag-preview", x, y)
+	}
+}
+
 func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.State) bool {
 	drag := &model.fileDrag
-	if state.PointerPressed() || state.KeyPressed(input.KeyEnter) || state.KeyPressed(input.KeySpace) {
+	if state.PointerPressed() || model.uiKey(state, input.KeyEnter) || model.uiKey(state, input.KeySpace) {
 		drag.suppressClick = false
 	}
-	if model.folderSearch.open || model.screen != pencodeWorkspace || model.sidebarHidden || model.settingsOpen || model.quickOpen || model.fileContext.open || model.fileContext.dialog != "" || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open || state.KeyPressed(input.KeyEscape) || state.MousePressed(input.MouseRight) {
+	if model.folderSearch.open || model.screen != pencodeWorkspace || model.sidebarHidden || model.settingsOpen || model.quickOpen || model.fileContext.open || model.fileContext.dialog != "" || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open || model.uiKey(state, input.KeyEscape) || state.MousePressed(input.MouseRight) {
 		active := drag.active
 		*drag = pencodeFileDrag{suppressClick: drag.suppressClick}
 		return active

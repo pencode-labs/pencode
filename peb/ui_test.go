@@ -36,6 +36,11 @@ func TestUICodecsAndFrameRules(t *testing.T) {
 	if _, err := DecodeUI(invalid); err == nil {
 		t.Fatal("accepted nonboolean outside-close flag")
 	}
+	invalid = bytes.Clone(data)
+	binary.LittleEndian.PutUint32(invalid[kindOffset+36:], 2)
+	if _, err := DecodeUI(invalid); err == nil {
+		t.Fatal("accepted nonboolean busy flag")
+	}
 	for _, mutation := range []struct {
 		offset int
 		value  uint32

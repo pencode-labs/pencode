@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -1158,7 +1159,7 @@ func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *in
 		model.languageUI.keysHandled = true
 		return model.handleEditorContextKeys(world, state)
 	}
-	if state.KeyPressed(input.KeyEscape) && (model.languageUI.contextOpen || model.languageUI.hover.file != nil || model.languageUI.completionFile != nil) {
+	if model.uiKey(state, input.KeyEscape) && (model.languageUI.contextOpen || model.languageUI.hover.file != nil || model.languageUI.completionFile != nil) {
 		model.dismissLanguageContext()
 		model.cancelLanguageHover()
 		model.cancelLanguageAutomatic()
@@ -1169,7 +1170,7 @@ func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *in
 		return false
 	}
 	p := &model.languages.panel
-	if state.KeyPressed(input.KeyEscape) {
+	if model.uiKey(state, input.KeyEscape) {
 		if model.languageUI.contextOpen || model.languageUI.hover.open || model.languageUI.hover.link || p.completion || p.job.automatic && p.cancel != nil {
 			model.dismissLanguageContext()
 			model.cancelLanguageHover()
@@ -1178,11 +1179,11 @@ func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *in
 			return true
 		}
 	}
-	if p.open && state.KeyPressed(input.KeyEscape) {
+	if p.open && model.uiKey(state, input.KeyEscape) {
 		model.dismissLanguagePanel()
 		return true
 	}
-	if p.open && (p.method == "textDocument/rename" || p.method == "workspace/symbol") && state.KeyPressed(input.KeyEnter) {
+	if p.open && (p.method == "textDocument/rename" || p.method == "workspace/symbol") && model.uiKey(state, input.KeyEnter) {
 		model.runLanguageAction(world, p.method, true)
 		return true
 	}
@@ -1192,56 +1193,38 @@ func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *in
 	}
 	if p.completion && len(p.rows) > 0 {
 		switch {
-		case state.KeyPressed(input.KeyDown):
+		case model.uiKey(state, input.KeyDown):
 			p.completionIndex = (p.completionIndex + 1) % len(p.rows)
 			return true
-		case state.KeyPressed(input.KeyUp):
+		case model.uiKey(state, input.KeyUp):
 			p.completionIndex = (p.completionIndex + len(p.rows) - 1) % len(p.rows)
 			return true
-		case state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeyTab):
+		case model.uiKey(state, input.KeyEnter), model.uiKey(state, input.KeyTab):
 			model.chooseLanguageCompletion(world, p.completionIndex)
 			return true
 		}
 	}
 	if p.open && len(p.rows) > 0 {
 		switch {
-		case state.KeyPressed(input.KeyDown):
+		case model.uiKey(state, input.KeyDown):
 			p.selection = (p.selection + 1) % len(p.rows)
 			p.page = p.selection / len(pencodeLanguageRowRefs)
 			return true
-		case state.KeyPressed(input.KeyUp):
+		case model.uiKey(state, input.KeyUp):
 			p.selection = (p.selection + len(p.rows) - 1) % len(p.rows)
 			p.page = p.selection / len(pencodeLanguageRowRefs)
 			return true
-		case state.KeyPressed(input.KeyEnter):
+		case model.uiKey(state, input.KeyEnter):
 			model.chooseLanguageRow(world, p.selection)
 			return true
 		}
 	}
-	ctrl := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
-	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
-	alt := state.KeyHeld(input.KeyLeftAlt) || state.KeyHeld(input.KeyRightAlt)
 	method := ""
-	switch {
-	case ctrl && state.KeyPressed(input.KeySpace):
-		method = "textDocument/completion"
-		if shift {
-			method = "textDocument/signatureHelp"
+	for _, command := range pencodeLanguageShortcuts {
+		if model.commandMatches(command.id, state, runtime.GOOS) {
+			method = command.method
+			break
 		}
-	case state.KeyPressed(input.KeyF12):
-		method = "textDocument/definition"
-		if shift {
-			method = "textDocument/references"
-		}
-		if ctrl {
-			method = "textDocument/implementation"
-		}
-	case state.KeyPressed(input.KeyF2):
-		method = "textDocument/rename"
-	case alt && shift && state.KeyPressed(input.KeyF):
-		method = "textDocument/formatting"
-	case ctrl && state.KeyPressed(input.KeyPeriod):
-		method = "textDocument/codeAction"
 	}
 	if method == "" {
 		return false

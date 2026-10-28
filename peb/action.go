@@ -15,6 +15,8 @@ const (
 	RightContextMenu
 	TitleBarRight
 	OpenWith
+	// Command registers an action without a workbench button.
+	Command
 )
 
 // Action is a complete button description. Updates replace the description;
@@ -23,16 +25,18 @@ const (
 // automatic activation. Their view is served by Handlers.Editor, not Action.
 type Action struct {
 	ID, Text, Tooltip, Icon, Color, IconColor, IconStyle string
-	Location                                             ActionLocation
-	Disabled, Hidden                                     bool
-	Default                                              bool
-	Selectors                                            []DocumentSelector
+	// Shortcut is a single chord, e.g. "Primary+Shift+B"; empty disables it.
+	Shortcut         string
+	Location         ActionLocation
+	Disabled, Hidden bool
+	Default          bool
+	Selectors        []DocumentSelector
 }
 
 // Equal compares full descriptions, including document associations.
 func (a Action) Equal(b Action) bool {
 	rules := slices.Equal(a.Selectors, b.Selectors)
-	return rules && a.ID == b.ID && a.Text == b.Text && a.Tooltip == b.Tooltip && a.Icon == b.Icon && a.Color == b.Color && a.IconColor == b.IconColor && a.IconStyle == b.IconStyle && a.Location == b.Location && a.Disabled == b.Disabled && a.Hidden == b.Hidden && a.Default == b.Default
+	return rules && a.ID == b.ID && a.Text == b.Text && a.Tooltip == b.Tooltip && a.Icon == b.Icon && a.Color == b.Color && a.IconColor == b.IconColor && a.IconStyle == b.IconStyle && a.Shortcut == b.Shortcut && a.Location == b.Location && a.Disabled == b.Disabled && a.Hidden == b.Hidden && a.Default == b.Default
 }
 
 // ActionContext uses absolute paths; Caret and Anchor are Unicode rune offsets.
@@ -48,7 +52,12 @@ type ActionChange struct {
 }
 
 func encodeAction(e *encoder, a Action) {
-	if a.Location > OpenWith {
+	if a.Shortcut != "" {
+		if _, err := ParseShortcut(a.Shortcut); err != nil {
+			e.err = ErrProtocol
+		}
+	}
+	if a.Location > Command {
 		e.err = ErrProtocol
 	}
 	e.str(a.ID)
@@ -58,6 +67,7 @@ func encodeAction(e *encoder, a Action) {
 	e.str(a.Color)
 	e.str(a.IconColor)
 	e.str(a.IconStyle)
+	e.str(a.Shortcut)
 	e.number(uint32(a.Location))
 	e.number(boolNumber(a.Disabled))
 	e.number(boolNumber(a.Hidden))
@@ -70,7 +80,7 @@ func encodeAction(e *encoder, a Action) {
 	}
 }
 func decodeAction(d *decoder) Action {
-	a := Action{ID: d.str(), Text: d.str(), Tooltip: d.str(), Icon: d.str(), Color: d.str(), IconColor: d.str(), IconStyle: d.str(), Location: ActionLocation(d.number()), Disabled: d.boolean(), Hidden: d.boolean()}
+	a := Action{ID: d.str(), Text: d.str(), Tooltip: d.str(), Icon: d.str(), Color: d.str(), IconColor: d.str(), IconStyle: d.str(), Shortcut: d.str(), Location: ActionLocation(d.number()), Disabled: d.boolean(), Hidden: d.boolean()}
 	a.Default = d.boolean()
 	if n := d.count(); n != 0 {
 		a.Selectors = make([]DocumentSelector, n)
@@ -78,7 +88,12 @@ func decodeAction(d *decoder) Action {
 	for i := range a.Selectors {
 		a.Selectors[i] = DocumentSelector{Match: Match(d.number()), Pattern: d.str(), LanguageID: d.str()}
 	}
-	if a.Location > OpenWith {
+	if a.Shortcut != "" {
+		if _, err := ParseShortcut(a.Shortcut); err != nil {
+			d.err = ErrProtocol
+		}
+	}
+	if a.Location > Command {
 		d.err = ErrProtocol
 	}
 	return a
@@ -126,6 +141,7 @@ type ActionPublisher struct {
 	ctx    context.Context
 	ui     bool
 	action ActionContext
+	views  viewStream
 }
 
 func (p *ActionPublisher) Update(action Action) error { return p.change(ActionChange{Action: action}) }

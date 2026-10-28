@@ -36,9 +36,9 @@
 
   <section id="connection-panel" data-ref="connection-panel" class="pencode-connection" role="dialog" aria-labelledby="connection-title" hidden>
     <header class="pencode-connection-header"><h2 id="connection-title">连接</h2><button id="connection-close" data-ref="connection-close" class="pencode-icon-button" type="button" title="关闭远程管理" aria-label="关闭远程管理"><img data-ref="connection-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
-    <div class="pencode-connection-toolbar"><p>来自这台设备的 SSH 连接</p><button id="connection-add" data-ref="connection-add" type="button">添加</button></div>
+    <div class="pencode-connection-toolbar"><p>来自这台设备的远程连接</p><button id="connection-add" data-ref="connection-add" type="button">添加</button></div>
     <div data-ref="connection-list" class="pencode-connection-list" role="list"></div>
-    <p data-ref="connection-empty" class="pencode-connection-empty">还没有 SSH 连接。点击“添加”保存第一台远程设备。</p>
+    <p data-ref="connection-empty" class="pencode-connection-empty">还没有远程连接。点击“添加”保存第一台远程设备。</p>
     <footer class="pencode-connection-footer"><p data-ref="connection-feedback" class="pencode-connection-feedback" role="status" aria-live="polite"></p><button id="connection-cancel" data-ref="connection-cancel" type="button" hidden>取消连接</button></footer>
     <section data-ref="connection-password-form" class="pencode-connection-form" role="dialog" aria-labelledby="connection-password-title" hidden>
       <header class="pencode-connection-header"><h2 id="connection-password-title" data-ref="connection-password-title">SSH 身份验证</h2></header>
@@ -48,11 +48,18 @@
       <footer class="pencode-connection-form-actions"><button id="connection-password-cancel" data-ref="connection-password-cancel" type="button">取消</button><button id="connection-password-submit" data-ref="connection-password-submit" class="primary" type="button">连接</button></footer>
     </section>
     <section data-ref="connection-form" class="pencode-connection-form" aria-labelledby="connection-form-title" hidden>
-      <header class="pencode-connection-header"><h2 id="connection-form-title" data-ref="connection-form-title">添加 SSH 连接</h2><button id="connection-form-close" data-ref="connection-form-close" class="pencode-icon-button" type="button" title="关闭" aria-label="关闭 SSH 表单"><img data-ref="connection-form-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
-      <label for="connection-name">显示名称</label><input id="connection-name" data-ref="connection-name" type="text" placeholder="开发服务器" autocomplete="off" spellcheck="false">
+      <header class="pencode-connection-header"><h2 id="connection-form-title" data-ref="connection-form-title">添加远程连接</h2><button id="connection-form-close" data-ref="connection-form-close" class="pencode-icon-button" type="button" title="关闭" aria-label="关闭连接表单"><img data-ref="connection-form-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
+      <label data-ref="connection-name-label" for="connection-name">显示名称</label><input id="connection-name" data-ref="connection-name" type="text" placeholder="开发服务器" autocomplete="off" spellcheck="false">
+      <label for="connection-type">连接方式</label><select id="connection-type" data-ref="connection-type"></select>
+      <div data-ref="connection-ssh-fields" class="pencode-connection-fields">
       <label for="connection-host">主机名</label><input id="connection-host" data-ref="connection-host" type="text" placeholder="host.com 或 user@host.com" autocomplete="off" spellcheck="false">
       <label for="connection-port">SSH 端口（可选）</label><input id="connection-port" data-ref="connection-port" type="text" inputmode="numeric" placeholder="使用 SSH config">
       <label for="connection-identity">身份文件（可选）</label><input id="connection-identity" data-ref="connection-identity" type="text" placeholder="留空使用 SSH config 或 agent" autocomplete="off" spellcheck="false">
+      </div>
+      <div data-ref="connection-websocket-fields" class="pencode-connection-fields" hidden>
+        <label for="connection-address">服务地址</label><input id="connection-address" data-ref="connection-address" type="text" placeholder="ws://host.com:8080/ws" autocomplete="off" spellcheck="false">
+        <label for="connection-token">Token</label><input id="connection-token" data-ref="connection-token" type="password" autocomplete="off" spellcheck="false">
+      </div>
       <label for="connection-directory">起始目录（可选，用于项目选择）</label><input id="connection-directory" data-ref="connection-directory" type="text" placeholder="~ 或 ~/workspace/app" autocomplete="off" spellcheck="false">
       <footer class="pencode-connection-form-actions"><button data-ref="connection-form-cancel" type="button">取消</button><button id="connection-save" data-ref="connection-save" class="primary" type="button">保存</button></footer>
     </section>
@@ -215,6 +222,11 @@
         <span>打开项目目录</span>
       </button>
       <div data-ref="launcher-status" class="pencode-launcher-status" role="status" aria-live="polite"></div>
+      <section class="pencode-recent" aria-labelledby="recent-projects-title">
+        <h2 id="recent-projects-title">最近打开</h2>
+        <p data-ref="recent-projects-empty" class="pencode-recent-empty">暂无最近打开的项目</p>
+        <div data-ref="recent-projects" class="pencode-recent-list" role="list"></div>
+      </section>
     </div>
   </section>
 

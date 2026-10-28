@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,6 +27,74 @@ func problemControl(t *testing.T, model *workspaceModel, label string) ecs.Entit
 	}
 	t.Fatalf("missing problem control %q", label)
 	return 0
+}
+
+func TestPencodeBottomPanelEditorCaret(t *testing.T) {
+	app, model, _, state := languageInteractionFixture(t)
+	world := model.fontResources
+	const value = "<?php\n\n"
+	model.updateActiveContent(value)
+	model.setEditorValueAndCaret(world, value, len(value))
+	languageInteractionStep(t, app)
+	assertCaret := func(t *testing.T) {
+		t.Helper()
+		if clock, ok := ecs.GetResource[*scene.Time](app.World); ok {
+			clock.Set(0, 0, clock.Frame)
+		}
+		languageInteractionStep(t, app)
+		field := module.ContentRef[engineui.TextField](world, model.editor.control)
+		var caret ecs.Entity
+		for entity, access := range module.ContentQuery[htmlui.ControlVisual](world) {
+			visual := access.Get()
+			if visual.Control == model.editor.control && visual.Kind == htmlui.ControlVisualCaret && !visual.Selection {
+				caret = entity
+				break
+			}
+		}
+		if caret == 0 {
+			t.Fatal("missing editor caret")
+		}
+		if !module.ContentHas[engineui.Part[engineui.CaretPart]](world, caret) || module.ContentHas[engineui.Part[engineui.SelectionPart]](world, caret) {
+			t.Fatal("editor caret retained a different visual's runtime role")
+		}
+		global, _ := module.ContentGet[scene.UIGlobalTransform](world, caret)
+		clip, clipped := global.ClipRect()
+		visibility, _ := module.ContentGet[scene.Visibility](world, caret)
+		size, _ := module.ContentGet[scene.Size2D](world, caret)
+		if !field.Focused || !visibility.Visible || size.Width <= 0 || size.Height <= 0 {
+			t.Fatalf("editor caret is hidden: focused=%v visible=%v size=%+v", field.Focused, visibility.Visible, size)
+		}
+		x, y := global.Matrix[12], global.Matrix[13]
+		if clipped && (x < clip.X || y < clip.Y || x+size.Width > clip.X+clip.Width || y+size.Height > clip.Y+clip.Height) {
+			t.Fatalf("editor caret is outside its clip: x=%v y=%v size=%+v clip=%+v", x, y, size, clip)
+		}
+	}
+	assertCaret(t)
+	for _, zoom := range []int{100, 150, 70} {
+		t.Run(strconv.Itoa(zoom), func(t *testing.T) {
+			model.setZoom(world, zoom)
+			languageInteractionStep(t, app)
+			for _, ref := range []string{"status-debug", "status-output", "status-problems"} {
+				t.Run(ref, func(t *testing.T) {
+					editorContextClick(t, app, model, state, ref)
+					if model.bottom.active == pencodePanelClosed {
+						t.Fatal("bottom panel did not open")
+					}
+					editorContextClick(t, app, model, state, "editor")
+					assertCaret(t)
+					before := model.activeContent()
+					state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "字"})
+					languageInteractionStep(t, app)
+					if model.activeContent() != before+"字" {
+						t.Fatalf("editor did not accept input with panel open: %q", model.activeContent())
+					}
+					assertCaret(t)
+					editorContextClick(t, app, model, state, "panel-close")
+					assertCaret(t)
+				})
+			}
+		})
+	}
 }
 
 func TestPencodePanelClosePreservesEditorSelection(t *testing.T) {

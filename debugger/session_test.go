@@ -328,12 +328,32 @@ func TestConfigPreservesAdapterFieldsAndEscapesWorkspace(t *testing.T) {
 	if result.Program != root+"/main" || result.Args[0] != root || !result.StopOnEntry || result.Custom.Depth != 7 {
 		t.Fatalf("payload changed: %+v", result)
 	}
-	for _, value := range []string{`[]`, `[{}]`, `[{"label":"bad","adapter":"stdio","request":"launch","configuration":{}}]`, `[{"label":"bad","adapter":"Delve","request":"launch","configuration":null}]`} {
+	for _, value := range []string{`null`, `[{}]`, `[{"label":"bad","adapter":"stdio","request":"launch","configuration":{}}]`, `[{"label":"bad","adapter":"Delve","request":"launch","configuration":null}]`} {
 		if _, err := ParseConfigs([]byte(value), root); err == nil {
 			t.Fatal("accepted invalid config", value)
 		}
 	}
 	if strings.Contains(string(configs[0].Configuration), "${workspaceFolder}") {
 		t.Fatal("workspace substitution incomplete")
+	}
+}
+
+func TestConfigAcceptsEmptyLauncherList(t *testing.T) {
+	configs, err := ParseConfigs([]byte(`[]`), "/project")
+	if err != nil || len(configs) != 0 {
+		t.Fatal(configs, err)
+	}
+}
+
+func TestConfigAcceptsContributedAdapter(t *testing.T) {
+	configs, err := ParseConfigs([]byte(`[{"label":"Listen for Xdebug","adapter":"Xdebug","request":"launch","configuration":{"port":9003,"cwd":"${workspaceFolder}"}}]`), "/project")
+	if err != nil || len(configs) != 1 || configs[0].Adapter != "Xdebug" || configs[0].Command != "" || !strings.Contains(string(configs[0].Configuration), "/project") {
+		t.Fatal(configs, err)
+	}
+	for _, adapter := range []string{"", "bad/name", "bad\\name", "bad\nname", strings.Repeat("a", 129)} {
+		data, _ := json.Marshal([]Config{{Label: "invalid", Adapter: adapter, Request: "launch", Configuration: json.RawMessage(`{}`)}})
+		if _, err := ParseConfigs(data, "/project"); err == nil {
+			t.Fatal("accepted invalid adapter", adapter)
+		}
 	}
 }

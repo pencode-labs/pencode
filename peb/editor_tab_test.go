@@ -6,7 +6,7 @@ import (
 )
 
 func TestEditorTabUIRoundTrip(t *testing.T) {
-	v := UI{ID: "thread", Title: "工作会话", Kind: EditorTab, View: &EditorView{HTML: "<p>reply</p>", Events: []EditorBinding{}}}
+	v := UI{ID: "thread", Title: "工作会话", Kind: EditorTab, Busy: true, View: &EditorView{HTML: "<p>reply</p>", Events: []EditorBinding{}}}
 	data, err := EncodeUI(nil, v)
 	if err != nil {
 		t.Fatal(err)

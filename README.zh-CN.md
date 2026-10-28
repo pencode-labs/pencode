@@ -1,6 +1,6 @@
 # Pencode
 
-使用 Go 编写的代码编辑器，基于 Onix 构建桌面界面，通过统一后端支持本地与 SSH 远程工作区。
+使用 Go 编写的代码编辑器，基于 Onix 构建桌面界面，通过统一后端支持本地、SSH 与 WebSocket 远程工作区。
 
 [English](README.md) · **简体中文**
 
@@ -19,7 +19,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 | 内置终端 | 多 shell 会话，Linux/macOS PTY、Windows ConPTY，Unicode、真彩色和滚屏历史 |
 | 调试 | DAP 会话、Go／Delve 快速启动、断点、单步、调用栈、变量和表达式求值，支持本地与 SSH 工作区 |
 | Git | 暂存、提交、分支与历史视图、文件比较和三方合并编辑器 |
-| 远程开发 | 使用系统 OpenSSH 连接工作区，文件操作、终端、语言服务器和扩展在工作区所在设备运行 |
+| 远程开发 | 使用系统 OpenSSH 或带 token 的 WebSocket 直连工作区，文件操作、终端、语言服务器和扩展在工作区所在设备运行 |
 | 个性化 | 系统字体、VS Code JSON/JSONC 格式颜色主题、文件图标主题和语法 capture 映射 |
 | 扩展 | 通过可执行程序提供自定义编辑器、语言服务、字体、主题、图标、按钮、弹窗、菜单和面板 |
 
@@ -32,7 +32,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 - Go **1.27.0 或更新版本**。
 - 在本仓库旁准备名为 `onix` 的 Onix 源码目录。当前 `go.mod` 使用 `replace github.com/diiyw/onix => ../onix`。
 - Onix 桌面构建所需的平台原生开发库，具体见 Onix 源码中的 `docs/desktop-builds.md`。
-- Git 功能需要系统 `git`，远程连接需要 OpenSSH `ssh`。Go 扩展会自动安装所需工具；其他语言服务器由对应扩展决定。
+- Git 功能需要系统 `git`，SSH 连接需要 OpenSSH `ssh`。Go 扩展会自动安装所需工具；其他语言服务器由对应扩展决定。
 - GUI 所在设备需安装可用字体，Pencode 不随程序打包字体。
 
 预期目录布局：
@@ -69,6 +69,16 @@ make run
 
 可运行 `make install-server` 仅编译安装本机服务端。离线 SSH 引导所需的服务端可在仓库根目录运行 `go run ./cmd/pencode-build-servers` 构建，默认生成 Linux/macOS 的 amd64、arm64 程序，位于 `resources/servers/<os>-<arch>/pencode-server`。当前仓库适合源码开发，尚不是可直接安装的桌面发行版。
 
+WebSocket 直连时，先在远端启动服务：
+
+```sh
+pencode-server --listen 0.0.0.0:8080 --token 'your-secret-token'
+```
+
+然后在「远程管理 → 添加」选择「WebSocket 直连」，填写 `ws://服务器地址:8080/ws` 和相同的 token（显示名称可选）。保存后从连接菜单连接，再选择远程项目目录。连接配置和 token 保存在本机用户配置目录的 `pencode/resources/connection.json`（文件权限为 `0600`）。客户端也支持通过 TLS 反向代理提供的 `wss://` 地址。
+
+`--listen` 模式必须指定非空 token，通过 HTTP `Authorization: Bearer` 请求头校验；不指定 `--listen` 时继续使用标准输入输出。`ws://` 为明文传输，跨公网使用时应通过 TLS 反向代理提供 `wss://`。
+
 ### 验证独立包
 
 在 Pencode 仓库根目录执行：
@@ -88,16 +98,16 @@ git submodule foreach 'go test ./...'
 ```text
 桌面工作台（Onix）
         │
-        │ CS v7：本地子进程管道或 SSH stdin/stdout
+        │ CS v7：本地子进程管道、SSH stdin/stdout 或 WebSocket
         ▼
 Pencode 服务端
         ├── 文件、文档、索引与语法解析
         ├── Git 与终端进程
         ├── 语言服务器（LSP）
-        └── 扩展进程（peb v8）
+        └── 扩展进程（peb v13）
 ```
 
-GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理文件系统、索引、语法解析、Git、PTY、语言服务器和扩展进程。本地会话启动子服务进程，SSH 会话通过加密字节流使用同一协议，无需开放服务端端口。
+GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理文件系统、索引、语法解析、Git、PTY、语言服务器和扩展进程。本地会话启动子服务进程，SSH 会话通过加密字节流使用同一协议，无需开放服务端端口。WebSocket 会话通过带 token 校验的 `/ws` 端点使用同一协议。
 
 远程工作时，设置与扩展属于工作区所在设备，系统字体来自 GUI 所在设备。重连会保留 GUI 中的未保存文本并检查外部变更，不会自动重放保存、Git 写入或终端输入。
 
@@ -106,7 +116,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 | `workbench/` | 编辑器界面、文档交互、主题与面板 |
 | `client/`、`protocol/` | 类型化客户端服务与 CS 通信协议 |
 | `server/` | 工作区服务与进程管理 |
-| `transport/`、`remote/`、`connection/` | 本地传输、SSH 与连接生命周期 |
+| `transport/`、`remote/`、`connection/` | 本地传输、SSH、WebSocket 与连接生命周期 |
 | `terminal/`、`lsp/`、`peb/` | 终端模拟器、LSP 支持和扩展协议／SDK |
 | `extensions/` | 扩展宿主集成与示例扩展子模块 |
 | `resources/` | 应用配置、场景、界面资源与图标 |
@@ -114,15 +124,16 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 ## 扩展
 
-扩展是独立可执行程序，通过 stdin/stdout 上的二进制协议 **peb v8** 与服务端通信，日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
+扩展是独立可执行程序，通过 stdin/stdout 上的二进制协议 **peb v13** 与服务端通信，日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
 
 扩展安装在服务端的 `~/.pencode/extensions/<扩展 ID>/`，包含可执行文件和 `resources/extension.json` 清单。可通过扩展管理器的本地目录安装流程注册扩展。
 
-以下示例均为 Git 子模块，各自在 `pencode-labs` 下的公开仓库维护，采用 MIT 协议：
+仓库包含以下扩展，各扩展目录提供对应许可证和构建说明：
 
 - [Go 语言工具](https://github.com/pencode-labs/go)：提供 Go 语言和调试支持，缺少 `gopls`、Delve 时自动安装。
 - [Markdown 预览](https://github.com/pencode-labs/markdown-preview)：只读预览，支持与宿主源码编辑器双栏显示。
 - [Material 文件图标](https://github.com/pencode-labs/material-icons)：文件图标主题。
+- [PHP](extensions/php/README.md)：从 Zed PHP 扩展移植，支持 PHP/Blade 语言服务、工具自动安装和 Xdebug 调试适配器。
 - [扩展 UI](https://github.com/pencode-labs/ui-demo)：工作台按钮、弹窗、菜单、浮窗与面板。
 
 已有检出可运行 `git submodule update --init --recursive` 初始化子模块。每个扩展都有独立的 Go 模块与构建说明。例如，在主仓库根目录构建 Go 语言工具：
@@ -131,7 +142,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 (cd extensions/go && go build -o bin/go .)
 ```
 
-当前扩展协议为 peb v8（CS v7），旧扩展需要使用当前 SDK 重新构建。
+当前扩展协议为 peb v13（CS v7），旧扩展需要使用当前 SDK 重新构建。
 
 ## 文档
 

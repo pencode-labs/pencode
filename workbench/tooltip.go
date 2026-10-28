@@ -141,7 +141,7 @@ func (model *workspaceModel) syncTooltip(world *module.Content, now time.Time) {
 		}
 		t.revision = button.RenderRevision
 	}
-	if p.Down || p.Pressed || p.Released || p.WheelX != 0 || p.WheelY != 0 || state.KeyPressed(input.KeyEscape) {
+	if p.Down || p.Pressed || p.Released || p.WheelX != 0 || p.WheelY != 0 || model.uiKey(state, input.KeyEscape) {
 		t.open, t.dismissed = false, true
 	}
 	if t.control != 0 && t.text != "" && !t.open && !t.dismissed {

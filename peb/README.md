@@ -1,10 +1,10 @@
-# peb v10 — Pencode Extension Binary
+# peb v13 — Pencode Extension Binary
 
 peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）和 `ExtensionSettings`（扩展配置）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **10**，已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **13**，增加 action 快捷键与无按钮命令（保留 v12 的带版本校验 UI 区域补丁）；已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
 
 ## 扩展配置
 
@@ -78,7 +78,7 @@ SettingsResponse {}                         // 空 payload
 | 偏移 | 长度 | 字段                                 |
 | ---- | ---- | ------------------------------------ |
 | 0    | 4    | magic：`70 65 62 00`（`peb\0`）      |
-| 4    | 2    | version：`10`                         |
+| 4    | 2    | version：`13`                         |
 | 6    | 2    | kind：见下表                         |
 | 8    | 4    | request ID                           |
 | 12   | 4    | payload 字节数，不含头部，最大 4 MiB |
@@ -313,11 +313,11 @@ selector 使用与编辑工具相同的 `FileName` / `FileSuffix` 规则，不�
 
 ## Actions
 
-原生代码和扩展使用相同的 `peb.Action` 描述按钮。位置为 `StatusBar=0`（状态栏）、`LeftContextMenu=1`（左侧文件树右键菜单）、`RightContextMenu=2`（右侧编辑区右键菜单）、`TitleBarRight=3`（标题栏右侧）和 `OpenWith=4`（代码区右上角打开方式图标）。按钮按注册顺序排列；更新位置后移动到对应区域。禁用或隐藏的按钮不会执行；禁用、卸载扩展及进程异常退出时清理其所有 action。
+原生代码和扩展使用相同的 `peb.Action` 描述按钮。位置为 `StatusBar=0`（状态栏）、`LeftContextMenu=1`（左侧文件树右键菜单）、`RightContextMenu=2`（右侧编辑区右键菜单）、`TitleBarRight=3`（标题栏右侧）、`OpenWith=4`（代码区右上角打开方式图标）和 `Command=5`（无按钮命令）。按钮按注册顺序排列；更新位置后移动到对应区域。禁用或隐藏的按钮不会执行；禁用、卸载扩展及进程异常退出时清理其所有 action。
 
 ```text
 Action {
-  id, text, tooltip, icon, color, iconColor, iconStyle: string
+  id, text, tooltip, icon, color, iconColor, iconStyle, shortcut: string
   location: u32
   disabled, hidden, default: u32 // boolean，只允许 0 或 1
   selectors: array<DocumentSelector> // OpenWith 必须提供文件名或后缀；其他类型为空
@@ -335,6 +335,16 @@ ActionUpdate {
 
 `text` 和 `tooltip` 至少有一个非空；图标按钮用 `tooltip` 提供可访问名称。扩展 action 的 ID 规则与其他贡献一致，宿主统一添加 `extensions/<扩展 ID>/` 前缀；点击回调中的 ID 是扩展本地 ID。`icon` 是 `resources/` 内的 SVG 路径，尺寸 1–256；运行期间可换成其他 SVG，读取和校验在后台完成。使用 `currentColor` 绘制 SVG 的可着色部分。`color` 控制文本颜色，`iconColor` 控制图标颜色，两者接受 `#RRGGBB` 或 `#RRGGBBAA`；留空跟随主题。`iconStyle` 是图标的内联 CSS 声明，例如 `opacity:.6;transform:rotate(90deg)`，最多 1024 字节。
 
+`Shortcut` 声明单个组合键，例如 `Primary+Shift+B`、`Ctrl+Space`、`F6`。`Primary` 在 macOS 表示 Command，在其他平台表示 Ctrl；也可显式使用 `Ctrl`、`Super`、`Shift`、`Alt`。修饰键不能重复，必须在按键之前；名称区分大小写，不支持多段 chord。按键支持 `A`–`Z`、`0`–`9`、`F1`–`F12`、标点（等号、减号、逗号、句点、斜杠、分号、方括号、反斜杠、单引号、反引号），以及 `Escape`、`Tab`、`Enter`、`Space`、`Backspace`、`Delete`、`Insert`、`Home`、`End`、`PageUp`、`PageDown`、`Left`、`Right`、`Up`、`Down`。`ParseShortcut` 可用于校验和无分配解析。非法组合键会拒绝编码或注册。
+
+`Command` 只注册可调用命令，不占按钮区域；隐藏、禁用或已移除的 action 不响应快捷键。文件树／编辑区菜单 action 的快捷键只在对应菜单打开时生效；`OpenWith` 只对匹配当前文件的工具生效，并切换打开方式。工作台内置快捷键优先，扩展之间相同组合键按注册顺序执行第一个可用 action。快捷键沿用 `Handlers.Action` 回调和当前文件／选区上下文；`OpenWith` 仍走编辑工具切换流程。
+
+所有已加载、未隐藏的 action 自动显示在“设置 → 快捷键”，用户可在当前方案覆盖扩展默认组合键，即使扩展未声明 `Shortcut` 也可绑定。清除用户绑定后该方案不再触发该 action，恢复方案默认时重新使用扩展声明。运行期间 `Update` 可以修改或清空 `Shortcut`，用户覆盖优先。
+
+快捷键页面提供“默认”及用户创建的方案 selector。通过名称输入框复制当前方案、新建后修改、重命名或删除；每个方案独立保存，切换立即生效。命令覆盖工作台、编辑器剪贴板和缩进、语言服务、调试、搜索、文件树菜单、终端、端口、源代码管理以及菜单／列表导航；录制时 Backspace 清除，Esc 取消。相同上下文内检查冲突，互斥上下文允许复用组合键。原生文本输入和 PTY 内容输入仍由对应输入层处理。
+
+宿主 `settings.json` 中 `keymap` 保存当前方案名（默认 `default`），`bindings` 保存当前方案映射，`keymaps` 保存其他方案的映射。每条映射包含 `key` 和可选的 `primary`、`control`、`super`、`shift`、`alt`；零值映射表示禁用。扩展覆盖键为完整 action ID `extensions/<扩展 ID>/<action ID>`。未加载扩展的覆盖也会保留；本地及远端设置使用相同保存通路。普通按键匹配与未变化的 action 快照复用缓存，热路径不分配内存。
+
 `ActionPublisher.Update` 对未注册 ID 创建按钮，对已有 ID **完整替换**描述；空字段清除旧值，因此更新时应保留仍需要的字段。`Remove(id)` 移除按钮。每个扩展最多 256 个 action，更新复用已读取的图标资源并遵循资源大小限制。宿主每个会话最多排队 64 次 action/UI 事件，每次只执行一个请求；握手和点击请求超时均为 5 秒，空闲连接没有超时。UI 不等待扩展 I/O。
 
 扩展使用 `ServeExtension`，提供 `Handlers.Action`、`Handlers.UIEvent` 或 `ActivateActions` 即自动注册 `ActionService`。`ActivateActions` 仅在 action 工作台进程启动时执行一次，静态校验和文件编辑进程不会调用它。可以在其中启动后台 goroutine，使用提供的 context 停止任务；publisher 支持并发调用。action 和 editor handler 在其所属进程内顺序执行，多个进程之间不共享内存。
@@ -343,6 +353,7 @@ ActionUpdate {
 action := peb.Action{
     ID: "build", Text: "构建", Tooltip: "构建当前项目",
     Icon: "resources/icons/build.svg", Location: peb.TitleBarRight,
+    Shortcut: "Primary+Shift+B",
 }
 var buttons *peb.ActionPublisher
 err := peb.ServeExtension(os.Stdin, os.Stdout,
@@ -495,6 +506,12 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 
 UI 和 action 请求共享串行队列及 5 秒请求超时，handler 内可以继续推送界面更新；不要在 handler 中等待后续用户事件。空闲轮询和复用缓冲区的编码保持零分配；创建或替换视图、解码字符串与加载资源有必要的分配。
 
+`ActionPublisher.Show` 自动比较带 `data-pencode-region` 的视图。外层结构、CSS 和事件绑定相同时，只传内容变化的区域；新增／删除区域或结构变化发送完整视图。`ViewVersion` 标识结果版本，补丁的 `Base` 必须等于接收端版本，且结果版本等于 `Base+1`。区域替换的是内部 HTML；空字符串清空区域，未列出的区域保持不变，嵌套区域由最外层区域一起更新。`View` 与 `Patch` 互斥，补丁不能与 `Close` 同时使用。
+
+宿主使用每个 action 会话独立的 `peb.ViewReceiver` 在 I/O worker 重建原始视图，然后沿用资源处理和 UI 校验。版本不匹配时请求内部 `resync` 事件；SDK 自动重发最新完整视图，不交给扩展业务回调。关闭界面释放差分基线，进程重连后首帧为完整视图。发送失败不会推进基线，重复或乱序补丁不应用。每个会话最多保留 32 个界面基线，重建结果仍受完整帧大小限制。
+
+调用方提交的视图字符串必须保持不可变。此优化减少传输量；扩展仍生成完整视图，宿主仍重建并校验完整视图。新增 HTML tokenizer 依赖后，仓库内独立扩展模块的 `go.mod`／`go.sum` 已同步；所有扩展需使用 v13 SDK 重建。
+
 UI payload 的字段顺序如下。`ActionContext` 与 `ActionInvoke` 编码一致，`EditorEvent` 与 `EditorRequest` 的事件部分一致，bool 使用严格的 u32 0/1。
 
 ```text
@@ -506,9 +523,13 @@ UIUpdate {
   x, y, width, height: f32      // IEEE 754，小端
   closeOnOutsideClick: bool    // Popup 点击外部是否关闭，默认 false
   autoCloseMS: u32             // Notification 自动关闭毫秒数，0 持续显示
+  busy: bool                  // EditorTab 关闭图标切换为处理动画
   context: ActionContext
   hasView: bool
   // hasView=true: html: text, css: text, events: array<{ref: string, kind: string}>
+  viewVersion: u32
+  hasPatch: bool
+  // hasPatch=true: base: u32, regions: array<{ref: string, html: text}>
 }
 UIRequest {
   id, reason: string
@@ -529,6 +550,8 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 ### 独立编辑器标签页
 
 `peb.EditorTab` 为会话、工具结果等不对应文件的视图创建编辑器标签页，`Title` 同时作为标签标题。同一扩展内的 `ID` 标识独立标签，`Placement` 必须为零值。事件继续通过 `UIEvent` 发送。
+
+设置 `Busy:true` 时，关闭图标替换为主题色的点阵动画，后台标签同样显示动画，点击仍发送关闭事件。任务结束后更新为 `Busy:false` 恢复关闭图标。每次更新需传入当前忙碌状态；扩展可在关闭事件中中断任务并退出会话。
 
 ```go
 publisher.Show(peb.UI{

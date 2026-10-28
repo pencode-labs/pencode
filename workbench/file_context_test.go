@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/diiyw/onix"
@@ -39,8 +40,14 @@ func TestFileContextNativeRenameCreateDeleteAndRefresh(t *testing.T) {
 			t.Fatalf("right click did not target the file at zoom %d: %+v", zoom, model.fileContext)
 		}
 		menu := editorContextBounds(t, model, "file-context")
-		if menu.Width > 240.1 || menu.X < 0 || menu.Y < 0 {
+		if menu.Width < 271.9 || menu.Width > 272.1 || menu.X < 0 || menu.Y < 0 {
 			t.Fatalf("file menu is not a compact popup: %+v", menu)
+		}
+		for _, hint := range pencodeFileContextHints {
+			bounds := editorContextBounds(t, model, hint.ref)
+			if bounds.X < menu.X || bounds.X+bounds.Width > menu.X+menu.Width {
+				t.Fatalf("shortcut hint %s overflows the menu at zoom %d: %+v in %+v", hint.ref, zoom, bounds, menu)
+			}
 		}
 		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
 		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
@@ -92,14 +99,16 @@ func TestFileContextNativeRenameCreateDeleteAndRefresh(t *testing.T) {
 	editorContextClick(t, app, model, state, "file-context-new-file")
 	languageInteractionStep(t, app)
 	if model.fileContext.dialog != "new-file" {
-		t.Fatalf("new file did not show its dialog: %+v", model.fileContext)
+		t.Fatalf("new file did not start inline creation: %+v", model.fileContext)
 	}
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "created.txt"})
 	languageInteractionStep(t, app)
 	if model.fileContext.name != "created.txt" {
 		t.Fatalf("new file input did not accept typing: %+v", model.fileContext)
 	}
-	editorContextClick(t, app, model, state, "file-dialog-submit")
+	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEnter})
+	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEnter})
+	languageInteractionStep(t, app)
 	if err := awaitFileIO(t, model); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +153,7 @@ func TestFileContextTargetsScrolledRowsAndInactiveProjects(t *testing.T) {
 		t.Fatal("missing file tree scroll area")
 	}
 	scroll := module.ContentMut[scene.UIScroll](model.fontResources, area)
-	for index, entry := range project.visibleTreeRows() {
+	for index, entry := range project.visibleTreeRows(model) {
 		if project.Entries[entry].Path == "item-35.txt" {
 			scroll.Position[1] = 40 - 5 - float32(index*pencodeTreeRowHeight)
 			break
@@ -181,8 +190,137 @@ func TestFileContextIdleDoesNotAllocate(t *testing.T) {
 	if allocations := testing.AllocsPerRun(100, func() { model.updateFileContext(model.fontResources, local) }); allocations != 0 {
 		t.Fatalf("open idle file context allocated %g times", allocations)
 	}
+	if allocations := testing.AllocsPerRun(100, func() { model.handleFileContextKeys(model.fontResources, local, "linux") }); allocations != 0 {
+		t.Fatalf("idle file context shortcuts allocated %g times", allocations)
+	}
 	field := module.ContentRef[engineui.TextField](model.fontResources, model.editor.control)
 	if field == nil {
 		t.Fatal("file context replaced the native editor")
+	}
+}
+
+func TestFileContextKeyboardActions(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin"} {
+		t.Run(goos, func(t *testing.T) {
+			app, model, _, platform := languageInteractionFixture(t)
+			world := model.fontResources
+			project := model.activeProjectState()
+			clipboard := ""
+			platform.SetClipboard(func(value string) bool { clipboard = value; return true }, nil)
+			for _, test := range []struct {
+				name       string
+				key        input.KeyCode
+				primary    bool
+				shift, alt bool
+				dialog     string
+				copied     string
+			}{
+				{name: "new-file", key: input.KeyN, primary: true, dialog: "new-file"},
+				{name: "new-folder", key: input.KeyN, primary: true, shift: true, dialog: "new-folder"},
+				{name: "find", key: input.KeyF, primary: true, shift: true},
+				{name: "cut", key: input.KeyX, primary: true},
+				{name: "copy", key: input.KeyC, primary: true},
+				{name: "copy-path", key: input.KeyC, primary: true, shift: true, copied: filepath.Join(project.Path, "main.go")},
+				{name: "copy-relative", key: input.KeyC, primary: true, alt: true, copied: "main.go"},
+				{name: "rename", key: input.KeyF2, dialog: "rename"},
+				{name: "delete", key: input.KeyDelete, dialog: "delete"},
+				{name: "refresh", key: input.KeyF5},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					model.fileContext = pencodeFileContext{project: project, path: "main.go", open: true}
+					model.fileClipboard = pencodeFileClipboard{}
+					clipboard = ""
+					state := input.NewState()
+					if test.primary {
+						modifier := input.KeyLeftControl
+						if goos == "darwin" {
+							modifier = input.KeyLeftSuper
+						}
+						state.PressKey(modifier)
+					}
+					if test.shift {
+						state.PressKey(input.KeyLeftShift)
+					}
+					if test.alt {
+						state.PressKey(input.KeyLeftAlt)
+					}
+					state.PressKey(test.key)
+					if !model.handleShortcutKeys(world, state, goos) || model.fileContext.open {
+						t.Fatalf("shortcut did not activate %s: %+v", test.name, model.fileContext)
+					}
+					if model.fileContext.dialog != test.dialog || clipboard != test.copied {
+						t.Fatalf("wrong action: dialog=%q clipboard=%q", model.fileContext.dialog, clipboard)
+					}
+					switch test.name {
+					case "cut", "copy":
+						if model.fileClipboard.project != project || model.fileClipboard.path != "main.go" || model.fileClipboard.cut != (test.name == "cut") {
+							t.Fatalf("wrong file clipboard: %+v", model.fileClipboard)
+						}
+					case "find":
+						if !model.folderSearch.open || model.folderSearch.project != project || model.folderSearch.directory != "" {
+							t.Fatal("shortcut did not search the target folder")
+						}
+						model.closeFolderSearch(world)
+					case "delete":
+						if _, err := os.Stat(filepath.Join(project.Path, "main.go")); err != nil {
+							t.Fatal("Delete bypassed the confirmation dialog")
+						}
+					case "refresh":
+						waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestFileContextKeyboardPasteAndDisabledItems(t *testing.T) {
+	app, model, _, state := languageInteractionFixture(t)
+	project := model.activeProjectState()
+	if err := os.Mkdir(filepath.Join(project.Path, "target"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	model.startProjectScan(project, false)
+	waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
+	languageInteractionStep(t, app)
+	press := func(key input.KeyCode) {
+		modifier := input.KeyLeftControl
+		if runtime.GOOS == "darwin" {
+			modifier = input.KeyLeftSuper
+		}
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: modifier})
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: key})
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: key})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: modifier})
+		languageInteractionStep(t, app)
+	}
+	root := treeRowID(project.Path) + "-summary"
+	fileContextRightClick(t, app, model, state, root)
+	press(input.KeyV)
+	if !model.fileContext.open || model.fileIO != nil && len(model.fileIO.pending) != 0 {
+		t.Fatal("disabled paste started a file transfer or dismissed the menu")
+	}
+	press(input.KeyX)
+	if !model.fileContext.open || model.fileClipboard.project != nil {
+		t.Fatal("disabled cut copied the project root")
+	}
+	fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "main.go"))
+	content := model.activeContent()
+	press(input.KeyC)
+	if model.fileContext.open || model.fileClipboard.path != "main.go" || model.activeContent() != content {
+		t.Fatal("copy shortcut failed or edited the active buffer")
+	}
+	fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "target"))
+	press(input.KeyV)
+	if model.fileContext.open {
+		t.Fatal("paste shortcut did not dismiss the menu")
+	}
+	if err := awaitFileIO(t, model); err != nil {
+		t.Fatal(err)
+	}
+	copied, err := os.ReadFile(filepath.Join(project.Path, "target", "main.go"))
+	if err != nil || string(copied) != content || model.activeContent() != content {
+		t.Fatalf("paste did not copy the target resource intact: %v", err)
 	}
 }

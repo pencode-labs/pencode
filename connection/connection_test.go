@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,12 +16,13 @@ func TestProfilesPublicationAndInvalidData(t *testing.T) {
 	profiles := []Profile{
 		{Name: "开发机", SSH: remote.Target{Host: "devbox", Port: 2222, IdentityFile: "/keys/development"}, Directory: "~/中文 project"},
 		{Name: "构建机", SSH: remote.Target{Host: "builder"}},
+		{Name: "直连", WebSocket: remote.WebSocketTarget{Address: "wss://dev.example/ws", Token: "secret"}},
 	}
 	if err := SaveProfiles(name, profiles); err != nil {
 		t.Fatal(err)
 	}
 	got := LoadProfiles(name)
-	if len(got) != len(profiles) || got[0] != profiles[0] || got[1] != profiles[1] {
+	if !slices.Equal(got, profiles) {
 		t.Fatal("profiles did not round trip", got)
 	}
 	if info, err := os.Stat(name); err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
@@ -32,7 +34,7 @@ func TestProfilesPublicationAndInvalidData(t *testing.T) {
 		t.Fatal("oversized publication was accepted")
 	}
 	got = LoadProfiles(name)
-	if len(got) != len(profiles) || got[0] != profiles[0] || got[1] != profiles[1] {
+	if !slices.Equal(got, profiles) {
 		t.Fatal("rejected publication replaced the prior profiles", got)
 	}
 	for _, data := range []string{`{"connections":[{"ssh":{"host":"partial"}}`, strings.Repeat(" ", (64<<10)+1)} {

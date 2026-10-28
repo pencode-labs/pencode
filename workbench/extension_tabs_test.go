@@ -6,12 +6,85 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/ecs"
+	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
+
+func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	m.app.GetViewport = func() (int, int) { return 1440, 900 }
+	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+		camera.Mut().UpdateViewport(1440, 900)
+	}
+	process := &extensions.ActionSession{}
+	results := make(chan extensions.ActionResult, 1)
+	process.Results = results
+	m.actions.sessions = map[string]*extensions.ActionSession{"codex-test": process}
+	t.Cleanup(func() { delete(m.actions.sessions, "codex-test") })
+	show := func(busy bool) {
+		t.Helper()
+		results <- extensions.ActionResult{UI: &peb.UI{
+			ID: "task", Title: "Task", Kind: peb.EditorTab, Busy: busy,
+			View: &peb.EditorView{HTML: `<p>reply</p>`},
+		}}
+		for range 3 {
+			languageInteractionStep(t, app)
+		}
+	}
+	show(false)
+	surface := m.actions.ui.editor
+	file, project := m.activeProjectState().ActivePath, m.activeProjectState()
+	m.selectProjectTab(project, file)
+	markPencodeRootDirtyByModel(m.fontResources, m)
+	languageInteractionStep(t, app)
+	check := func(busy bool) {
+		t.Helper()
+		if m.actions.ui.editor != nil || surface.ui.Busy != busy {
+			t.Fatal("background busy update changed selection or lost state")
+		}
+		found := false
+		for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](m.fontResources) {
+			props := access.Ref().Props
+			if props.Surface == surface {
+				found = true
+				if props.Busy != busy || props.Active {
+					t.Fatal("busy update did not reach the inactive tab", props)
+				}
+			}
+		}
+		if !found || htmlui.Animating(app.World) != busy {
+			t.Fatalf("tab animation scheduling: found=%t animating=%t busy=%t", found, htmlui.Animating(app.World), busy)
+		}
+	}
+	check(false)
+	show(true)
+	check(true)
+	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](m.fontResources, m.root)
+	show(true)
+	check(true)
+	current, _ := module.ContentGet[htmlui.Component[appProps, appState]](m.fontResources, m.root)
+	if root.State.Revision != current.State.Revision {
+		t.Fatal("unchanged busy streaming update rebuilt the workbench")
+	}
+	show(false)
+	check(false)
+	show(true)
+	check(true)
+	state, _ := ecs.GetResource[*input.State](app.World)
+	editorContextClick(t, app, m, state, "file-tab-close:"+surface.rootID)
+	for range 3 {
+		languageInteractionStep(t, app)
+	}
+	if len(m.actions.ui.surfaces) != 0 || htmlui.Animating(app.World) {
+		t.Fatalf("clicking the busy icon did not close the tab and stop its animation: surfaces=%d animating=%t", len(m.actions.ui.surfaces), htmlui.Animating(app.World))
+	}
+}
 
 func TestExtensionEditorTabFollowsOutputUntilUserScrolls(t *testing.T) {
 	app, session := newPencodeTestApp(t)

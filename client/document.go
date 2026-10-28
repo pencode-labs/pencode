@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/textchange"
 )
 
 type documentUpdate struct {
@@ -156,22 +156,7 @@ func (d *Document) run(ctx context.Context, version uint64, content string) {
 
 // changedRange visits only the shared prefix/suffix and preserves rune edges.
 func changedRange(a, b string) (start, oldEnd, newEnd int) {
-	for start < min(len(a), len(b)) && a[start] == b[start] {
-		start++
-	}
-	for start > 0 && ((start < len(a) && !utf8.RuneStart(a[start])) || (start < len(b) && !utf8.RuneStart(b[start]))) {
-		start--
-	}
-	oldEnd, newEnd = len(a), len(b)
-	for oldEnd > start && newEnd > start && a[oldEnd-1] == b[newEnd-1] {
-		oldEnd--
-		newEnd--
-	}
-	for oldEnd < len(a) && (!utf8.RuneStart(a[oldEnd]) || !utf8.RuneStart(b[newEnd])) {
-		oldEnd++
-		newEnd++
-	}
-	return
+	return textchange.Between(a, b)
 }
 
 func (d *Document) flush(ctx context.Context) (uint64, error) {

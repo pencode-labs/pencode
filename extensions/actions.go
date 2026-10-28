@@ -200,6 +200,9 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 		ids[a.ID] = true
 	}
 	resources := viewResources{remote: extension.remote, cache: make(map[string]viewResource)}
+	var views peb.ViewReceiver
+	resync := make(chan actionRequest, 32)
+	resyncing := make(map[string]bool)
 	var pending, responseKind atomic.Uint32
 	completions := make(chan uint32, 1)
 	writerDone := make(chan struct{})
@@ -218,6 +221,7 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 			case values := <-settings:
 				request.settings = values
 			case request = <-requests:
+			case request = <-resync:
 			}
 			id++
 			if id == 0 {
@@ -271,6 +275,28 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 			if !validID(ui.ID) || !validUIAnchor(ui.Anchor) {
 				return peb.ErrProtocol
 			}
+			full, applyErr := views.Apply(ui)
+			if errors.Is(applyErr, peb.ErrViewBase) {
+				if !resyncing[ui.ID] {
+					if len(resyncing) >= 32 {
+						return fmt.Errorf("too many UI resynchronizations")
+					}
+					select {
+					case resync <- actionRequest{ui: true, event: peb.UIEvent{ID: ui.ID, Context: ui.Context, Event: peb.EditorEvent{Kind: "resync"}}}:
+						resyncing[ui.ID] = true
+					default:
+						return fmt.Errorf("too many UI resynchronizations")
+					}
+				}
+				continue
+			}
+			if applyErr != nil {
+				return applyErr
+			}
+			if ui.View != nil || ui.Close {
+				delete(resyncing, ui.ID)
+			}
+			ui = full
 			resourceCtx, finish := context.WithTimeout(ctx, StartupTimeout)
 			assets, prepareErr := resources.prepare(resourceCtx, ui.View, ui.ID)
 			finish()

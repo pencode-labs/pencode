@@ -28,6 +28,15 @@ func (model *workspaceModel) selectExtensionTab(surface *pencodeExtensionSurface
 	model.screen = pencodeWorkspace
 }
 
+func (model *workspaceModel) selectFirstExtensionTab() {
+	for _, surface := range model.actions.ui.surfaces {
+		if surface.ui.Kind == peb.EditorTab {
+			model.selectExtensionTab(surface)
+			return
+		}
+	}
+}
+
 func (model *workspaceModel) renderExtensionTabs(view *htmlui.View, definition *htmlui.Definition[tabProps, struct{}]) {
 	for _, surface := range model.actions.ui.surfaces {
 		if surface.ui.Kind != peb.EditorTab {
@@ -35,6 +44,6 @@ func (model *workspaceModel) renderExtensionTabs(view *htmlui.View, definition *
 		}
 		htmlui.AppendComponentChild(view, "file-tabs", componentKey(surface.rootID), definition,
 			tabProps{Model: model, Surface: surface, Theme: model.workbenchTheme, Icons: model.fileIcons,
-				Path: surface.rootID, Name: surface.ui.Title, Active: surface.live()}, struct{}{})
+				Path: surface.rootID, Name: surface.ui.Title, Active: surface.live(), Busy: surface.ui.Busy}, struct{}{})
 	}
 }

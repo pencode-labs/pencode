@@ -1,0 +1,8 @@
+{
+  "id": "php",
+  "name": "PHP",
+  "version": "0.1.0",
+  "publisher": "Pencode",
+  "description": "PHP and Blade language support with automatic language server and Xdebug adapter installation",
+  "entry": "bin/php"
+}

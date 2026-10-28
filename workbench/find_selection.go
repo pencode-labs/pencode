@@ -29,19 +29,8 @@ func (m *workspaceModel) scopedFindMatches(content string, dst []textsearch.Matc
 	if m.findScope.file != m.activeFile() {
 		return dst[:0]
 	}
-	dst = m.findPattern.FindAll(content, dst, -1)
-	n := 0
-	for _, match := range dst {
-		if match.Start >= m.findScope.start && match.End <= m.findScope.end {
-			dst[n] = match
-			n++
-			if limit > 0 && n == limit {
-				break
-			}
-		}
-	}
-	clear(dst[n:])
-	return dst[:n]
+	dst, _ = m.findPattern.FindRange(content, dst, m.findScope.start, m.findScope.end, limit, false)
+	return dst
 }
 
 func (m *workspaceModel) rebaseFindScope(file *openFile, start, oldEnd, newEnd int) {

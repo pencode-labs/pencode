@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"runtime"
 	"strings"
 
 	"github.com/diiyw/onix/input"
@@ -61,6 +62,9 @@ func (m *workspaceModel) renderTerminalContext(view *htmlui.View, visible bool) 
 	if !c.open {
 		view.Attr("terminal-context", "hidden", "")
 		return
+	}
+	for _, ref := range pencodeTerminalContextRefs {
+		view.Text(ref+"-shortcut", m.commandLabel(ref))
 	}
 	view.RemoveAttr("terminal-context", "hidden")
 	view.Attr("terminal-context", "style", languagePopupStyle(c.x, c.y))
@@ -132,22 +136,19 @@ func (m *workspaceModel) updateTerminalContext(world *module.Content, state *inp
 func (m *workspaceModel) terminalContextKeys(world *module.Content, state *input.State) bool {
 	c := &m.terminalView.context
 	c.keysHandled = true
-	ctrl := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
-	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
-	super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
 	switch {
-	case (ctrl && shift || super) && state.KeyPressed(input.KeyC):
+	case m.commandMatches("terminal-copy", state, runtime.GOOS):
 		m.handleTerminalContextEvent(world, "terminal-copy")
-	case (ctrl && shift || super) && state.KeyPressed(input.KeyV), shift && state.KeyPressed(input.KeyInsert):
+	case m.commandMatches("terminal-paste", state, runtime.GOOS), m.commandMatches("terminal-paste-alternate", state, runtime.GOOS):
 		m.handleTerminalContextEvent(world, "terminal-paste")
-	case ctrl && shift && state.KeyPressed(input.KeyK):
+	case m.commandMatches("terminal-clear", state, runtime.GOOS):
 		m.handleTerminalContextEvent(world, "terminal-clear")
-	case state.KeyPressed(input.KeyEscape):
+	case m.uiKey(state, input.KeyEscape):
 		c.open, c.selection = false, ""
 		m.terminals.focus = true
-	case state.KeyPressed(input.KeyDown), state.KeyPressed(input.KeyUp), state.KeyPressed(input.KeyTab):
+	case m.uiKey(state, input.KeyDown), m.uiKey(state, input.KeyUp), m.uiKey(state, input.KeyTab):
 		step := 1
-		if state.KeyPressed(input.KeyUp) || state.KeyPressed(input.KeyTab) && (state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)) {
+		if m.uiKey(state, input.KeyUp) || m.commandMatches("ui-focus-previous", state, runtime.GOOS) {
 			step = -1
 		}
 		for range len(pencodeTerminalContextRefs) {
@@ -156,7 +157,7 @@ func (m *workspaceModel) terminalContextKeys(world *module.Content, state *input
 				break
 			}
 		}
-	case state.KeyPressed(input.KeyEnter), state.KeyPressed(input.KeySpace):
+	case m.uiKey(state, input.KeyEnter), m.uiKey(state, input.KeySpace):
 		m.handleTerminalContextEvent(world, pencodeTerminalContextRefs[c.index])
 	default:
 		return false

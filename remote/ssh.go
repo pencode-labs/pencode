@@ -1,5 +1,5 @@
-// Package remote installs and starts a headless server through system OpenSSH.
-// Authentication, SSH config, agent and known_hosts belong to OpenSSH.
+// Package remote connects to headless servers through SSH or WebSocket.
+// SSH authentication, config, agent and known_hosts belong to OpenSSH.
 package remote
 
 import (

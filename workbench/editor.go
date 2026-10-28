@@ -3,13 +3,13 @@ package workbench
 import (
 	"math"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/diiyw/onix/module"
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/text"
 	engineui "github.com/diiyw/onix/ui"
@@ -113,7 +113,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 		editor.control, editor.text = 0, 0
 		editor.control, _ = world.HTMLControl(surface, "editor")
 		if editor.control != 0 {
-			_ = module.ContentInsert(world, editor.control, engineui.TextFieldKeyHandler{Handle: func(*input.State) bool { return model.languageUI.keysHandled }})
+			_ = module.ContentInsert(world, editor.control, engineui.TextFieldKeyHandler{Handle: model.editorKeyHandled})
 		}
 	}
 	if !world.IsAlive(editor.text) {
@@ -137,6 +137,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 	if !ok {
 		return
 	}
+	valueText.Index = file.textBuffer(file.Content)
 	if font != nil {
 		valueText.Font = font
 	}
@@ -351,28 +352,34 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	first := max(0, int(math.Floor(float64(-originY/lineHeight))))
 	count := scene.TextLineCount2D(valueText)
 	key := pencodeGutterLayoutKey{valueText.Value, valueText.Font, valueText.FontSize, valueText.DPI, valueText.WrapWidth, valueText.TabWidth, valueText.WrapMode}
-	if key != editor.layoutKey || len(editor.sourceLines) != count {
+	first = min(first, count)
+	last := min(count, max(first, int(math.Ceil(float64(bounds.Height-originY)/float64(lineHeight)))))
+	if key != editor.layoutKey || first != editor.firstLine || last != editor.lastLine {
 		editor.sourceLines = editor.sourceLines[:0]
-		sourceLine := 0
-		for index := range count {
+		document := model.activeFile().textBuffer(model.activeContent())
+		for index := first; index < last; index++ {
 			start, _, _, _ := scene.TextLineRange2D(valueText, index)
 			number := 0
 			if index == 0 || start > 0 && valueText.Value[start-1] == '\n' {
-				sourceLine++
-				number = sourceLine
+				line := 0
+				if document.Matches(valueText.Value) {
+					line, _ = document.Position(start)
+				} else {
+					line = strings.Count(valueText.Value[:start], "\n")
+				}
+				number = line + 1
 			}
 			editor.sourceLines = append(editor.sourceLines, number)
 		}
 		editor.layoutKey = key
 	}
-	first = min(first, count)
-	last := min(count, max(first, int(math.Ceil(float64(bounds.Height-originY)/float64(lineHeight)))))
+
 	buffer := editor.numberBuffer[:0]
 	for line := first; line < last; line++ {
 		if line > first {
 			buffer = append(buffer, '\n')
 		}
-		if number := editor.sourceLines[line]; number != 0 {
+		if number := editor.sourceLines[line-first]; number != 0 {
 			buffer = strconv.AppendInt(buffer, int64(number), 10)
 		}
 	}

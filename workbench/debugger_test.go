@@ -14,10 +14,130 @@ import (
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/dap"
 	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/output"
 )
+
+func waitDebugConfigs(t *testing.T, m *workspaceModel) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for m.debug.loading {
+		m.pollDebugger(nil)
+		if time.Now().After(deadline) {
+			t.Fatal("debug configuration load timed out")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestDebugConfigsRequireExplicitLaunchers(t *testing.T) {
+	for _, filename := range []string{"main.go", "index.php"} {
+		t.Run(filename, func(t *testing.T) {
+			m, p := resourceTestModel(t)
+			t.Cleanup(m.closeDebugger)
+			resourceTestWrite(t, p, filename, "source")
+			openProjectFile(p, filename)
+			m.syncActiveProjectFields()
+			m.startDebug()
+			waitDebugConfigs(t, m)
+			if len(m.debug.configs) != 0 || len(m.debug.options) != 0 || m.debug.session != nil || m.debug.startPending || m.debug.loading {
+				t.Fatalf("missing config supplied a launcher or retried: %+v", m.debug)
+			}
+			if _, err := os.Stat(filepath.Join(p.Path, ".pencode")); !os.IsNotExist(err) {
+				t.Fatal("loading missing config created files", err)
+			}
+			if allocs := testing.AllocsPerRun(50, func() { m.pollDebugger(nil) }); allocs != 0 {
+				t.Fatal("idle empty debugger allocated", allocs)
+			}
+		})
+	}
+}
+
+func TestDebugAddLauncherOpensProjectConfig(t *testing.T) {
+	m, p := resourceTestModel(t)
+	t.Cleanup(m.closeDebugger)
+	m.debugEvent(nil, "debug-add", "")
+	waitDebugConfigs(t, m)
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	f := m.activeFile()
+	if f == nil || f.Path != ".pencode/debug.json" || f.Content != "[]\n" || len(m.debug.configs) != 0 {
+		t.Fatalf("add did not open an empty project config: %+v", f)
+	}
+	config := `[{"label":"PHP","adapter":"Xdebug","request":"launch","configuration":{"port":9003,"cwd":"${workspaceFolder}"}}]`
+	m.updateActiveContent(config)
+	// Reopening the add entry must retain unsaved editor content.
+	m.debugEvent(nil, "debug-add", "")
+	waitDebugConfigs(t, m)
+	if m.activeFile() != f || f.Content != config || !f.Dirty {
+		t.Fatal("add overwrote the existing config buffer")
+	}
+	if err := saveFileAndWait(t, m, p.Path, f); err != nil {
+		t.Fatal(err)
+	}
+	m.debugEvent(nil, "debug-reload", "")
+	waitDebugConfigs(t, m)
+	if len(m.debug.configs) != 1 || m.debug.configs[0].Adapter != "Xdebug" || len(m.debug.options) != 1 || m.debug.message != "" {
+		t.Fatalf("saved launcher did not replace the empty list: %+v", m.debug)
+	}
+	data, err := os.ReadFile(filepath.Join(p.Path, f.Path))
+	if err != nil || string(data) != config {
+		t.Fatal("launcher file was not saved verbatim", string(data), err)
+	}
+}
+
+func TestDebugInvalidConfigsRemainEditable(t *testing.T) {
+	m, p := resourceTestModel(t)
+	t.Cleanup(m.closeDebugger)
+	resourceTestWrite(t, p, ".pencode/debug.json", "invalid json")
+	m.debugEvent(nil, "debug-add", "")
+	waitDebugConfigs(t, m)
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	if m.activeFile() == nil || m.activeFile().Content != "invalid json" || m.debug.message == "" || len(m.debug.configs) != 0 {
+		t.Fatal("invalid config was overwritten or could not be opened")
+	}
+}
+
+func TestDebugReloadClearsRemovedLaunchers(t *testing.T) {
+	m, p := resourceTestModel(t)
+	t.Cleanup(m.closeDebugger)
+	resourceTestWrite(t, p, ".pencode/debug.json", `[{"label":"PHP","adapter":"Xdebug","request":"launch","configuration":{}}]`)
+	m.loadDebugConfigs()
+	waitDebugConfigs(t, m)
+	if len(m.debug.configs) != 1 {
+		t.Fatal("project launcher missing")
+	}
+	for _, content := range []string{"[]", "invalid json"} {
+		resourceTestWrite(t, p, ".pencode/debug.json", content)
+		m.loadDebugConfigs()
+		waitDebugConfigs(t, m)
+		m.startDebug()
+		if len(m.debug.configs) != 0 || len(m.debug.options) != 0 || m.debug.session != nil || m.debug.loading || m.debug.startPending {
+			t.Fatalf("stale launcher retained after %q: %+v", content, m.debug)
+		}
+	}
+}
+
+func TestDebugProjectSwitchCancelsPendingLaunch(t *testing.T) {
+	m, p := resourceTestModel(t)
+	t.Cleanup(m.closeDebugger)
+	resourceTestWrite(t, p, ".pencode/debug.json", `[{"label":"PHP","adapter":"Xdebug","request":"launch","configuration":{}}]`)
+	next := &pencodeProject{Path: t.TempDir(), Files: make(map[string]*openFile)}
+	attachPencodeProject(t, next, p.backend)
+	m.projects = append(m.projects, next)
+	m.startDebug()
+	m.activateProject(next)
+	m.pollDebugger(nil)
+	waitDebugConfigs(t, m)
+	if m.debug.configProject != next || len(m.debug.configs) != 0 || len(m.debug.options) != 0 || m.debug.startPending || m.debug.session != nil {
+		t.Fatalf("switching project retained a launcher or pending start: %+v", m.debug)
+	}
+}
 
 func TestDebugBreakpointsTrackEditsUndoAndClosedFiles(t *testing.T) {
 	m, p := resourceTestModel(t)
@@ -120,11 +240,36 @@ func TestDebugPanelAndGutterInteractions(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if len(m.debug.configs) != 2 || m.bottom.active != pencodePanelDebug {
+	if len(m.debug.configs) != 0 || len(m.debug.options) != 0 || m.bottom.active != pencodePanelDebug {
 		t.Fatalf("debug panel not loaded: %+v", m.debug)
 	}
-	for _, ref := range []string{"debug-config", "debug-start", "debug-stop", "debug-pane", "debug-expression"} {
+	for _, ref := range []string{"debug-config", "debug-add", "debug-start", "debug-stop", "debug-pane", "debug-expression"} {
 		editorContextBounds(t, m, ref)
+	}
+	selector, ok := world.HTMLControl(m.surface, "debug-config")
+	control, exists := module.ContentGet[htmlui.Control](world, selector)
+	if !ok || !exists || len(control.Options) != 1 || control.Options[0].Label != "暂无启动器" || !control.Disabled {
+		t.Fatalf("empty selector placeholder missing: %+v", control)
+	}
+	press(input.KeyF5)
+	if m.debug.loading || m.debug.startPending || m.debug.session != nil || m.debug.message != "" {
+		t.Fatal("F5 with no launchers attempted to start or reload the debugger")
+	}
+	resourceTestWrite(t, project, ".pencode/debug.json", `[{"label":"PHP","adapter":"Xdebug","request":"launch","configuration":{"port":9003}},{"label":"PHP attach","adapter":"Xdebug","request":"attach","configuration":{}}]`)
+	editorContextClick(t, app, m, state, "debug-reload")
+	for m.debug.loading {
+		languageInteractionStep(t, app)
+		if time.Now().After(deadline) {
+			t.Fatal("debug configuration reload timed out")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if len(m.debug.configs) != 2 || m.debug.configs[0].Adapter != "Xdebug" {
+		t.Fatalf("project launchers not loaded: %+v", m.debug.configs)
+	}
+	control, _ = module.ContentGet[htmlui.Control](world, selector)
+	if len(control.Options) != 2 || control.Options[0].Label != "PHP" || control.Disabled || m.debug.message != "" {
+		t.Fatalf("launcher did not replace the placeholder: %+v", control)
 	}
 	m.debug.view = debugger.Snapshot{Revision: 1, Threads: []dap.Thread{{ID: 1, Name: "main"}, {ID: 2, Name: "worker"}}, Frames: []dap.StackFrame{{ID: 10, Name: "main"}}}
 	markPencodeRootDirtyByModel(world, m)

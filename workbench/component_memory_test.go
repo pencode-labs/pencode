@@ -22,7 +22,7 @@ func BenchmarkPencodeTreeFileSwitch(b *testing.B) {
 	model := session.active.model
 	switchFile := func(name string) {
 		openFileAndWait(b, model, name)
-		markPencodeRootDirtyByModel(model.fontResources, model)
+		model.finishSelectionRefresh(model.fontResources)
 		app.RequestRender()
 		if _, err := app.Step(); err != nil {
 			b.Fatal(err)

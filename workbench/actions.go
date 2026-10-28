@@ -20,6 +20,7 @@ type pencodeActionState struct {
 	revision      uint64
 	snapshot      []peb.Action
 	rows          []pencodeActionProps
+	shortcuts     []pencodeActionShortcut
 	theme         *pencodeTheme
 	owner         *workspaceModel
 	file          *openFile
@@ -61,11 +62,13 @@ func (model *workspaceModel) syncActions() bool {
 	}
 	state.theme, state.owner, state.file, state.fileName = model.workbenchTheme, model, file, name
 	state.openWithCount = 0
+	clear(state.shortcuts)
+	state.shortcuts = state.shortcuts[:0]
 	clear(state.rows)
 	state.rows = state.rows[:0]
 	state.leftRefs = append(state.leftRefs[:0], pencodeFileContextRefs[:]...)
 	state.rightRefs = append(state.rightRefs[:0], pencodeEditorContextRefs[:]...)
-	for _, a := range state.snapshot {
+	for i, a := range state.snapshot {
 		if a.Hidden {
 			continue
 		}
@@ -77,6 +80,12 @@ func (model *workspaceModel) syncActions() bool {
 			if a.Icon == "" {
 				a.Icon = "icons/file-text.svg"
 			}
+		}
+		if !a.Disabled {
+			state.shortcuts = append(state.shortcuts, pencodeActionShortcut{index: i, binding: pencodeBindingChord(a.Shortcut)})
+		}
+		if a.Location == peb.Command {
+			continue
 		}
 		ref := "action-" + a.ID
 		icon := a.Icon
@@ -330,7 +339,7 @@ func (model *workspaceModel) pollActions() bool {
 					ui := result.UI
 					if ui.Kind == peb.EditorTab && ui.View != nil && !ui.Close {
 						for _, surface := range model.actions.ui.surfaces {
-							if surface.owner == id && surface.ui.ID == ui.ID && surface.ui.Title == ui.Title {
+							if surface.owner == id && surface.ui.ID == ui.ID && surface.ui.Title == ui.Title && surface.ui.Busy == ui.Busy {
 								retained = surface
 								break
 							}

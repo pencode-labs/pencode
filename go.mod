@@ -5,6 +5,7 @@ go 1.27.0
 replace github.com/diiyw/onix => ../onix
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/diiyw/onix v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-gl/mathgl v1.2.0

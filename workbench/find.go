@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,12 +22,9 @@ const pencodeFindMatchLimit = 5000
 var pencodeFindOptionRefs = [...]string{"find-case", "find-word", "find-regex"}
 var pencodeFolderOptionRefs = [...]string{"folder-search-case", "folder-search-word", "folder-search-regex"}
 
-func searchOptionKey(state *input.State) int {
-	if !state.KeyHeld(input.KeyLeftAlt) && !state.KeyHeld(input.KeyRightAlt) || state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl) || state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper) {
-		return -1
-	}
-	for i, key := range [...]input.KeyCode{input.KeyC, input.KeyW, input.KeyR, input.KeyP} {
-		if state.KeyPressed(key) {
+func (m *workspaceModel) searchOptionKey(state *input.State) int {
+	for i, id := range [...]string{"search-case", "search-word", "search-regex", "search-ignore"} {
+		if m.commandMatches(id, state, runtime.GOOS) {
 			return i
 		}
 	}

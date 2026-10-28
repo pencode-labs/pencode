@@ -21,6 +21,7 @@ type pencodeTheme struct {
 	border, guide    graphics.ColorRGBA
 	link             graphics.ColorRGBA
 	bracket          graphics.ColorRGBA
+	findColors       [3]graphics.ColorRGBA
 	diagnosticColors [len(pencodeProblemSeverities)]graphics.ColorRGBA
 	editorStyle      engineui.StyleOverride[engineui.TextFieldStyle]
 	selectStyle      engineui.HTMLSelectStyle
@@ -30,6 +31,7 @@ type pencodeIconKey struct{ source, foreground string }
 
 var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"status-source-icon", "icons/source-control.svg", "icon.foreground"},
+	{"connection-open-icon", "icons/remote.svg", "icon.foreground"},
 	{"open-marketplace-icon", "icons/extensions.svg", "icon.foreground"},
 	{"close-marketplace-icon", "icons/close.svg", "icon.foreground"},
 	{"change-project-icon", "icons/folder-opened.svg", "icon.foreground"},
@@ -92,6 +94,7 @@ var pencodeColorParents = map[string]string{
 	"badge.background":                "list.hoverBackground",
 	"badge.foreground":                "foreground",
 	"input.placeholderForeground":     "descriptionForeground",
+	"editor.findMatchBorder":          "focusBorder",
 }
 
 func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencodeTheme, error) {
@@ -275,6 +278,13 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 		return pencodeTheme{}, err
 	}
 	result.link = pencodeSyntaxColor(link)
+	for i, key := range [...]string{"editor.findMatchHighlightBackground", "editor.findMatchBackground", "editor.findMatchBorder"} {
+		value, err := color(key)
+		if err != nil {
+			return pencodeTheme{}, err
+		}
+		result.findColors[i] = pencodeSyntaxColor(value)
+	}
 	for severity, key := range [...]string{"editorInfo.foreground", "editorError.foreground", "editorWarning.foreground", "editorInfo.foreground", "editorHint.foreground"} {
 		value, err := color(key)
 		if err != nil {

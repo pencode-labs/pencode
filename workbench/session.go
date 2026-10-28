@@ -29,6 +29,7 @@ type Session struct {
 	views           map[*Mod]struct{}
 	market          *pencodeMarketplace
 	quickHistory    *pencodeQuickHistory
+	recentProjects  *pencodeRecentProjects
 	fonts           map[string]pencodeFont
 	settingsWriters map[*client.Client]*pencodeSettingsWriter
 }
@@ -38,7 +39,11 @@ func NewSession(backend *client.Client) *Session {
 	if home, err := os.UserHomeDir(); err == nil {
 		cacheDirectory = filepath.Join(home, ".pencode", "cache")
 	}
-	return &Session{backend: backend, localBackend: backend, views: make(map[*Mod]struct{}), fonts: make(map[string]pencodeFont), market: &pencodeMarketplace{}, quickHistory: loadPencodeQuickHistory(cacheDirectory)}
+	configDirectory, _ := os.UserConfigDir()
+	if configDirectory != "" {
+		configDirectory = filepath.Join(configDirectory, "pencode")
+	}
+	return &Session{backend: backend, localBackend: backend, views: make(map[*Mod]struct{}), fonts: make(map[string]pencodeFont), market: &pencodeMarketplace{}, quickHistory: loadPencodeQuickHistory(cacheDirectory), recentProjects: loadPencodeRecentProjects(configDirectory)}
 }
 
 func (s *Session) Close() {
@@ -108,6 +113,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 	model.syncTabScroll(model.fontResources)
 	model.centerRevealedTreeRow(model.fontResources)
 	model.syncTreeScroll(model.fontResources)
+	model.syncFileDragPreview(model.fontResources)
 	// HTML/native reconciliation may replace text spans after FrameUpdate.
 	// Publish paint against the final field value, including asynchronous results.
 	if field, ok := module.ContentGet[engineui.TextField](model.fontResources, model.editor.control); ok {

@@ -4,12 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/diiyw/onix"
+	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/scene"
 )
 
 func fileDragPoint(t *testing.T, model *workspaceModel, ref string) (float64, float64) {
@@ -47,6 +50,25 @@ func fileDragRelease(t *testing.T, app *onix.App, state *input.State) {
 	languageInteractionStep(t, app)
 }
 
+func checkFileDragPreview(t *testing.T, model *workspaceModel, name string) {
+	t.Helper()
+	node, ok := model.fontResources.HTMLNode(model.surface, "file-drag-preview")
+	if !ok {
+		t.Fatal("missing drag preview")
+	}
+	source, err := node.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name == "" {
+		if !strings.Contains(source, " hidden=") {
+			t.Fatalf("inactive drag preview is visible: %s", source)
+		}
+	} else if strings.Contains(source, " hidden=") || !strings.Contains(source, ">"+name+"</span>") {
+		t.Fatalf("drag preview does not show %q: %s", name, source)
+	}
+}
+
 func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 	for _, zoom := range []int{70, 100, 150} {
 		t.Run(strconv.Itoa(zoom), func(t *testing.T) {
@@ -62,11 +84,14 @@ func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 			model.fileClipboard = pencodeFileClipboard{project: project, path: "target/keep.txt"}
 			languageInteractionStep(t, app)
 			fileDragStart(t, app, model, state, model.projectTreeRowID(project, "main.go"))
+			checkFileDragPreview(t, model, "")
 			fileDragOver(t, app, model, state, model.projectTreeRowID(project, "target"))
+			checkFileDragPreview(t, model, "main.go")
 			if !model.fileDrag.isTarget(project, "target") {
 				t.Fatal("folder was not selected as the drop target")
 			}
 			fileDragRelease(t, app, state)
+			checkFileDragPreview(t, model, "")
 			waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
 			if model.activePath != "target/main.go" || model.activeContent() != before.Content || !model.activeFile().Dirty || len(model.activeFile().undo) != len(before.undo) {
 				t.Fatal("drag lost the active document or its edit history")
@@ -81,11 +106,13 @@ func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 			languageInteractionStep(t, app)
 			fileDragStart(t, app, model, state, model.projectTreeRowID(project, "src"))
 			fileDragOver(t, app, model, state, model.projectTreeRowID(project, "target"))
+			checkFileDragPreview(t, model, "src")
 			fileDragRelease(t, app, state)
 			waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
 			languageInteractionStep(t, app)
 			fileDragStart(t, app, model, state, model.projectTreeRowID(project, "target/src"))
 			fileDragOver(t, app, model, state, treeRowID(project.Path)+"-summary")
+			checkFileDragPreview(t, model, "src")
 			fileDragRelease(t, app, state)
 			waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
 			if content, err := os.ReadFile(filepath.Join(project.Path, "src/nested/note.txt")); err != nil || string(content) != "note" {
@@ -112,11 +139,27 @@ func TestFileDragCancelClickAndHoverExpansion(t *testing.T) {
 	if model.fileDrag.expandAt.IsZero() {
 		t.Fatal("hovering a collapsed folder did not schedule expansion")
 	}
+	fileDragOver(t, app, model, state, "editor-body")
+	if !model.fileDrag.expandAt.IsZero() || project.ExpandedDirs["target"] {
+		t.Fatal("leaving the folder retained its pending expansion")
+	}
+	fileDragOver(t, app, model, state, model.projectTreeRowID(project, "target"))
 	model.fileDrag.expandAt = time.Now().Add(-time.Second)
 	languageInteractionStep(t, app)
 	if !project.ExpandedDirs["target"] {
 		t.Fatal("hover did not expand the drop folder")
 	}
+	fileDragOver(t, app, model, state, model.projectTreeRowID(project, "target/nested"))
+	if model.fileDrag.expandAt.IsZero() {
+		t.Fatal("hovering a nested folder did not schedule expansion")
+	}
+	model.fileDrag.expandAt = time.Now().Add(-time.Second)
+	languageInteractionStep(t, app)
+	if !project.ExpandedDirs["target/nested"] || !model.fileDrag.isTarget(project, "target/nested") {
+		t.Fatal("nested folder did not expand and remain the drop target")
+	}
+	editorContextBounds(t, model, model.projectTreeRowID(project, "target/nested/note.txt"))
+	checkFileDragPreview(t, model, "main.go")
 	local, _ := module.ContentResource[*input.State](model.fontResources)
 	if allocations := testing.AllocsPerRun(100, func() { model.updateFileDrag(model.fontResources, local) }); allocations != 0 {
 		t.Fatalf("stationary drag allocated %g times", allocations)
@@ -127,12 +170,14 @@ func TestFileDragCancelClickAndHoverExpansion(t *testing.T) {
 		local.MoveMouse(float64(pointer.X)+offset, float64(pointer.Y))
 		offset = -offset
 		model.updateFileDrag(model.fontResources, local)
+		model.syncFileDragPreview(model.fontResources)
 	}); allocations != 0 {
 		t.Fatalf("moving drag allocated %g times", allocations)
 	}
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
 	languageInteractionStep(t, app)
+	checkFileDragPreview(t, model, "")
 	fileDragRelease(t, app, state)
 	if model.fileDrag.active || project.Files["main.go"] == nil {
 		t.Fatal("Escape did not cancel the move")
@@ -146,6 +191,63 @@ func TestFileDragCancelClickAndHoverExpansion(t *testing.T) {
 	local, _ = module.ContentResource[*input.State](model.fontResources)
 	if allocations := testing.AllocsPerRun(100, func() { model.updateFileDrag(model.fontResources, local) }); allocations != 0 {
 		t.Fatalf("idle drag handler allocated %g times", allocations)
+	}
+}
+
+func TestFileDragPreviewFollowsPointerAndFitsViewport(t *testing.T) {
+	app, model, _, state := languageInteractionFixture(t)
+	project := model.activeProjectState()
+	name := "dragged-file-" + strings.Repeat("文件", 20) + ".go"
+	resourceTestWrite(t, project, name, "package demo")
+	model.startProjectScan(project, false)
+	waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	for _, zoom := range []int{70, 100, 150} {
+		t.Run(strconv.Itoa(zoom), func(t *testing.T) {
+			model.setZoom(model.fontResources, zoom)
+			languageInteractionStep(t, app)
+			fileDragStart(t, app, model, state, model.projectTreeRowID(project, name))
+			fileDragOver(t, app, model, state, "editor-body")
+			checkFileDragPreview(t, model, name)
+			bounds := editorContextBounds(t, model, "file-drag-preview")
+			if bounds.Width <= 0 || bounds.Width > 240 || bounds.Height <= 0 || bounds.Height > 40 {
+				t.Fatalf("long name did not produce a compact preview: %+v", bounds)
+			}
+			drag := &model.fileDrag
+			if !drag.positioned || drag.previewX != drag.x+12 || drag.previewY != drag.y+16 {
+				t.Fatalf("preview did not follow pointer: %+v", drag)
+			}
+			// Check the retained text moves in the same frame, without a root render.
+			textX := func() float32 {
+				t.Helper()
+				for entity, value := range ecs.Query[scene.Text2D](app.World).All {
+					if strings.HasPrefix(value.Get().Value, "dragged-file-") {
+						transform := ecs.GetRef[scene.UIGlobalTransform](app.World, entity)
+						if transform != nil && transform.Matrix[12] > 300 {
+							return transform.Matrix[12]
+						}
+					}
+				}
+				t.Fatal("missing floating name text")
+				return 0
+			}
+			before := textX()
+			pointer := state.Pointer()
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(pointer.X) + 40, Y: float64(pointer.Y)})
+			languageInteractionStep(t, app)
+			if delta := textX() - before; delta < 39 || delta > 41 {
+				t.Fatalf("floating name moved by %g, want 40", delta)
+			}
+			viewport := editorContextBounds(t, model, "pencode-root")
+			scale := float64(zoom) / 100
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(viewport.Width-1) * scale, Y: float64(viewport.Height-1) * scale})
+			languageInteractionStep(t, app)
+			if drag.previewX < 4 || drag.previewY < 4 || drag.previewX+bounds.Width > viewport.Width-3 || drag.previewY+bounds.Height > viewport.Height-3 {
+				t.Fatalf("preview outside viewport: %+v, size=%+v viewport=%+v", drag, bounds, viewport)
+			}
+			fileDragRelease(t, app, state)
+			checkFileDragPreview(t, model, "")
+		})
 	}
 }
 

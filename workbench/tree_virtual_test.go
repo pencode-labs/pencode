@@ -58,17 +58,17 @@ func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 		}
 	}
 	verify(0)
-	first := slices.Clone(project.visibleTreeRows())
+	first := slices.Clone(project.visibleTreeRows(model))
 	module.ContentMut[scene.UIScroll](world, area).Position[1] = -5000 * pencodeTreeRowHeight
 	languageInteractionStep(t, app)
 	verify(5000)
 	if _, exists := world.HTMLNode(model.surface, model.projectTreeRowID(project, project.Entries[0].Path)); exists {
 		t.Fatalf("offscreen row was retained: first=%d end=%d scroll=%+v", project.tree.first, project.tree.end, module.ContentRef[scene.UIScroll](world, area))
 	}
-	if !slices.Equal(first, project.visibleTreeRows()) {
+	if !slices.Equal(first, project.visibleTreeRows(model)) {
 		t.Fatal("scroll rebuilt the flattened rows incorrectly")
 	}
-	if n := testing.AllocsPerRun(100, func() { model.syncTreeScroll(world); project.visibleTreeRows() }); n != 0 {
+	if n := testing.AllocsPerRun(100, func() { model.syncTreeScroll(world); project.visibleTreeRows(model) }); n != 0 {
 		t.Fatalf("stable tree viewport allocated %g", n)
 	}
 	// Navigation can reveal a row that has no mounted component.
@@ -90,23 +90,23 @@ func TestPencodeTreeFlattenCacheInvalidation(t *testing.T) {
 	project := pencodeProject{ExpandedDirs: map[string]bool{}, Entries: []treeEntry{
 		{Path: "folder", IsDir: true}, {Path: "folder/child", Depth: 1}, {Path: "folder/nested", Depth: 1, IsDir: true}, {Path: "folder/nested/file", Depth: 2}, {Path: "last"},
 	}}
-	if got := project.visibleTreeRows(); !slices.Equal(got, []int{0, 4}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 4}) {
 		t.Fatal(got)
 	}
 	model.toggleProjectDirectory(&project, "folder", 0)
-	if got := project.visibleTreeRows(); !slices.Equal(got, []int{0, 1, 2, 4}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 1, 2, 4}) {
 		t.Fatal(got)
 	}
 	model.toggleProjectDirectory(&project, "folder/nested", 1)
-	if got := project.visibleTreeRows(); len(got) != 5 {
+	if got := project.visibleTreeRows(&model); len(got) != 5 {
 		t.Fatal(got)
 	}
 	model.collapseProjectDirectories(&project)
-	if got := project.visibleTreeRows(); !slices.Equal(got, []int{0, 4}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 4}) {
 		t.Fatal(got)
 	}
 	project.Entries = append(project.Entries, treeEntry{Path: "new"})
-	if got := project.visibleTreeRows(); !slices.Equal(got, []int{0, 4, 5}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 4, 5}) {
 		t.Fatal(got)
 	}
 }

@@ -54,17 +54,17 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 			result.Skipped++
 			return true
 		}
-		matches = p.FindAll(content, matches, -1)
-		if len(matches) == 0 {
+		var count int
+		matches, count = p.FindRange(content, matches, 0, len(content), protocol.TextSearchLimit-total, true)
+		if count == 0 {
 			return true
 		}
 		if len(result.Files) == protocol.TextSearchFilesLimit {
 			searchErr = fmt.Errorf("搜索文件过多，请缩小文件夹范围")
 			return false
 		}
-		count := len(matches)
 		displayed := matches
-		if len(matches)+total > protocol.TextSearchLimit {
+		if count+total > protocol.TextSearchLimit {
 			result.Truncated = true
 			displayed = matches[:protocol.TextSearchLimit-total]
 		}

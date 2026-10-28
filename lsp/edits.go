@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/pencode-labs/pencode/textchange"
 )
 
 type editOffset struct {
@@ -108,30 +110,7 @@ func ApplyTextEdits(content string, edits []TextEdit, encoding PositionEncoding)
 // IncrementalChange computes one minimal replacement, without allocating or
 // splitting UTF-8 runes. It also handles changes to line endings.
 func IncrementalChange(old, next string, encoding PositionEncoding) (Range, string) {
-	prefix := 0
-	for prefix < len(old) && prefix < len(next) && old[prefix] == next[prefix] {
-		prefix++
-	}
-	for prefix > 0 && (prefix < len(old) && !utf8.RuneStart(old[prefix]) || prefix < len(next) && !utf8.RuneStart(next[prefix])) {
-		prefix--
-	}
-	// Keep CRLF atomic so neither endpoint points between CR and LF.
-	if prefix > 0 && (prefix < len(old) && old[prefix-1] == '\r' && old[prefix] == '\n' || prefix < len(next) && next[prefix-1] == '\r' && next[prefix] == '\n') {
-		prefix--
-	}
-	a, b := len(old), len(next)
-	for a > prefix && b > prefix && old[a-1] == next[b-1] {
-		a--
-		b--
-	}
-	for a < len(old) && !utf8.RuneStart(old[a]) {
-		a++
-		b++
-	}
-	if a > 0 && a < len(old) && old[a-1] == '\r' && old[a] == '\n' {
-		a++
-		b++
-	}
+	prefix, a, b := textchange.Between(old, next)
 	start, _ := PositionAt(old, prefix, encoding)
 	end, _ := PositionAt(old, a, encoding)
 	return Range{start, end}, next[prefix:b]

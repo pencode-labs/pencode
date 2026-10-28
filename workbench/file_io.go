@@ -382,6 +382,7 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 	}
 }
 func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, preview, reveal bool, navigation *fileNavigation) error {
+	before := m.selectionSnapshot()
 	m.actions.ui.editor = nil
 	if p != nil && !m.projectLive(p) {
 		return fmt.Errorf("项目已关闭")
@@ -405,6 +406,7 @@ func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, pre
 			m.activePath = relative
 		}
 		m.finishFileNavigation(p, f, navigation)
+		m.refreshFileSelection(before)
 		return nil
 	}
 	j := &fileIOJob{kind: fileOpen, project: p, relative: relative, preview: preview, reveal: reveal, navigation: navigation, root: m.projectPath}

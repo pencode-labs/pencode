@@ -55,6 +55,11 @@ func (model *workspaceModel) applyFileDialog() error {
 	if project.Files[relative] != nil {
 		return fmt.Errorf("名称“%s”已存在", name)
 	}
+	for _, entry := range project.Entries {
+		if entry.Path == relative {
+			return fmt.Errorf("名称“%s”已存在", name)
+		}
+	}
 
 	j := &fileIOJob{project: project, relative: c.path, destination: relative}
 	switch c.dialog {
@@ -216,6 +221,13 @@ func (model *workspaceModel) submitResourceIO(j *fileIOJob) error {
 
 func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 	j := r.job
+	if c := &model.fileContext; j.kind == fileCreate && c.pending && c.project == j.project {
+		if r.err != nil {
+			c.pending, c.needsFocus, c.err = false, true, r.err.Error()
+		} else {
+			*c = pencodeFileContext{}
+		}
+	}
 	if r.err != nil {
 		model.refreshResourceProject(j.project)
 		model.setProjectStatus(j.project, r.err.Error())

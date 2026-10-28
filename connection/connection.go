@@ -1,4 +1,4 @@
-// Package connection selects local or SSH transports and reopens read handles.
+// Package connection selects local, SSH or WebSocket transports and reopens read handles.
 // It never retries or replays filesystem mutations.
 package connection
 
@@ -18,12 +18,43 @@ import (
 )
 
 type Profile struct {
-	Name      string        `json:"name"`
-	SSH       remote.Target `json:"ssh"`
-	Directory string        `json:"directory,omitempty"`
+	Name      string                 `json:"name"`
+	SSH       remote.Target          `json:"ssh"`
+	WebSocket remote.WebSocketTarget `json:"websocket,omitzero"`
+	Directory string                 `json:"directory,omitempty"`
 }
 
-func (p Profile) Remote() bool { return p.SSH.Host != "" }
+func (p Profile) Remote() bool { return p.SSH.Host != "" || p.WebSocket != (remote.WebSocketTarget{}) }
+
+type Endpoint struct {
+	SSH       remote.Target
+	WebSocket string
+}
+
+// Endpoint identifies a connection without allocating or retaining its token.
+func (p Profile) Endpoint() Endpoint { return Endpoint{p.SSH, p.WebSocket.Address} }
+
+func (p Profile) Address() string {
+	if p.WebSocket.Address != "" {
+		return p.WebSocket.Address
+	}
+	return p.SSH.Host
+}
+
+func (p Profile) Validate() error {
+	if p.WebSocket != (remote.WebSocketTarget{}) {
+		if p.SSH != (remote.Target{}) {
+			return fmt.Errorf("一个连接只能选择 SSH 或 WebSocket")
+		}
+		return p.WebSocket.Validate()
+	}
+	return p.SSH.Validate()
+}
+
+// SameHost excludes display names, directories and credentials from history identity.
+func (p Profile) SameHost(other Profile) bool {
+	return p.WebSocket.Address == other.WebSocket.Address && p.SSH.Host == other.SSH.Host && p.SSH.Port == other.SSH.Port && p.SSH.ConfigFile == other.SSH.ConfigFile
+}
 
 func (p Profile) Label() string {
 	if !p.Remote() {
@@ -32,7 +63,7 @@ func (p Profile) Label() string {
 	if p.Name != "" {
 		return p.Name
 	}
-	return p.SSH.Host
+	return p.Address()
 }
 
 type Profiles struct {
@@ -43,6 +74,9 @@ type Profiles struct {
 func (p Profile) Namespace() string {
 	if !p.Remote() {
 		return ""
+	}
+	if p.WebSocket.Address != "" {
+		return p.WebSocket.Address + "|"
 	}
 	return fmt.Sprintf("ssh://%s:%d/%s|", p.SSH.Host, p.SSH.Port, p.SSH.ConfigFile)
 }
@@ -68,6 +102,13 @@ func (d Dialer) Dial(ctx context.Context, profile Profile, progress func(string)
 	var stream io.ReadWriteCloser
 	var err error
 	if profile.Remote() {
+		if err := profile.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	if profile.WebSocket.Address != "" {
+		stream, err = remote.ConnectWebSocket(ctx, profile.WebSocket, progress)
+	} else if profile.Remote() {
 		stream, err = d.SSH.Connect(ctx, profile.SSH, progress)
 	} else {
 		if progress != nil {

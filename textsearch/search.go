@@ -25,13 +25,10 @@ type Pattern struct {
 
 func Compile(query string, options Options) (*Pattern, error) {
 	p := &Pattern{query: query, options: options}
-	if query == "" || options.CaseSensitive && !options.Regex {
+	if query == "" || !options.Regex {
 		return p, nil
 	}
 	expression := query
-	if !options.Regex {
-		expression = regexp.QuoteMeta(query)
-	}
 	if !options.CaseSensitive {
 		expression = "(?i)" + expression
 	}
@@ -56,44 +53,114 @@ func (p *Pattern) boundary(content string, start, end int) bool {
 	return (start == 0 || !word(left)) && (end == len(content) || !word(right))
 }
 
-// A negative limit collects every match. Callers reuse dst on query changes.
+// FindAll reuses caller-owned storage. A negative limit retains every match.
 func (p *Pattern) FindAll(content string, dst []Match, limit int) []Match {
+	dst, _ = p.FindRange(content, dst, 0, len(content), limit, false)
+	return dst
+}
+
+// FindRange keeps document-relative offsets and word/regexp boundary semantics.
+// countAll counts matches beyond the storage limit without retaining them.
+func (p *Pattern) FindRange(content string, dst []Match, start, end, limit int, countAll bool) ([]Match, int) {
 	clear(dst)
 	dst = dst[:0]
-	if p == nil || p.query == "" || limit == 0 {
-		return dst
+	if p == nil || p.query == "" || limit == 0 && !countAll {
+		return dst, 0
+	}
+	count := 0
+	accept := func(m Match) bool {
+		if m.Start < start || m.End > end || !p.boundary(content, m.Start, m.End) {
+			return false
+		}
+		count++
+		if limit < 0 || len(dst) < limit {
+			dst = append(dst, m)
+		}
+		return !countAll && limit > 0 && count == limit
 	}
 	if p.re != nil {
-		// Word boundaries are checked in Unicode rather than Go's ASCII-only \b.
-		n := limit
-		if p.options.WholeWord {
-			n = -1
+		// Keep the original input for anchors, empty matches and capture offsets.
+		// Increase the candidate budget only when filtering requires more matches.
+		budget := limit
+		if countAll || limit < 0 {
+			budget = -1
 		}
-		for _, groups := range p.re.FindAllStringSubmatchIndex(content, n) {
-			if p.boundary(content, groups[0], groups[1]) {
-				dst = append(dst, Match{groups[0], groups[1], groups})
-				if limit > 0 && len(dst) == limit {
+		visited := 0
+		for {
+			candidates := p.re.FindAllStringSubmatchIndex(content, budget)
+			for _, groups := range candidates[visited:] {
+				if groups[0] > end {
+					return dst, count
+				}
+				if accept(Match{groups[0], groups[1], groups}) {
+					return dst, count
+				}
+			}
+			if budget < 0 || len(candidates) < budget {
+				return dst, count
+			}
+			visited = len(candidates)
+			budget *= 2
+		}
+	}
+	for offset := 0; offset < end; {
+		first, last := -1, -1
+		if p.options.CaseSensitive {
+			if i := strings.Index(content[offset:end], p.query); i >= 0 {
+				first = offset + i
+				last = first + len(p.query)
+			}
+		} else {
+			first, last = indexFold(content, p.query, offset, end)
+		}
+		if first < 0 {
+			break
+		}
+		offset = last
+		if accept(Match{Start: first, End: last}) {
+			break
+		}
+	}
+	return dst, count
+}
+
+// Unicode simple folding includes equivalences with different UTF-8 lengths,
+// such as K/K and S/ſ. Neither document nor query needs a lowercase copy.
+func indexFold(content, query string, start, end int) (int, int) {
+	for start < end {
+		offset, matched := start, true
+		for _, want := range query {
+			if offset >= end {
+				matched = false
+				break
+			}
+			got, size := utf8.DecodeRuneInString(content[offset:end])
+			if got != want {
+				equal := false
+				if got < utf8.RuneSelf && want < utf8.RuneSelf {
+					equal = got|32 == want|32 && got|32 >= 'a' && got|32 <= 'z'
+				} else {
+					for fold := unicode.SimpleFold(got); fold != got; fold = unicode.SimpleFold(fold) {
+						if fold == want {
+							equal = true
+							break
+						}
+					}
+				}
+				if !equal {
+					matched = false
 					break
 				}
 			}
+			offset += size
 		}
-		return dst
+		if matched {
+			return start, offset
+		}
+		_, size := utf8.DecodeRuneInString(content[start:end])
+		start += size
 	}
-	for offset := 0; offset <= len(content)-len(p.query); {
-		i := strings.Index(content[offset:], p.query)
-		if i < 0 {
-			break
-		}
-		start := offset + i
-		offset = start + len(p.query)
-		if p.boundary(content, start, offset) {
-			dst = append(dst, Match{Start: start, End: offset})
-			if limit > 0 && len(dst) == limit {
-				break
-			}
-		}
-	}
-	return dst
+	return -1, -1
 }
 
 func (p *Pattern) Replacement(content string, match Match, replacement string) string {

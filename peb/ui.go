@@ -58,14 +58,21 @@ type UI struct {
 	Kind              UIKind
 	Placement         UIPlacement
 	View              *EditorView
-	Context           ActionContext
-	Close             bool
+	// ViewVersion identifies a complete view or the result of Patch. Patches
+	// replace only existing region contents; structure, CSS or event changes
+	// require a full View. ActionPublisher manages these fields automatically.
+	ViewVersion uint32
+	Patch       *ViewPatch
+	Context     ActionContext
+	Close       bool
 	// CloseOnOutsideClick dismisses a Popup on an outside pointer press.
 	// False keeps it open. ContextMenu always dismisses on outside presses.
 	CloseOnOutsideClick bool
 	// AutoCloseMS dismisses a Notification after this many milliseconds. Zero
 	// keeps it open until closed by the user or extension. Updates reset the timer.
 	AutoCloseMS uint32
+	// Busy replaces an EditorTab's close icon with a processing animation.
+	Busy bool
 }
 
 // UIEvent carries DOM events and "open", "close", "visibilitychange", "projectchange".
@@ -97,8 +104,19 @@ func EncodeUI(dst []byte, v UI) ([]byte, error) {
 	e.number(math.Float32bits(v.Placement.Height))
 	e.number(boolNumber(v.CloseOnOutsideClick))
 	e.number(v.AutoCloseMS)
+	e.number(boolNumber(v.Busy))
 	encodeActionContext(&e, v.Context)
 	encodeView(&e, v.View)
+	e.number(v.ViewVersion)
+	e.number(boolNumber(v.Patch != nil))
+	if v.Patch != nil {
+		e.number(v.Patch.Base)
+		e.count(len(v.Patch.Regions))
+		for _, region := range v.Patch.Regions {
+			e.str(region.Ref)
+			e.text(region.HTML)
+		}
+	}
 	return e.data, e.err
 }
 
@@ -111,7 +129,15 @@ func DecodeUI(data []byte) (UI, error) {
 	v.Placement = UIPlacement{Mode: UIPosition(d.number()), X: math.Float32frombits(d.number()), Y: math.Float32frombits(d.number()), Width: math.Float32frombits(d.number()), Height: math.Float32frombits(d.number())}
 	v.CloseOnOutsideClick = d.boolean()
 	v.AutoCloseMS = d.number()
+	v.Busy = d.boolean()
 	v.Context, v.View = decodeActionContext(&d), decodeView(&d)
+	v.ViewVersion = d.number()
+	if d.boolean() {
+		v.Patch = &ViewPatch{Base: d.number(), Regions: make([]ViewRegion, d.count())}
+		for i := range v.Patch.Regions {
+			v.Patch.Regions[i] = ViewRegion{Ref: d.str(), HTML: d.text()}
+		}
+	}
 	if !v.valid() {
 		d.err = ErrProtocol
 	}
@@ -119,7 +145,8 @@ func DecodeUI(data []byte) (UI, error) {
 }
 
 func (v UI) valid() bool {
-	return v.Kind <= EditorTab && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (v.AutoCloseMS == 0 || v.Kind == Notification)
+	return v.Kind <= EditorTab && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (v.AutoCloseMS == 0 || v.Kind == Notification) &&
+		(v.Patch == nil || v.View == nil && !v.Close && v.Patch.Base != 0 && v.Patch.Base < ^uint32(0) && v.ViewVersion == v.Patch.Base+1)
 }
 
 func EncodeUIEvent(dst []byte, v UIEvent) ([]byte, error) {
@@ -153,12 +180,28 @@ func (p *ActionPublisher) Show(ui UI) error {
 	if ui.Context.ID == "" {
 		ui.Context = p.action
 	}
-	var err error
-	p.data, err = EncodeUI(p.data, ui)
+	return p.show(ui)
+}
+
+// show holds mu through encoding, writing and committing the new base. A failed
+// write must never advance the delta state ahead of the receiver.
+func (p *ActionPublisher) show(ui UI) error {
+	wire, state, err := p.views.prepare(ui)
 	if err != nil {
 		return err
 	}
-	return p.writer.Write(UIUpdate, 0, p.data)
+	p.data, err = EncodeUI(p.data, wire)
+	if err != nil {
+		return err
+	}
+	if err = p.writer.Write(UIUpdate, 0, p.data); err != nil {
+		return err
+	}
+	p.views.commit(ui.ID, ui.Close, state)
+	if !ui.Close && ui.View == nil {
+		p.views.metadata(ui)
+	}
+	return nil
 }
 
 func (p *ActionPublisher) CloseUI(id string) error {

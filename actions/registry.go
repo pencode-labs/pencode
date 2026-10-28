@@ -26,8 +26,13 @@ type Registry struct {
 }
 
 func Validate(a peb.Action) error {
-	if a.ID == "" || len(a.ID) > 512 || strings.ContainsFunc(a.ID, unicode.IsSpace) || strings.ContainsAny(a.ID, "\x00<>\"'") || a.Location > peb.OpenWith || a.Text == "" && a.Tooltip == "" {
+	if a.ID == "" || len(a.ID) > 512 || strings.ContainsFunc(a.ID, unicode.IsSpace) || strings.ContainsAny(a.ID, "\x00<>\"'") || a.Location > peb.Command || a.Text == "" && a.Tooltip == "" {
 		return fmt.Errorf("invalid action %q", a.ID)
+	}
+	if a.Shortcut != "" {
+		if _, err := peb.ParseShortcut(a.Shortcut); err != nil {
+			return fmt.Errorf("invalid shortcut %q for action %q", a.Shortcut, a.ID)
+		}
 	}
 	if a.Location == peb.OpenWith {
 		if len(a.Selectors) == 0 {

@@ -70,6 +70,7 @@ var pencodeExtraShortcuts = []pencodeCommandBinding{
 	{"file-context-new-file", "新建文件", "files", "Primary+N"},
 	{"file-context-new-folder", "新建文件夹", "files", "Primary+Shift+N"},
 	{"file-context-find", "在此文件夹中查找", "files", "Primary+Shift+F"},
+	{"file-context-reveal", "在系统文件管理器中显示", "files", "Shift+Alt+R"},
 	{"file-context-cut", "剪切文件", "files", "Primary+X"},
 	{"file-context-copy", "复制文件", "files", "Primary+C"},
 	{"file-context-paste", "粘贴文件", "files", "Primary+V"},

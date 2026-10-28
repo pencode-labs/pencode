@@ -297,6 +297,7 @@ type tabProps struct {
 	Project   *pencodeProject
 	Path      string
 	Name      string
+	Icon      string
 	Active    bool
 	Preview   bool
 	Dirty     bool
@@ -507,7 +508,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if props.Active {
 					iconForeground = "tab.activeForeground"
 				}
-				icon := props.Icons.source(props.Name, false)
+				icon := props.Icon
+				if icon == "" {
+					icon = props.Icons.source(props.Name, false)
+				}
 				if icon == "" {
 					icon = "icons/file-text.svg"
 				}

@@ -42,8 +42,15 @@ func (model *workspaceModel) renderExtensionTabs(view *htmlui.View, definition *
 		if surface.ui.Kind != peb.EditorTab {
 			continue
 		}
+		icon := ""
+		for _, action := range model.actions.rows {
+			if action.Ref == surface.invocation.anchor {
+				icon = action.Action.Icon
+				break
+			}
+		}
 		htmlui.AppendComponentChild(view, "file-tabs", componentKey(surface.rootID), definition,
 			tabProps{Model: model, Surface: surface, Theme: model.workbenchTheme, Icons: model.fileIcons,
-				Path: surface.rootID, Name: surface.ui.Title, Active: surface.live(), Busy: surface.ui.Busy}, struct{}{})
+				Path: surface.rootID, Name: surface.ui.Title, Icon: icon, Active: surface.live(), Busy: surface.ui.Busy}, struct{}{})
 	}
 }

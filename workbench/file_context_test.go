@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/diiyw/onix"
@@ -131,6 +132,33 @@ func TestFileContextNativeRenameCreateDeleteAndRefresh(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(project.Path, "created.txt")); !os.IsNotExist(err) || project.Files["created.txt"] != nil {
 		t.Fatalf("delete did not remove file and tab: %v", err)
+	}
+}
+
+func TestFileManagerCommands(t *testing.T) {
+	target := filepath.Join(string(filepath.Separator), "work space", "project", "main.go")
+	for _, test := range []struct {
+		goos, label string
+		directory   bool
+		args        []string
+	}{
+		{goos: "windows", label: "在文件资源管理器中显示", args: []string{"explorer", "/select," + target}},
+		{goos: "darwin", label: "在 Finder 中显示", args: []string{"open", "-R", target}},
+		{goos: "linux", label: "在文件管理器中显示", args: []string{"xdg-open", filepath.Dir(target)}},
+		{goos: "linux", label: "在文件管理器中显示", directory: true, args: []string{"xdg-open", target}},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			if label := fileManagerLabel(test.goos); label != test.label {
+				t.Fatalf("label = %q, want %q", label, test.label)
+			}
+			if args := fileManagerCommand(test.goos, target, test.directory).Args; !slices.Equal(args, test.args) {
+				t.Fatalf("args = %q, want %q", args, test.args)
+			}
+		})
+	}
+	binding := defaultPencodeSettings().Bindings["file-context-reveal"]
+	if binding.Key != input.KeyR || !binding.Shift || !binding.Alt || binding.Control || binding.Primary || binding.Super {
+		t.Fatalf("reveal binding = %+v, want Shift+Alt+R", binding)
 	}
 }
 

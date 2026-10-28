@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -64,7 +65,7 @@ func (model *workspaceModel) renderFileCreation(view *htmlui.View) {
 
 var pencodeFileContextRefs = [...]string{
 	"file-context-open", "file-context-new-file", "file-context-new-folder",
-	"file-context-find",
+	"file-context-find", "file-context-reveal",
 	"file-context-cut", "file-context-copy", "file-context-paste",
 	"file-context-copy-path", "file-context-copy-relative", "file-context-rename", "file-context-delete", "file-context-refresh",
 }
@@ -87,6 +88,7 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 			label = "展开 / 折叠"
 		}
 		view.Text("file-context-open-label", label)
+		view.Text("file-context-reveal-label", fileManagerLabel(runtime.GOOS))
 		for i, ref := range pencodeFileContextRefs {
 			model.ensureSettings()
 			view.Text(pencodeFileContextHints[i].ref, model.settings.Bindings[pencodeFileContextRefs[i]].label(runtime.GOOS))
@@ -137,6 +139,8 @@ func (model *workspaceModel) fileContextEnabled(ref string) bool {
 		return c.path != ""
 	case "file-context-paste":
 		return model.fileClipboard.project != nil && model.fileClipboard.path != ""
+	case "file-context-reveal":
+		return !model.remoteWorkspace()
 	}
 	return true
 }
@@ -197,7 +201,7 @@ func (model *workspaceModel) updateFileContext(world *module.Content, state *inp
 	}
 	bounds, _ := root.Bounds()
 	*c = pencodeFileContext{project: project, path: relative, directory: directory, depth: depth, open: true,
-		x: max(4, min(x-bounds.X, bounds.Width-276)), y: max(4, min(y-bounds.Y, bounds.Height-367))}
+		x: max(4, min(x-bounds.X, bounds.Width-276)), y: max(4, min(y-bounds.Y, bounds.Height-395))}
 	model.lastFileClick = 0
 	return true
 }
@@ -407,6 +411,11 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 			model.syncActiveProjectFields()
 			setPencodeEditorValue(world, model.surface, model.activeContent())
 		}
+	case "reveal":
+		target := filepath.Join(project.Path, filepath.FromSlash(relative))
+		if err := revealInFileManager(target, c.directory); err != nil {
+			model.setProjectStatus(project, "无法打开文件管理器："+err.Error())
+		}
 	case "copy-path", "copy-relative":
 		text := relative
 		if action == "copy-path" {
@@ -429,6 +438,40 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 		model.startProjectScan(project, false)
 	}
 	return true
+}
+
+func fileManagerLabel(goos string) string {
+	switch goos {
+	case "darwin":
+		return "在 Finder 中显示"
+	case "windows":
+		return "在文件资源管理器中显示"
+	default:
+		return "在文件管理器中显示"
+	}
+}
+
+func fileManagerCommand(goos, target string, directory bool) *exec.Cmd {
+	switch goos {
+	case "darwin":
+		return exec.Command("open", "-R", target)
+	case "windows":
+		return exec.Command("explorer", "/select,"+target)
+	default:
+		if !directory {
+			target = filepath.Dir(target)
+		}
+		return exec.Command("xdg-open", target)
+	}
+}
+
+func revealInFileManager(target string, directory bool) error {
+	cmd := fileManagerCommand(runtime.GOOS, target, directory)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 func (model *workspaceModel) fileContextDirectory() string {

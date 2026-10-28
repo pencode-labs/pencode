@@ -17,6 +17,7 @@ import (
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
@@ -133,6 +134,19 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 	surface := model.actions.ui.editor
 	if surface.ui.Kind != peb.EditorTab || surface.owner != "codex" {
 		t.Fatal("Codex button did not open its editor tab")
+	}
+	tabFound := false
+	for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](model.fontResources) {
+		props := access.Ref().Props
+		if props.Surface == surface {
+			tabFound = true
+			if props.Icon != "peb://codex/resources/icons/chatgpt.svg" {
+				t.Fatalf("Codex tab icon = %q", props.Icon)
+			}
+		}
+	}
+	if !tabFound {
+		t.Fatal("Codex tab was not rendered")
 	}
 	waitControl := func(surface *pencodeExtensionSurface, ref string) string {
 		t.Helper()

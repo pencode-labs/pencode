@@ -2573,7 +2573,9 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string) (*graphics.
 			}
 		}
 		if data == nil {
-			err = os.ErrNotExist
+			// A workspace can render shared actions before Enter transfers the
+			// extension assets from the launcher. Retry once they are available.
+			return nil, false
 		}
 	} else {
 		file := filepath.FromSlash(asset)

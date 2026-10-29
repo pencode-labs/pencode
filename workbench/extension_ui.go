@@ -106,16 +106,31 @@ func (model *workspaceModel) captureExtensionAction(world *module.Content, c peb
 	c.ID = local
 	invocation := pencodeExtensionInvocation{context: c, anchor: "action-extensions/" + owner + "/" + local}
 	if world != nil {
-		if node, ok := world.HTMLNode(model.surface, invocation.anchor); ok {
-			if bounds, ok := node.Bounds(); ok {
-				invocation.x, invocation.y = bounds.X, bounds.Y+bounds.Height
-			}
+		if bounds, ok := model.extensionAnchorBounds(world, invocation.anchor); ok {
+			invocation.x, invocation.y = bounds.X, bounds.Y+bounds.Height
 		}
 	}
 	if model.actions.ui.invocations == nil {
 		model.actions.ui.invocations = make(map[string]pencodeExtensionInvocation)
 	}
 	model.actions.ui.invocations[owner] = invocation
+}
+
+// Native control transforms include scrolling and CSS transforms. Convert back
+// to surface coordinates so placement remains correct at every workspace zoom.
+func (model *workspaceModel) extensionAnchorBounds(world *module.Content, id string) (htmlui.Rect, bool) {
+	control, ok := world.HTMLControl(model.surface, id)
+	if !ok {
+		return htmlui.Rect{}, false
+	}
+	position := world.Ref[scene.UIGlobalTransform](control)
+	surface := world.Ref[scene.UIGlobalTransform](model.surface)
+	size := world.Ref[scene.Size2D](control)
+	if position == nil || surface == nil || size == nil {
+		return htmlui.Rect{}, false
+	}
+	relative := surface.Matrix.Inv().Mul4(position.Matrix)
+	return htmlui.Rect{X: relative[12], Y: relative[13], Width: size.Width * relative[0], Height: size.Height * relative[5]}, true
 }
 
 func (s *pencodeExtensionSurface) send(event peb.EditorEvent, reason string) {
@@ -863,12 +878,10 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 				case placement.Mode == peb.PositionAbsolute:
 				case placement.Mode == peb.PositionAnchor || placement.Mode == peb.PositionAnchorAbove || s.ui.Kind == peb.ContextMenu && placement.Mode == peb.PositionDefault:
 					x, y = s.invocation.x-viewport.X, s.invocation.y-viewport.Y
-					if anchor, ok := world.HTMLNode(model.surface, s.invocation.anchor); ok {
-						if rect, ok := anchor.Bounds(); ok {
-							x, y = rect.X-viewport.X, rect.Y+rect.Height-viewport.Y
-							if placement.Mode == peb.PositionAnchorAbove && rect.Y-viewport.Y-bounds.Height+placement.Y >= 4 {
-								y = rect.Y - viewport.Y - bounds.Height
-							}
+					if rect, ok := model.extensionAnchorBounds(world, s.invocation.anchor); ok {
+						x, y = rect.X-viewport.X, rect.Y+rect.Height-viewport.Y
+						if placement.Mode == peb.PositionAnchorAbove && rect.Y-viewport.Y-bounds.Height+placement.Y >= 4 {
+							y = rect.Y - viewport.Y - bounds.Height
 						}
 					}
 				default:

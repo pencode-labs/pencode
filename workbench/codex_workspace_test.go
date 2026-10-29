@@ -42,10 +42,24 @@ func TestCodexWorkspaceFollowsActiveProject(t *testing.T) {
 	testCodexStatusBarWorkspace(t, "")
 }
 
+func TestCodexHistorySwitchesConversations(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
+	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
+	t.Setenv("PENCODE_CODEX_HISTORY_SWITCH", "1")
+	testCodexStatusBarWorkspace(t, "")
+}
+
 func TestCodexModelMenuReopensDuringDismissalUpdate(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
 	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
 	t.Setenv("PENCODE_CODEX_MODEL_MENU", "1")
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexPermissionMenuAnchorsToButton(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
+	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
+	t.Setenv("PENCODE_CODEX_PERMISSION_MENU", "1")
 	testCodexStatusBarWorkspace(t, "")
 }
 
@@ -164,6 +178,22 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		})
 		return id
 	}
+	if os.Getenv("PENCODE_CODEX_PERMISSION_MENU") == "1" {
+		permissionID := waitControl(surface, "permission-settings")
+		editorContextClick(t, app, model, state, permissionID)
+		wait(func() bool {
+			return model.actions.ui.overlay != nil && strings.Contains(surface.view.HTML, `aria-label="权限设置" aria-expanded="true"`)
+		})
+		for range 4 {
+			languageInteractionStep(t, app)
+		}
+		menu := editorContextBounds(t, model, model.actions.ui.overlay.rootID)
+		anchor := editorContextBounds(t, model, permissionID)
+		if math.Abs(float64(menu.X-anchor.X)) > .2 || math.Abs(float64(menu.Y+menu.Height+6-anchor.Y)) > .2 {
+			t.Fatalf("permission menu is not above its button: menu=%+v anchor=%+v", menu, anchor)
+		}
+		return
+	}
 	if os.Getenv("PENCODE_CODEX_MODEL_MENU") == "1" {
 		modelID := waitControl(surface, "model-settings")
 		for range 3 {
@@ -196,6 +226,23 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			wait(func() bool {
 				return model.actions.ui.overlay == nil && strings.Contains(surface.view.HTML, `aria-label="选择模型" aria-expanded="false"`)
 			})
+		}
+		return
+	}
+	if os.Getenv("PENCODE_CODEX_HISTORY_SWITCH") == "1" {
+		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
+		for range 3 {
+			editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
+			wait(func() bool {
+				return strings.Contains(surface.view.HTML, "Stored conversation") && strings.Contains(surface.view.HTML, `data-ref="history/saved" aria-current="true"`)
+			})
+			waitControl(surface, "prompt")
+			if model.actions.ui.editor != surface {
+				t.Fatal("history selection replaced the Codex editor tab")
+			}
+			editorContextClick(t, app, model, state, waitControl(surface, "new"))
+			wait(func() bool { return !strings.Contains(surface.view.HTML, "Stored conversation") })
+			waitControl(surface, "prompt")
 		}
 		return
 	}

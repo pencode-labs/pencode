@@ -1,13 +1,51 @@
 package workbench
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/diiyw/onix/scene"
+	
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
+
+func TestCodexRegionsRenderContent(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	process := &extensions.ActionSession{}
+	for round := range 8 {
+		progress := fmt.Sprintf("Progress%d", round)
+		reply := string(rune('A' + round))
+		history := fmt.Sprintf("History%d", round)
+		if err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
+			HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-scroll="end"><article class="codex-chat"><section class="codex-message codex-user" data-ref="message/user" data-pencode-region><div class="codex-text">U</div></section><div class="codex-turn-progress" data-ref="progress/turn" data-pencode-region>` + progress + `</div><section class="codex-message" data-ref="message/agent" data-pencode-region><p>` + reply + `</p></section></article></div><section class="codex-composer"><textarea data-ref="prompt" class="codex-prompt">` + strings.Repeat("draft", round+1) + `</textarea></section></section><aside class="codex-sidebar"><section class="codex-history"><div class="codex-history-header" data-ref="history-header" data-pencode-region><h3>ProjectHistory</h3><button data-ref="new" type="button">NewChat</button></div><div class="codex-history-list" data-ref="history-list" data-pencode-region data-pencode-scroll="preserve"><button data-ref="saved" class="codex-history-row">` + history + `</button></div></section></aside></main>`,
+			CSS: string(css), Events: []peb.EditorBinding{{Ref: "prompt", Kind: "input"}, {Ref: "new", Kind: "click"}, {Ref: "saved", Kind: "click"}},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		markPencodeRootDirtyByModel(m.fontResources, m)
+		for range 3 {
+			languageInteractionStep(t, app)
+		}
+		for _, want := range []string{"U", progress, reply, "ProjectHistory", "NewChat", history} {
+			found := false
+			for _, text := range app.World.Query[scene.Text2D]().All {
+				found = found || text.Ref().Value == want
+			}
+			if !found {
+				t.Errorf("round %d: region text %q is missing from the rendered scene", round, want)
+			}
+		}
+	}
+}
 
 func TestExtensionHistoryRegionRetainsChatAndInput(t *testing.T) {
 	app, session := newPencodeTestApp(t)

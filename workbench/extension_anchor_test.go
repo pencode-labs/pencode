@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/diiyw/onix/scene"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -60,5 +61,51 @@ func TestPencodeExtensionControlAnchor(t *testing.T) {
 	anchor = editorContextBounds(t, model, s.invocation.anchor)
 	if math.Abs(float64(bounds.Y-anchor.Y-anchor.Height+6)) > .2 {
 		t.Fatalf("menu did not fall below top-edge anchor: menu=%+v anchor=%+v", bounds, anchor)
+	}
+}
+
+func TestPencodeExtensionAnchorTracksScrollAndZoom(t *testing.T) {
+	app, model, _, _ := languageInteractionFixture(t)
+	world := model.fontResources
+	apply := func(ui peb.UI) {
+		t.Helper()
+		if err := model.applyExtensionUI("picker", &extensions.ActionSession{}, ui); err != nil {
+			t.Fatal(err)
+		}
+		markPencodeRootDirtyByModel(world, model)
+		for range 4 {
+			languageInteractionStep(t, app)
+		}
+	}
+	apply(peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
+		HTML: `<div id="pencode-extension-scroll" style="width:400px;height:400px;overflow:auto"><div style="width:800px;height:800px;padding:240px 0 0 160px"><button data-ref="anchor" type="button">Permissions</button></div></div>`,
+	}})
+	apply(peb.UI{ID: "menu", Kind: peb.ContextMenu, Anchor: "ui:composer#anchor",
+		Placement: peb.UIPlacement{Mode: peb.PositionAnchorAbove, Y: -6, Width: 180, Height: 60},
+		View:      &peb.EditorView{HTML: `<button type="button">Allow</button>`},
+	})
+	for _, zoom := range []int{100, 150, 70} {
+		model.settings.Zoom = zoom
+		markPencodeRootDirtyByModel(world, model)
+		languageInteractionStep(t, app)
+		node, _ := world.HTMLNode(model.surface, "pencode-extension-scroll")
+		area, ok := node.ScrollContainer()
+		if !ok {
+			t.Fatal("missing anchor scroll container")
+		}
+		scroll := world.Mut[scene.UIScroll](area)
+		scroll.Position[0], scroll.Position[1] = -80, -120
+		for range 4 {
+			languageInteractionStep(t, app)
+		}
+		menu := model.actions.ui.overlay
+		control, _ := world.HTMLControl(model.surface, menu.invocation.anchor)
+		position := world.Ref[scene.UIGlobalTransform](control)
+		bounds := editorContextBounds(t, model, menu.rootID)
+		scale := float32(zoom) / 100
+		x, y := position.Matrix[12]/scale, position.Matrix[13]/scale
+		if math.Abs(float64(bounds.X-x)) > .2 || math.Abs(float64(bounds.Y+bounds.Height+6-y)) > .2 {
+			t.Fatalf("zoom %d: menu=%+v, visible anchor=(%g,%g)", zoom, bounds, x, y)
+		}
 	}
 }

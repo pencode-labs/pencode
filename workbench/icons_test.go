@@ -10,6 +10,7 @@ import (
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -32,6 +33,64 @@ func (driver *pencodeIconDriver) CreateTexture(descriptor render.TextureDescript
 }
 func (*pencodeIconDriver) DestroyTexture(render.TextureHandle) error { return nil }
 func (*pencodeIconDriver) Destroy()                                  {}
+
+func TestCodexStatusBarIconRenders(t *testing.T) {
+	app, session := newPencodeTestLauncher(t)
+	launcher := session.active
+	model := launcher.model
+	const source = "peb://codex/resources/icons/chatgpt.svg"
+	data, err := os.ReadFile("../extensions/codex/resources/icons/chatgpt.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := model.importExtension(&extensions.Bundle{ID: "codex", Icons: map[string][]byte{source: data}}); err != nil {
+		t.Fatal(err)
+	}
+	const id = "extensions/codex/chat"
+	if err := model.actionRegistry().Register(actions.Definition{Action: peb.Action{ID: id, Tooltip: "Codex Agent", Icon: source, Location: peb.StatusBar}, Run: func(peb.ActionContext) error { return nil }}); err != nil {
+		t.Fatal(err)
+	}
+	if err := loadProjectAndWait(t, model, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := app.Modules().UpdateFrame(1.0 / 60); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.Modules().Dispatch(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if session.active == launcher {
+		t.Fatal("project did not activate the workspace")
+	}
+	model, provider := session.active.model, session.active.icons
+	for _, theme := range []string{model.workbenchTheme.id, "dark-plus", "light-plus"} {
+		model.selectTheme(theme)
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		if _, err := app.Step(); err != nil {
+			t.Fatal(err)
+		}
+		texture, ok := provider.ResolveHTMLImage(model.themedIcon(source, "icon.foreground"))
+		if !ok {
+			t.Fatal("missing Codex icon texture")
+		}
+		found := false
+		for entity, access := range model.fontResources.Query[scene.Sprite2D]() {
+			parent, ok := model.fontResources.Get[scene.Parent](entity)
+			if !ok {
+				continue
+			}
+			control, ok := model.fontResources.Get[htmlui.Control](parent.Entity)
+			if ok && control.ID == "action-"+id && access.Ref().Texture == texture {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s did not render the Codex status bar icon", theme)
+		}
+	}
+}
 
 func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	theme, err := syntax.LoadTheme(fstest.MapFS{"resources/icons.json": &fstest.MapFile{Data: []byte(`{
@@ -68,6 +127,13 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	device.Activate()
 	defer func() { device.Destroy(); previous.Activate() }()
 	provider := pencodeIconProvider{root: filepath.Join("..", "resources", "workbench", "assets")}
+	const codexIcon = "peb://codex/resources/icons/chatgpt.svg"
+	data, err := os.ReadFile("../extensions/codex/resources/icons/chatgpt.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.model = &workspaceModel{extensionIcons: map[string][]byte{codexIcon: data}}
+	prepared.icons[pencodeIconKey{codexIcon, "icon.foreground"}] = codexIcon + "?foreground=2468ac80"
 	defer func() {
 		for _, texture := range provider.textures {
 			if texture != nil {

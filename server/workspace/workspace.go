@@ -13,8 +13,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/pencode-labs/pencode/protocol"
 	"github.com/diiyw/onix/text/piecetree"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 type project struct {
@@ -171,7 +171,6 @@ func (s *Store) OpenDocument(projectID uint64, name string, text bool) (protocol
 	}
 	d := &document{project: p, path: name, version: 1, disk: sha256.Sum256([]byte(content))}
 	d.tree.Reset(content)
-	d.tree.Reserve(protocol.ChunkSize, 128)
 	id := s.id()
 	s.documents[id] = d
 	s.bytes += len(content)
@@ -195,6 +194,9 @@ func (s *Store) Change(id, version uint64, start, end uint32, text string) (uint
 	}
 	if s.bytes-(b-a)+len(text) > 128<<20 {
 		return 0, failure(protocol.Busy, "文档超过连接内存预算")
+	}
+	if d.version == 1 {
+		d.tree.Reserve(protocol.ChunkSize, 128)
 	}
 	d.tree.Replace(a, b, text)
 	s.bytes += len(text) - (b - a)

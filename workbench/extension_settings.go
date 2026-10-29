@@ -146,7 +146,7 @@ func (m *workspaceModel) resetExtensionSettings() {
 }
 
 func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencodeSettingNavProps, struct{}], error) {
-	return module.ContentDefine[pencodeSettingNavProps, struct{}](content, htmlui.NewTemplate(`<button data-ref="select" class="pencode-settings-nav-item pencode-settings-extension-nav" type="button"></button>`), "", module.ContentBehavior[pencodeSettingNavProps, struct{}]{
+	return content.Define[pencodeSettingNavProps, struct{}](htmlui.NewTemplate(`<button data-ref="select" class="pencode-settings-nav-item pencode-settings-extension-nav" type="button"></button>`), "", module.ContentBehavior[pencodeSettingNavProps, struct{}]{
 		Render: func(c module.ContentRenderContext[pencodeSettingNavProps, struct{}], view *htmlui.View) {
 			p := c.Props
 			view.Event("select", htmlui.EventClick)
@@ -172,7 +172,7 @@ func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencod
 }
 
 func newSettingDefinition(content *module.Content) (*htmlui.Definition[pencodeSettingProps, struct{}], error) {
-	return module.ContentDefine[pencodeSettingProps, struct{}](content, htmlui.NewTemplate(`<div data-ref="row" class="pencode-settings-row pencode-extension-setting"><div class="pencode-setting-copy"><label data-ref="label"></label><p data-ref="description" class="pencode-setting-description"></p></div><input data-ref="input" class="pencode-setting-input" type="text"><input data-ref="boolean" type="checkbox" hidden><select data-ref="select" class="pencode-settings-select" hidden></select></div>`), "", module.ContentBehavior[pencodeSettingProps, struct{}]{
+	return content.Define[pencodeSettingProps, struct{}](htmlui.NewTemplate(`<div data-ref="row" class="pencode-settings-row pencode-extension-setting"><div class="pencode-setting-copy"><label data-ref="label"></label><p data-ref="description" class="pencode-setting-description"></p></div><input data-ref="input" class="pencode-setting-input" type="text"><input data-ref="boolean" type="checkbox" hidden><select data-ref="select" class="pencode-settings-select" hidden></select></div>`), "", module.ContentBehavior[pencodeSettingProps, struct{}]{
 		Render: renderExtensionSetting,
 		HandleEvent: func(c *module.ContentEventContext[pencodeSettingProps, struct{}]) {
 			p := c.Props
@@ -248,7 +248,7 @@ func (m *workspaceModel) renderExtensionSettings(view *htmlui.View, nav *htmlui.
 	view.Attr("settings-extensions-nav", "aria-expanded", boolAttribute(m.settingsExtensionsExpanded))
 	if m.settingsExtensionsExpanded {
 		for _, group := range m.extensionSettings {
-			htmlui.AppendComponentChild(view, "settings-extension-list", componentKey(group.id), nav, pencodeSettingNavProps{Model: m, Group: group, Selected: m.settingsExtensions && m.settingsExtension == group.id}, struct{}{})
+			view.AppendComponentChild("settings-extension-list", componentKey(group.id), nav, pencodeSettingNavProps{Model: m, Group: group, Selected: m.settingsExtensions && m.settingsExtension == group.id}, struct{}{})
 		}
 	}
 	view.Attr("settings-extensions-pane", "hidden", "")
@@ -279,7 +279,7 @@ func (m *workspaceModel) renderExtensionSettings(view *htmlui.View, nav *htmlui.
 		view.RemoveAttr("reset-extension-settings", "hidden")
 		for _, props := range group.rows {
 			props.Model = m
-			htmlui.AppendComponentChild(view, "settings-extension-fields", componentKey(props.Ref), row, props, struct{}{})
+			view.AppendComponentChild("settings-extension-fields", componentKey(props.Ref), row, props, struct{}{})
 		}
 	}
 }

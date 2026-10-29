@@ -290,7 +290,7 @@ func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[penc
 	if err != nil {
 		return nil, err
 	}
-	return module.ContentDefine[pencodeProblemGroupProps, pencodeProblemGroupState](content,
+	return content.Define[pencodeProblemGroupProps, pencodeProblemGroupState](
 		htmlui.NewTemplate(`<div class="pencode-problem-group" role="listitem"><button data-ref="toggle" type="button" class="pencode-problem-row pencode-problem-group-toggle"><img data-ref="arrow" class="pencode-problem-group-arrow" alt=""><img data-ref="icon" class="pencode-problem-file-icon" alt=""><span data-ref="path"></span><span data-ref="count" class="pencode-problem-count"></span></button><div data-ref="items" class="pencode-problem-group-items" role="list"></div></div>`), "",
 		module.ContentBehavior[pencodeProblemGroupProps, pencodeProblemGroupState]{
 			Render: func(c module.ContentRenderContext[pencodeProblemGroupProps, pencodeProblemGroupState], view *htmlui.View) {
@@ -324,7 +324,7 @@ func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[penc
 				setPanelVisible(view, "items", group.expanded)
 				if group.expanded {
 					for i := group.start; i < group.end; i++ {
-						htmlui.AppendComponentChild(view, "items", uint64(i-group.start+1), problemDefinition, pencodeProblemProps{Model: model, Theme: c.Props.Theme, Problem: model.bottom.problems[i]}, struct{}{})
+						view.AppendComponentChild("items", uint64(i-group.start+1), problemDefinition, pencodeProblemProps{Model: model, Theme: c.Props.Theme, Problem: model.bottom.problems[i]}, struct{}{})
 					}
 				}
 			},
@@ -344,7 +344,7 @@ func handleProblemGroupEvent(c *module.ContentEventContext[pencodeProblemGroupPr
 }
 
 func newProblemDefinition(content *module.Content) (*htmlui.Definition[pencodeProblemProps, struct{}], error) {
-	return module.ContentDefine[pencodeProblemProps, struct{}](content,
+	return content.Define[pencodeProblemProps, struct{}](
 		htmlui.NewTemplate(`<div class="pencode-problem-item" role="listitem"><button data-ref="problem" type="button" class="pencode-problem-row"><img data-ref="severity" class="pencode-problem-severity-icon"><span data-ref="label"></span></button></div>`), "",
 		module.ContentBehavior[pencodeProblemProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProblemProps, struct{}], view *htmlui.View) {
@@ -401,7 +401,7 @@ func (model *workspaceModel) renderBottomPanel(view *htmlui.View, definition *ht
 			p.problemGroupsInitialized = true
 		}
 		for _, group := range p.problemGroups {
-			htmlui.AppendComponentChild(view, "problem-list", componentKey(string(group.uri)), definition, pencodeProblemGroupProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Group: *group}, pencodeProblemGroupState{})
+			view.AppendComponentChild("problem-list", componentKey(string(group.uri)), definition, pencodeProblemGroupProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Group: *group}, pencodeProblemGroupState{})
 		}
 	}
 	if out {
@@ -428,11 +428,11 @@ func (model *workspaceModel) focusPanelEditor(world *module.Content) {
 	if !model.textEditorActive() {
 		return
 	}
-	field, ok := module.ContentGet[engineui.TextField](world, model.editor.control)
+	field, ok := world.Get[engineui.TextField](model.editor.control)
 	if ok && world.Focus(model.editor.control) {
-		current := module.ContentMut[engineui.TextField](world, model.editor.control)
+		current := world.Mut[engineui.TextField](model.editor.control)
 		current.Caret, current.Anchor = field.Caret, field.Anchor
-		if textarea := module.ContentMut[engineui.Textarea](world, model.editor.control); textarea != nil {
+		if textarea := world.Mut[engineui.Textarea](model.editor.control); textarea != nil {
 			textarea.RestoreScroll(textarea.ScrollX, textarea.ScrollY)
 		}
 	}

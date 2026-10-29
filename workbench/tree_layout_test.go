@@ -5,8 +5,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 )
 
@@ -14,7 +12,7 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	world, project := model.fontResources, model.activeProjectState()
 	project.Entries = nil
 	project.ExpandedDirs = make(map[string]bool)
@@ -33,7 +31,7 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 	verify := func() {
 		t.Helper()
 		viewport := editorContextBounds(t, model, treeRowID(project.Path))
-		scroll := module.ContentRef[scene.UIScroll](world, project.tree.area)
+		scroll := world.Ref[scene.UIScroll](project.tree.area)
 		for i, index := range project.visibleTreeRows(model) {
 			if i < project.tree.first || i >= project.tree.end {
 				continue
@@ -46,12 +44,12 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 			}
 			found := false
 			y := bounds.Y + scroll.Position.Y()
-			for entity, access := range ecs.Query[scene.Text2D](app.World).All {
+			for entity, access := range app.World.Query[scene.Text2D]().All {
 				if access.Ref().Value != entry.Name {
 					continue
 				}
 				found = true
-				transform := ecs.GetRef[scene.UIGlobalTransform](app.World, entity)
+				transform := app.World.GetRef[scene.UIGlobalTransform](entity)
 				if transform == nil || transform.Matrix[13] < y || transform.Matrix[13] >= y+bounds.Height {
 					t.Fatalf("%s bounds=%+v scroll=%v transform=%+v", entry.Path, bounds, scroll.Position, transform)
 				}
@@ -63,7 +61,7 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 	}
 	verify()
 	for _, offset := range []float32{0, -300, -600} {
-		module.ContentMut[scene.UIScroll](world, project.tree.area).Position[1] = offset
+		world.Mut[scene.UIScroll](project.tree.area).Position[1] = offset
 		languageInteractionStep(t, app)
 		for _, i := range []int{1, 5, 10, 15, 20, 10, 5, 1} {
 			name := fmt.Sprintf("folder-%02d", i)

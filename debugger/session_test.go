@@ -357,3 +357,40 @@ func TestConfigAcceptsContributedAdapter(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigResolvesSelectedFileAtLaunch(t *testing.T) {
+	configs, err := ParseConfigs([]byte(`[{"label":"PHP","adapter":"Xdebug","request":"launch","configuration":{"program":"${file}","cwd":"${fileDirname}","env":{"XDEBUG_CONFIG":"client_port=${port}"},"args":["${workspaceFolder}","${file}"],"stopOnEntry":true,"port":0}}]`), `/tmp/项目/"root"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := string(configs[0].Configuration)
+	for _, filename := range []string{`/tmp/项目/"root"/first file.php`, `/tmp/项目/"root"/sub/second.php`} {
+		config, err := configs[0].ResolveFile(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			Program, Cwd string
+			Args         []string
+			Env          map[string]string
+			StopOnEntry  bool
+			Port         int
+		}
+		if err := json.Unmarshal(config.Configuration, &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Program != filename || result.Args[1] != filename || result.Cwd != filename[:strings.LastIndexByte(filename, '/')] || result.Env["XDEBUG_CONFIG"] != "client_port=${port}" || !result.StopOnEntry || result.Port != 0 {
+			t.Fatalf("file substitutions changed fields: %+v", result)
+		}
+	}
+	if string(configs[0].Configuration) != original {
+		t.Fatal("resolving file changed cached template")
+	}
+	if _, err := configs[0].ResolveFile(""); err == nil {
+		t.Fatal("file launcher accepted no active document")
+	}
+	listener := Config{Configuration: json.RawMessage(`{"port":9003}`)}
+	if allocs := testing.AllocsPerRun(50, func() { _, _ = listener.ResolveFile("") }); allocs != 0 {
+		t.Fatal("file-independent config allocated", allocs)
+	}
+}

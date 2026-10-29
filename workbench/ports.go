@@ -38,7 +38,7 @@ type pencodePortProps struct {
 }
 
 func newPortDefinition(content *module.Content) (*htmlui.Definition[pencodePortProps, struct{}], error) {
-	return module.ContentDefine[pencodePortProps, struct{}](content, htmlui.NewTemplate(`<div data-ref="row" class="pencode-port-row" role="row">
+	return content.Define[pencodePortProps, struct{}](htmlui.NewTemplate(`<div data-ref="row" class="pencode-port-row" role="row">
   <div class="pencode-port-cell pencode-port-number" role="cell">
     <span data-ref="dot" class="pencode-port-dot"></span>
     <button data-ref="select" class="pencode-port-name" type="button"></button>
@@ -317,7 +317,7 @@ func (m *workspaceModel) commitPortEdit() {
 
 func (m *workspaceModel) copyPortAddress(world *module.Content, row pencodePortRow) {
 	u := &m.portUI
-	state, ok := module.ContentResource[*input.State](world)
+	state, ok := world.Resource[*input.State]()
 	if !ok || !state.SetClipboardText(row.url) {
 		u.message, u.failed = "无法复制本地地址", true
 		return
@@ -371,7 +371,7 @@ func (m *workspaceModel) focusPorts(world *module.Content) {
 	}
 	if control, ok := world.HTMLControl(m.surface, ref); ok {
 		world.Focus(control)
-		if field := module.ContentMut[engineui.TextField](world, control); u.mode != "" && field != nil {
+		if field := world.Mut[engineui.TextField](control); u.mode != "" && field != nil {
 			field.Caret, field.Anchor = utf8.RuneCountInString(field.Value), 0
 		}
 		u.focus = false
@@ -421,6 +421,6 @@ func (m *workspaceModel) renderPorts(view *htmlui.View, definition *htmlui.Defin
 		if row.key == u.editKey {
 			mode, value = u.mode, u.value
 		}
-		htmlui.AppendComponentChild(view, "ports-list", row.id, definition, pencodePortProps{Model: m, Row: row, Rename: m.settings.Bindings["ports-rename"], Stop: m.settings.Bindings["ports-stop"], Selected: row.key == u.selected, Editing: mode, Value: value, Pending: u.pending != 0, Theme: m.workbenchTheme}, struct{}{})
+		view.AppendComponentChild("ports-list", row.id, definition, pencodePortProps{Model: m, Row: row, Rename: m.settings.Bindings["ports-rename"], Stop: m.settings.Bindings["ports-stop"], Selected: row.key == u.selected, Editing: mode, Value: value, Pending: u.pending != 0, Theme: m.workbenchTheme}, struct{}{})
 	}
 }

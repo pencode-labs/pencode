@@ -7,7 +7,6 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
@@ -127,8 +126,8 @@ func testLanguageHoverRenderedBounds(t *testing.T, indent, zoom, width, lines in
 	app, model, provider, state := languageInteractionFixture(t)
 	world := model.fontResources
 	model.app.GetViewport = func() (int, int) { return width, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: float32(width), Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: float32(width), Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(width, 900)
 	}
 	model.setZoom(world, zoom)
@@ -158,7 +157,7 @@ func testLanguageHoverRenderedBounds(t *testing.T, indent, zoom, width, lines in
 		if !ok {
 			t.Fatal("hover scroll container is missing")
 		}
-		scroll, ok := ecs.Get[scene.UIScroll](app.World, entity)
+		scroll, ok := app.World.Get[scene.UIScroll](entity)
 		if !ok {
 			t.Fatal("hover scroll state is missing")
 		}

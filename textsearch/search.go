@@ -3,6 +3,8 @@ package textsearch
 
 import (
 	"regexp"
+	"regexp/syntax"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -21,6 +23,8 @@ type Pattern struct {
 	query   string
 	options Options
 	re      *regexp.Regexp
+	after   *regexp.Regexp
+	literal bool
 }
 
 func Compile(query string, options Options) (*Pattern, error) {
@@ -33,11 +37,67 @@ func Compile(query string, options Options) (*Pattern, error) {
 		expression = "(?i)" + expression
 	}
 	var err error
-	p.re, err = regexp.Compile("(?m)" + expression)
+	expression = "(?m)" + expression
+	p.re, err = regexp.Compile(expression)
 	if err != nil {
 		return nil, err
 	}
-	return p, err
+	parsed, err := syntax.Parse(expression, syntax.Perl)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Op == syntax.OpLiteral && !slices.Contains(parsed.Rune, utf8.RuneError) {
+		// A literal regexp has the same non-overlapping matches as plain search.
+		// Keep the compiled regexp for replacement syntax, without allocating a
+		// submatch slice for every occurrence while counting dense results.
+		// RuneError stays on the regexp path to also match invalid UTF-8 bytes.
+		p.literal, p.query = true, string(parsed.Rune)
+		p.options.CaseSensitive = parsed.Flags&syntax.FoldCase == 0
+	} else if needsLeftContext(parsed) {
+		// Consume the preceding rune, then search lazily from the requested
+		// position. Assertions still see that rune and the original input end;
+		// an absolute beginning assertion cannot match after the consumed prefix.
+		p.after, err = regexp.Compile(`(?s:\A..*?)(` + expression + `)`)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
+}
+
+func needsLeftContext(re *syntax.Regexp) bool {
+	switch re.Op {
+	case syntax.OpBeginLine, syntax.OpBeginText, syntax.OpWordBoundary, syntax.OpNoWordBoundary:
+		return true
+	}
+	for _, sub := range re.Sub {
+		if needsLeftContext(sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Pattern) nextMatch(content string, position int) []int {
+	base, re := position, p.re
+	if position > 0 && p.after != nil {
+		_, width := utf8.DecodeLastRuneInString(content[:position])
+		base -= width
+		re = p.after
+	}
+	groups := re.FindStringSubmatchIndex(content[base:])
+	if len(groups) == 0 {
+		return nil
+	}
+	if re == p.after {
+		groups = groups[2:] // Discard the wrapper's prefix, retaining original captures.
+	}
+	for i, offset := range groups {
+		if offset >= 0 {
+			groups[i] += base
+		}
+	}
+	return groups
 }
 
 func word(r rune) bool {
@@ -78,30 +138,27 @@ func (p *Pattern) FindRange(content string, dst []Match, start, end, limit int, 
 		}
 		return !countAll && limit > 0 && count == limit
 	}
-	if p.re != nil {
-		// Keep the original input for anchors, empty matches and capture offsets.
-		// Increase the candidate budget only when filtering requires more matches.
-		budget := limit
-		if countAll || limit < 0 {
-			budget = -1
-		}
-		visited := 0
-		for {
-			candidates := p.re.FindAllStringSubmatchIndex(content, budget)
-			for _, groups := range candidates[visited:] {
-				if groups[0] > end {
-					return dst, count
-				}
-				if accept(Match{groups[0], groups[1], groups}) {
-					return dst, count
-				}
+	if p.re != nil && !p.literal {
+		for position, previousEnd := 0, -1; position <= end; {
+			groups := p.nextMatch(content, position)
+			if len(groups) == 0 || groups[0] > end {
+				break
 			}
-			if budget < 0 || len(candidates) < budget {
-				return dst, count
+			empty := groups[0] == groups[1]
+			if (!empty || groups[0] != previousEnd) && accept(Match{groups[0], groups[1], groups}) {
+				break
 			}
-			visited = len(candidates)
-			budget *= 2
+			previousEnd = groups[1]
+			if groups[1] > position {
+				position = groups[1]
+			} else if position < len(content) {
+				_, width := utf8.DecodeRuneInString(content[position:])
+				position += width
+			} else {
+				break
+			}
 		}
+		return dst, count
 	}
 	for offset := 0; offset < end; {
 		first, last := -1, -1
@@ -165,7 +222,12 @@ func indexFold(content, query string, start, end int) (int, int) {
 
 func (p *Pattern) Replacement(content string, match Match, replacement string) string {
 	if p.options.Regex {
-		replacement = string(p.re.ExpandString(nil, replacementTemplate(replacement), content, match.groups))
+		groups := match.groups
+		if p.literal {
+			bounds := [2]int{match.Start, match.End}
+			groups = bounds[:]
+		}
+		replacement = string(p.re.ExpandString(nil, replacementTemplate(replacement), content, groups))
 	}
 	if p.options.PreserveCase {
 		replacement = preserveCase(content[match.Start:match.End], replacement)

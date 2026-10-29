@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -40,12 +39,12 @@ func TestPencodeCodexPermissionTextLayout(t *testing.T) {
 				t.Fatal("missing permission option")
 			}
 			var label, description scene.TextRangeRect2D
-			for entity, access := range ecs.Query2[htmlui.ControlText, scene.Text2D](app.World).All {
+			for entity, access := range app.World.Query2[htmlui.ControlText, scene.Text2D]().All {
 				if access.A.Ref().Control != control {
 					continue
 				}
 				text := access.B.Ref()
-				transform, _ := ecs.Get[scene.UITransform](app.World, entity)
+				transform, _ := app.World.Get[scene.UITransform](entity)
 				rect := scene.TextRangeRect2D{Y: transform.Translation.Y.Value, Height: text.LineHeight}
 				switch {
 				case strings.HasPrefix(text.Value, "请"):

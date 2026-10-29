@@ -367,12 +367,12 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 		width, height = model.viewportWidth, model.viewportHeight
 	}
 	if width <= 0 || height <= 0 {
-		if viewport, ok := module.ContentResource[scene.ViewportSize](world); ok {
+		if viewport, ok := world.Resource[scene.ViewportSize](); ok {
 			width, height = viewport.Width, viewport.Height
 		}
 	}
 	if width <= 0 || height <= 0 {
-		if html, ok := module.ContentGet[htmlui.Surface](world, model.surface); ok {
+		if html, ok := world.Get[htmlui.Surface](model.surface); ok {
 			width, height = html.Width, html.Height
 		}
 	}
@@ -380,8 +380,8 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 		return
 	}
 	model.viewportWidth, model.viewportHeight = width, height
-	if size, ok := module.ContentGet[scene.Size2D](world, model.windowBorder); ok && (size.Width != width || size.Height != height) {
-		updated := module.ContentMut[scene.Size2D](world, model.windowBorder)
+	if size, ok := world.Get[scene.Size2D](model.windowBorder); ok && (size.Width != width || size.Height != height) {
+		updated := world.Mut[scene.Size2D](model.windowBorder)
 		updated.Width, updated.Height = width, height
 	}
 	pixelRatio := float32(1)
@@ -389,8 +389,8 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 		pixelRatio = float32(model.app.Context.DevicePixelRatio())
 	}
 	radius := pencodeWindowBorderRadius(pixelRatio)
-	if border, ok := module.ContentGet[scene.UIBorder2D](world, model.windowBorder); ok && border.Shape.Radius != radius {
-		module.ContentMut[scene.UIBorder2D](world, model.windowBorder).Shape.Radius = radius
+	if border, ok := world.Get[scene.UIBorder2D](model.windowBorder); ok && border.Shape.Radius != radius {
+		world.Mut[scene.UIBorder2D](model.windowBorder).Shape.Radius = radius
 	}
 	htmlWidth, htmlHeight := float32(0), float32(0)
 	if model.settings.Zoom != pencodeDefaultZoom {
@@ -398,12 +398,12 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 	} else if model.app == nil {
 		htmlWidth, htmlHeight = width, height
 	}
-	if html, ok := module.ContentGet[htmlui.Surface](world, model.surface); ok && (html.Width != htmlWidth || html.Height != htmlHeight) {
-		updated := module.ContentMut[htmlui.Surface](world, model.surface)
+	if html, ok := world.Get[htmlui.Surface](model.surface); ok && (html.Width != htmlWidth || html.Height != htmlHeight) {
+		updated := world.Mut[htmlui.Surface](model.surface)
 		updated.Width, updated.Height = htmlWidth, htmlHeight
 	}
-	if transform, ok := module.ContentGet[scene.UITransform](world, model.surface); ok && (transform.Scale.X() != zoom || transform.Scale.Y() != zoom) {
-		updated := module.ContentMut[scene.UITransform](world, model.surface)
+	if transform, ok := world.Get[scene.UITransform](model.surface); ok && (transform.Scale.X() != zoom || transform.Scale.Y() != zoom) {
+		updated := world.Mut[scene.UITransform](model.surface)
 		updated.Scale = mgl32.Vec2{zoom, zoom}
 	}
 }
@@ -468,7 +468,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 			delta = pencodeEditorWidthStep
 		}
 		model.settings.EditorWidth = min(pencodeMaxEditorWidth, max(pencodeMinEditorWidth, model.settings.EditorWidth+delta))
-		if textarea := module.ContentMut[engineui.Textarea](context.World, model.editor.control); textarea != nil {
+		if textarea := context.World.Mut[engineui.Textarea](model.editor.control); textarea != nil {
 			textarea.WrapWidthPercent = float32(model.settings.EditorWidth)
 		}
 		model.refreshSettingsLabels()
@@ -481,7 +481,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		}
 		model.settings.UIFontSize = min(pencodeMaxUIFontSize, max(pencodeMinUIFontSize, model.settings.UIFontSize+delta))
 		model.refreshSettingsLabels()
-		if html := module.ContentMut[htmlui.Surface](context.World, model.surface); html != nil {
+		if html := context.World.Mut[htmlui.Surface](model.surface); html != nil {
 			html.FontSize = float64(model.settings.UIFontSize)
 		}
 		model.saveSettings()
@@ -543,7 +543,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		case model.uiKey(state, input.KeyEnter):
 			if world != nil {
 				if entity, ok := world.HTMLControl(model.surface, "connection-project-path"); ok {
-					if field, ok := module.ContentGet[engineui.TextField](world, entity); ok && field.Focused {
+					if field, ok := world.Get[engineui.TextField](entity); ok && field.Focused {
 						return model.connectionEvent("connection-project-go", "")
 					}
 				}

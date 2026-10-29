@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
@@ -216,11 +215,11 @@ func TestSourceControlRefreshLeavesDiffEditorWritable(t *testing.T) {
 	languageInteractionStep(t, app)
 	m.bindSourceDiffControls(m.fontResources)
 	control, ok := m.fontResources.HTMLControl(m.surface, "sc-code-right-input")
-	binding, bound := module.ContentGet[engineui.TextField](m.fontResources, control)
+	binding, bound := m.fontResources.Get[engineui.TextField](control)
 	if !ok || !bound || binding.Value != tab.Result {
 		t.Fatal("background refresh hid the diff input")
 	}
-	if binding, ok := module.ContentGet[htmlui.Control](m.fontResources, control); !ok || binding.ReadOnly {
+	if binding, ok := m.fontResources.Get[htmlui.Control](control); !ok || binding.ReadOnly {
 		t.Fatal("background refresh made the diff input read only")
 	}
 }
@@ -269,7 +268,7 @@ func TestSourceControlPublishesBackgroundResultWithoutInput(t *testing.T) {
 	for range 3 {
 		languageInteractionStep(t, app)
 	}
-	for _, access := range module.ContentQuery[scene.Text2D](m.fontResources) {
+	for _, access := range m.fontResources.Query[scene.Text2D]() {
 		if strings.Contains(access.Get().Value, next.Branch) {
 			return
 		}

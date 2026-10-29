@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/dap"
 	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/output"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func waitDebugConfigs(t *testing.T, m *workspaceModel) {
@@ -59,6 +59,7 @@ func TestDebugAddLauncherOpensProjectConfig(t *testing.T) {
 	m, p := resourceTestModel(t)
 	t.Cleanup(m.closeDebugger)
 	m.debugEvent(nil, "debug-add", "")
+	m.debugEvent(nil, "debug-template:edit", "")
 	waitDebugConfigs(t, m)
 	if err := awaitFileIO(t, m); err != nil {
 		t.Fatal(err)
@@ -71,6 +72,7 @@ func TestDebugAddLauncherOpensProjectConfig(t *testing.T) {
 	m.updateActiveContent(config)
 	// Reopening the add entry must retain unsaved editor content.
 	m.debugEvent(nil, "debug-add", "")
+	m.debugEvent(nil, "debug-template:edit", "")
 	waitDebugConfigs(t, m)
 	if m.activeFile() != f || f.Content != config || !f.Dirty {
 		t.Fatal("add overwrote the existing config buffer")
@@ -94,6 +96,7 @@ func TestDebugInvalidConfigsRemainEditable(t *testing.T) {
 	t.Cleanup(m.closeDebugger)
 	resourceTestWrite(t, p, ".pencode/debug.json", "invalid json")
 	m.debugEvent(nil, "debug-add", "")
+	m.debugEvent(nil, "debug-template:edit", "")
 	waitDebugConfigs(t, m)
 	if err := awaitFileIO(t, m); err != nil {
 		t.Fatal(err)
@@ -211,7 +214,7 @@ func TestDebugPanelAndGutterInteractions(t *testing.T) {
 		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: key})
 		languageInteractionStep(t, app)
 	}
-	field := module.ContentMut[engineui.TextField](world, m.editor.control)
+	field := world.Mut[engineui.TextField](m.editor.control)
 	field.Caret, field.Anchor = 0, 0
 	press(input.KeyF9)
 	project, file := m.activeProjectState(), m.activeFile()
@@ -247,7 +250,7 @@ func TestDebugPanelAndGutterInteractions(t *testing.T) {
 		editorContextBounds(t, m, ref)
 	}
 	selector, ok := world.HTMLControl(m.surface, "debug-config")
-	control, exists := module.ContentGet[htmlui.Control](world, selector)
+	control, exists := world.Get[htmlui.Control](selector)
 	if !ok || !exists || len(control.Options) != 1 || control.Options[0].Label != "暂无启动器" || !control.Disabled {
 		t.Fatalf("empty selector placeholder missing: %+v", control)
 	}
@@ -267,7 +270,7 @@ func TestDebugPanelAndGutterInteractions(t *testing.T) {
 	if len(m.debug.configs) != 2 || m.debug.configs[0].Adapter != "Xdebug" {
 		t.Fatalf("project launchers not loaded: %+v", m.debug.configs)
 	}
-	control, _ = module.ContentGet[htmlui.Control](world, selector)
+	control, _ = world.Get[htmlui.Control](selector)
 	if len(control.Options) != 2 || control.Options[0].Label != "PHP" || control.Disabled || m.debug.message != "" {
 		t.Fatalf("launcher did not replace the placeholder: %+v", control)
 	}
@@ -308,8 +311,8 @@ func TestDebugPanelAndGutterInteractions(t *testing.T) {
 	}
 	// Click the dedicated breakpoint margin; normal line-number clicks stay free.
 	gutter := editorContextBounds(t, m, "editor-gutter")
-	text := module.ContentMut[scene.Text2D](world, m.editor.text)
-	transform, _ := module.ContentGet[scene.UITransform](world, m.editor.text)
+	text := world.Mut[scene.Text2D](m.editor.text)
+	transform, _ := world.Get[scene.UITransform](m.editor.text)
 	x, y := float64(gutter.X+8), float64(gutter.Y+transform.Translation.Y.Value+text.LineHeight/2)
 	state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
 	languageInteractionStep(t, app)
@@ -528,7 +531,177 @@ func TestDebugWorkbenchWithDelve(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if visible, _ := module.ContentGet[scene.Visibility](m.fontResources, m.editor.debugPaint.execution); visible.Visible {
+	if visible, _ := m.fontResources.Get[scene.Visibility](m.editor.debugPaint.execution); visible.Visible {
 		t.Fatal("execution line retained after stop")
+	}
+}
+
+func TestDebugTemplatesGenerateAndAppendProjectJSON(t *testing.T) {
+	for _, opened := range []bool{false, true} {
+		t.Run(strconv.FormatBool(opened), func(t *testing.T) {
+			m, p := resourceTestModel(t)
+			t.Cleanup(m.closeDebugger)
+			const templates = `[{"label":"Go","adapter":"Delve","request":"launch","configuration":{"program":"${workspaceFolder}","args":["a b"],"stopOnEntry":true}}]`
+			m.importDebugTemplates("go", []peb.DebugAdapter{{ID: "Delve", Templates: templates}})
+			m.debugEvent(nil, "debug-add", "")
+			if !m.debug.adding {
+				t.Fatal("add did not offer registered templates")
+			}
+			if _, err := os.Stat(filepath.Join(p.Path, ".pencode")); !os.IsNotExist(err) {
+				t.Fatal("opening template picker wrote files", err)
+			}
+			m.debugEvent(nil, "debug-template:0", "")
+			waitDebugConfigs(t, m)
+			if err := awaitFileIO(t, m); err != nil {
+				t.Fatal(err)
+			}
+			f := m.activeFile()
+			if f == nil || f.Path != pencodeDebugConfigPath || f.Dirty || !strings.Contains(f.Content, "${workspaceFolder}") || len(m.debug.configs) != 1 || m.debug.session != nil || m.debug.adding {
+				t.Fatalf("template was not written and opened for editing: file=%+v debug=%+v", f, m.debug)
+			}
+			var entries []json.RawMessage
+			if err := json.Unmarshal([]byte(f.Content), &entries); err != nil {
+				t.Fatal(err)
+			}
+			// Extra fields and other adapter entries must survive appending.
+			config := `[{"label":"Other","adapter":"Other","request":"attach","configuration":{"cwd":"${workspaceFolder}"},"custom":true}]`
+			m.updateActiveContent(config)
+			if err := saveFileAndWait(t, m, p.Path, f); err != nil {
+				t.Fatal(err)
+			}
+			waitDebugConfigs(t, m)
+			if !opened {
+				m.closeProjectTab(p, pencodeDebugConfigPath)
+			}
+			m.debugEvent(nil, "debug-add", "")
+			m.debugEvent(nil, "debug-template:0", "")
+			waitDebugConfigs(t, m)
+			if err := awaitFileIO(t, m); err != nil {
+				t.Fatal(err)
+			}
+			waitDebugConfigs(t, m)
+			f = m.activeFile()
+			data, err := os.ReadFile(filepath.Join(p.Path, pencodeDebugConfigPath))
+			if err != nil || f.Content != string(data) || f.Dirty || len(m.debug.configs) != 2 || !strings.Contains(string(data), `"custom": true`) || !strings.Contains(string(data), "${workspaceFolder}") || m.debug.session != nil {
+				t.Fatalf("append lost configuration or failed to save: file=%+v configs=%+v err=%v", f, m.debug.configs, err)
+			}
+			m.updateActiveContent(f.Content + " ")
+			before := f.Content
+			m.debugEvent(nil, "debug-add", "")
+			m.debugEvent(nil, "debug-template:0", "")
+			if f.Content != before || !f.Dirty || m.debug.message == "" {
+				t.Fatal("template overwrote unsaved editor content")
+			}
+			unchanged, err := os.ReadFile(filepath.Join(p.Path, pencodeDebugConfigPath))
+			if err != nil || string(unchanged) != string(data) {
+				t.Fatal("unsaved config changed on disk", err)
+			}
+		})
+	}
+}
+
+func TestDebugTemplatesInvalidConfigAndExtensionRemoval(t *testing.T) {
+	m, p := resourceTestModel(t)
+	t.Cleanup(m.closeDebugger)
+	adapter := peb.DebugAdapter{ID: "Delve", Templates: `[{"label":"Go","adapter":"Delve","request":"launch","configuration":{}}]`}
+	m.importDebugTemplates("go", []peb.DebugAdapter{adapter})
+	m.importDebugTemplates("go", []peb.DebugAdapter{adapter})
+	if len(m.debugTemplates) != 1 {
+		t.Fatal("reimport duplicated templates")
+	}
+	resourceTestWrite(t, p, pencodeDebugConfigPath, "invalid json")
+	m.debugEvent(nil, "debug-add", "")
+	m.debugEvent(nil, "debug-template:0", "")
+	waitDebugConfigs(t, m)
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	if m.activeFile() == nil || m.activeFile().Content != "invalid json" || m.debug.message == "" {
+		t.Fatal("invalid file was replaced or was not editable")
+	}
+	m.debugEvent(nil, "debug-add", "")
+	m.removeDebugTemplates("extensions/go/")
+	if len(m.debugTemplates) != 0 || m.debug.adding {
+		t.Fatal("unloaded extension retained templates")
+	}
+}
+
+func TestDebugTemplateMenuOpensFromButton(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	t.Cleanup(m.closeDebugger)
+	m.importDebugTemplates("php", []peb.DebugAdapter{{ID: "Xdebug", Templates: `[{"label":"监听 Xdebug","adapter":"Xdebug","request":"launch","configuration":{"port":9003}}]`}})
+	editorContextClick(t, app, m, state, "status-debug")
+	wait := func() {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for m.debug.loading || m.fileIO != nil && len(m.fileIO.pending) != 0 {
+			languageInteractionStep(t, app)
+			if time.Now().After(deadline) {
+				t.Fatal("debug file operation timed out")
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	wait()
+	before := editorContextBounds(t, m, "debug-add")
+	editorContextClick(t, app, m, state, "debug-add")
+	menu := editorContextBounds(t, m, "debug-template-menu")
+	root := editorContextBounds(t, m, "pencode-root")
+	if !m.debug.adding || len(m.debugTemplateRows) != 2 || m.debugTemplateRows[0].label != "监听 Xdebug" {
+		t.Fatal("button did not open template menu")
+	}
+	if menu.X < root.X || menu.Y < root.Y || menu.X+menu.Width > root.X+root.Width || menu.Y+menu.Height > root.Y+root.Height {
+		t.Fatalf("menu escaped viewport: menu=%+v root=%+v", menu, root)
+	}
+	if after := editorContextBounds(t, m, "debug-add"); after != before {
+		t.Fatalf("menu moved toolbar: before=%+v after=%+v", before, after)
+	}
+	if _, exists := m.fontResources.HTMLNode(m.surface, "debug-template"); exists {
+		t.Fatal("extra template selector remains")
+	}
+	editorContextBounds(t, m, "debug-template:0")
+	editorContextBounds(t, m, "debug-template:edit")
+	editorContextClick(t, app, m, state, "debug-template:0")
+	wait()
+	if m.debug.adding || m.activeFile() == nil || m.activeFile().Path != pencodeDebugConfigPath || len(m.debug.configs) != 1 {
+		t.Fatal("menu selection did not write and open template")
+	}
+	editorContextClick(t, app, m, state, "debug-add")
+	if allocs := testing.AllocsPerRun(50, func() { m.updateDebugTemplateMenu(m.fontResources, state) }); allocs != 0 {
+		t.Fatal("idle template menu allocated", allocs)
+	}
+	press := func(key input.KeyCode) {
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: key})
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: key})
+		languageInteractionStep(t, app)
+	}
+	press(input.KeyDown)
+	if m.debug.templateIndex != 1 {
+		t.Fatal("arrow key did not select menu row")
+	}
+	press(input.KeyEnter)
+	wait()
+	if m.debug.adding || len(m.debug.configs) != 1 {
+		t.Fatal("manual edit menu action appended a template")
+	}
+	editorContextClick(t, app, m, state, "debug-add")
+	press(input.KeyEscape)
+	if m.debug.adding {
+		t.Fatal("Escape did not dismiss menu")
+	}
+	editorContextClick(t, app, m, state, "debug-add")
+	editorContextClick(t, app, m, state, "debug-add")
+	if m.debug.adding {
+		t.Fatal("second click did not dismiss menu")
+	}
+	editorContextClick(t, app, m, state, "debug-add")
+	editorContextClick(t, app, m, state, "debug-reload")
+	wait()
+	if m.debug.adding {
+		t.Fatal("outside click did not dismiss menu")
+	}
+	m.removeDebugTemplates("extensions/php/")
+	if allocs := testing.AllocsPerRun(50, func() { m.pollDebugger(nil) }); allocs != 0 {
+		t.Fatal("idle debugger allocated", allocs)
 	}
 }

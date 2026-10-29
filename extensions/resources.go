@@ -44,6 +44,7 @@ type Bundle struct {
 	Editors         []Editor
 	Fonts           []Font
 	LanguageServers []LanguageServer
+	DebugAdapters   []peb.DebugAdapter
 }
 
 // Close releases an unconsumed registration. Once imported into a workbench,
@@ -122,7 +123,7 @@ func loadBundle(source fs.FS, id string, c peb.Contributions) (result *Bundle, f
 		return nil, err
 	}
 	files := resourceFiles{source: source, cache: make(map[string][]byte)}
-	bundle := &Bundle{ID: id, Label: id, Settings: c.Settings, Icons: make(map[string][]byte), LanguageServers: servers}
+	bundle := &Bundle{ID: id, Label: id, Settings: c.Settings, Icons: make(map[string][]byte), LanguageServers: servers, DebugAdapters: c.DebugAdapters}
 	if len(c.Actions) > maxActions {
 		return nil, fmt.Errorf("too many extension actions")
 	}

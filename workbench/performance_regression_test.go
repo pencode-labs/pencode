@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -49,7 +48,7 @@ func TestCachedSelectionRetainsTreeNodes(t *testing.T) {
 			t.Fatalf("unrelated tree control replaced on %s", name)
 		}
 		active := 0
-		for _, v := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](w) {
+		for _, v := range w.Query[htmlui.Component[tabProps, struct{}]]() {
 			props := v.Ref().Props
 			if props.Model == m && props.Active {
 				active++
@@ -206,9 +205,9 @@ func TestVisibleGutterUsesDocumentLinesAndPreservesIMEBuffer(t *testing.T) {
 	m.refreshRegion(w, pencodeRefreshEditor)
 	languageInteractionStep(t, app)
 	document := m.activeFile().textBuffer(value)
-	text := module.ContentMut[scene.Text2D](w, m.editor.text)
+	text := w.Mut[scene.Text2D](m.editor.text)
 	text.WrapWidth, text.WrapMode = 180, scene.TextWrapCharacters
-	transform := module.ContentMut[scene.UITransform](w, m.editor.text)
+	transform := w.Mut[scene.UITransform](m.editor.text)
 	transform.Translation.Y.Value = -600
 	for _, visual := range []string{value, "输入中\n" + value, value} {
 		text.Value = visual

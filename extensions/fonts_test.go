@@ -14,7 +14,7 @@ func TestFontResourcesValidateAndShareFaces(t *testing.T) {
 	if err := os.Mkdir(resources, 0755); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile("../../../testdata/fonts/Noto_Sans_SC/static/NotoSansSC-Regular.ttf")
+	data, err := os.ReadFile("../../onix/testdata/fonts/Noto_Sans_SC/static/NotoSansSC-Regular.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}

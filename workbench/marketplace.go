@@ -407,7 +407,7 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 			if m.filter != "" && !strings.Contains(strings.ToLower(item.Label()+" "+item.ID+" "+item.Description), m.filter) {
 				continue
 			}
-			m.rows = append(m.rows, htmlui.ComponentChild(componentKey(item.ID), definition, pencodeMarketProps{Model: model, Item: item, Selected: item.ID == m.selected}, struct{}{}))
+			m.rows = append(m.rows, definition.ComponentChild(componentKey(item.ID), pencodeMarketProps{Model: model, Item: item, Selected: item.ID == m.selected}, struct{}{}))
 		}
 		m.cacheDetails(selected)
 		m.rowsModel, m.rowsRevision, m.rowsDefinition = model, m.revision, definition

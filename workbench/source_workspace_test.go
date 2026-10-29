@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
@@ -181,7 +179,7 @@ func TestSourceControlPencodeInteraction(t *testing.T) {
 		t.Fatal("commit files must use the graph scrollbar instead of a nested scroll container")
 	}
 	commitEntity, _ := m.fontResources.HTMLControl(m.surface, "sc-commit:"+hash)
-	if control, ok := module.ContentGet[htmlui.Control](m.fontResources, commitEntity); !ok || control.PaddingBox.Y != 0 || control.PaddingBox.Height != commitBounds.Height {
+	if control, ok := m.fontResources.Get[htmlui.Control](commitEntity); !ok || control.PaddingBox.Y != 0 || control.PaddingBox.Height != commitBounds.Height {
 		t.Fatal("commit button clips the graph before its row boundaries")
 	}
 	if filesBounds.Y != commitBounds.Y+commitBounds.Height || filesBounds.Height != float32(s.graphDetailsHeight()) {
@@ -234,13 +232,13 @@ func TestSourceControlPencodeInteraction(t *testing.T) {
 		t.Fatal("commit did not refresh graph and clear input")
 	}
 	messageEntity, _ := m.fontResources.HTMLControl(m.surface, "sc-message")
-	messageField, ok := module.ContentGet[engineui.TextField](m.fontResources, messageEntity)
+	messageField, ok := m.fontResources.Get[engineui.TextField](messageEntity)
 	if !ok || messageField.Value != "" || messageField.Anchor != 0 || messageField.Caret != 0 {
 		t.Fatalf("successful commit retained the native input value or selection: %+v", messageField)
 	}
 	m.app.GetViewport = func() (int, int) { return 960, 540 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 960, Height: 540, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 960, Height: 540, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(960, 540)
 	}
 	m.sourceChanged()
@@ -273,7 +271,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 	sourceWait(t, app, m)
 	s := m.sourceState()
 	entity, _ := m.fontResources.HTMLControl(m.surface, "sc-message")
-	if _, ok := module.ContentGet[engineui.Input](m.fontResources, entity); !ok {
+	if _, ok := m.fontResources.Get[engineui.Input](entity); !ok {
 		t.Fatal("commit message must start as a single-line input")
 	}
 	compact := editorContextBounds(t, m, "sc-message")
@@ -290,7 +288,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 	if s.MessageMultiline || s.CommitMessage != "修复内容" {
 		t.Fatal("plain Enter expanded or changed the single-line message")
 	}
-	field := module.ContentMut[engineui.TextField](m.fontResources, entity)
+	field := m.fontResources.Mut[engineui.TextField](entity)
 	field.Anchor, field.Caret = 2, 4
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftShift})
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEnter})
@@ -299,10 +297,10 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyLeftShift})
 	languageInteractionStep(t, app)
 	entity, _ = m.fontResources.HTMLControl(m.surface, "sc-message")
-	if _, ok := module.ContentGet[engineui.Textarea](m.fontResources, entity); !ok {
+	if _, ok := m.fontResources.Get[engineui.Textarea](entity); !ok {
 		t.Fatal("Shift+Enter did not switch to a textarea")
 	}
-	field = module.ContentMut[engineui.TextField](m.fontResources, entity)
+	field = m.fontResources.Mut[engineui.TextField](entity)
 	if !field.Focused || field.Anchor != 3 || field.Caret != 3 || field.Value != "修复\n" || s.CommitMessage != field.Value {
 		t.Fatalf("expansion lost selection, focus or message: %+v, message=%q", field, s.CommitMessage)
 	}
@@ -326,7 +324,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 	}
 	press(input.KeyBackspace)
 	entity, _ = m.fontResources.HTMLControl(m.surface, "sc-message")
-	field = module.ContentMut[engineui.TextField](m.fontResources, entity)
+	field = m.fontResources.Mut[engineui.TextField](entity)
 	if s.MessageMultiline || s.CommitMessage != "修复" || !field.Focused || field.Anchor != 2 || field.Caret != 2 {
 		t.Fatalf("deleting the last newline lost single-line content or focus: %+v", field)
 	}
@@ -350,10 +348,10 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 		t.Fatal("smart commit did not auto-stage or reset the input")
 	}
 	entity, _ = m.fontResources.HTMLControl(m.surface, "sc-message")
-	if _, ok := module.ContentGet[engineui.Input](m.fontResources, entity); !ok {
+	if _, ok := m.fontResources.Get[engineui.Input](entity); !ok {
 		t.Fatal("successful commit did not restore the single-line control")
 	}
-	if field, ok := module.ContentGet[engineui.TextField](m.fontResources, entity); !ok || field.Value != "" {
+	if field, ok := m.fontResources.Get[engineui.TextField](entity); !ok || field.Value != "" {
 		t.Fatalf("successful multiline commit retained the native input value: %+v", field)
 	}
 	// Exercise the real layout with long subjects, refs and authors, without a
@@ -371,7 +369,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 		t.Fatalf("long message overflowed its graph: graph=%+v row=%+v", graph, row)
 	}
 	prefix, truncated := false, false
-	for _, text := range ecs.Query[scene.Text2D](app.World).All {
+	for _, text := range app.World.Query[scene.Text2D]().All {
 		value := text.Get().Value
 		prefix = prefix || strings.HasPrefix(value, "long-subject-")
 		truncated = truncated || strings.HasSuffix(value, "…") && strings.Contains(c.Subject, strings.TrimSuffix(value, "…"))
@@ -428,11 +426,11 @@ func TestSourceControlPencodeMergeEditor(t *testing.T) {
 	m.sourceChanged()
 	languageInteractionStep(t, app)
 	entity, ok := m.fontResources.HTMLControl(m.surface, "sc-merge-result")
-	if field := module.ContentMut[engineui.Textarea](m.fontResources, entity); !ok || field == nil || !field.CaptureTab {
+	if field := m.fontResources.Mut[engineui.Textarea](entity); !ok || field == nil || !field.CaptureTab {
 		t.Fatal("merge result not editable code textarea")
 	}
-	text, found := module.ContentFindPart[engineui.ValuePart, scene.Text2D](m.fontResources, entity)
-	if value := module.ContentRef[scene.Text2D](m.fontResources, text); !found || value == nil || len(value.Spans) == 0 || value.Value != tab.Result {
+	text, found := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](entity)
+	if value := m.fontResources.Ref[scene.Text2D](text); !found || value == nil || len(value.Spans) == 0 || value.Value != tab.Result {
 		t.Fatal("native merge result lacks syntax highlighting")
 	}
 	left := editorContextBounds(t, m, "sc-code-left")
@@ -557,7 +555,7 @@ func TestSourceControlBottomPanelAndHistoryLoading(t *testing.T) {
 		if !ok {
 			t.Fatal("missing graph scroll container")
 		}
-		scroll := module.ContentMut[scene.UIScroll](m.fontResources, area)
+		scroll := m.fontResources.Mut[scene.UIScroll](area)
 		if scroll == nil || !scroll.ScrollbarThin || scroll.ScrollbarSize <= 0 {
 			t.Fatal("graph must have native themed thin scrollbars")
 		}

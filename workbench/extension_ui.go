@@ -289,7 +289,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			if !ok || world.FocusedControl() != control {
 				continue
 			}
-			if field, ok := module.ContentGet[engineui.TextField](world, control); ok {
+			if field, ok := world.Get[engineui.TextField](control); ok {
 				s.inputID, s.inputValue = f.id, field.Value
 				s.inputAnchor, s.inputCaret = field.Anchor, field.Caret
 			}
@@ -465,7 +465,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			region.definition = old.definition
 		}
 		if region.definition == nil {
-			region.definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(strings.Clone(region.html)), behavior)
+			region.definition, err = styles.DefineScopedChild(htmlui.NewTemplate(strings.Clone(region.html)), behavior)
 			if err != nil {
 				return err
 			}
@@ -477,10 +477,10 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 		outer.Render = func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], target *htmlui.View) {
 			behavior.Render(c, target)
 			for _, region := range c.Props.Surface.regions {
-				htmlui.AppendComponentChild(target, region.ref, componentKey(region.ref), region.definition, *c.Props, struct{}{})
+				target.AppendComponentChild(region.ref, componentKey(region.ref), region.definition, *c.Props, struct{}{})
 			}
 		}
-		definition, err = htmlui.DefineScopedChild(styles, htmlui.NewTemplate(template), outer)
+		definition, err = styles.DefineScopedChild(htmlui.NewTemplate(template), outer)
 		if err != nil {
 			return err
 		}
@@ -515,7 +515,7 @@ func (s *pencodeExtensionSurface) captureScroll(ref, id, key string, follow bool
 		}
 		if node, ok := s.model.fontResources.HTMLNode(s.model.surface, previous.id); ok {
 			if area, ok := node.ScrollContainer(); ok {
-				if scroll, ok := module.ContentGet[scene.UIScroll](s.model.fontResources, area); ok {
+				if scroll, ok := s.model.fontResources.Get[scene.UIScroll](area); ok {
 					state.position, state.restore = [2]float32{scroll.Position.X(), scroll.Position.Y()}, true
 					state.end = follow && scroll.ContentSize.Y()-scroll.ViewportSize.Y()+scroll.Position.Y() < 24
 				}
@@ -591,8 +591,8 @@ func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurface
 			if !c.Props.Visible {
 				view.Attr("surface", "hidden", "")
 			}
-			htmlui.AppendComponentChild(view, "content", 0, s.styles, *c.Props, struct{}{})
-			htmlui.AppendComponentChild(view, "content", 1, s.definition, *c.Props, struct{}{})
+			view.AppendComponentChild("content", 0, s.styles, *c.Props, struct{}{})
+			view.AppendComponentChild("content", 1, s.definition, *c.Props, struct{}{})
 		},
 		HandleEvent: func(c *htmlui.ComponentEventContext[pencodeExtensionSurfaceProps, struct{}]) {
 			s := c.Props.Surface
@@ -616,15 +616,15 @@ func (model *workspaceModel) refreshExtensionSurface(s *pencodeExtensionSurface)
 	if world == nil {
 		return false
 	}
-	for entity, access := range module.ContentQuery[htmlui.Component[pencodeExtensionSurfaceProps, struct{}]](world) {
+	for entity, access := range world.Query[htmlui.Component[pencodeExtensionSurfaceProps, struct{}]]() {
 		component := access.Get()
 		if component.Definition != model.actions.ui.wrapper || component.Props.Surface != s {
 			continue
 		}
-		module.ContentMut[htmlui.Component[pencodeExtensionSurfaceProps, struct{}]](world, entity).Props = pencodeExtensionSurfaceProps{
+		world.Mut[htmlui.Component[pencodeExtensionSurfaceProps, struct{}]](entity).Props = pencodeExtensionSurfaceProps{
 			Surface: s, Theme: model.workbenchTheme, Revision: s.revision, Visible: s.live(),
 		}
-		module.ContentUpdateState[pencodeExtensionSurfaceProps, struct{}](world, entity, func(*struct{}) {})
+		world.UpdateState[pencodeExtensionSurfaceProps, struct{}](entity, func(*struct{}) {})
 		if model.app != nil {
 			model.app.RequestRender()
 		}
@@ -651,7 +651,7 @@ func (model *workspaceModel) renderExtensionUI(view *htmlui.View) {
 		} else if s.ui.Kind == peb.EditorTab {
 			slot = "extension-editor"
 		}
-		htmlui.AppendComponentChild(view, slot, componentKey(s.rootID), state.wrapper, pencodeExtensionSurfaceProps{Surface: s, Theme: model.workbenchTheme, Revision: s.revision, Visible: s.live()}, struct{}{})
+		view.AppendComponentChild(slot, componentKey(s.rootID), state.wrapper, pencodeExtensionSurfaceProps{Surface: s, Theme: model.workbenchTheme, Revision: s.revision, Visible: s.live()}, struct{}{})
 	}
 	setPanelVisible(view, "extension-pane", model.bottom.active == pencodePanelExtension)
 	setPanelVisible(view, "extension-editor", state.editor != nil)
@@ -763,7 +763,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 	if state.revealNotifications {
 		if node, ok := world.HTMLNode(model.surface, "pencode-extension-notifications"); ok {
 			if area, ok := node.ScrollContainer(); ok {
-				if scroll := module.ContentMut[scene.UIScroll](world, area); scroll != nil {
+				if scroll := world.Mut[scene.UIScroll](area); scroll != nil {
 					previous := scroll.Position
 					scroll.Position[1] = -max(0, scroll.ContentSize.Y()-scroll.ViewportSize.Y())
 					scroll.Momentum[1] = 0
@@ -806,7 +806,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 			}
 			if node, ok := world.HTMLNode(model.surface, state.id); ok {
 				if area, ok := node.ScrollContainer(); ok {
-					if scroll := module.ContentMut[scene.UIScroll](world, area); scroll != nil {
+					if scroll := world.Mut[scene.UIScroll](area); scroll != nil {
 						previous := scroll.Position
 						for axis := range 2 {
 							scroll.Position[axis] = max(-max(0, scroll.ContentSize[axis]-scroll.ViewportSize[axis]), min(0, state.position[axis]))
@@ -840,7 +840,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 		}
 		if s.inputID != "" {
 			if control, ok := world.HTMLControl(model.surface, s.inputID); ok {
-				if field := module.ContentMut[engineui.TextField](world, control); field != nil {
+				if field := world.Mut[engineui.TextField](control); field != nil {
 					if state.overlay == nil && world.Focus(control) {
 						field.Focused = true
 						if field.Value == s.inputValue {
@@ -943,12 +943,12 @@ func (s *pencodeExtensionSurface) resizeInputs(world *module.Content) (changed b
 		if !ok {
 			continue
 		}
-		visual, ok := module.ContentFindPart[engineui.ValuePart, scene.Text2D](world, control)
+		visual, ok := world.FindPart[engineui.ValuePart, scene.Text2D](control)
 		if !ok {
 			continue
 		}
-		text := module.ContentMut[scene.Text2D](world, visual)
-		link, ok := module.ContentGet[htmlui.ControlText](world, visual)
+		text := world.Mut[scene.Text2D](visual)
+		link, ok := world.Get[htmlui.ControlText](visual)
 		node, exists := world.HTMLNode(s.model.surface, f.id)
 		if !ok || !exists || text == nil {
 			continue
@@ -1036,7 +1036,7 @@ func (model *workspaceModel) updateExtensionUI(world *module.Content, state *inp
 }
 
 func (s *pencodeExtensionSurface) ownsFocus(world *module.Content) bool {
-	target, ok := module.ContentGet[htmlui.Focusable](world, world.FocusedControl())
+	target, ok := world.Get[htmlui.Focusable](world.FocusedControl())
 	if !ok || target.Owner != s.model.surface {
 		return false
 	}
@@ -1055,7 +1055,7 @@ func (model *workspaceModel) extensionFocusControl(world *module.Content, id str
 	if control, ok := world.HTMLControl(model.surface, id); ok {
 		return control, true
 	}
-	for entity, access := range module.ContentQuery[htmlui.Focusable](world) {
+	for entity, access := range world.Query[htmlui.Focusable]() {
 		f := access.Get()
 		if f.Owner == model.surface && f.ID == id {
 			return entity, true
@@ -1067,8 +1067,8 @@ func (model *workspaceModel) extensionFocusControl(world *module.Content, id str
 // Navigation is applied in the workbench input pass. Suppress native traversal
 // for the same key so it cannot advance focus a second time.
 func (s *pencodeExtensionSurface) bindKeys(world *module.Content, id string) {
-	if control, ok := s.model.extensionFocusControl(world, id); ok && !module.ContentHas[engineui.TextFieldKeyHandler](world, control) {
-		_ = module.ContentInsert(world, control, engineui.TextFieldKeyHandler{Handle: s.interceptKeys})
+	if control, ok := s.model.extensionFocusControl(world, id); ok && !world.Has[engineui.TextFieldKeyHandler](control) {
+		_ = world.Insert(control, engineui.TextFieldKeyHandler{Handle: s.interceptKeys})
 	}
 }
 func (s *pencodeExtensionSurface) interceptKeys(state *input.State) bool {
@@ -1085,8 +1085,8 @@ func (s *pencodeExtensionSurface) interceptKeys(state *input.State) bool {
 			if target, ok := world.HTMLControl(s.model.surface, f.id); !ok || target != control {
 				continue
 			}
-			field := module.ContentMut[engineui.TextField](world, control)
-			if native, ok := module.ContentGet[htmlui.Control](world, control); field == nil || !ok || native.ReadOnly || native.Disabled {
+			field := world.Mut[engineui.TextField](control)
+			if native, ok := world.Get[htmlui.Control](control); field == nil || !ok || native.ReadOnly || native.Disabled {
 				return false
 			}
 			// Apply text queued alongside Enter before submitting the draft.

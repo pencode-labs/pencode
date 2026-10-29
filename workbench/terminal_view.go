@@ -215,7 +215,7 @@ func (m *workspaceModel) syncTerminalTabScroll(world *module.Content) {
 		m.terminalView.tabScroll = pencodeTabScroll{}
 		return
 	}
-	scroll := module.ContentMut[scene.UIScroll](world, area)
+	scroll := world.Mut[scene.UIScroll](area)
 	if scroll == nil || m.terminals == nil {
 		return
 	}
@@ -232,7 +232,7 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 	visible := m.bottom.active == pencodePanelTerminal && m.screen == pencodeWorkspace
 	if !visible {
 		for _, e := range v.decorations {
-			module.ContentSetIfChanged(world, e, scene.Visibility{})
+			world.SetIfChanged(e, scene.Visibility{})
 		}
 		return
 	}
@@ -276,14 +276,14 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 		}
 		v.decorations = v.decorations[:0]
 		v.control = control
-		v.text, _ = module.ContentFindPart[engineui.ValuePart, scene.Text2D](world, control)
-		_ = module.ContentInsert(world, control, engineui.TextFieldKeyHandler{Handle: m.terminalKeys})
+		v.text, _ = world.FindPart[engineui.ValuePart, scene.Text2D](control)
+		_ = world.Insert(control, engineui.TextFieldKeyHandler{Handle: m.terminalKeys})
 	}
 	if !world.IsAlive(v.text) {
-		v.text, _ = module.ContentFindPart[engineui.ValuePart, scene.Text2D](world, control)
+		v.text, _ = world.FindPart[engineui.ValuePart, scene.Text2D](control)
 	}
 
-	text := module.ContentMut[scene.Text2D](world, v.text)
+	text := world.Mut[scene.Text2D](v.text)
 	if text == nil {
 		if m.app != nil {
 			m.app.RequestRender()
@@ -304,23 +304,23 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 	if font != nil {
 		text.Font = font
 	}
-	if binding := module.ContentMut[htmlui.ControlTextFont](world, control); binding != nil {
+	if binding := world.Mut[htmlui.ControlTextFont](control); binding != nil {
 		binding.Font = font
 	} else {
-		_ = module.ContentInsert(world, control, htmlui.ControlTextFont{Font: font})
+		_ = world.Insert(control, htmlui.ControlTextFont{Font: font})
 	}
 	if m.workbenchTheme != nil {
 		style := m.workbenchTheme.editorStyle
 		style.Value.Caret.Background.Fill.A = 0
-		if existing := module.ContentMut[engineui.StyleOverride[engineui.TextFieldStyle]](world, control); existing != nil {
+		if existing := world.Mut[engineui.StyleOverride[engineui.TextFieldStyle]](control); existing != nil {
 			*existing = style
 		} else {
-			_ = module.ContentInsert(world, control, style)
+			_ = world.Insert(control, style)
 		}
 	}
 	text.WrapMode = scene.TextWrapNone
 	text.Spans = v.spans
-	area := module.ContentMut[engineui.Textarea](world, control)
+	area := world.Mut[engineui.Textarea](control)
 	if area != nil {
 		area.Wrap = false
 		area.DisableHorizontalScroll = true
@@ -330,13 +330,13 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 	}
 	if m.terminals == nil || m.terminals.active == nil {
 		for _, e := range v.decorations {
-			module.ContentSetIfChanged(world, e, scene.Visibility{})
+			world.SetIfChanged(e, scene.Visibility{})
 		}
 		return
 	}
 	item := m.terminals.active
 	s := item.screen
-	link, ok := module.ContentGet[htmlui.ControlText](world, v.text)
+	link, ok := world.Get[htmlui.ControlText](v.text)
 	if !ok {
 		return
 	}
@@ -355,8 +355,8 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 	}
 
 	used := 0
-	transform, _ := module.ContentGet[scene.UITransform](world, v.text)
-	stack, _ := module.ContentGet[scene.UIStackIndex](world, v.text)
+	transform, _ := world.Get[scene.UITransform](v.text)
+	stack, _ := world.Get[scene.UIStackIndex](v.text)
 	for _, bg := range v.backgrounds {
 		m.terminalQuad(world, &used, control, stack-1, transform.Translation.X.Value+float32(bg.x)*width, transform.Translation.Y.Value+float32(bg.y)*height, float32(bg.width)*width, height, bg.color)
 	}
@@ -374,11 +374,11 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 		}
 	}
 	for _, e := range v.decorations[used:] {
-		module.ContentSetIfChanged(world, e, scene.Visibility{})
+		world.SetIfChanged(e, scene.Visibility{})
 	}
 	// Native IME positioning follows the shell cursor rather than the selection.
 	if m.terminalFocused(world) {
-		if state, ok := module.ContentResource[*input.State](world); ok {
+		if state, ok := world.Resource[*input.State](); ok {
 			node, _ := world.HTMLNode(m.surface, "terminal-content")
 			if bounds, ok := node.Bounds(); ok {
 				cx, cy := s.Cursor()
@@ -391,24 +391,24 @@ func (m *workspaceModel) terminalQuad(world *module.Content, used *int, parent e
 	v := &m.terminalView
 	if *used == len(v.decorations) {
 		bundle := ecs.NewBundle(9)
-		ecs.Put(&bundle, scene.UITransformFromXY(0, 0))
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: parent})
-		ecs.Put(&bundle, scene.AnchorTopLeft)
-		ecs.Put(&bundle, scene.Visibility{})
-		ecs.Put(&bundle, scene.Size2D{})
-		ecs.Put(&bundle, scene.NewSprite2D())
-		ecs.Put(&bundle, stack)
+		bundle.Put(scene.UITransformFromXY(0, 0))
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: parent})
+		bundle.Put(scene.AnchorTopLeft)
+		bundle.Put(scene.Visibility{})
+		bundle.Put(scene.Size2D{})
+		bundle.Put(scene.NewSprite2D())
+		bundle.Put(stack)
 		v.decorations = append(v.decorations, world.Spawn(bundle))
 	}
 	e := v.decorations[*used]
 	*used++
-	module.ContentSetIfChanged(world, e, stack)
-	module.ContentSetIfChanged(world, e, scene.Visibility{Visible: true})
-	module.ContentSetIfChanged(world, e, scene.Size2D{Width: width, Height: height})
-	transform := module.ContentMut[scene.UITransform](world, e)
+	world.SetIfChanged(e, stack)
+	world.SetIfChanged(e, scene.Visibility{Visible: true})
+	world.SetIfChanged(e, scene.Size2D{Width: width, Height: height})
+	transform := world.Mut[scene.UITransform](e)
 	transform.Translation.X.Value, transform.Translation.Y.Value = x, y
-	sprite := module.ContentMut[scene.Sprite2D](world, e)
+	sprite := world.Mut[scene.Sprite2D](e)
 	sprite.Shape = scene.RoundedRectShape2D(color, 0)
 	sprite.Width, sprite.Height = width, height
 }

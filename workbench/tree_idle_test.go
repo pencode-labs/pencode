@@ -9,7 +9,6 @@ import (
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 )
@@ -27,9 +26,9 @@ func TestPencodeTreeHoverKeepsWorkbenchStable(t *testing.T) {
 	}
 	app.SetRenderMode(onix.RenderOnDemand)
 	app.SetIdleEnabled(true)
-	state, _ := ecs.GetResource[*input.State](app.World)
-	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](model.fontResources, model.root)
-	editor, _ := module.ContentGet[htmlui.Control](model.fontResources, model.editor.control)
+	state, _ := app.World.GetResource[*input.State]()
+	root, _ := model.fontResources.Get[htmlui.Component[appProps, appState]](model.root)
+	editor, _ := model.fontResources.Get[htmlui.Control](model.editor.control)
 	for range 3 {
 		for _, path := range []string{"folder", "main.go", "folder"} {
 			bounds := editorContextBounds(t, model, model.projectTreeRowID(project, path))
@@ -37,8 +36,8 @@ func TestPencodeTreeHoverKeepsWorkbenchStable(t *testing.T) {
 				scale := float64(model.settings.Zoom) / 100
 				state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(bounds.X+offset) * scale, Y: float64(bounds.Y+bounds.Height/2) * scale})
 				languageInteractionStep(t, app)
-				after, _ := module.ContentGet[htmlui.Component[appProps, appState]](model.fontResources, model.root)
-				control, _ := module.ContentGet[htmlui.Control](model.fontResources, model.editor.control)
+				after, _ := model.fontResources.Get[htmlui.Component[appProps, appState]](model.root)
+				control, _ := model.fontResources.Get[htmlui.Control](model.editor.control)
 				if after.State.Revision != root.State.Revision || control.RenderRevision != editor.RenderRevision {
 					t.Fatalf("tree hover refreshed workbench: revision %d -> %d, editor %d -> %d", root.State.Revision, after.State.Revision, editor.RenderRevision, control.RenderRevision)
 				}
@@ -52,12 +51,11 @@ func TestPencodeTreeClickPublishesWithoutMouseMove(t *testing.T) {
 	// Capture render extraction without a native window or GPU submission.
 	app.Schedule(onix.StageRender).Remove("render_debug_info")
 	app.Schedule(onix.StageRender).Remove("render_cameras")
-	restore := graphics.SetCurrentContextForTesting(graphics.NewCanvas2D(nil, 1440, 900))
-	t.Cleanup(restore)
+	graphics.BindFrame(app.World, graphics.NewCanvas2D(nil, 1440, 900))
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	project := model.activeProjectState()
@@ -80,7 +78,7 @@ func TestPencodeTreeClickPublishesWithoutMouseMove(t *testing.T) {
 		step()
 	}
 	app.WakeAt(time.Now().Add(5 * time.Second))
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	r := editorContextBounds(t, model, model.projectTreeRowID(project, "folder"))
 	scale := float64(model.settings.Zoom) / 100
 	x, y := float64(r.X+r.Width/2)*scale, float64(r.Y+r.Height/2)*scale
@@ -96,7 +94,7 @@ func TestPencodeTreeClickPublishesWithoutMouseMove(t *testing.T) {
 		t.Fatal("click did not expand folder")
 	}
 	child := ecs.Entity(0)
-	for entity, access := range ecs.Query[scene.Text2D](app.World).All {
+	for entity, access := range app.World.Query[scene.Text2D]().All {
 		if access.Ref().Value == "child.txt" {
 			child = entity
 			break
@@ -105,7 +103,7 @@ func TestPencodeTreeClickPublishesWithoutMouseMove(t *testing.T) {
 	if child == 0 || !scene.IsVisible(app.World, child) {
 		t.Fatal("child text was not created and made visible")
 	}
-	output, _ := ecs.GetResource[*scene.RenderWorld](app.World)
+	output, _ := app.World.GetResource[*scene.RenderWorld]()
 	painted := false
 	for _, item := range output.Items2D {
 		if reflect.ValueOf(item).FieldByName("entity").Uint() == uint64(child) {

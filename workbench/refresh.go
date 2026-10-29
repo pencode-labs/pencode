@@ -39,10 +39,10 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 		renderPencodeHighlight(m)
 		if regions&pencodeRefreshSelection != 0 {
 			m.renderEditorHeader(view, m.activeFile())
-			for entity, access := range module.ContentQuery[htmlui.Component[treeProps, struct{}]](c.World) {
+			for entity, access := range c.World.Query[htmlui.Component[treeProps, struct{}]]() {
 				props := access.Ref().Props
 				if props.Model == m && props.Project == m.activeProjectState() && (props.Path == previous || props.Path == m.activePath) {
-					module.ContentUpdateState[treeProps, struct{}](c.World, entity, func(*struct{}) {})
+					c.World.UpdateState[treeProps, struct{}](entity, func(*struct{}) {})
 				}
 			}
 		}
@@ -50,7 +50,7 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 		view.Text("launcher-status", m.status)
 		// A first edit pins the preview and changes the dirty indicator, without
 		// reconciling the explorer or the other workbench regions.
-		for entity, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](c.World) {
+		for entity, access := range c.World.Query[htmlui.Component[tabProps, struct{}]]() {
 			props := access.Get().Props
 			if props.Model != m || props.Project == nil {
 				continue
@@ -61,8 +61,8 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 					props.Active = active
 				}
 				props.Dirty, props.Preview = file.Dirty, file.Preview
-				module.ContentMut[htmlui.Component[tabProps, struct{}]](c.World, entity).Props = props
-				module.ContentUpdateState[tabProps, struct{}](c.World, entity, func(*struct{}) {})
+				c.World.Mut[htmlui.Component[tabProps, struct{}]](entity).Props = props
+				c.World.UpdateState[tabProps, struct{}](entity, func(*struct{}) {})
 			}
 		}
 	}
@@ -88,7 +88,7 @@ func markPencodeComponentDirty(world *module.Content, m *workspaceModel) {
 		return
 	}
 	if m.root == 0 || !world.IsAlive(m.root) {
-		for entity, access := range module.ContentQuery[htmlui.Component[appProps, appState]](world) {
+		for entity, access := range world.Query[htmlui.Component[appProps, appState]]() {
 			if access.Get().Props.Model == m {
 				m.root = entity
 				break
@@ -96,7 +96,7 @@ func markPencodeComponentDirty(world *module.Content, m *workspaceModel) {
 		}
 	}
 	if m.root != ecs.Entity(0) {
-		_ = module.ContentUpdateState[appProps, appState](world, m.root, func(s *appState) { s.Revision++ })
+		_ = world.UpdateState[appProps, appState](m.root, func(s *appState) { s.Revision++ })
 	}
 	if m.app != nil {
 		m.app.RequestRender()

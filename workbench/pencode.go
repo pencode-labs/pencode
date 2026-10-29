@@ -194,6 +194,8 @@ type workspaceModel struct {
 	settingsExtensionsExpanded          bool
 	settingsExtension                   string
 	extensionSettings                   []*pencodeExtensionSettings
+	debugTemplates                      []pencodeDebugTemplate
+	debugTemplateRows                   []pencodeDebugRow
 	sidebarHidden                       bool
 	capturingShortcut                   bool
 	captureAction                       string
@@ -328,27 +330,27 @@ func spawnPencodeSurface(world *module.Content, font, boldFont *text.Font, fontS
 	html := htmlui.New("")
 	html.Font, html.BoldFont, html.FontSize, html.PassThrough = font, boldFont, float64(fontSize), false
 	bundle := ecs.NewBundle(7)
-	ecs.Put(&bundle, sceneapi.UITransformFromXY(0, 0))
-	ecs.Put(&bundle, sceneapi.UIGlobalTransform{})
-	ecs.Put(&bundle, sceneapi.Visibility{Visible: true})
-	ecs.Put(&bundle, sceneapi.AnchorTopLeft)
-	ecs.Put(&bundle, sceneapi.UIStackIndex(10000))
-	ecs.Put(&bundle, sceneapi.Size2D{})
-	ecs.Put(&bundle, html)
+	bundle.Put(sceneapi.UITransformFromXY(0, 0))
+	bundle.Put(sceneapi.UIGlobalTransform{})
+	bundle.Put(sceneapi.Visibility{Visible: true})
+	bundle.Put(sceneapi.AnchorTopLeft)
+	bundle.Put(sceneapi.UIStackIndex(10000))
+	bundle.Put(sceneapi.Size2D{})
+	bundle.Put(html)
 	return world.Spawn(bundle)
 }
 
 func spawnPencodeWindowBorder(world *module.Content, color graphics.ColorRGBA) ecs.Entity {
 	bundle := ecs.NewBundle(7)
-	ecs.Put(&bundle, sceneapi.UITransformFromXY(0, 0))
-	ecs.Put(&bundle, sceneapi.UIGlobalTransform{})
-	ecs.Put(&bundle, sceneapi.Visibility{Visible: true})
-	ecs.Put(&bundle, sceneapi.AnchorTopLeft)
-	ecs.Put(&bundle, sceneapi.UIStackIndex(1<<30))
-	ecs.Put(&bundle, sceneapi.Size2D{})
+	bundle.Put(sceneapi.UITransformFromXY(0, 0))
+	bundle.Put(sceneapi.UIGlobalTransform{})
+	bundle.Put(sceneapi.Visibility{Visible: true})
+	bundle.Put(sceneapi.AnchorTopLeft)
+	bundle.Put(sceneapi.UIStackIndex(1 << 30))
+	bundle.Put(sceneapi.Size2D{})
 	// Keep the window outline outside the HTML zoom and overflow hierarchy.
 	// Match the surface's corner radius so the antialiased edges stay aligned.
-	ecs.Put(&bundle, sceneapi.NewUIBorder2D(sceneapi.OutlinedRoundedRectShape2D(
+	bundle.Put(sceneapi.NewUIBorder2D(sceneapi.OutlinedRoundedRectShape2D(
 		graphics.ColorRGBA{}, color, pencodeWindowBorderRadius(1), 1)))
 	return world.Spawn(bundle)
 }
@@ -371,13 +373,13 @@ func seedPencodeViewport(world *module.Content, app *module.Host) {
 	if width <= 0 || height <= 0 {
 		return
 	}
-	module.ContentStore(world, sceneapi.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
+	world.Store(sceneapi.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
 }
 
 func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefinitions, error) {
 	definitions := &pencodeDefinitions{}
 	var err error
-	definitions.tree, err = module.ContentDefine[treeProps, struct{}](content,
+	definitions.tree, err = content.Define[treeProps, struct{}](
 		htmlui.NewTemplate(`<button data-ref="row" class="pencode-tree-row" type="button"><img data-ref="arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt=""><img data-ref="icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tree-name"></span></button>`), "",
 		module.ContentBehavior[treeProps, struct{}]{
 			Render: func(context module.ContentRenderContext[treeProps, struct{}], view *htmlui.View) {
@@ -407,7 +409,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
-	creationDefinition, err := module.ContentDefine[treeProps, struct{}](content,
+	creationDefinition, err := content.Define[treeProps, struct{}](
 		htmlui.NewTemplate(`<div id="file-tree-create" data-ref="create" class="pencode-tree-create"><img data-ref="create-icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><div class="pencode-tree-input"><input id="file-tree-name" data-ref="create-name" type="text" class="pencode-tree-name-input" autocomplete="off" aria-describedby="file-tree-error"><div id="file-tree-error" data-ref="create-error" class="pencode-tree-create-error" role="alert" hidden></div></div></div>`),
 		"",
 		module.ContentBehavior[treeProps, struct{}]{
@@ -420,7 +422,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
-	definitions.project, err = module.ContentDefine[projectProps, struct{}](content,
+	definitions.project, err = content.Define[projectProps, struct{}](
 		htmlui.NewTemplate(`<section data-ref="project" class="pencode-project"><div data-ref="summary" class="pencode-project-summary"><button data-ref="toggle" class="pencode-project-toggle" type="button"><img data-ref="arrow" class="pencode-project-arrow" src="icons/chevron-right.svg" alt=""><span data-ref="name" class="pencode-project-name"></span></button><button data-ref="close" class="pencode-project-close" type="button" title="关闭项目" aria-label="关闭项目"><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div><nav data-ref="tree" class="pencode-tree" aria-label="项目目录"><div data-ref="tree-height" class="pencode-tree-height"><div data-ref="tree-window" class="pencode-tree-window"></div></div></nav></section>`),
 		"",
 		module.ContentBehavior[projectProps, struct{}]{
@@ -472,7 +474,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
-	definitions.tab, err = module.ContentDefine[tabProps, struct{}](content,
+	definitions.tab, err = content.Define[tabProps, struct{}](
 		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""><span data-ref="busy-icon" class="pencode-tab-busy-icon" aria-hidden="true" hidden><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></button></div>`),
 		"",
 		module.ContentBehavior[tabProps, struct{}]{
@@ -540,19 +542,19 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
-	definitions.market, err = module.ContentDefine[pencodeMarketProps, struct{}](content,
+	definitions.market, err = content.Define[pencodeMarketProps, struct{}](
 		htmlui.NewTemplate(`<button data-ref="item" class="pencode-market-item" type="button" aria-pressed="false"><span data-ref="name" class="pencode-market-item-name"></span><span data-ref="publisher" class="pencode-market-item-id"></span></button>`), "",
 		module.ContentBehavior[pencodeMarketProps, struct{}]{Render: renderPencodeMarketItem, HandleEvent: handlePencodeMarketItem})
 	if err != nil {
 		return nil, err
 	}
-	definitions.connect, err = module.ContentDefine[pencodeConnectionProps, pencodeConnectionState](content,
+	definitions.connect, err = content.Define[pencodeConnectionProps, pencodeConnectionState](
 		htmlui.NewTemplate(`<article data-ref="row" class="pencode-connection-row" role="listitem"><div class="pencode-connection-copy"><span data-ref="dot" class="pencode-connection-dot"></span><strong data-ref="name"></strong><span data-ref="host"></span></div><button data-ref="project" class="pencode-icon-button" type="button" title="打开远端项目" aria-label="打开远端项目"><img data-ref="project-icon" src="icons/folder-opened.svg" alt=""></button><button data-ref="more" class="pencode-icon-button" type="button" title="更多操作" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false"><img data-ref="more-icon" src="icons/ellipsis.svg" alt=""></button></article>`), "",
 		module.ContentBehavior[pencodeConnectionProps, pencodeConnectionState]{Render: renderPencodeConnection, HandleEvent: handlePencodeConnection})
 	if err != nil {
 		return nil, err
 	}
-	definitions.action, err = module.ContentDefine[pencodeActionProps, struct{}](content,
+	definitions.action, err = content.Define[pencodeActionProps, struct{}](
 		htmlui.NewTemplate(`<button data-ref="run" type="button" class="pencode-action"><img data-ref="icon" alt=""><span data-ref="text"></span></button>`), "",
 		module.ContentBehavior[pencodeActionProps, struct{}]{Render: renderPencodeAction, HandleEvent: handlePencodeAction})
 	if err != nil {
@@ -594,7 +596,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
-	definitions.root, err = module.ContentDefine[appProps, appState](content,
+	definitions.root, err = content.Define[appProps, appState](
 		tooltipTemplate(page, ""),
 		"",
 		module.ContentBehavior[appProps, appState]{
@@ -875,7 +877,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		if project == nil {
 			continue
 		}
-		htmlui.AppendComponentChild(view, "projects",
+		view.AppendComponentChild("projects",
 			componentKey(project.Path),
 			projectDefinition,
 			projectProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, ProblemRevision: model.bottom.problemRevision},
@@ -889,7 +891,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 			if file == nil {
 				continue
 			}
-			htmlui.AppendComponentChild(view, "file-tabs",
+			view.AppendComponentChild("file-tabs",
 				componentKey(file.Path),
 				tabDefinition,
 				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: model.actions.ui.editor == nil && file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty, HasErrors: model.fileHasErrors(project, file.Path)},
@@ -1042,7 +1044,7 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		handlePencodeWindowControl(model.app, context.Ref)
 	case "open-project", "change-project":
 		model.chooseProject()
-		if component, ok := module.ContentGet[htmlui.Component[appProps, appState]](context.World, context.Component); ok {
+		if component, ok := context.World.Get[htmlui.Component[appProps, appState]](context.Component); ok {
 			setPencodeEditorValue(context.World, component.Page, model.activeContent())
 		}
 		markPencodeRootDirty(context, model)
@@ -1054,7 +1056,7 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		markPencodeRootDirty(context, model)
 	case "reload-from-disk":
 		model.reloadFromDisk()
-		if component, ok := module.ContentGet[htmlui.Component[appProps, appState]](context.World, context.Component); ok {
+		if component, ok := context.World.Get[htmlui.Component[appProps, appState]](context.Component); ok {
 			setPencodeEditorValue(context.World, component.Page, model.activeContent())
 		}
 		markPencodeRootDirty(context, model)
@@ -1093,7 +1095,7 @@ func handleProjectEvent(context *module.ContentEventContext[projectProps, struct
 		return
 	}
 	page := ecs.Entity(0)
-	if component, ok := module.ContentGet[htmlui.Component[projectProps, struct{}]](context.World, context.Component); ok {
+	if component, ok := context.World.Get[htmlui.Component[projectProps, struct{}]](context.Component); ok {
 		page = component.Page
 	}
 	setPencodeEditorValue(context.World, page, model.activeContent())
@@ -1138,7 +1140,7 @@ func handleTreeEvent(context *module.ContentEventContext[treeProps, struct{}]) {
 	// The clicked row is already visible; keep the tree under the pointer.
 	model.revealProject, model.revealPath = nil, ""
 	page := ecs.Entity(0)
-	if component, ok := module.ContentGet[htmlui.Component[treeProps, struct{}]](context.World, context.Component); ok {
+	if component, ok := context.World.Get[htmlui.Component[treeProps, struct{}]](context.Component); ok {
 		page = component.Page
 	}
 	setPencodeEditorValue(context.World, page, model.activeContent())
@@ -1181,7 +1183,7 @@ func handleTabEvent(context *module.ContentEventContext[tabProps, struct{}]) {
 		model.selectProjectTab(project, props.Path)
 	}
 	page := ecs.Entity(0)
-	if component, ok := module.ContentGet[htmlui.Component[tabProps, struct{}]](context.World, context.Component); ok {
+	if component, ok := context.World.Get[htmlui.Component[tabProps, struct{}]](context.Component); ok {
 		page = component.Page
 	}
 	setPencodeEditorValue(context.World, page, model.activeContent())
@@ -1212,7 +1214,7 @@ func markPencodeRootDirtyByEntity(world *module.Content, entity ecs.Entity, mode
 	if model != nil {
 		model.fullRefresh = true
 	}
-	_ = module.ContentUpdateState[appProps, appState](world, entity, func(state *appState) {
+	_ = world.UpdateState[appProps, appState](entity, func(state *appState) {
 		state.Revision++
 	})
 	if model != nil && model.app != nil {
@@ -1227,13 +1229,13 @@ func markPencodeRootDirtyByModel(world *module.Content, model *workspaceModel) {
 	model.fullRefresh = true
 	root := model.root
 	if root != 0 {
-		component, ok := module.ContentGet[htmlui.Component[appProps, appState]](world, root)
+		component, ok := world.Get[htmlui.Component[appProps, appState]](root)
 		if !ok || component.Props.Model != model {
 			root = 0
 		}
 	}
 	if root == 0 {
-		for entity, access := range module.ContentQuery[htmlui.Component[appProps, appState]](world) {
+		for entity, access := range world.Query[htmlui.Component[appProps, appState]]() {
 			component := access.Get()
 
 			if component.Props.Model == model {
@@ -1246,7 +1248,7 @@ func markPencodeRootDirtyByModel(world *module.Content, model *workspaceModel) {
 	if root == 0 {
 		return
 	}
-	_ = module.ContentUpdateState[appProps, appState](world, root, func(state *appState) {
+	_ = world.UpdateState[appProps, appState](root, func(state *appState) {
 		state.Revision++
 	})
 	if model.app != nil {
@@ -1736,7 +1738,7 @@ func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 		return
 	}
 	project.tree.area = area
-	scroll := module.ContentMut[sceneapi.UIScroll](world, area)
+	scroll := world.Mut[sceneapi.UIScroll](area)
 	if scroll == nil || !scroll.Vertical {
 		return
 	}
@@ -1764,12 +1766,12 @@ func pencodeTreeScrollArea(world *module.Content, surface ecs.Entity, rowID stri
 		return 0, false
 	}
 	for entity := row; entity != 0; {
-		parent, exists := module.ContentGet[sceneapi.Parent](world, entity)
+		parent, exists := world.Get[sceneapi.Parent](entity)
 		if !exists || parent.Entity == 0 {
 			break
 		}
 		entity = parent.Entity
-		if _, scrolled := module.ContentGet[sceneapi.UIScroll](world, entity); scrolled {
+		if _, scrolled := world.Get[sceneapi.UIScroll](entity); scrolled {
 			return entity, true
 		}
 	}
@@ -2225,7 +2227,7 @@ func (model *workspaceModel) settingsSelectOpen(world *module.Content) bool {
 		if !ok {
 			continue
 		}
-		if control, ok := module.ContentGet[htmlui.Control](world, entity); ok && control.Open {
+		if control, ok := world.Get[htmlui.Control](entity); ok && control.Open {
 			return true
 		}
 	}
@@ -2237,7 +2239,7 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 		return nil
 	}
 	model.syncZoom(context.World)
-	state, ok := module.ContentResource[*input.State](context.World)
+	state, ok := context.World.Resource[*input.State]()
 	if !ok {
 		return nil
 	}
@@ -2255,6 +2257,14 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	}
 	if handled {
 		return nil
+	}
+	if handled, changed := model.updateDebugTemplateMenu(context.World, state); handled {
+		if changed {
+			markPencodeRootDirtyByModel(context.World, model)
+		}
+		return nil
+	} else if changed {
+		markPencodeRootDirtyByModel(context.World, model)
 	}
 	model.updateTabWheel(context.World, state)
 	changed := model.updateBottomPanelResize(context.World, state)

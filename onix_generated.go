@@ -2,6 +2,8 @@
 package main
 
 import (
+	iofs "io/fs"
+
 	onix "github.com/diiyw/onix"
 	graphics "github.com/diiyw/onix/graphics"
 	ontex "github.com/diiyw/onix/graphics/codec/ontex"
@@ -10,12 +12,11 @@ import (
 	project "github.com/diiyw/onix/project"
 	windowsvg "github.com/diiyw/onix/window/codec/svg"
 	filedialog "github.com/diiyw/onix/window/filedialog"
-	iofs "io/fs"
 )
 
 func OnixRegistry() (module.Registry, error) {
 	r := module.Registry{}
-	if err := module.RegisterScene(&r, "main.json", func() SceneMain { return SceneMain{} }, module.Lifecycle[SceneMain]{
+	if err := r.RegisterScene("main.json", func() SceneMain { return SceneMain{} }, module.Lifecycle[SceneMain]{
 		Install: func(c *module.Context, m *SceneMain) error {
 			return nil
 		},
@@ -23,7 +24,7 @@ func OnixRegistry() (module.Registry, error) {
 	}); err != nil {
 		return r, err
 	}
-	if err := module.RegisterScene(&r, "workspace.json", func() SceneWorkspace { return SceneWorkspace{} }, module.Lifecycle[SceneWorkspace]{
+	if err := r.RegisterScene("workspace.json", func() SceneWorkspace { return SceneWorkspace{} }, module.Lifecycle[SceneWorkspace]{
 		Install: func(c *module.Context, m *SceneWorkspace) error {
 			return nil
 		},
@@ -37,27 +38,29 @@ func OnixRegistry() (module.Registry, error) {
 }
 
 func OnixInstallSystems(app *onix.App) error {
-	if err := onix.InstallSystems[onix.Render2D](app); err != nil {
+	if err := app.InstallSystems[onix.Render2D](); err != nil {
 		return err
 	}
-	if err := onix.InstallSystems[onix.Input2D](app); err != nil {
+	if err := app.InstallSystems[onix.Input2D](); err != nil {
 		return err
 	}
-	if err := onix.InstallSystems[onix.UIControls](app); err != nil {
+	if err := app.InstallSystems[onix.UIControls](); err != nil {
 		return err
 	}
-	if err := onix.InstallSystems[onix.UIWidgets](app); err != nil {
+	if err := app.InstallSystems[onix.UIWidgets](); err != nil {
 		return err
 	}
-	if err := onix.InstallSystems[onix.UITextInput](app); err != nil {
+	if err := app.InstallSystems[onix.UITextInput](); err != nil {
 		return err
 	}
-	if err := onix.InstallSystems[onix.UIHTML](app); err != nil {
+	if err := app.InstallSystems[onix.UIHTML](); err != nil {
 		return err
 	}
 	filedialog.Register()
 	return nil
 }
+
+type OnixContentProfile = module.FullContent
 
 type OnixRasterImageDecoder = graphics.ImageDecoderSet[graphics.NoImageDecoder, graphics.NoImageDecoder, graphics.NoImageDecoder, graphics.NoImageDecoder, ontex.Decoder]
 type OnixImageDecoder = graphics.ImageDecoderWith[OnixRasterImageDecoder, graphicssvg.Decoder]

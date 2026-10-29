@@ -200,7 +200,7 @@ func (model *workspaceModel) handleEditorContextEvent(world *module.Content, ref
 			if ui.contextOpen {
 				model.openEditorContextGroup(world, i-8)
 				world.Focus(model.editor.control)
-				if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
+				if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 					field.Caret, field.Anchor = ui.contextCaret, ui.contextAnchor
 				}
 				ui.contextFocus = true
@@ -235,7 +235,7 @@ func (model *workspaceModel) runEditorContextEdit(world *module.Content, ref str
 	model.dismissLanguageContext()
 	world.Focus(model.editor.control)
 	ui.contextFocus = true
-	field := module.ContentMut[engineui.TextField](world, model.editor.control)
+	field := world.Mut[engineui.TextField](model.editor.control)
 	if field == nil {
 		return
 	}
@@ -245,7 +245,7 @@ func (model *workspaceModel) runEditorContextEdit(world *module.Content, ref str
 		field.Caret, field.Anchor = utf8.RuneCountInString(value), 0
 		return
 	}
-	state, _ := module.ContentResource[*input.State](world)
+	state, _ := world.Resource[*input.State]()
 	start, end := min(caret, anchor), max(caret, anchor)
 	var edit input.TextEdit
 	switch ref {

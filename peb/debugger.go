@@ -6,6 +6,8 @@ package peb
 type DebugAdapter struct {
 	ID, Label, Command string
 	Args               []string
+	// Templates is a debug.json array copied into project configuration on demand.
+	Templates string
 }
 
 func encodeDebugAdapters(e *encoder, adapters []DebugAdapter) {
@@ -18,6 +20,7 @@ func encodeDebugAdapters(e *encoder, adapters []DebugAdapter) {
 		for _, arg := range a.Args {
 			e.str(arg)
 		}
+		e.text(a.Templates)
 	}
 }
 
@@ -36,6 +39,7 @@ func decodeDebugAdapters(d *decoder) []DebugAdapter {
 				a.Args[j] = d.str()
 			}
 		}
+		a.Templates = d.text()
 	}
 	return adapters
 }

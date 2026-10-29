@@ -89,6 +89,7 @@ type Command struct {
 }
 type CompletionItem struct {
 	Label               string          `json:"label"`
+	Kind                int             `json:"kind,omitempty"`
 	SortText            string          `json:"sortText,omitempty"`
 	FilterText          string          `json:"filterText,omitempty"`
 	Detail              string          `json:"detail,omitempty"`

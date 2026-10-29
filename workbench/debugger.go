@@ -27,14 +27,15 @@ var pencodeDebugEmptyOptions = [...]htmlui.VNode{appearanceOption(0, "", "暂无
 
 type pencodeBreakpoint struct{ offset, line int }
 type pencodeDebugEvent struct {
-	project *pencodeProject
-	configs []debugger.Config
-	err     error
-	ctx     context.Context
-	edit    bool
-	stream  *client.Process
-	claim   func() bool
-	title   string
+	project           *pencodeProject
+	configs           []debugger.Config
+	err               error
+	ctx               context.Context
+	edit              bool
+	written, baseline string
+	stream            *client.Process
+	claim             func() bool
+	title             string
 }
 type pencodeDebugState struct {
 	session                     *debugger.Session
@@ -45,6 +46,9 @@ type pencodeDebugState struct {
 	options                     []htmlui.VNode
 	selected                    int
 	loading, startPending       bool
+	adding                      bool
+	templateIndex               int
+	templateStyle               string
 	threadsExpanded             bool
 	events                      chan pencodeDebugEvent
 	cancel                      context.CancelFunc
@@ -71,9 +75,24 @@ type pencodeDebugRowProps struct {
 }
 
 func newDebugRowDefinition(content *module.Content) (*htmlui.Definition[pencodeDebugRowProps, struct{}], error) {
-	return module.ContentDefine[pencodeDebugRowProps, struct{}](content, htmlui.NewTemplate(`<button data-ref="row" class="pencode-debug-row" type="button"><span data-ref="toggle" class="pencode-debug-toggle"></span><span data-ref="label" class="pencode-debug-label"></span><span data-ref="detail" class="pencode-debug-detail"></span></button>`), "", module.ContentBehavior[pencodeDebugRowProps, struct{}]{
+	return content.Define[pencodeDebugRowProps, struct{}](htmlui.NewTemplate(`<button data-ref="row" class="pencode-debug-row" type="button"><span data-ref="toggle" class="pencode-debug-toggle"></span><span data-ref="label" class="pencode-debug-label"></span><span data-ref="detail" class="pencode-debug-detail"></span></button>`), "", module.ContentBehavior[pencodeDebugRowProps, struct{}]{
 		Render: func(c module.ContentRenderContext[pencodeDebugRowProps, struct{}], view *htmlui.View) {
 			r := c.Props.Row
+			if r.slot == "debug-template-menu" {
+				view.Attr("row", "id", r.ref)
+				view.Attr("row", "role", "menuitem")
+				view.Attr("row", "tabindex", "-1")
+				class := ""
+				if r.selected {
+					class = "active"
+				}
+				view.Attr("row", "class", class)
+				view.Attr("toggle", "hidden", "")
+				view.Attr("detail", "hidden", "")
+				view.Text("label", r.label)
+				view.Event("row", htmlui.EventClick)
+				return
+			}
 			view.Attr("row", "id", r.ref)
 			view.Attr("row", "title", r.label+" "+r.detail)
 			view.Attr("row", "style", "padding-left:"+strconv.Itoa(8+r.depth*12)+"px")
@@ -114,10 +133,10 @@ func (m *workspaceModel) debugEvents() chan pencodeDebugEvent {
 }
 
 func (m *workspaceModel) loadDebugConfigs() {
-	m.readDebugConfigs(false)
+	m.readDebugConfigs(false, "")
 }
 
-func (m *workspaceModel) readDebugConfigs(edit bool) {
+func (m *workspaceModel) readDebugConfigs(edit bool, template string) {
 	u := &m.debug
 	p := m.activeProjectState()
 	if u.loading && u.configProject == p {
@@ -134,27 +153,35 @@ func (m *workspaceModel) readDebugConfigs(edit bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	u.cancel, u.loading, u.configProject = cancel, true, p
 	u.configs, u.options, u.message = nil, nil, ""
+	u.adding = false
 	root := p.Path
 	events, wake, backend := m.debugEvents(), m.backgroundWake(), p.backend
 	workspace := p.workspace.ID
 	go func() {
 		request, stop := context.WithTimeout(ctx, 10*time.Second)
 		defer stop()
-		data, err := backend.WorkFile(request, root, ".pencode/debug.json")
-		if edit && err == nil && data == nil {
-			// An existing directory is fine; SaveFile reports any failure to
-			// create the parent or a conflicting change to the config file.
-			_ = backend.Create(request, workspace, ".pencode", true)
-			err = backend.SaveFile(request, root, ".pencode/debug.json", "", "[]\n")
+		data, err := backend.WorkFile(request, root, pencodeDebugConfigPath)
+		baseline, written := string(data), ""
+		if edit && err == nil && (data == nil || template != "") {
+			content := "[]\n"
+			if template != "" {
+				content, err = appendDebugTemplate(data, template)
+			}
 			if err == nil {
-				data = []byte("[]\n")
+				// An existing directory is fine; SaveFile reports any failure to
+				// create the parent or a conflicting change to the config file.
+				_ = backend.Create(request, workspace, ".pencode", true)
+				err = backend.SaveFile(request, root, pencodeDebugConfigPath, baseline, content)
+				if err == nil {
+					data, written = []byte(content), content
+				}
 			}
 		}
 		var configs []debugger.Config
 		if err == nil && data != nil {
 			configs, err = debugger.ParseConfigs(data, root)
 		}
-		event := pencodeDebugEvent{project: p, configs: configs, err: err, ctx: ctx, edit: edit && data != nil}
+		event := pencodeDebugEvent{project: p, configs: configs, err: err, ctx: ctx, edit: edit && data != nil, written: written, baseline: baseline}
 		select {
 		case <-ctx.Done():
 			return
@@ -195,6 +222,15 @@ func (m *workspaceModel) startDebug() {
 		u.session.Close()
 	}
 	config := u.configs[min(u.selected, len(u.configs)-1)]
+	filename := ""
+	if file := m.activeFile(); file != nil {
+		filename = path.Join(strings.ReplaceAll(p.Path, "\\", "/"), file.Path)
+	}
+	config, err := config.ResolveFile(filename)
+	if err != nil {
+		u.message = err.Error()
+		return
+	}
 	u.project, u.backend, u.message = p, p.backend, ""
 	u.view = debugger.Snapshot{}
 	u.expanded, u.rows = nil, nil
@@ -268,7 +304,7 @@ func (m *workspaceModel) closeDebugger() {
 	}
 drained:
 	u.events, u.configProject, u.configs, u.options, u.project, u.backend = nil, nil, nil, nil, nil, nil
-	u.loading, u.startPending = false, false
+	u.loading, u.startPending, u.adding = false, false, false
 	u.view = debugger.Snapshot{State: debugger.Ended}
 	u.rows, u.expanded = nil, nil
 }
@@ -310,8 +346,18 @@ func (m *workspaceModel) pollDebugger(world *module.Content) bool {
 			u.loading = false
 			u.message = ""
 			if event.edit && event.project == m.activeProjectState() {
-				if err := m.requestFileOpen(event.project, ".pencode/debug.json", false, true, nil); err != nil {
+				if err := m.requestFileOpen(event.project, pencodeDebugConfigPath, false, true, nil); err != nil {
 					u.message = err.Error()
+				}
+			}
+			// A file may have been opened while the worker was writing. Retain
+			// edits made in the meantime, otherwise update its saved snapshot.
+			if event.written != "" && event.project == m.activeProjectState() {
+				if f := event.project.Files[pencodeDebugConfigPath]; f != nil && !f.Dirty && f.Content == event.baseline {
+					f.closeDocument()
+					m.applyFileContent(f, event.project, event.written, true)
+					f.savedContent, f.Dirty = event.written, false
+					f.saveRevision++
 				}
 			}
 			if event.err != nil {
@@ -401,7 +447,7 @@ func (m *workspaceModel) debugEvent(world *module.Content, ref, value string) bo
 	case "debug-reload":
 		m.loadDebugConfigs()
 	case "debug-add":
-		m.readDebugConfigs(true)
+		m.toggleDebugTemplateMenu(world)
 	case "debug-config":
 		u.selected, _ = strconv.Atoi(value)
 		u.selected = min(max(0, u.selected), max(0, len(u.configs)-1))
@@ -440,6 +486,10 @@ func (m *workspaceModel) debugEvent(world *module.Content, ref, value string) bo
 			u.session.Evaluate(u.expression)
 		}
 	default:
+		if value, ok := strings.CutPrefix(ref, "debug-template:"); ok {
+			m.chooseDebugTemplate(value)
+			return true
+		}
 		if filename, ok := strings.CutPrefix(ref, "debug-bp:"); ok {
 			index := strings.LastIndexByte(filename, ':')
 			if index < 0 || u.breakpointProject == nil {
@@ -544,7 +594,7 @@ func (m *workspaceModel) toggleDebugBreakpoint(world *module.Content, line int) 
 	if line <= 0 {
 		caret := 0
 		if world != nil {
-			if field, ok := module.ContentGet[engineui.TextField](world, m.editor.control); ok {
+			if field, ok := world.Get[engineui.TextField](m.editor.control); ok {
 				caret = f.textBuffer(f.Content).ByteOffset(field.Caret)
 			}
 		}
@@ -726,6 +776,16 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 	view.Attr("status-debug", "aria-expanded", boolAttribute(active))
 	setPanelVisible(view, "debug-pane", active)
 	setPanelVisible(view, "debug-tools", active)
+	setPanelVisible(view, "debug-template-menu", active && u.adding)
+	view.Attr("debug-add", "aria-expanded", boolAttribute(active && u.adding))
+	if active && u.adding {
+		view.Attr("debug-template-menu", "style", u.templateStyle)
+		view.Attr("debug-template-menu", "aria-activedescendant", m.debugTemplateRows[u.templateIndex].ref)
+		for i, row := range m.debugTemplateRows {
+			row.selected = i == u.templateIndex
+			view.AppendComponentChild("debug-template-menu", uint64(i+1), definition, pencodeDebugRowProps{Model: m, Theme: m.workbenchTheme, Row: row}, struct{}{})
+		}
+	}
 	if !active {
 		return
 	}
@@ -781,6 +841,6 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 	view.Text("debug-console", u.output)
 	m.debugRows()
 	for _, row := range u.rows {
-		htmlui.AppendComponentChild(view, row.slot, componentKey(row.ref), definition, pencodeDebugRowProps{Model: m, Theme: m.workbenchTheme, Row: row}, struct{}{})
+		view.AppendComponentChild(row.slot, componentKey(row.ref), definition, pencodeDebugRowProps{Model: m, Theme: m.workbenchTheme, Row: row}, struct{}{})
 	}
 }

@@ -16,7 +16,7 @@ func (m *workspaceModel) captureFindScope(world *module.Content) {
 	if world == nil || m.activeFile() == nil {
 		return
 	}
-	if field, ok := module.ContentGet[engineui.TextField](world, m.editor.control); ok && field.Caret != field.Anchor {
+	if field, ok := world.Get[engineui.TextField](m.editor.control); ok && field.Caret != field.Anchor {
 		buffer := m.activeFile().textBuffer(m.activeContent())
 		m.findScope = pencodeFindScope{m.activeFile(), buffer.ByteOffset(min(field.Anchor, field.Caret)), buffer.ByteOffset(max(field.Anchor, field.Caret))}
 	}

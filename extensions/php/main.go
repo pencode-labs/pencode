@@ -97,6 +97,6 @@ func phpContributions(executable string) (peb.Contributions, error) {
 	}
 	return peb.Contributions{
 		LanguageServers: []peb.LanguageServer{ls},
-		DebugAdapters:   []peb.DebugAdapter{{ID: "Xdebug", Label: "PHP (Xdebug)", Command: command, Args: []string{"--tool", "xdebug"}}},
+		DebugAdapters:   []peb.DebugAdapter{{ID: "Xdebug", Label: "PHP (Xdebug)", Command: command, Args: []string{"--tool", "xdebug"}, Templates: `[{"label":"PHP: 当前文件","adapter":"Xdebug","request":"launch","configuration":{"program":"${file}","cwd":"${fileDirname}","hostname":"127.0.0.1","port":0,"stopOnEntry":true,"runtimeArgs":["-dxdebug.start_with_request=yes"],"env":{"XDEBUG_MODE":"debug","XDEBUG_CONFIG":"client_host=127.0.0.1 client_port=${port}"}}},{"label":"PHP: 监听 Xdebug","adapter":"Xdebug","request":"launch","configuration":{"port":9003,"cwd":"${workspaceFolder}"}}]`}},
 	}, nil
 }

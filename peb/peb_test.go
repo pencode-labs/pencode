@@ -25,7 +25,7 @@ func TestGoldenWireAndFragmentedIO(t *testing.T) {
 	if err := w.Write(Initialize, 0x12345678, payload); err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(wire.Bytes()); got != "706562000d000100785634120f0000000700000070656e636f6465ff010000" {
+	if got := hex.EncodeToString(wire.Bytes()); got != "706562000e000100785634120f0000000700000070656e636f6465ff010000" {
 		t.Fatalf("wire format changed: %s", got)
 	}
 	if err := w.Write(Shutdown, 0, nil); err != nil {
@@ -54,7 +54,7 @@ func TestContributionsOwnStringsAndRejectMalformedPayloads(t *testing.T) {
 		Fonts:         []Font{{"mono", "等宽", "resources/fonts/mono.ttf", "resources/fonts/bold.ttf"}},
 		Themes:        []Theme{{"ink", "墨色", "resources/themes/ink.json"}},
 		IconThemes:    []IconTheme{{"code", "代码", []IconRule{{FileSuffix, ".d.ts", "resources/icons/code.svg"}, {DefaultFolder, "", "resources/icons/folder.svg"}}}},
-		DebugAdapters: []DebugAdapter{{ID: "Delve", Label: "Go", Command: "bin/go", Args: []string{"--tool", "dlv"}}},
+		DebugAdapters: []DebugAdapter{{ID: "Delve", Label: "Go", Command: "bin/go", Args: []string{"--tool", "dlv"}, Templates: `[{"label":"Go","adapter":"Delve","request":"launch","configuration":{}}]`}},
 	}
 	data, err := EncodeContributions(nil, want)
 	if err != nil {

@@ -2,19 +2,18 @@ package workbench
 
 import (
 	"fmt"
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	htmlui "github.com/diiyw/onix/ui/html"
 	"slices"
 	"testing"
+
+	"github.com/diiyw/onix/scene"
+	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	world, project := model.fontResources, model.activeProjectState()
 	const count = 10000
 	project.Entries = make([]treeEntry, count)
@@ -33,9 +32,9 @@ func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 	}
 	verify := func(target int) {
 		t.Helper()
-		scroll := module.ContentMut[scene.UIScroll](world, area)
+		scroll := world.Mut[scene.UIScroll](area)
 		mounted := 0
-		for _, access := range module.ContentQuery[htmlui.Component[treeProps, struct{}]](world) {
+		for _, access := range world.Query[htmlui.Component[treeProps, struct{}]]() {
 			if access.Get().Props.Project == project {
 				mounted++
 			}
@@ -59,11 +58,11 @@ func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 	}
 	verify(0)
 	first := slices.Clone(project.visibleTreeRows(model))
-	module.ContentMut[scene.UIScroll](world, area).Position[1] = -5000 * pencodeTreeRowHeight
+	world.Mut[scene.UIScroll](area).Position[1] = -5000 * pencodeTreeRowHeight
 	languageInteractionStep(t, app)
 	verify(5000)
 	if _, exists := world.HTMLNode(model.surface, model.projectTreeRowID(project, project.Entries[0].Path)); exists {
-		t.Fatalf("offscreen row was retained: first=%d end=%d scroll=%+v", project.tree.first, project.tree.end, module.ContentRef[scene.UIScroll](world, area))
+		t.Fatalf("offscreen row was retained: first=%d end=%d scroll=%+v", project.tree.first, project.tree.end, world.Ref[scene.UIScroll](area))
 	}
 	if !slices.Equal(first, project.visibleTreeRows(model)) {
 		t.Fatal("scroll rebuilt the flattened rows incorrectly")

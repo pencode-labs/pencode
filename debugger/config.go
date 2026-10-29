@@ -3,6 +3,7 @@ package debugger
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 )
 
@@ -43,22 +44,42 @@ func ParseConfigs(data []byte, root string) ([]Config, error) {
 		if err := json.Unmarshal(c.Configuration, &value); err != nil || value == nil {
 			return nil, fmt.Errorf("debug.json: configuration must be an object")
 		}
-		c.Configuration, _ = json.Marshal(resolveValue(value, root))
+		c.Configuration, _ = json.Marshal(resolveValue(value, func(value string) string { return strings.ReplaceAll(value, "${workspaceFolder}", root) }))
 	}
 	return configs, nil
 }
 
-func resolveValue(value any, root string) any {
+// ResolveFile expands the active workspace document at launch time so cached
+// configurations follow file selection without changing the project JSON.
+func (c Config) ResolveFile(filename string) (Config, error) {
+	if !strings.Contains(string(c.Configuration), "${file}") && !strings.Contains(string(c.Configuration), "${fileDirname}") {
+		return c, nil
+	}
+	if filename == "" {
+		return c, fmt.Errorf("debug.json: open a file before launching a file configuration")
+	}
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	var value map[string]any
+	if err := json.Unmarshal(c.Configuration, &value); err != nil {
+		return c, err
+	}
+	replacer := strings.NewReplacer("${file}", filename, "${fileDirname}", path.Dir(filename))
+	var err error
+	c.Configuration, err = json.Marshal(resolveValue(value, replacer.Replace))
+	return c, err
+}
+
+func resolveValue(value any, replace func(string) string) any {
 	switch v := value.(type) {
 	case string:
-		return strings.ReplaceAll(v, "${workspaceFolder}", root)
+		return replace(v)
 	case map[string]any:
 		for key, item := range v {
-			v[key] = resolveValue(item, root)
+			v[key] = resolveValue(item, replace)
 		}
 	case []any:
 		for i := range v {
-			v[i] = resolveValue(v[i], root)
+			v[i] = resolveValue(v[i], replace)
 		}
 	}
 	return value

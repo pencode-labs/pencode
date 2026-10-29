@@ -2,13 +2,12 @@ package workbench
 
 import (
 	"fmt"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/diiyw/onix/input"
+	"github.com/diiyw/onix/scene"
 )
 
 func sourceBranchRemote(t *testing.T, r sourceRepository) {
@@ -100,7 +99,7 @@ func TestSourceControlBranchMenuInteraction(t *testing.T) {
 	}
 	menuNode, _ := m.fontResources.HTMLNode(m.surface, "sc-branch-menu")
 	if entity, ok := menuNode.ScrollContainer(); ok {
-		if scroll, ok := module.ContentGet[scene.UIScroll](m.fontResources, entity); ok && scroll.ContentSize[1] > scroll.ViewportSize[1]+1 {
+		if scroll, ok := m.fontResources.Get[scene.UIScroll](entity); ok && scroll.ContentSize[1] > scroll.ViewportSize[1]+1 {
 			t.Fatalf("short menu unnecessarily scrolls: content=%v viewport=%v", scroll.ContentSize, scroll.ViewportSize)
 		}
 	}
@@ -183,7 +182,7 @@ func TestSourceControlBranchMenuInteraction(t *testing.T) {
 	// Bounds are layout coordinates; apply the actual scroll position.
 	node, _ := m.fontResources.HTMLNode(m.surface, "sc-branch-menu")
 	entity, ok := node.ScrollContainer()
-	scroll, scrolled := module.ContentGet[scene.UIScroll](m.fontResources, entity)
+	scroll, scrolled := m.fontResources.Get[scene.UIScroll](entity)
 	if !ok || !scrolled || !s.BranchMenuOpen || menu.Height <= 320 || scroll.Position[1] >= 0 || last.Y+scroll.Position[1] < menu.Y || last.Y+last.Height+scroll.Position[1] > menu.Y+menu.Height+1 {
 		t.Fatal("long branch list did not create a scrollable menu")
 	}

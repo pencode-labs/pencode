@@ -7,10 +7,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/module"
-
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
+	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/diiyw/onix/ui/html"
@@ -58,7 +57,7 @@ func (model *workspaceModel) openFind(replace bool) {
 		model.findSelection = false
 	}
 	if world := model.fontResources; world != nil {
-		if field, ok := module.ContentGet[engineui.TextField](world, model.editor.control); ok && field.Focused && field.Caret != field.Anchor {
+		if field, ok := world.Get[engineui.TextField](model.editor.control); ok && field.Focused && field.Caret != field.Anchor {
 			if !model.findSelection {
 				model.captureFindScope(world)
 			}
@@ -75,7 +74,7 @@ func (model *workspaceModel) openFind(replace bool) {
 
 func (model *workspaceModel) findFromCaret(world *module.Content) {
 	if world != nil && len(model.findMatches) > 0 {
-		if field, ok := module.ContentGet[engineui.TextField](world, model.editor.control); ok {
+		if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
 			offset := model.activeFile().textBuffer(model.activeContent()).ByteOffset(min(field.Anchor, field.Caret))
 			model.findIndex = sort.Search(len(model.findMatches), func(i int) bool { return model.findMatches[i].Start >= offset })
 			if model.findIndex == len(model.findMatches) {
@@ -150,7 +149,7 @@ func (model *workspaceModel) selectFindMatch(world *module.Content) {
 	start, end := match.Start, match.End
 	anchor := utf8.RuneCountInString(content[:start])
 	caret := anchor + utf8.RuneCountInString(content[start:end])
-	if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
+	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 		field.Anchor, field.Caret = anchor, caret
 	}
 	model.revealEditorCaret(world, caret)
@@ -158,8 +157,8 @@ func (model *workspaceModel) selectFindMatch(world *module.Content) {
 
 func (model *workspaceModel) revealEditorCaret(world *module.Content, caret int) {
 	content := model.activeContent()
-	text := module.ContentMut[scene.Text2D](world, model.editor.text)
-	textarea := module.ContentMut[engineui.Textarea](world, model.editor.control)
+	text := world.Mut[scene.Text2D](model.editor.text)
+	textarea := world.Mut[engineui.Textarea](model.editor.control)
 	if text == nil || textarea == nil {
 		return
 	}
@@ -167,7 +166,7 @@ func (model *workspaceModel) revealEditorCaret(world *module.Content, caret int)
 	if !ok {
 		return
 	}
-	link, ok := module.ContentGet[html.ControlText](world, model.editor.text)
+	link, ok := world.Get[html.ControlText](model.editor.text)
 	if !ok {
 		return
 	}
@@ -283,9 +282,9 @@ func (model *workspaceModel) focusFindInput(world *module.Content, surface ecs.E
 	if !model.findNeedsFocus || !model.findOpen {
 		return
 	}
-	if entity, ok := world.HTMLControl(surface, "find-query"); ok && module.ContentHas[engineui.TextField](world, entity) && world.Focus(entity) {
+	if entity, ok := world.HTMLControl(surface, "find-query"); ok && world.Has[engineui.TextField](entity) && world.Focus(entity) {
 		model.findNeedsFocus = false
-		if field := module.ContentMut[engineui.TextField](world, entity); field != nil {
+		if field := world.Mut[engineui.TextField](entity); field != nil {
 			field.Anchor = 0
 		}
 	}
@@ -299,7 +298,7 @@ func pencodeControlFocused(world *module.Content, surface ecs.Entity, ref string
 	if !ok {
 		return false
 	}
-	field, ok := module.ContentGet[engineui.TextField](world, entity)
+	field, ok := world.Get[engineui.TextField](entity)
 	return ok && field.Focused
 }
 

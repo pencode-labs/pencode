@@ -139,7 +139,7 @@ func perfFont(b testing.TB) *onixtext.Font {
 	b.Helper()
 	name := os.Getenv("ONIX_PERF_FONT")
 	if name == "" {
-		name = "../../../testdata/fonts/Noto_Sans_SC/static/NotoSansSC-Regular.ttf"
+		name = "../../onix/testdata/fonts/Noto_Sans_SC/static/NotoSansSC-Regular.ttf"
 	}
 	data, err := os.ReadFile(name)
 	if err != nil {

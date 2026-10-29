@@ -122,7 +122,21 @@ func (s *Screen) Resize(cols, rows int) {
 	s.wrap = false
 	s.Revision++
 }
-func (s *Screen) Clear() { s.fill(s.Cells); s.History = s.History[:0]; s.historyHead = 0; s.Revision++ }
+func (s *Screen) Clear() {
+	s.fill(s.Cells)
+	s.clearHistory()
+	s.Revision++
+}
+
+func (s *Screen) clearHistory() {
+	// Keep a small warm ring, but release large scrollback on an explicit clear.
+	if cap(s.History) > 8<<10 {
+		s.History = nil
+	} else {
+		s.History = s.History[:0]
+	}
+	s.historyHead = 0
+}
 func (s *Screen) scroll(n int) {
 	n = max(-(s.bottom - s.top + 1), min(n, s.bottom-s.top+1))
 	start, end := s.top*s.Cols, (s.bottom+1)*s.Cols
@@ -527,8 +541,7 @@ func (s *Screen) csi(final byte) {
 		case 2:
 			s.fill(s.Cells)
 		case 3:
-			s.History = s.History[:0]
-			s.historyHead = 0
+			s.clearHistory()
 		}
 	case 'K':
 		start, end := s.y*s.Cols, (s.y+1)*s.Cols

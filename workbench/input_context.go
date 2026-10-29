@@ -88,12 +88,12 @@ func (m *workspaceModel) renderInputContext(view *htmlui.View, definition *htmlu
 	c := &m.inputContext
 	p := pencodeInputContextProps{Model: m, Open: c.open, Activate: c.activate, Index: c.index, X: c.x, Y: c.y}
 	if c.open {
-		field, _ := module.ContentGet[engineui.TextField](m.fontResources, c.target)
-		control, _ := module.ContentGet[htmlui.Control](m.fontResources, c.target)
+		field, _ := m.fontResources.Get[engineui.TextField](c.target)
+		control, _ := m.fontResources.Get[htmlui.Control](c.target)
 		field.Caret, field.Anchor = c.caret, c.anchor
 		p.Enabled = inputContextEnabled(field, control.ReadOnly)
 	}
-	htmlui.AppendComponentChild(view, "input-context-slot", 1, definition, p, struct{}{})
+	view.AppendComponentChild("input-context-slot", 1, definition, p, struct{}{})
 }
 
 // Use the native hover receiver so clipping, scroll offsets, and overlays are
@@ -107,8 +107,8 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 	zoom := max(float32(m.settings.Zoom)/100, .01)
 	x, y := pointer.X/zoom, pointer.Y/zoom
 	if c.open {
-		field, ok := module.ContentGet[engineui.TextField](world, c.target)
-		control, _ := module.ContentGet[htmlui.Control](world, c.target)
+		field, ok := world.Get[engineui.TextField](c.target)
+		control, _ := world.Get[htmlui.Control](c.target)
 		if !ok || control.Disabled || field.Value != c.value {
 			c.open = false
 			return false, true
@@ -160,12 +160,12 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 	if !state.MousePressed(input.MouseRight) || state.Composing() {
 		return false, changed
 	}
-	for entity, access := range module.ContentQuery2[engineui.TextField, scene.InputState2D](world) {
+	for entity, access := range world.Query2[engineui.TextField, scene.InputState2D]() {
 		if !access.B.Get().Hovered || entity == m.editor.control || entity == m.terminalView.control {
 			continue
 		}
-		control, _ := module.ContentGet[htmlui.Control](world, entity)
-		target, _ := module.ContentGet[scene.InputTarget2D](world, entity)
+		control, _ := world.Get[htmlui.Control](entity)
+		target, _ := world.Get[scene.InputTarget2D](entity)
 		if control.Disabled || target.Disabled {
 			continue
 		}
@@ -193,8 +193,8 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 // editable host's cancellable beforeinput event and extension input bindings.
 func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 	c := &m.inputContext
-	field := ecs.GetMut[engineui.TextField](world, c.target)
-	control, _ := ecs.Get[htmlui.Control](world, c.target)
+	field := world.GetMut[engineui.TextField](c.target)
+	control, _ := world.Get[htmlui.Control](c.target)
 	if !c.open || field == nil || control.Disabled || field.Value != c.value || !scene.IsInteractive(world, c.target) {
 		return
 	}
@@ -219,7 +219,7 @@ func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 		field.Caret, field.Anchor = c.caret, c.anchor
 		return
 	}
-	state, _ := ecs.GetResource[*input.State](world)
+	state, _ := world.GetResource[*input.State]()
 	start, end := min(c.caret, c.anchor), max(c.caret, c.anchor)
 	var edit input.TextEdit
 	inputType := "deleteContentBackward"
@@ -240,17 +240,17 @@ func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 	case 3:
 		edit.Command = input.TextCommandBackspace
 	}
-	editable, isEditable := ecs.Get[htmlui.Editable](world, c.target)
+	editable, isEditable := world.Get[htmlui.Editable](c.target)
 	if isEditable {
 		event := htmlui.DispatchAction(world, htmlui.Event{Entity: editable.Owner, Target: c.target, ID: editable.ID,
 			Kind: htmlui.EventBeforeInput, Value: field.Value, InputType: inputType, Data: edit.Text,
 			Anchor: c.anchor, Focus: c.caret, Bubbles: true, Cancelable: true})
-		ecs.WriteMessage(world, event)
+		world.WriteMessage(event)
 		if event.DefaultPrevented {
 			return
 		}
 	}
-	multiline := ecs.Has[engineui.Textarea](world, c.target) || isEditable
+	multiline := world.Has[engineui.Textarea](c.target) || isEditable
 	apply := state.ApplyTextEditsInRange
 	if field.Buffer != nil {
 		apply = field.Buffer.ApplyTextEditsInRange
@@ -261,17 +261,17 @@ func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 	}
 	field.Value, field.Caret, field.Anchor, field.Composition = value, caret, anchor, ""
 	c.caret, c.anchor = caret, anchor
-	if number := ecs.GetMut[engineui.NumberInput](world, c.target); number != nil {
+	if number := world.GetMut[engineui.NumberInput](c.target); number != nil {
 		number.Changed = true
 	}
 	if isEditable {
 		htmlui.SetEditableValue(world, c.target, value)
 		htmlui.SetEditableSelection(world, c.target, anchor, caret)
-		ecs.WriteMessage(world, htmlui.Event{Entity: editable.Owner, Target: c.target, ID: editable.ID,
+		world.WriteMessage(htmlui.Event{Entity: editable.Owner, Target: c.target, ID: editable.ID,
 			Kind: htmlui.EventInput, Value: value, InputType: inputType, Data: edit.Text,
 			Anchor: anchor, Focus: caret, Bubbles: true})
 	} else {
-		ecs.WriteMessage(world, engineui.InputEvent[string]{Entity: c.target, Value: value})
+		world.WriteMessage(engineui.InputEvent[string]{Entity: c.target, Value: value})
 	}
 }
 
@@ -280,7 +280,7 @@ func (m *workspaceModel) syncInputContext(world *module.Content) {
 	if c.restore {
 		c.restore = false
 		if world.Focus(c.target) {
-			if field := module.ContentMut[engineui.TextField](world, c.target); field != nil {
+			if field := world.Mut[engineui.TextField](c.target); field != nil {
 				field.Caret, field.Anchor, field.Selecting = c.caret, c.anchor, false
 			}
 		}

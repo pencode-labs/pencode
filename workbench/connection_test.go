@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
@@ -84,7 +83,7 @@ func TestConnectionRestoresCurrentUnsavedBufferAndHistory(t *testing.T) {
 	model.updateActiveContent("package offline\n")
 	file, old := model.activeFile(), model.activeFile().document
 	next := newPencodeBackend(t)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) { return next, nil }, connection.Profile{})
 	t.Cleanup(s.Close)
@@ -147,7 +146,7 @@ func TestConnectionRecoveryPreservesExternalConflict(t *testing.T) {
 	model.updateActiveContent("package local\n")
 	file := model.activeFile()
 	next := newPencodeBackend(t)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) { return next, nil }, connection.Profile{})
 	t.Cleanup(s.Close)
@@ -171,7 +170,7 @@ func TestConnectionCancellationPreservesOpenProject(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("APPDATA", t.TempDir())
 	model, project := resourceTestModel(t)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	s.ConfigureConnection(func(ctx context.Context, _ connection.Profile, _ func(string)) (*client.Client, error) {
 		<-ctx.Done()
@@ -193,7 +192,7 @@ func TestConnectionCancellationPreservesOpenProject(t *testing.T) {
 func TestConnectionFailedAttemptRetainsRequestedEndpoint(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("APPDATA", t.TempDir())
-	s := NewSession(newPencodeBackend(t))
+	s := newPencodeTestSession(t, newPencodeBackend(t))
 	model := &workspaceModel{session: s, backend: s.backend}
 	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) {
 		return nil, errors.New("authentication refused")
@@ -210,7 +209,7 @@ func TestConnectionFailedAttemptRetainsRequestedEndpoint(t *testing.T) {
 func TestConnectionStopsRapidDisconnectLoopAndAllowsManualRetry(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("APPDATA", t.TempDir())
-	s := NewSession(newPencodeBackend(t))
+	s := newPencodeTestSession(t, newPencodeBackend(t))
 	model := &workspaceModel{session: s, backend: s.backend}
 	calls := 0
 	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) {
@@ -288,7 +287,7 @@ func TestRemoteConnectionsDoNotChangeCurrentProject(t *testing.T) {
 	model.updateActiveContent("package editing\n")
 	file, document := model.activeFile(), model.activeFile().document
 	local := project.backend
-	s := NewSession(local)
+	s := newPencodeTestSession(t, local)
 	model.session = s
 	calls := 0
 	s.ConfigureConnection(func(ctx context.Context, profile connection.Profile, _ func(string)) (*client.Client, error) {
@@ -372,7 +371,7 @@ func TestWebSocketConnectionDialog(t *testing.T) {
 				}
 				editorContextClick(t, app, model, state, field.ref)
 				entity, ok := model.fontResources.HTMLControl(model.surface, field.ref)
-				control, mounted := module.ContentGet[ui.TextField](model.fontResources, entity)
+				control, mounted := model.fontResources.Get[ui.TextField](entity)
 				if !ok || !mounted || !control.Focused {
 					t.Fatalf("%s not focused: ok=%v mounted=%v focused=%v", field.ref, ok, mounted, control.Focused)
 				}
@@ -380,7 +379,7 @@ func TestWebSocketConnectionDialog(t *testing.T) {
 				languageInteractionStep(t, app)
 			}
 			entity, ok := model.fontResources.HTMLControl(model.surface, "connection-token")
-			control, mounted := module.ContentGet[ui.TextField](model.fontResources, entity)
+			control, mounted := model.fontResources.Get[ui.TextField](entity)
 			if !ok || !mounted || !control.Password {
 				t.Fatal("token input is not masked")
 			}
@@ -400,7 +399,7 @@ func TestWebSocketConnectionDialog(t *testing.T) {
 			languageInteractionStep(t, app)
 			languageInteractionStep(t, app)
 			entity, ok = model.fontResources.HTMLControl(model.surface, "connection-type")
-			selector, mounted := module.ContentGet[ui.Selector](model.fontResources, entity)
+			selector, mounted := model.fontResources.Get[ui.Selector](entity)
 			if !ok || !mounted || selector.Selected != 1 {
 				t.Fatalf("editing WebSocket profile selected the wrong transport: selected=%d ok=%v mounted=%v form=%v mode=%v", selector.Selected, ok, mounted, s.connection.formOpen, s.connection.webSocket)
 			}
@@ -417,7 +416,7 @@ func TestWebSocketConnectionDialog(t *testing.T) {
 
 func TestSSHPasswordPromptIsFreshOnReconnectAndClearedOnCancel(t *testing.T) {
 	local := newPencodeBackend(t)
-	s := NewSession(local)
+	s := newPencodeTestSession(t, local)
 	model := &workspaceModel{session: s, backend: local}
 	calls := 0
 	s.ConfigureConnection(func(ctx context.Context, _ connection.Profile, _ func(string)) (*client.Client, error) {
@@ -509,7 +508,7 @@ func TestConnectionPasswordDialogMasksInputAndClearsAfterSubmit(t *testing.T) {
 	if !ok {
 		t.Fatal("password input was not mounted")
 	}
-	control, ok := module.ContentGet[ui.TextField](model.fontResources, field)
+	control, ok := model.fontResources.Get[ui.TextField](field)
 	if !ok || !control.Password || !control.Focused {
 		t.Fatalf("password input was not masked and focused: mounted=%v masked=%v focused=%v pendingFocus=%v", ok, control.Password, control.Focused, s.connection.passwordFocus)
 	}
@@ -522,7 +521,7 @@ func TestConnectionPasswordDialogMasksInputAndClearsAfterSubmit(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEnter})
 	languageInteractionStep(t, app)
 	waitConnection(t, model)
-	control, _ = module.ContentGet[ui.TextField](model.fontResources, field)
+	control, _ = model.fontResources.Get[ui.TextField](field)
 	if s.connection.password != "" || control.Value != "" || !model.connectionConnected(profile) {
 		t.Fatal("password was retained after submitting")
 	}
@@ -533,7 +532,7 @@ func TestConnectionPasswordDialogMasksInputAndClearsAfterSubmit(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
 	languageInteractionStep(t, app)
 	waitConnection(t, model)
-	control, _ = module.ContentGet[ui.TextField](model.fontResources, field)
+	control, _ = model.fontResources.Get[ui.TextField](field)
 	if s.connection.password != "" || control.Value != "" || !model.backendConnected() {
 		t.Fatal("cancel retained password input or affected the project")
 	}
@@ -547,7 +546,7 @@ func TestConnectionRestoresOnlyWorkspaceOnItsOwnSSHLink(t *testing.T) {
 	model.updateActiveContent("package editing\n")
 	file := model.activeFile()
 	local, next := newPencodeBackend(t), newPencodeBackend(t)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	s.localBackend = local
 	model.session = s
 	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) { return next, nil }, connection.Profile{})
@@ -608,13 +607,13 @@ func TestConnectionHostTrustDialogThenPassword(t *testing.T) {
 		t.Fatal("host fingerprint was lost")
 	}
 	field, _ := model.fontResources.HTMLControl(model.surface, "connection-password")
-	if _, mounted := module.ContentGet[ui.TextField](model.fontResources, field); mounted {
+	if _, mounted := model.fontResources.Get[ui.TextField](field); mounted {
 		t.Fatal("host confirmation displayed a password input")
 	}
 	editorContextClick(t, app, model, state, "connection-password-submit")
 	waitPrompt(false)
 	field, _ = model.fontResources.HTMLControl(model.surface, "connection-password")
-	control, mounted := module.ContentGet[ui.TextField](model.fontResources, field)
+	control, mounted := model.fontResources.Get[ui.TextField](field)
 	if !mounted || !control.Password || !control.Focused || control.Value != "" {
 		t.Fatal("host confirmation did not transition to a fresh password input")
 	}

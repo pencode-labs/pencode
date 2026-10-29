@@ -8,9 +8,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/terminal"
 	engineui "github.com/diiyw/onix/ui"
+	"github.com/pencode-labs/pencode/terminal"
 )
 
 func TestPencodeTerminalNativeInputAndLifecycle(t *testing.T) {
@@ -39,7 +38,7 @@ func TestPencodeTerminalNativeInputAndLifecycle(t *testing.T) {
 	if !ok || !model.terminalFocused(world) {
 		t.Fatal("terminal did not receive focus")
 	}
-	if field, ok := module.ContentGet[engineui.TextField](world, control); !ok || field.Value == "" {
+	if field, ok := world.Get[engineui.TextField](control); !ok || field.Value == "" {
 		t.Fatal("native terminal screen missing")
 	}
 	panel := editorContextBounds(t, model, "terminal-pane")
@@ -82,7 +81,7 @@ func TestPencodeTerminalNativeInputAndLifecycle(t *testing.T) {
 	// Copy uses the native selection; Ctrl+C remains a PTY interrupt.
 	var copied string
 	state.SetClipboard(func(value string) bool { copied = value; return true }, func() (string, bool) { return "", false })
-	field := module.ContentMut[engineui.TextField](world, control)
+	field := world.Mut[engineui.TextField](control)
 	start := strings.Index(field.Value, "PEN_中文")
 	field.Anchor = utf8.RuneCountInString(field.Value[:start])
 	field.Caret = field.Anchor + utf8.RuneCountInString("PEN_中文")
@@ -208,7 +207,7 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	markPencodeRootDirtyByModel(world, model)
 	languageInteractionStep(t, app)
 	languageInteractionStep(t, app)
-	field := module.ContentMut[engineui.TextField](world, model.terminalView.control)
+	field := world.Mut[engineui.TextField](model.terminalView.control)
 	start := strings.Index(field.Value, "CONTEXT_COPY")
 	if start < 0 {
 		t.Fatal("selection fixture missing")

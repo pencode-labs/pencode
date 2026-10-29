@@ -5,9 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 )
 
@@ -17,8 +15,8 @@ func TestPencodeTabOverflowScroll(t *testing.T) {
 			app, session := newPencodeTestApp(t)
 			model := session.active.model
 			model.app.GetViewport = func() (int, int) { return 1440, 900 }
-			ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-			for _, camera := range ecs.Query[scene.Camera](app.World).All {
+			app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+			for _, camera := range app.World.Query[scene.Camera]().All {
 				camera.Mut().UpdateViewport(1440, 900)
 			}
 			world := model.fontResources
@@ -32,7 +30,7 @@ func TestPencodeTabOverflowScroll(t *testing.T) {
 			model.selectProjectTab(project, project.Tabs[len(project.Tabs)-1])
 			markPencodeRootDirtyByModel(world, model)
 			languageInteractionStep(t, app)
-			scroll := module.ContentMut[scene.UIScroll](world, model.tabScroll.area)
+			scroll := world.Mut[scene.UIScroll](model.tabScroll.area)
 			if scroll == nil || !scroll.Horizontal || scroll.ScrollbarSize != 0 {
 				t.Fatalf("tabs must scroll horizontally without a scrollbar: %+v", scroll)
 			}
@@ -43,14 +41,14 @@ func TestPencodeTabOverflowScroll(t *testing.T) {
 				t.Helper()
 				viewport := editorContextBounds(t, model, "tabs")
 				tab := editorContextBounds(t, model, "active-tab")
-				scroll := module.ContentRef[scene.UIScroll](world, model.tabScroll.area)
+				scroll := world.Ref[scene.UIScroll](model.tabScroll.area)
 				left := tab.X + scroll.Position.X() - viewport.X
 				if left < -.01 || left+tab.Width > viewport.Width+.01 {
 					t.Fatalf("active tab is clipped: left=%v width=%v viewport=%v", left, tab.Width, viewport.Width)
 				}
 			}
 			assertVisible()
-			state, _ := ecs.GetResource[*input.State](app.World)
+			state, _ := app.World.GetResource[*input.State]()
 			viewport := editorContextBounds(t, model, "tabs")
 			scale := float64(zoom) / 100
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(viewport.X+viewport.Width/2) * scale, Y: float64(viewport.Y+viewport.Height/2) * scale})
@@ -61,23 +59,23 @@ func TestPencodeTabOverflowScroll(t *testing.T) {
 			}
 			before := scroll.Position.X()
 			wheel(0, 1)
-			if got := module.ContentRef[scene.UIScroll](world, model.tabScroll.area).Position.X(); math.Abs(float64(got-before-48)) > .01 {
+			if got := world.Ref[scene.UIScroll](model.tabScroll.area).Position.X(); math.Abs(float64(got-before-48)) > .01 {
 				t.Fatalf("vertical wheel position=%v, want %v", got, before+48)
 			}
 			languageInteractionStep(t, app)
-			if got := module.ContentRef[scene.UIScroll](world, model.tabScroll.area).Position.X(); got != before+48 {
+			if got := world.Ref[scene.UIScroll](model.tabScroll.area).Position.X(); got != before+48 {
 				t.Fatal("idle layout reset manual scrolling")
 			}
 			wheel(0, 10000)
-			if got := module.ContentRef[scene.UIScroll](world, model.tabScroll.area).Position.X(); got != 0 {
+			if got := world.Ref[scene.UIScroll](model.tabScroll.area).Position.X(); got != 0 {
 				t.Fatalf("left boundary=%v, want 0", got)
 			}
 			wheel(-1, 0)
-			if got := module.ContentRef[scene.UIScroll](world, model.tabScroll.area).Position.X(); got != -48 {
+			if got := world.Ref[scene.UIScroll](model.tabScroll.area).Position.X(); got != -48 {
 				t.Fatalf("horizontal wheel position=%v, want -48", got)
 			}
 			wheel(0, -10000)
-			scroll = module.ContentMut[scene.UIScroll](world, model.tabScroll.area)
+			scroll = world.Mut[scene.UIScroll](model.tabScroll.area)
 			if got, want := scroll.Position.X(), scroll.ViewportSize.X()-scroll.ContentSize.X(); math.Abs(float64(got-want)) > .01 {
 				t.Fatalf("right boundary=%v, want %v", got, want)
 			}
@@ -85,19 +83,19 @@ func TestPencodeTabOverflowScroll(t *testing.T) {
 			markPencodeRootDirtyByModel(world, model)
 			languageInteractionStep(t, app)
 			assertVisible()
-			local, _ := module.ContentResource[*input.State](world)
+			local, _ := world.Resource[*input.State]()
 			local.ScrollMouse(0, -1)
 			if allocations := testing.AllocsPerRun(50, func() {
-				module.ContentMut[scene.UIScroll](world, model.tabScroll.area).Position[0] = -48
+				world.Mut[scene.UIScroll](model.tabScroll.area).Position[0] = -48
 				model.syncTabScroll(world)
 				model.updateTabWheel(world, local)
 			}); allocations != 0 {
 				t.Fatalf("tab scrolling allocated %g times", allocations)
 			}
-			before = module.ContentRef[scene.UIScroll](world, model.tabScroll.area).Position.X()
+			before = world.Ref[scene.UIScroll](model.tabScroll.area).Position.X()
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: 5, Y: 5})
 			wheel(0, -1)
-			if got := module.ContentRef[scene.UIScroll](world, model.tabScroll.area).Position.X(); got != before {
+			if got := world.Ref[scene.UIScroll](model.tabScroll.area).Position.X(); got != before {
 				t.Fatal("wheel outside the tab strip moved tabs")
 			}
 			for _, name := range project.Tabs[1:] {
@@ -106,7 +104,7 @@ func TestPencodeTabOverflowScroll(t *testing.T) {
 			project.Tabs = project.Tabs[:1]
 			markPencodeRootDirtyByModel(world, model)
 			languageInteractionStep(t, app)
-			scroll = module.ContentMut[scene.UIScroll](world, model.tabScroll.area)
+			scroll = world.Mut[scene.UIScroll](model.tabScroll.area)
 			if scroll == nil || scroll.Horizontal || scroll.Position.X() != 0 {
 				t.Fatalf("closing overflow tabs did not reset the scroll range: %+v", scroll)
 			}

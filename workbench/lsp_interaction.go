@@ -12,11 +12,11 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/lsp"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 const (
@@ -96,8 +96,8 @@ func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, e
 		return
 	}
 	model.dismissLanguagePanel()
-	field, ok := module.ContentGet[engineui.TextField](world, model.editor.control)
-	state, _ := module.ContentResource[*input.State](world)
+	field, ok := world.Get[engineui.TextField](model.editor.control)
+	state, _ := world.Resource[*input.State]()
 	if !ok || !field.Focused || field.Composition != "" || state != nil && state.Composing() || field.Anchor != field.Caret {
 		return
 	}
@@ -187,7 +187,7 @@ func (model *workspaceModel) runLanguageContext(world *module.Content, index int
 	}
 	world.Focus(model.editor.control)
 	ui.contextFocus = true
-	if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
+	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 		field.Caret, field.Anchor = caret, anchor
 	}
 	model.runLanguageAction(world, pencodeLanguageActions[index].method, false)
@@ -208,7 +208,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		return changed
 	}
 	changed := false
-	field, _ := module.ContentGet[engineui.TextField](world, model.editor.control)
+	field, _ := world.Get[engineui.TextField](model.editor.control)
 	file := model.activeFile()
 	if ui.contextOpen && (ui.contextFile != file || ui.contextContent != model.activeContent()) {
 		model.dismissLanguageContext()
@@ -308,7 +308,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		model.cancelLanguageHover()
 		model.dismissLanguageContext()
 		world.Focus(model.editor.control)
-		if f := module.ContentMut[engineui.TextField](world, model.editor.control); f != nil {
+		if f := world.Mut[engineui.TextField](model.editor.control); f != nil {
 			f.Caret, f.Anchor, f.Selecting = utf8.RuneCountInString(file.Content[:offset]), utf8.RuneCountInString(file.Content[:offset]), false
 		}
 		var doc *pencodeLanguageDocument
@@ -447,8 +447,8 @@ func (model *workspaceModel) requestLanguageHover() {
 // Text hit testing shares the textarea's cached layout (including wrapping,
 // variable-width glyphs, tabs and font settings) and its current scroll offset.
 func (model *workspaceModel) languageEditorGeometry(world *module.Content, rect htmlui.Rect) (*scene.Text2D, float32, float32) {
-	text := module.ContentMut[scene.Text2D](world, model.editor.text)
-	transform, ok := module.ContentGet[scene.UITransform](world, model.editor.text)
+	text := world.Mut[scene.Text2D](model.editor.text)
+	transform, ok := world.Get[scene.UITransform](model.editor.text)
 	if text == nil || !ok {
 		return nil, 0, 0
 	}

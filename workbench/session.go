@@ -43,6 +43,10 @@ func NewSession(backend *client.Client) *Session {
 	if configDirectory != "" {
 		configDirectory = filepath.Join(configDirectory, "pencode")
 	}
+	return newSession(backend, cacheDirectory, configDirectory)
+}
+
+func newSession(backend *client.Client, cacheDirectory, configDirectory string) *Session {
 	return &Session{backend: backend, localBackend: backend, views: make(map[*Mod]struct{}), fonts: make(map[string]pencodeFont), market: &pencodeMarketplace{}, quickHistory: loadPencodeQuickHistory(cacheDirectory), recentProjects: loadPencodeRecentProjects(configDirectory)}
 }
 
@@ -116,8 +120,8 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 	model.syncFileDragPreview(model.fontResources)
 	// HTML/native reconciliation may replace text spans after FrameUpdate.
 	// Publish paint against the final field value, including asynchronous results.
-	if field, ok := module.ContentGet[engineui.TextField](model.fontResources, model.editor.control); ok {
-		if value := module.ContentMut[scene.Text2D](model.fontResources, model.editor.text); value != nil {
+	if field, ok := model.fontResources.Get[engineui.TextField](model.editor.control); ok {
+		if value := model.fontResources.Mut[scene.Text2D](model.editor.text); value != nil {
 			model.editor.syncHighlight(value, field, model)
 		}
 	}
@@ -139,7 +143,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 }
 
 func (s *Session) Register(registry *module.Registry) error {
-	return module.RegisterMod(registry, "resources/workbench", func() Mod { return Mod{session: s} }, module.Lifecycle[Mod]{
+	return registry.RegisterMod("resources/workbench", func() Mod { return Mod{session: s} }, module.Lifecycle[Mod]{
 		Install:     func(c *module.Context, m *Mod) error { return m.Install(c) },
 		Enter:       func(c *module.Context, m *Mod, v module.SceneStartup) error { return m.Enter(c, v) },
 		Resume:      func(c *module.Context, m *Mod, v module.SceneStartup) error { return m.Resume(c, v) },

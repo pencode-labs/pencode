@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/protocol"
 )
@@ -98,7 +97,7 @@ func TestFolderSearchPopupFromContextAndNavigation(t *testing.T) {
 	}
 	if !m.folderSearch.open || !pencodeControlFocused(world, m.surface, "folder-search-query") {
 		control, ok := world.HTMLControl(m.surface, "folder-search-query")
-		field, _ := module.ContentGet[engineui.TextField](world, control)
+		field, _ := world.Get[engineui.TextField](control)
 		t.Fatalf("context did not open/focus popup: open=%v focus=%v control=%v found=%v field=%+v context=%+v", m.folderSearch.open, m.folderSearch.needsFocus, control, ok, field, m.fileContext)
 	}
 	m.handleFolderSearchEvent(world, "folder-search-query", "target")
@@ -130,7 +129,7 @@ func TestFolderSearchPopupFromContextAndNavigation(t *testing.T) {
 	for range 3 {
 		languageInteractionStep(t, app)
 	}
-	field, _ := module.ContentGet[engineui.TextField](world, m.editor.control)
+	field, _ := world.Get[engineui.TextField](m.editor.control)
 	if m.folderSearch.open || field.Anchor != 10 || field.Caret != 16 || !field.Focused {
 		t.Fatalf("navigation did not select exact match: %+v", field)
 	}

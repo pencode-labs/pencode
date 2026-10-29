@@ -14,7 +14,6 @@ import (
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
@@ -127,12 +126,12 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	surface, _ := module.ContentGet[htmlui.Surface](model.fontResources, model.surface)
+	surface, _ := model.fontResources.Get[htmlui.Surface](model.surface)
 	if !strings.Contains(surface.CSS, definition.CSS) {
 		t.Fatal("theme synchronization discarded extension styles")
 	}
-	textEntity, _ := module.ContentFindPart[engineui.ValuePart, scene.Text2D](model.fontResources, control)
-	textValue, _ := module.ContentGet[scene.Text2D](model.fontResources, textEntity)
+	textEntity, _ := model.fontResources.FindPart[engineui.ValuePart, scene.Text2D](control)
+	textValue, _ := model.fontResources.Get[scene.Text2D](textEntity)
 	if textValue.Color != graphics.ColorFromRGBA(255, 0, 0, 255) {
 		t.Fatalf("extension CSS did not reach the retained input: %v", textValue.Color)
 	}
@@ -140,7 +139,7 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 	// subscription, process exchange, host edit history and dirty tab behavior.
 	value := source + "// edited through extension\n"
 	model.fontResources.SetControlValue(control, value)
-	ecs.WriteMessage(app.World, htmlui.Event{Entity: model.surface, Target: control, Kind: htmlui.EventInput, Value: value, Bubbles: true})
+	app.World.WriteMessage(htmlui.Event{Entity: model.surface, Target: control, Kind: htmlui.EventInput, Value: value, Bubbles: true})
 	wait(func() bool { return file.Content == value && !model.customDocuments[file].busy() })
 	if !file.Dirty || len(file.undo) != 1 || model.customDocuments[file].definition != definition {
 		t.Fatal("input lost history or replaced the retained DOM")
@@ -148,7 +147,7 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 	if current, _ := model.fontResources.HTMLControl(model.surface, "pencode-extension-source"); current != control {
 		t.Fatal("input replaced the textarea")
 	}
-	if field, ok := module.ContentGet[engineui.TextField](model.fontResources, control); !ok || field.Value != value {
+	if field, ok := model.fontResources.Get[engineui.TextField](control); !ok || field.Value != value {
 		t.Fatal("custom textarea content drifted")
 	}
 	model.saveActiveFile()

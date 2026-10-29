@@ -221,7 +221,7 @@ func (m *workspaceModel) focusSourceRepositories(world *module.Content) {
 			bounds, _ := menu.Bounds()
 			row, _ := item.Bounds()
 			if entity, ok := menu.ScrollContainer(); ok {
-				if scroll := module.ContentMut[scene.UIScroll](world, entity); scroll != nil {
+				if scroll := world.Mut[scene.UIScroll](entity); scroll != nil {
 					top, bottom := row.Y-bounds.Y, row.Y+row.Height-bounds.Y
 					position := scroll.Position[1]
 					if top+position < 5 {

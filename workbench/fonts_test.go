@@ -8,11 +8,10 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/font"
-	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/extensions"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/text"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
 )
 
 func TestPencodePlatformFontPreference(t *testing.T) {
@@ -61,7 +60,7 @@ func TestPencodeConsolasChineseFallback(t *testing.T) {
 		if _, err := app.Step(); err != nil {
 			t.Fatal(err)
 		}
-		text := module.ContentMut[scene.Text2D](world, model.editor.text)
+		text := world.Mut[scene.Text2D](model.editor.text)
 		if text.Font != selected {
 			t.Fatal("editor lost the selected Latin font")
 		}
@@ -208,8 +207,8 @@ StageRender Stage = "render"
 		if _, err := app.Step(); err != nil {
 			t.Fatal(err)
 		}
-		valueText := module.ContentMut[scene.Text2D](world, model.editor.text)
-		binding, _ := module.ContentGet[htmlui.ControlTextFont](world, model.editor.control)
+		valueText := world.Mut[scene.Text2D](model.editor.text)
+		binding, _ := world.Get[htmlui.ControlTextFont](model.editor.control)
 		if valueText.Font != model.codeFont() || binding.Font != model.codeFont() {
 			t.Fatal("editor layout and rendering disagree on the code font")
 		}
@@ -256,7 +255,7 @@ func TestPencodeFontExtensionRestoresSelectionAndUnloads(t *testing.T) {
 	if saved.CodeFont != id || saved.UIFont != id || model.codeFont() != model.defaultFont {
 		t.Fatal("pending font selection was lost")
 	}
-	face, err := font.Load("../../../testdata/fonts/Noto_Sans_SC/static/NotoSansSC-Regular.ttf")
+	face, err := font.Load("../../onix/testdata/fonts/Noto_Sans_SC/static/NotoSansSC-Regular.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +266,7 @@ func TestPencodeFontExtensionRestoresSelectionAndUnloads(t *testing.T) {
 	if selected.regular != selected.bold {
 		t.Fatal("shared face created duplicate glyph caches")
 	}
-	surface, _ := module.ContentGet[htmlui.Surface](model.fontResources, model.surface)
+	surface, _ := model.fontResources.Get[htmlui.Surface](model.surface)
 	if surface.Font != selected.regular || surface.BoldFont != selected.bold || model.codeFont() != selected.regular {
 		t.Fatal("font did not restore after registration")
 	}
@@ -281,7 +280,7 @@ func TestPencodeFontExtensionRestoresSelectionAndUnloads(t *testing.T) {
 		if view == session.active {
 			continue
 		}
-		surface := module.ContentMut[htmlui.Surface](view.model.fontResources, view.model.surface)
+		surface := view.model.fontResources.Mut[htmlui.Surface](view.model.surface)
 		surface.Font, surface.BoldFont = selected.regular, selected.bold
 	}
 	if allocations := testing.AllocsPerRun(100, func() {
@@ -299,20 +298,20 @@ func TestPencodeFontExtensionRestoresSelectionAndUnloads(t *testing.T) {
 	if model.settings.CodeFont != model.defaultFontID || model.settings.UIFont != model.defaultFontID || len(model.fonts) != systemFontCount || face.Data != nil {
 		t.Fatal("unload did not reset selection and dispose font")
 	}
-	if binding, _ := module.ContentGet[htmlui.ControlTextFont](model.fontResources, model.editor.control); binding.Font != model.defaultFont {
+	if binding, _ := model.fontResources.Get[htmlui.ControlTextFont](model.editor.control); binding.Font != model.defaultFont {
 		t.Fatal("unloaded code font did not fall back to the system monospace font")
 	}
-	for _, access := range module.ContentQuery[scene.Text2D](model.fontResources) {
+	for _, access := range model.fontResources.Query[scene.Text2D]() {
 		if access.Get().Font == selected.regular {
 			t.Fatal("text still references disposed font")
 		}
 	}
-	surface, _ = module.ContentGet[htmlui.Surface](model.fontResources, model.surface)
+	surface, _ = model.fontResources.Get[htmlui.Surface](model.surface)
 	if surface.Font != model.defaultFont || surface.BoldFont != nil {
 		t.Fatal("surface still references disposed font")
 	}
 	for view := range session.views {
-		surface, _ := module.ContentGet[htmlui.Surface](view.model.fontResources, view.model.surface)
+		surface, _ := view.model.fontResources.Get[htmlui.Surface](view.model.surface)
 		if surface.Font == selected.regular || surface.BoldFont == selected.bold {
 			t.Fatal("retained view still references disposed font")
 		}

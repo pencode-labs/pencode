@@ -102,10 +102,10 @@ func (m *workspaceModel) updateTabContext(world *module.Content, state *input.St
 		return changed
 	}
 	var offset float32
-	if scroll, ok := module.ContentGet[scene.UIScroll](world, m.tabScroll.area); ok {
+	if scroll, ok := world.Get[scene.UIScroll](m.tabScroll.area); ok {
 		offset = scroll.Position.X()
 	}
-	for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](world) {
+	for _, access := range world.Query[htmlui.Component[tabProps, struct{}]]() {
 		props := access.Get().Props
 		if props.Model != m || props.Project != m.activeProjectState() {
 			continue
@@ -151,7 +151,7 @@ func (m *workspaceModel) handleTabContextEvent(world *module.Content, ref string
 		if item.action != pencodeCloseNone {
 			m.closeProjectTabs(item.action, c.project, c.path)
 			setPencodeEditorValue(world, m.surface, m.activeContent())
-		} else if state, ok := module.ContentResource[*input.State](world); ok {
+		} else if state, ok := world.Resource[*input.State](); ok {
 			value := c.path
 			if i == 5 {
 				value = filepath.Join(c.project.Path, filepath.FromSlash(value))

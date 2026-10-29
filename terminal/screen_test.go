@@ -152,3 +152,39 @@ func TestScreenHistoryRingAndGraphics(t *testing.T) {
 		t.Fatal("mouse mode reset")
 	}
 }
+
+func TestScreenClearReleasesLargeHistory(t *testing.T) {
+	for _, escape := range []bool{false, true} {
+		s := NewScreen(120, 24)
+		line := []byte("line\r\n")
+		for range 2200 {
+			s.Feed(line)
+		}
+		if len(s.History)/s.Cols != s.HistoryLimit || s.historyHead == 0 {
+			t.Fatal("fixture did not wrap the scrollback ring")
+		}
+		revision := s.Revision
+		if escape {
+			s.Feed([]byte("\x1b[3J"))
+		} else {
+			s.Clear()
+		}
+		if len(s.History) != 0 || cap(s.History) != 0 || s.historyHead != 0 || s.Revision <= revision {
+			t.Fatal("clear retained large history or failed to invalidate the screen")
+		}
+		s.Feed([]byte("\x1b[H"))
+		for range 25 {
+			s.Feed(line)
+		}
+		if len(s.History) == 0 || s.HistoryRow(0)[0].Rune != 'l' {
+			t.Fatal("scrollback failed after releasing storage")
+		}
+		// Small histories stay reusable even when an application clears them often.
+		if n := testing.AllocsPerRun(100, func() {
+			s.Clear()
+			s.Feed(line)
+		}); n != 0 {
+			t.Fatalf("warm clear/scroll allocated %g times", n)
+		}
+	}
+}

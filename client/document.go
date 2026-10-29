@@ -63,7 +63,7 @@ func (d *Document) Update(base, content string, start, oldEnd, newEnd int) {
 
 func (d *Document) run(ctx context.Context, version uint64, content string) {
 	defer close(d.done)
-	e := protocol.Encoder{Buffer: make([]byte, 0, protocol.ChunkSize+32)}
+	var e protocol.Encoder
 	for {
 		var save *documentSave
 		select {
@@ -148,7 +148,7 @@ func (d *Document) run(ctx context.Context, version uint64, content string) {
 			stopSave()
 		}
 		stop()
-		if cap(e.Buffer) > 1<<20 {
+		if cap(e.Buffer) > protocol.MaxPayload {
 			e.Buffer = nil
 		}
 	}

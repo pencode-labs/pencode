@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 )
 
@@ -160,7 +158,7 @@ func TestFileDragCancelClickAndHoverExpansion(t *testing.T) {
 	}
 	editorContextBounds(t, model, model.projectTreeRowID(project, "target/nested/note.txt"))
 	checkFileDragPreview(t, model, "main.go")
-	local, _ := module.ContentResource[*input.State](model.fontResources)
+	local, _ := model.fontResources.Resource[*input.State]()
 	if allocations := testing.AllocsPerRun(100, func() { model.updateFileDrag(model.fontResources, local) }); allocations != 0 {
 		t.Fatalf("stationary drag allocated %g times", allocations)
 	}
@@ -188,7 +186,7 @@ func TestFileDragCancelClickAndHoverExpansion(t *testing.T) {
 	if project.ExpandedDirs["target"] {
 		t.Fatal("a normal folder click stopped toggling expansion")
 	}
-	local, _ = module.ContentResource[*input.State](model.fontResources)
+	local, _ = model.fontResources.Resource[*input.State]()
 	if allocations := testing.AllocsPerRun(100, func() { model.updateFileDrag(model.fontResources, local) }); allocations != 0 {
 		t.Fatalf("idle drag handler allocated %g times", allocations)
 	}
@@ -220,9 +218,9 @@ func TestFileDragPreviewFollowsPointerAndFitsViewport(t *testing.T) {
 			// Check the retained text moves in the same frame, without a root render.
 			textX := func() float32 {
 				t.Helper()
-				for entity, value := range ecs.Query[scene.Text2D](app.World).All {
+				for entity, value := range app.World.Query[scene.Text2D]().All {
 					if strings.HasPrefix(value.Get().Value, "dragged-file-") {
-						transform := ecs.GetRef[scene.UIGlobalTransform](app.World, entity)
+						transform := app.World.GetRef[scene.UIGlobalTransform](entity)
 						if transform != nil && transform.Matrix[12] > 300 {
 							return transform.Matrix[12]
 						}

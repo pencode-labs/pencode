@@ -20,7 +20,7 @@ type pencodeTerminalContext struct {
 var pencodeTerminalContextRefs = [...]string{"terminal-copy", "terminal-paste", "terminal-clear"}
 
 func (m *workspaceModel) terminalSelection() string {
-	if field, ok := module.ContentGet[engineui.TextField](m.fontResources, m.terminalView.control); ok {
+	if field, ok := m.fontResources.Get[engineui.TextField](m.terminalView.control); ok {
 		start, end := pencodeSelectionBytes(field.Value, min(field.Caret, field.Anchor), max(field.Caret, field.Anchor))
 		return field.Value[start:end]
 	}
@@ -86,7 +86,7 @@ func (m *workspaceModel) handleTerminalContextEvent(world *module.Content, ref s
 		}
 		c := &m.terminalView.context
 		if c.open {
-			if state, ok := module.ContentResource[*input.State](world); ok {
+			if state, ok := world.Resource[*input.State](); ok {
 				m.terminalAction(state, ref, c.selection)
 			}
 			c.open, c.selection = false, ""

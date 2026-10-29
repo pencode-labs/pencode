@@ -17,11 +17,11 @@ func TestTabBusyDotsAnimateWithoutAllocations(t *testing.T) {
 	}
 	world := ecs.NewWorld()
 	clock := scene.NewTime()
-	ecs.InsertResource(world, clock)
+	world.InsertResource(clock)
 	view := htmlui.New(`<style>` + string(css) + `</style><span id="busy" class="pencode-tab-busy-icon" style="color:#70c9df"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>`)
 	view.Width, view.Height = 100, 100
 	bundle := ecs.NewBundle(1)
-	ecs.Put(&bundle, view)
+	bundle.Put(view)
 	owner := world.Spawn(bundle)
 	advance := func() {
 		clock.Set(16*time.Millisecond, clock.Elapsed+16*time.Millisecond, clock.Frame+1)
@@ -32,7 +32,7 @@ func TestTabBusyDotsAnimateWithoutAllocations(t *testing.T) {
 	advance()
 	var dots [8]ecs.Entity
 	count := 0
-	for entity, access := range ecs.Query[scene.Sprite2D](world).All {
+	for entity, access := range world.Query[scene.Sprite2D]().All {
 		if sprite := access.Ref(); sprite.Width == 2 && sprite.Height == 2 {
 			if count == len(dots) {
 				t.Fatal("too many dot visuals")
@@ -44,11 +44,11 @@ func TestTabBusyDotsAnimateWithoutAllocations(t *testing.T) {
 	if count != len(dots) || !htmlui.Animating(world) {
 		t.Fatalf("missing animated dots: %d", count)
 	}
-	first, _ := ecs.Get[scene.Sprite2D](world, dots[0])
+	first, _ := world.Get[scene.Sprite2D](dots[0])
 	for range 8 {
 		advance()
 	}
-	after, _ := ecs.Get[scene.Sprite2D](world, dots[0])
+	after, _ := world.Get[scene.Sprite2D](dots[0])
 	if first.Alpha == after.Alpha {
 		t.Fatal("dot brightness did not advance")
 	}

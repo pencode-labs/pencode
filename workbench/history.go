@@ -122,7 +122,7 @@ func (model *workspaceModel) setEditorValueAndCaret(world *module.Content, value
 		return
 	}
 	setPencodeEditorValue(world, model.surface, value)
-	if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
+	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 		field.Caret, field.Anchor = caret, caret
 	}
 }

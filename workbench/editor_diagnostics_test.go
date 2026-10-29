@@ -51,7 +51,7 @@ func TestPencodeEditorDiagnosticsFromUnopenedProblem(t *testing.T) {
 			markPencodeRootDirtyByModel(world, model)
 			languageInteractionStep(t, app)
 			clicked := false
-			for _, access := range module.ContentQuery[htmlui.Component[pencodeProblemProps, struct{}]](world) {
+			for _, access := range world.Query[htmlui.Component[pencodeProblemProps, struct{}]]() {
 				props := access.Get().Props
 				if props.Problem.location.URI == uri {
 					handleProblemEvent(&module.ContentEventContext[pencodeProblemProps, struct{}]{World: world, Props: &props, Ref: "problem"})
@@ -76,7 +76,7 @@ func TestPencodeEditorDiagnosticsFromUnopenedProblem(t *testing.T) {
 				if len(paint.ranges) != 1 || len(paint.quads) == 0 || len(paint.waves) == 0 || len(paint.labels) == 0 {
 					t.Fatalf("jump lost cached diagnostic: ranges=%d waves=%d labels=%d", len(paint.ranges), len(paint.waves), len(paint.labels))
 				}
-				label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
+				label, _ := world.Get[scene.Text2D](paint.labels[0])
 				if label.Value != diagnostic.Message {
 					t.Fatalf("inline error = %q", label.Value)
 				}
@@ -92,9 +92,9 @@ func TestPencodeEditorDiagnosticsFromUnopenedProblem(t *testing.T) {
 			}
 			assertPaint()
 			paint := &model.editor.diagnostics
-			textStack, _ := module.ContentGet[scene.UIStackIndex](world, model.editor.text)
+			textStack, _ := world.Get[scene.UIStackIndex](model.editor.text)
 			for _, entity := range []ecs.Entity{paint.waves[0], paint.labels[0]} {
-				stack, _ := module.ContentGet[scene.UIStackIndex](world, entity)
+				stack, _ := world.Get[scene.UIStackIndex](entity)
 				if stack <= textStack {
 					t.Fatalf("diagnostic was moved behind the editor after idle frames: stack=%d text=%d", stack, textStack)
 				}
@@ -103,13 +103,13 @@ func TestPencodeEditorDiagnosticsFromUnopenedProblem(t *testing.T) {
 				t.Fatal(err)
 			}
 			canvas := graphics.NewCanvas2D(nil, 1440, 900)
-			t.Cleanup(graphics.SetCurrentContextForTesting(canvas))
+			graphics.BindFrame(app.World, canvas)
 			scene.RegisterSpriteRenderer2D(app.World)
 			scene.RegisterTextRenderer2D(app.World)
 			if err := scene.ExtractRender2DSystem("").Run(app.World); err != nil {
 				t.Fatal(err)
 			}
-			rendered, _ := ecs.GetResource[*scene.RenderWorld](app.World)
+			rendered, _ := app.World.GetResource[*scene.RenderWorld]()
 			for _, entity := range []ecs.Entity{paint.quads[0], paint.waves[0], paint.labels[0]} {
 				found := false
 				for _, item := range rendered.Items2D {
@@ -154,17 +154,17 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 	if len(paint.quads) != 1 || len(paint.waves) != 1 || len(paint.labels) != 1 {
 		t.Fatalf("missing background, waves or label: quads=%d waves=%d labels=%d", len(paint.quads), len(paint.waves), len(paint.labels))
 	}
-	background, ok := module.ContentGet[scene.Sprite2D](world, paint.quads[0])
-	size, _ := module.ContentGet[scene.Size2D](world, model.editor.control)
+	background, ok := world.Get[scene.Sprite2D](paint.quads[0])
+	size, _ := world.Get[scene.Size2D](model.editor.control)
 	if !ok || background.Width != size.Width || background.Shape.Fill.A != paint.key.colors[1].A*.1 {
 		t.Fatalf("full row background = %+v", background)
 	}
-	label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
+	label, _ := world.Get[scene.Text2D](paint.labels[0])
 	if label.Value != diagnostic.Message || label.Color != paint.key.colors[1] || label.Font != model.codeFont() {
 		t.Fatalf("inline error label = %+v", label)
 	}
-	up, _ := module.ContentGet[scene.UITransform](world, paint.waves[0])
-	wave, _ := module.ContentGet[scene.Sprite2D](world, paint.waves[0])
+	up, _ := world.Get[scene.UITransform](paint.waves[0])
+	wave, _ := world.Get[scene.Sprite2D](paint.waves[0])
 	uMode, _ := wave.Texture.AddressModes()
 	if up.Rotation != 0 || wave.Height != 3 || uMode != render.TextureAddressRepeat ||
 		math.Abs(float64((wave.Texture.MaxU-wave.Texture.U)*6-wave.Width)) > .01 {
@@ -198,7 +198,7 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 			t.Fatalf("wave GPU texture = %+v", descriptor)
 		}
 	})
-	text := module.ContentMut[scene.Text2D](world, model.editor.text)
+	text := world.Mut[scene.Text2D](model.editor.text)
 	var offsets = [2]int{start, start + len("sourceCommand")}
 	var widths [2]float32
 	if !scene.MeasureTextLineOffsets2D(text, strings.TrimSuffix(strings.Split(file.Content, "\n")[0], "\r"), offsets[:], widths[:]) || math.Abs(float64(up.Translation.X.Value-paint.key.x-widths[0])) > .1 {
@@ -208,14 +208,14 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 		t.Fatalf("unchanged diagnostics allocated %g times", allocations)
 	}
 	// Native scroll moves the wave and label together in the same layout pass.
-	module.ContentMut[scene.UITransform](world, model.editor.text).Translation.Y.Value -= 5
+	world.Mut[scene.UITransform](model.editor.text).Translation.Y.Value -= 5
 	paint.sync(world, model)
-	scrolled, _ := module.ContentGet[scene.UITransform](world, paint.waves[0])
+	scrolled, _ := world.Get[scene.UITransform](paint.waves[0])
 	if scrolled.Translation.Y.Value != up.Translation.Y.Value-5 {
 		t.Fatal("diagnostic did not follow native scroll")
 	}
 	if allocations := testing.AllocsPerRun(100, func() {
-		position := module.ContentMut[scene.UITransform](world, model.editor.text)
+		position := world.Mut[scene.UITransform](model.editor.text)
 		position.Translation.Y.Value = -5 - position.Translation.Y.Value
 		paint.sync(world, model)
 	}); allocations != 0 {
@@ -225,22 +225,22 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 		model.setZoom(world, zoom)
 		markPencodeRootDirtyByModel(world, model)
 		languageInteractionStep(t, app)
-		source, _ := module.ContentGet[scene.Text2D](world, model.editor.text)
-		label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
+		source, _ := world.Get[scene.Text2D](model.editor.text)
+		label, _ := world.Get[scene.Text2D](paint.labels[0])
 		if paint.key.layout.fontSize != source.FontSize || label.FontSize != source.FontSize || label.DPI != source.DPI {
 			t.Fatalf("diagnostic did not follow zoom %d", zoom)
 		}
 	}
 	publish(nil, doc.version-1)
-	if visible, _ := module.ContentGet[scene.Visibility](world, paint.root); !visible.Visible {
+	if visible, _ := world.Get[scene.Visibility](paint.root); !visible.Visible {
 		t.Fatal("stale diagnostics cleared current decorations")
 	}
 	publish(nil, doc.version)
-	if visible, _ := module.ContentGet[scene.Visibility](world, paint.root); visible.Visible {
+	if visible, _ := world.Get[scene.Visibility](paint.root); visible.Visible {
 		t.Fatal("cleared diagnostics left decorations visible")
 	}
 	for _, entity := range append(append(slices.Clone(paint.quads), paint.labels...), paint.waves...) {
-		if visible, _ := module.ContentGet[scene.Visibility](world, entity); visible.Visible {
+		if visible, _ := world.Get[scene.Visibility](entity); visible.Visible {
 			t.Fatal("cleared diagnostics left a native visual visible")
 		}
 	}
@@ -253,20 +253,20 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 		color := model.workbenchTheme.diagnosticColors[severity]
 		fill := color
 		fill.A *= .1
-		background, _ := module.ContentGet[scene.Sprite2D](world, paint.quads[0])
-		wave, _ := module.ContentGet[scene.Sprite2D](world, paint.waves[0])
-		label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
+		background, _ := world.Get[scene.Sprite2D](paint.quads[0])
+		wave, _ := world.Get[scene.Sprite2D](paint.waves[0])
+		label, _ := world.Get[scene.Text2D](paint.labels[0])
 		if background.Shape.Fill != fill || wave.Tint != color || label.Color != color || label.Value != diagnostic.Message {
 			t.Fatalf("severity %d has incorrect decoration colors: background=%+v wave=%+v label=%+v", severity, background.Shape.Fill, wave.Tint, label.Color)
 		}
 		for _, entity := range []ecs.Entity{paint.root, paint.quads[0], paint.waves[0], paint.labels[0]} {
-			if visible, _ := module.ContentGet[scene.Visibility](world, entity); !visible.Visible {
+			if visible, _ := world.Get[scene.Visibility](entity); !visible.Visible {
 				t.Fatalf("severity %d decoration is hidden", severity)
 			}
 		}
 		if allocations := testing.AllocsPerRun(100, func() {
 			paint.sync(world, model)
-			position := module.ContentMut[scene.UITransform](world, model.editor.text)
+			position := world.Mut[scene.UITransform](model.editor.text)
 			position.Translation.Y.Value = -5 - position.Translation.Y.Value
 			paint.sync(world, model)
 		}); allocations != 0 {
@@ -276,12 +276,12 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 	diagnostic.Severity = 1
 	diagnostic.Range.End = diagnostic.Range.Start
 	publish([]lsp.Diagnostic{diagnostic}, doc.version)
-	if visible, _ := module.ContentGet[scene.Visibility](world, paint.root); !visible.Visible {
+	if visible, _ := world.Get[scene.Visibility](paint.root); !visible.Visible {
 		t.Fatal("empty diagnostic range was not marked")
 	}
 	model.settingsOpen = true
 	paint.sync(world, model)
-	if visible, _ := module.ContentGet[scene.Visibility](world, paint.root); visible.Visible {
+	if visible, _ := world.Get[scene.Visibility](paint.root); visible.Visible {
 		t.Fatal("diagnostic remains visible outside the text editor")
 	}
 }
@@ -312,31 +312,31 @@ func TestPencodeEditorDiagnosticSeverityPriority(t *testing.T) {
 		color := model.workbenchTheme.diagnosticColors[severity]
 		fill := color
 		fill.A *= .1
-		background, _ := module.ContentGet[scene.Sprite2D](world, paint.quads[0])
-		label, _ := module.ContentGet[scene.Text2D](world, paint.labels[0])
+		background, _ := world.Get[scene.Sprite2D](paint.quads[0])
+		label, _ := world.Get[scene.Text2D](paint.labels[0])
 		message := [...]string{"", "error", "warning", "information", "hint"}[severity]
 		if background.Shape.Fill != fill || label.Color != color || label.Value != message {
 			t.Fatalf("row did not prioritize severity %d: background=%+v label=%+v", severity, background.Shape.Fill, label)
 		}
 		for i, diagnostic := range paint.ranges {
-			wave, _ := module.ContentGet[scene.Sprite2D](world, paint.waves[i])
+			wave, _ := world.Get[scene.Sprite2D](paint.waves[i])
 			if wave.Tint != model.workbenchTheme.diagnosticColors[diagnostic.severity] {
 				t.Fatalf("severity %d lost its underline color", diagnostic.severity)
 			}
 		}
-		last, _ := module.ContentGet[scene.Sprite2D](world, paint.waves[len(items)-1])
+		last, _ := world.Get[scene.Sprite2D](paint.waves[len(items)-1])
 		if last.Tint != color {
 			t.Fatal("overlapping underlines did not prioritize the most severe diagnostic")
 		}
 		for _, entity := range paint.waves[len(items):] {
-			if visible, _ := module.ContentGet[scene.Visibility](world, entity); visible.Visible {
+			if visible, _ := world.Get[scene.Visibility](entity); visible.Visible {
 				t.Fatal("removed diagnostic left a visible underline")
 			}
 		}
 		// A palette update must repaint even when the error color is unchanged.
 		model.workbenchTheme.diagnosticColors[severity].R *= .5
 		paint.sync(world, model)
-		label, _ = module.ContentGet[scene.Text2D](world, paint.labels[0])
+		label, _ = world.Get[scene.Text2D](paint.labels[0])
 		if label.Color != model.workbenchTheme.diagnosticColors[severity] {
 			t.Fatalf("severity %d retained a stale theme color", severity)
 		}
@@ -379,12 +379,12 @@ func TestPencodeEditorDiagnosticsWrappedRange(t *testing.T) {
 	model.setProblems(provider, doc.uri, []lsp.Diagnostic{{Severity: 1, Message: "first line\nfailed", Range: lsp.Range{End: lsp.Position{Line: 1}}}})
 	model.editor.diagnostics.sync(world, model)
 	paint := &model.editor.diagnostics
-	text := module.ContentMut[scene.Text2D](world, model.editor.text)
+	text := world.Mut[scene.Text2D](model.editor.text)
 	if scene.TextLineCount2D(text) <= 3 || len(paint.labels) < 2 {
 		t.Fatal("wrapped diagnostic did not decorate multiple visual lines")
 	}
 	for _, entity := range paint.labels {
-		label, _ := module.ContentGet[scene.Text2D](world, entity)
+		label, _ := world.Get[scene.Text2D](entity)
 		if label.Value != "first line failed" {
 			t.Fatal("diagnostic message inserted a new line")
 		}
@@ -394,7 +394,7 @@ func TestPencodeEditorDiagnosticsWrappedRange(t *testing.T) {
 		start, _, rect, _ := scene.TextLineRange2D(text, line)
 		if start == strings.Index(file.Content, "\n")+1 {
 			for _, entity := range paint.labels {
-				position, _ := module.ContentGet[scene.UITransform](world, entity)
+				position, _ := world.Get[scene.UITransform](entity)
 				if position.Translation.Y.Value == paint.key.y+rect.Y {
 					t.Fatal("exclusive range endpoint highlighted the next line")
 				}

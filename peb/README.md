@@ -1,10 +1,10 @@
-# peb v13 — Pencode Extension Binary
+# peb v14 — Pencode Extension Binary
 
 peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）和 `ExtensionSettings`（扩展配置）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **13**，增加 action 快捷键与无按钮命令（保留 v12 的带版本校验 UI 区域补丁）；已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **14**，为调试适配器增加启动器 JSON 模板；已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
 
 ## 扩展配置
 
@@ -78,7 +78,7 @@ SettingsResponse {}                         // 空 payload
 | 偏移 | 长度 | 字段                                 |
 | ---- | ---- | ------------------------------------ |
 | 0    | 4    | magic：`70 65 62 00`（`peb\0`）      |
-| 4    | 2    | version：`13`                         |
+| 4    | 2    | version：`14`                         |
 | 6    | 2    | kind：见下表                         |
 | 8    | 4    | request ID                           |
 | 12   | 4    | payload 字节数，不含头部，最大 4 MiB |
@@ -165,6 +165,7 @@ DebugAdapter {
   label: string
   command: string               // PATH、绝对路径或相对扩展目录
   args: array<string>           // 启动前缀，位于适配器固定参数和用户参数之前
+  templates: text              // 可选的 debug.json 数组；每项 adapter 必须与 id 相同
 }
 
 Failure {
@@ -510,7 +511,7 @@ UI 和 action 请求共享串行队列及 5 秒请求超时，handler 内可以�
 
 宿主使用每个 action 会话独立的 `peb.ViewReceiver` 在 I/O worker 重建原始视图，然后沿用资源处理和 UI 校验。版本不匹配时请求内部 `resync` 事件；SDK 自动重发最新完整视图，不交给扩展业务回调。关闭界面释放差分基线，进程重连后首帧为完整视图。发送失败不会推进基线，重复或乱序补丁不应用。每个会话最多保留 32 个界面基线，重建结果仍受完整帧大小限制。
 
-调用方提交的视图字符串必须保持不可变。此优化减少传输量；扩展仍生成完整视图，宿主仍重建并校验完整视图。新增 HTML tokenizer 依赖后，仓库内独立扩展模块的 `go.mod`／`go.sum` 已同步；所有扩展需使用 v13 SDK 重建。
+调用方提交的视图字符串必须保持不可变。此优化减少传输量；扩展仍生成完整视图，宿主仍重建并校验完整视图。新增 HTML tokenizer 依赖后，仓库内独立扩展模块的 `go.mod`／`go.sum` 已同步；所有扩展需使用当前 SDK 重建。
 
 UI payload 的字段顺序如下。`ActionContext` 与 `ActionInvoke` 编码一致，`EditorEvent` 与 `EditorRequest` 的事件部分一致，bool 使用严格的 u32 0/1。
 
@@ -544,6 +545,8 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 ## 调试工具
 
 `Contributions.DebugAdapters` 为 workspace server 提供调试启动命令。Go 扩展注册 `Delve`，以自身的 `--tool dlv` 启动器按需安装工具。显式配置的 command 优先；同一 adapter ID 有多个提供者时返回冲突。禁用、卸载和断开连接会取消启动并回收对应适配器进程。
+
+`DebugAdapter.Templates` 是可选的 `.pencode/debug.json` 数组文本，每项须为有效配置，且 `adapter` 与该适配器 ID 一致。工作台的“添加启动器”从已加载扩展展示模板，选中后将单项追加写入项目文件并打开编辑；注册和添加模板不会启动调试。模板中的 `${workspaceFolder}` 原样保留到启动时解析。Go 扩展提供项目运行和包测试模板，PHP 扩展提供调试当前文件和监听 Xdebug 模板。
 
 `DocumentSelector` 在 match、pattern 后增加 `languageId:string`，为空则继承 LanguageServer.LanguageID，允许同一 gopls 会话分别用 go、go.mod、go.work 打开文档。
 

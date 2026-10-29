@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 )
 
@@ -31,7 +30,7 @@ func TestPencodeEditorCentersFontMetricsInRows(t *testing.T) {
 					var segments [32]scene.TextRangeRect2D
 					var baseline float32
 					for _, entity := range []ecs.Entity{model.editor.text, model.editor.numbers} {
-						text := module.ContentMut[scene.Text2D](world, entity)
+						text := world.Mut[scene.Text2D](entity)
 						metrics := text.Font.GlyphCache(text.FontSize, text.DPI).Metrics()
 						ascent, descent := float32(metrics.Ascent)/64, float32(metrics.Descent)/64
 						count := scene.TextLineCount2D(text)

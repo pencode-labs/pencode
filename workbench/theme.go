@@ -60,6 +60,7 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"lsp-close-icon", "icons/close.svg", "icon.foreground"},
 	{"lsp-previous-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"lsp-next-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"debug-add-icon", "icons/add.svg", "icon.foreground"},
 	{"debug-reload-icon", "icons/refresh-cw.svg", "debugIcon.restartForeground"},
 	{"debug-start-icon", "icons/debug-start.svg", "debugIcon.startForeground"},
 	{"debug-continue-icon", "icons/debug-continue.svg", "debugIcon.continueForeground"},
@@ -242,6 +243,11 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 	}
+	for _, icon := range pencodeCompletionIcons {
+		if err := addIcon(icon); err != nil {
+			return pencodeTheme{}, err
+		}
+	}
 	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "refresh-cw", "close", "discard"} {
 		if err := addIcon(pencodeIconKey{"icons/" + name + ".svg", "icon.foreground"}); err != nil {
 			return pencodeTheme{}, err
@@ -324,8 +330,16 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 
 func (model *workspaceModel) themedIcon(source, foreground string) string {
 	if theme := model.workbenchTheme; theme != nil {
-		if value, ok := theme.icons[pencodeIconKey{source, foreground}]; ok {
+		key := pencodeIconKey{source, foreground}
+		if value, ok := theme.icons[key]; ok {
 			return value
+		}
+		if _, exists := model.extensionIcons[source]; exists {
+			if base, ok := theme.icons[pencodeIconKey{"icons/file-text.svg", foreground}]; ok {
+				value := source + strings.TrimPrefix(base, "icons/file-text.svg")
+				theme.icons[key] = value
+				return value
+			}
 		}
 	}
 	return source
@@ -370,10 +384,10 @@ func (model *workspaceModel) syncWorkbenchTheme(world *module.Content) {
 		return
 	}
 	world.HTMLSetCSS(model.surface, theme.css)
-	if current, ok := module.ContentGet[engineui.HTMLSelectStyle](world, model.surface); !ok || current.Item.Selected != theme.selectStyle.Item.Selected {
-		_ = module.ContentInsert(world, model.surface, theme.selectStyle)
+	if current, ok := world.Get[engineui.HTMLSelectStyle](model.surface); !ok || current.Item.Selected != theme.selectStyle.Item.Selected {
+		_ = world.Insert(model.surface, theme.selectStyle)
 	}
-	if border, ok := module.ContentGet[scene.UIBorder2D](world, model.windowBorder); ok && border.Shape.Border != theme.border {
-		module.ContentMut[scene.UIBorder2D](world, model.windowBorder).Shape.Border = theme.border
+	if border, ok := world.Get[scene.UIBorder2D](model.windowBorder); ok && border.Shape.Border != theme.border {
+		world.Mut[scene.UIBorder2D](model.windowBorder).Shape.Border = theme.border
 	}
 }

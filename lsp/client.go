@@ -127,10 +127,13 @@ func defaultCapabilities() map[string]any {
 		"textDocument": map[string]any{
 			"semanticTokens":  map[string]any{"requests": map[string]any{"range": true, "full": map[string]bool{"delta": true}}, "tokenTypes": SemanticTokenTypes, "tokenModifiers": SemanticTokenModifiers, "formats": []string{"relative"}, "overlappingTokenSupport": false, "multilineTokenSupport": false},
 			"synchronization": map[string]any{"willSave": true, "didSave": true},
-			"completion":      map[string]any{"completionItem": map[string]any{"snippetSupport": false, "documentationFormat": []string{"plaintext"}, "resolveSupport": map[string]any{"properties": []string{"detail", "documentation", "additionalTextEdits", "command"}}}},
-			"hover":           map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
-			"signatureHelp":   map[string]any{"signatureInformation": map[string]any{"documentationFormat": []string{"plaintext"}}},
-			"definition":      map[string]any{"linkSupport": true}, "declaration": map[string]any{"linkSupport": true}, "typeDefinition": map[string]any{"linkSupport": true}, "implementation": map[string]any{"linkSupport": true},
+			"completion": map[string]any{
+				"completionItem":     map[string]any{"snippetSupport": false, "documentationFormat": []string{"plaintext"}, "resolveSupport": map[string]any{"properties": []string{"detail", "documentation", "additionalTextEdits", "command"}}},
+				"completionItemKind": map[string]any{"valueSet": []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25}},
+			},
+			"hover":         map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
+			"signatureHelp": map[string]any{"signatureInformation": map[string]any{"documentationFormat": []string{"plaintext"}}},
+			"definition":    map[string]any{"linkSupport": true}, "declaration": map[string]any{"linkSupport": true}, "typeDefinition": map[string]any{"linkSupport": true}, "implementation": map[string]any{"linkSupport": true},
 			"documentSymbol":     map[string]any{"hierarchicalDocumentSymbolSupport": true},
 			"codeAction":         map[string]any{"dataSupport": true, "resolveSupport": map[string]any{"properties": []string{"edit", "command"}}},
 			"publishDiagnostics": map[string]any{"versionSupport": true, "relatedInformation": true, "tagSupport": map[string]any{"valueSet": []int{1, 2}}, "dataSupport": true},

@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	"github.com/pencode-labs/pencode/protocol"
@@ -124,7 +122,7 @@ func TestFolderSearchResultSpacingAndKeyboardReveal(t *testing.T) {
 	want := pencodeSyntaxColor(syntax.Color(computed["match"].BackgroundColor.Color))
 	rowControl, _ := m.fontResources.HTMLControl(m.surface, "folder-search-result-0")
 	highlight := false
-	for _, access := range ecs.Query2[scene.Sprite2D, scene.Parent](app.World).All {
+	for _, access := range app.World.Query2[scene.Sprite2D, scene.Parent]().All {
 		paint, parent := access.A.Ref(), access.B.Ref()
 		if parent.Entity == rowControl && paint.Shape.Fill == want && paint.Width > 0 && paint.Width < 100 && paint.Height > 0 {
 			highlight = true
@@ -155,7 +153,7 @@ func TestFolderSearchResultSpacingAndKeyboardReveal(t *testing.T) {
 	if !ok {
 		t.Fatal("missing result scrollbar")
 	}
-	scroll := module.ContentMut[scene.UIScroll](m.fontResources, area)
+	scroll := m.fontResources.Mut[scene.UIScroll](area)
 	if !scroll.ScrollbarThin || scroll.ContentSize[1] <= scroll.ViewportSize[1] {
 		t.Fatal("results should scroll without shrinking rows")
 	}

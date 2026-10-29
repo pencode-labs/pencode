@@ -5,7 +5,6 @@ import (
 
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -23,7 +22,7 @@ func openInputContext(t *testing.T, app *onix.App, model *workspaceModel, state 
 	if !ok || !world.Focus(entity) {
 		t.Fatalf("cannot focus %s", ref)
 	}
-	field := module.ContentMut[engineui.TextField](world, entity)
+	field := world.Mut[engineui.TextField](entity)
 	if ref == "find-query" && field.Value != model.findQuery {
 		world.SetControlValue(entity, model.findQuery)
 	}
@@ -65,8 +64,8 @@ func TestInputContextExtensionOverlaysAndMultiline(t *testing.T) {
 			editorContextClick(t, app, model, state, "input-context-paste")
 			languageInteractionStep(t, app)
 			entity, _ := model.fontResources.HTMLControl(model.surface, "pencode-extension-context-test-input")
-			field := module.ContentRef[engineui.TextField](model.fontResources, entity)
-			control := module.ContentRef[htmlui.Control](model.fontResources, entity)
+			field := model.fontResources.Ref[engineui.TextField](entity)
+			control := model.fontResources.Ref[htmlui.Control](entity)
 			if field == nil || field.Value != "甲中\n🙂尾" || control.Value != field.Value || !field.Focused {
 				t.Fatalf("multiline paste did not synchronize native control: field=%+v control=%+v", field, control)
 			}
@@ -119,7 +118,7 @@ func TestInputContextClipboardAndInputEvents(t *testing.T) {
 	openInputContext(t, app, model, state, "find-query", 1, 1)
 	editorContextClick(t, app, model, state, "input-context-select-all")
 	entity, _ := model.fontResources.HTMLControl(model.surface, "find-query")
-	field := module.ContentRef[engineui.TextField](model.fontResources, entity)
+	field := model.fontResources.Ref[engineui.TextField](entity)
 	if field.Caret != 4 || field.Anchor != 0 || !field.Focused {
 		t.Fatalf("select all did not restore focus: %+v", field)
 	}
@@ -175,7 +174,7 @@ func TestInputContextKeyboardPlacementAndIdle(t *testing.T) {
 			t.Fatal("Escape closed the containing find popup")
 		}
 		entity, _ := model.fontResources.HTMLControl(model.surface, "find-query")
-		field := module.ContentRef[engineui.TextField](model.fontResources, entity)
+		field := model.fontResources.Ref[engineui.TextField](entity)
 		if !field.Focused || field.Caret != 3 || field.Anchor != 1 {
 			t.Fatalf("Escape lost focus or selection: %+v", field)
 		}
@@ -189,14 +188,14 @@ func TestInputContextReadOnlyPasswordAndStaleTarget(t *testing.T) {
 	languageInteractionStep(t, app)
 	openInputContext(t, app, model, state, "find-query", 3, 1)
 	entity := model.inputContext.target
-	control := module.ContentMut[htmlui.Control](model.fontResources, entity)
+	control := model.fontResources.Mut[htmlui.Control](entity)
 	control.ReadOnly = true
 	model.runInputContextEdit(app.World, "input-context-paste")
 	if !model.inputContext.open || model.findQuery != "private" {
 		t.Fatal("readonly paste was enabled")
 	}
 	control.ReadOnly = false
-	field := module.ContentMut[engineui.TextField](model.fontResources, entity)
+	field := model.fontResources.Mut[engineui.TextField](entity)
 	field.Password = true
 	model.runInputContextEdit(app.World, "input-context-copy")
 	if !model.inputContext.open {

@@ -59,9 +59,23 @@ func TestSearchTextScopeBuffersAndLimits(t *testing.T) {
 		t.Fatal("invalid regex succeeded")
 	}
 	write("many.txt", strings.Repeat("a ", protocol.TextSearchLimit+2))
-	r, err = c.SearchText(t.Context(), w.Path, "", "a", textsearch.Options{WholeWord: true}, nil)
-	if err != nil || !r.Truncated {
-		t.Fatal("missing truncation", err)
+	for _, regex := range []bool{false, true} {
+		r, err = c.SearchText(t.Context(), w.Path, "", "a", textsearch.Options{WholeWord: true, Regex: regex}, nil)
+		if err != nil || !r.Truncated {
+			t.Fatal("missing truncation", err)
+		}
+		found := false
+		for _, file := range r.Files {
+			if file.Path == "many.txt" {
+				found = true
+				if file.Count != protocol.TextSearchLimit+2 {
+					t.Fatal("truncated search lost the exact count", file.Count)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("missing truncated search file")
+		}
 	}
 }
 

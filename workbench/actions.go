@@ -144,7 +144,7 @@ func (model *workspaceModel) renderActions(view *htmlui.View, definition *htmlui
 			props.Active = model.languageUI.contextGroup == 0 && model.languageUI.contextIndex == right
 			right++
 		}
-		htmlui.AppendComponentChild(view, pencodeActionSlots[props.Action.Location], componentKey(props.Action.ID), definition, props, struct{}{})
+		view.AppendComponentChild(pencodeActionSlots[props.Action.Location], componentKey(props.Action.ID), definition, props, struct{}{})
 	}
 }
 func renderPencodeAction(context module.ContentRenderContext[pencodeActionProps, struct{}], view *htmlui.View) {
@@ -219,7 +219,7 @@ func (model *workspaceModel) runAction(world *module.Content, id string) {
 		c.Path = path.Join(strings.ReplaceAll(model.projectPath, "\\", "/"), model.activePath)
 	}
 	if world != nil {
-		if field, ok := module.ContentGet[engineui.TextField](world, model.editor.control); ok {
+		if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
 			c.Caret, c.Anchor = uint32(max(0, field.Caret)), uint32(max(0, field.Anchor))
 		}
 	}

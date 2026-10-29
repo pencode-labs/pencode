@@ -6,10 +6,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/module"
-
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
+	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/text"
 	engineui "github.com/diiyw/onix/ui"
@@ -60,8 +59,8 @@ func (editor *pencodeEditor) saveView(world *module.Content, model *workspaceMod
 	if editor.file == nil || editor.file != model.activeFile() || !model.textEditorActive() {
 		return
 	}
-	field, ok := module.ContentGet[engineui.TextField](world, editor.control)
-	textarea, scrollOK := module.ContentGet[engineui.Textarea](world, editor.control)
+	field, ok := world.Get[engineui.TextField](editor.control)
+	textarea, scrollOK := world.Get[engineui.Textarea](editor.control)
 	if ok && scrollOK {
 		editor.file.editorView = pencodeEditorView{field.Caret, field.Anchor, textarea.ScrollX, textarea.ScrollY}
 		if model.findOpen && !model.findSelection && field.Focused && field.Caret != field.Anchor {
@@ -76,7 +75,7 @@ func syncPencodeEditor(context *module.ContentSystemContext) error {
 	world := context.World
 	var model *workspaceModel
 	var surface ecs.Entity
-	for _, access := range module.ContentQuery[html.Component[appProps, appState]](world) {
+	for _, access := range world.Query[html.Component[appProps, appState]]() {
 		component := access.Ref()
 
 		model, surface = component.Props.Model, component.Page
@@ -99,12 +98,12 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 	file := model.activeFile()
 	visible := model.screen == pencodeWorkspace && file != nil && model.textEditorActive()
 	for _, entity := range [...]ecs.Entity{editor.gutter, editor.numbers} {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{Visible: visible})
+		world.SetIfChanged(entity, scene.Visibility{Visible: visible})
 	}
 	if !visible {
 		editor.file = nil
 		editor.needsFocus = false
-		module.ContentSetIfChanged(world, editor.guide, scene.Visibility{})
+		world.SetIfChanged(editor.guide, scene.Visibility{})
 		model.focusFindInput(world, surface)
 		editor.syncCaretStatus(world, surface, model)
 		return
@@ -113,26 +112,26 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 		editor.control, editor.text = 0, 0
 		editor.control, _ = world.HTMLControl(surface, "editor")
 		if editor.control != 0 {
-			_ = module.ContentInsert(world, editor.control, engineui.TextFieldKeyHandler{Handle: model.editorKeyHandled})
+			_ = world.Insert(editor.control, engineui.TextFieldKeyHandler{Handle: model.editorKeyHandled})
 		}
 	}
 	if !world.IsAlive(editor.text) {
-		editor.text, _ = module.ContentFindPart[engineui.ValuePart, scene.Text2D](world, editor.control)
+		editor.text, _ = world.FindPart[engineui.ValuePart, scene.Text2D](editor.control)
 	}
 	if model.workbenchTheme != nil {
-		if module.ContentHas[engineui.StyleOverride[engineui.TextFieldStyle]](world, editor.control) {
-			module.ContentSetIfChanged(world, editor.control, model.workbenchTheme.editorStyle)
+		if world.Has[engineui.StyleOverride[engineui.TextFieldStyle]](editor.control) {
+			world.SetIfChanged(editor.control, model.workbenchTheme.editorStyle)
 		} else {
-			_ = module.ContentInsert(world, editor.control, model.workbenchTheme.editorStyle)
+			_ = world.Insert(editor.control, model.workbenchTheme.editorStyle)
 		}
 	}
 	font := model.codeFont()
-	if binding := module.ContentMut[html.ControlTextFont](world, editor.control); binding != nil {
+	if binding := world.Mut[html.ControlTextFont](editor.control); binding != nil {
 		binding.Font = font
 	} else {
-		_ = module.ContentInsert(world, editor.control, html.ControlTextFont{Font: font})
+		_ = world.Insert(editor.control, html.ControlTextFont{Font: font})
 	}
-	valueText := module.ContentMut[scene.Text2D](world, editor.text)
+	valueText := world.Mut[scene.Text2D](editor.text)
 	ok := valueText != nil
 	if !ok {
 		return
@@ -144,13 +143,13 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 	if width, ok := world.ControlTextTabWidth(editor.control, valueText); ok {
 		valueText.TabWidth = width
 	}
-	if textarea := module.ContentMut[engineui.Textarea](world, editor.control); textarea != nil {
+	if textarea := world.Mut[engineui.Textarea](editor.control); textarea != nil {
 		textarea.CaptureTab = true
 		textarea.WheelStep = valueText.LineHeight * pencodeEditorWheelLines
 		textarea.WrapTokens = true
 		textarea.SelectTokens = true
 		textarea.WrapWidthPercent = float32(model.settings.EditorWidth)
-		if link, ok := module.ContentGet[html.ControlText](world, editor.text); ok {
+		if link, ok := world.Get[html.ControlText](editor.text); ok {
 			valueText.WrapMode = scene.TextWrapTokens
 			valueText.WrapWidth = link.Content.Width * textarea.WrapWidthPercent / 100
 		}
@@ -160,7 +159,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 		guideColor = model.workbenchTheme.guide
 	}
 	editor.syncWidthGuide(world, model.settings.EditorWidth, guideColor)
-	field, _ := module.ContentGet[engineui.TextField](world, editor.control)
+	field, _ := world.Get[engineui.TextField](editor.control)
 	if content := model.activeContent(); content != field.Value {
 		world.SetControlValue(editor.control, content)
 	}
@@ -176,32 +175,32 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 			}
 		}
 		// Focus can move the caret to the end; restore the document after it.
-		if field := module.ContentMut[engineui.TextField](world, editor.control); field != nil {
+		if field := world.Mut[engineui.TextField](editor.control); field != nil {
 			length := file.textBuffer(file.Content).Runes()
 			field.Caret, field.Anchor = min(file.editorView.caret, length), min(file.editorView.anchor, length)
 			field.ScrollX = 0
 			field.Composition = ""
 			field.Selecting = false
 		}
-		if textarea := module.ContentMut[engineui.Textarea](world, editor.control); textarea != nil {
+		if textarea := world.Mut[engineui.Textarea](editor.control); textarea != nil {
 			textarea.RestoreScroll(file.editorView.scrollX, file.editorView.scrollY)
 		}
-		if link, ok := module.ContentGet[html.ControlText](world, editor.text); ok {
-			transform := module.ContentMut[scene.UITransform](world, editor.text)
+		if link, ok := world.Get[html.ControlText](editor.text); ok {
+			transform := world.Mut[scene.UITransform](editor.text)
 			transform.Translation.X.Value, transform.Translation.Y.Value = link.Content.X-file.editorView.scrollX, link.Content.Y-file.editorView.scrollY
 		}
 		editor.file = file
 	}
-	if field := module.ContentMut[engineui.TextField](world, editor.control); field != nil {
+	if field := world.Mut[engineui.TextField](editor.control); field != nil {
 		field.Buffer = file.textBuffer(file.Content)
 	}
-	field, _ = module.ContentGet[engineui.TextField](world, editor.control)
+	field, _ = world.Get[engineui.TextField](editor.control)
 	editor.syncHighlight(valueText, field, model)
 	editor.syncCaretStatus(world, surface, model)
 }
 
 func (editor *pencodeEditor) syncCaretStatus(world *module.Content, surface ecs.Entity, model *workspaceModel) {
-	field, ok := module.ContentGet[engineui.TextField](world, editor.control)
+	field, ok := world.Get[engineui.TextField](editor.control)
 	visible := ok && model.screen == pencodeWorkspace && model.textEditorActive()
 	if visible && editor.caretLine != 0 && editor.caretContent == field.Value && editor.caretIndex == field.Caret {
 		return
@@ -295,33 +294,33 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	if !visible {
 		return
 	}
-	valueText := module.ContentMut[scene.Text2D](world, editor.text)
+	valueText := world.Mut[scene.Text2D](editor.text)
 	if valueText == nil {
 		return
 	}
-	valueTransform, _ := module.ContentGet[scene.UITransform](world, editor.text)
+	valueTransform, _ := world.Get[scene.UITransform](editor.text)
 	if !world.IsAlive(editor.gutter) {
 		bundle := ecs.NewBundle(6)
-		ecs.Put(&bundle, scene.UITransformFromXY(0, 0))
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: surface})
-		ecs.Put(&bundle, scene.ClipRect2D{})
-		ecs.Put(&bundle, scene.Visibility{})
+		bundle.Put(scene.UITransformFromXY(0, 0))
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: surface})
+		bundle.Put(scene.ClipRect2D{})
+		bundle.Put(scene.Visibility{})
 		editor.gutter = world.Spawn(bundle)
 		bundle = ecs.NewBundle(7)
-		ecs.Put(&bundle, scene.UITransformFromXY(14, 0))
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: editor.gutter})
-		ecs.Put(&bundle, scene.AnchorTopLeft)
-		ecs.Put(&bundle, scene.Visibility{Visible: true})
-		ecs.Put(&bundle, scene.NewText2D(""))
-		stack, _ := module.ContentGet[scene.UIStackIndex](world, editor.text)
-		ecs.Put(&bundle, stack)
+		bundle.Put(scene.UITransformFromXY(14, 0))
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: editor.gutter})
+		bundle.Put(scene.AnchorTopLeft)
+		bundle.Put(scene.Visibility{Visible: true})
+		bundle.Put(scene.NewText2D(""))
+		stack, _ := world.Get[scene.UIStackIndex](editor.text)
+		bundle.Put(stack)
 		editor.numbers = world.Spawn(bundle)
 	}
-	stack, _ := module.ContentGet[scene.UIStackIndex](world, editor.text)
-	module.ContentSetIfChanged(world, editor.numbers, stack)
-	visibility := module.ContentMut[scene.Visibility](world, editor.gutter)
+	stack, _ := world.Get[scene.UIStackIndex](editor.text)
+	world.SetIfChanged(editor.numbers, stack)
+	visibility := world.Mut[scene.Visibility](editor.gutter)
 	visibility.Visible = visible
 	gutterNode, ok := world.HTMLNode(surface, "editor-gutter")
 	if !ok {
@@ -331,11 +330,11 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	if !ok {
 		return
 	}
-	transform := module.ContentMut[scene.UITransform](world, editor.gutter)
+	transform := world.Mut[scene.UITransform](editor.gutter)
 	transform.Translation.X.Value, transform.Translation.Y.Value = float32(bounds.X), float32(bounds.Y)
-	clip := module.ContentMut[scene.ClipRect2D](world, editor.gutter)
+	clip := world.Mut[scene.ClipRect2D](editor.gutter)
 	clip.Width, clip.Height = float32(bounds.Width), float32(bounds.Height)
-	numbers := module.ContentMut[scene.Text2D](world, editor.numbers)
+	numbers := world.Mut[scene.Text2D](editor.numbers)
 	numbers.Font, numbers.FontSize, numbers.DPI = valueText.Font, valueText.FontSize, valueText.DPI
 	numbers.LineHeight = valueText.LineHeight
 	// Share the font's centered line metrics with code and diagnostic labels.
@@ -388,44 +387,44 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 		numbers.Value = string(buffer)
 	}
 	editor.firstLine, editor.lastLine = first, last
-	numberTransform := module.ContentMut[scene.UITransform](world, editor.numbers)
+	numberTransform := world.Mut[scene.UITransform](editor.numbers)
 	numberTransform.Translation.Y.Value = originY + float32(first)*lineHeight
 }
 
 func (editor *pencodeEditor) syncWidthGuide(world *module.Content, widthPercent int, color graphics.ColorRGBA) {
-	link, ok := module.ContentGet[html.ControlText](world, editor.text)
+	link, ok := world.Get[html.ControlText](editor.text)
 	if !ok {
 		return
 	}
-	size, _ := module.ContentGet[scene.Size2D](world, editor.control)
-	stack, _ := module.ContentGet[scene.UIStackIndex](world, editor.control)
+	size, _ := world.Get[scene.Size2D](editor.control)
+	stack, _ := world.Get[scene.UIStackIndex](editor.control)
 	width := link.Content.Width * float32(widthPercent) / 100
 	visibility := scene.Visibility{Visible: width > 0 && width < link.Content.Width}
 	guideSize := scene.Size2D{Width: 1, Height: size.Height}
 	if !world.IsAlive(editor.guide) {
 		bundle := ecs.NewBundle(8)
 		transform := scene.UITransformFromXY(link.Content.X+width, 0)
-		ecs.Put(&bundle, transform)
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: editor.control})
-		ecs.Put(&bundle, scene.AnchorTopLeft)
-		ecs.Put(&bundle, visibility)
-		ecs.Put(&bundle, guideSize)
+		bundle.Put(transform)
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: editor.control})
+		bundle.Put(scene.AnchorTopLeft)
+		bundle.Put(visibility)
+		bundle.Put(guideSize)
 		sprite := scene.NewSprite2D()
 		sprite.Shape = scene.RoundedRectShape2D(color, 0)
 		sprite.Width, sprite.Height = 1, size.Height
-		ecs.Put(&bundle, sprite)
-		ecs.Put(&bundle, stack)
+		bundle.Put(sprite)
+		bundle.Put(stack)
 		editor.guide = world.Spawn(bundle)
 		return
 	}
-	module.ContentSetIfChanged(world, editor.guide, stack)
-	module.ContentSetIfChanged(world, editor.guide, scene.Parent{Entity: editor.control})
-	module.ContentSetIfChanged(world, editor.guide, visibility)
-	module.ContentSetIfChanged(world, editor.guide, guideSize)
-	transform := module.ContentMut[scene.UITransform](world, editor.guide)
+	world.SetIfChanged(editor.guide, stack)
+	world.SetIfChanged(editor.guide, scene.Parent{Entity: editor.control})
+	world.SetIfChanged(editor.guide, visibility)
+	world.SetIfChanged(editor.guide, guideSize)
+	transform := world.Mut[scene.UITransform](editor.guide)
 	transform.Translation.X.Value = link.Content.X + width
-	sprite := module.ContentMut[scene.Sprite2D](world, editor.guide)
+	sprite := world.Mut[scene.Sprite2D](editor.guide)
 	sprite.Shape.Fill = color
 	sprite.Width, sprite.Height = 1, size.Height
 }

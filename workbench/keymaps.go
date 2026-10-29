@@ -264,7 +264,7 @@ type pencodeShortcutProps struct {
 }
 
 func newShortcutDefinition(content *module.Content) (*htmlui.Definition[pencodeShortcutProps, struct{}], error) {
-	return module.ContentDefine[pencodeShortcutProps, struct{}](content,
+	return content.Define[pencodeShortcutProps, struct{}](
 		htmlui.NewTemplate(`<div class="pencode-settings-row"><span data-ref="name"></span><button data-ref="binding" class="pencode-settings-binding" type="button"></button></div>`), "",
 		module.ContentBehavior[pencodeShortcutProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeShortcutProps, struct{}], v *htmlui.View) {
@@ -329,7 +329,7 @@ func (m *workspaceModel) renderShortcutSettings(v *htmlui.View, d *htmlui.Defini
 		if m.shortcutQuery != "" && !strings.Contains(strings.ToLower(name+" "+id+" "+pencodeScopeLabel(scope)), m.shortcutQuery) {
 			return
 		}
-		htmlui.AppendComponentChild(v, "settings-shortcut-fields", componentKey(id), d, pencodeShortcutProps{m, id, name, scope, binding}, struct{}{})
+		v.AppendComponentChild("settings-shortcut-fields", componentKey(id), d, pencodeShortcutProps{m, id, name, scope, binding}, struct{}{})
 	}
 	for _, entry := range pencodeShortcutDefinitions {
 		appendRow(entry.id, entry.name, "工作台", m.settings.Bindings[entry.id])

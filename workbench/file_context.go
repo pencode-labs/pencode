@@ -216,7 +216,7 @@ func (model *workspaceModel) fileContextTarget(world *module.Content, x, y float
 }
 
 func (model *workspaceModel) fileTreeTarget(world *module.Content, x, y float32) (*pencodeProject, string, bool, int) {
-	for _, access := range module.ContentQuery[htmlui.Component[treeProps, struct{}]](world) {
+	for _, access := range world.Query[htmlui.Component[treeProps, struct{}]]() {
 		props := access.Get().Props
 		if props.Editing {
 			continue
@@ -231,7 +231,7 @@ func (model *workspaceModel) fileTreeTarget(world *module.Content, x, y float32)
 			continue
 		}
 		if entity, ok := pencodeTreeScrollArea(world, model.surface, id); ok {
-			if scroll, ok := module.ContentGet[scene.UIScroll](world, entity); ok {
+			if scroll, ok := world.Get[scene.UIScroll](entity); ok {
 				row.X += scroll.Position.X()
 				row.Y += scroll.Position.Y()
 			}
@@ -240,7 +240,7 @@ func (model *workspaceModel) fileTreeTarget(world *module.Content, x, y float32)
 			return props.Project, props.Path, props.IsDir, props.Depth
 		}
 	}
-	for _, access := range module.ContentQuery[htmlui.Component[projectProps, struct{}]](world) {
+	for _, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {
 		props := access.Get().Props
 		if props.Model == model && model.pointerInsideRefs(world, x, y, []string{props.TreeID, props.SummaryID}) {
 			return props.Project, "", true, 0
@@ -282,7 +282,7 @@ func (model *workspaceModel) focusFileContext(world *module.Content) {
 	}
 	if control, ok := world.HTMLControl(model.surface, ref); ok {
 		if c.dialog != "delete" {
-			if _, ready := module.ContentGet[engineui.TextField](world, control); !ready {
+			if _, ready := world.Get[engineui.TextField](control); !ready {
 				if model.app != nil && model.app.WakeAt != nil {
 					model.app.WakeAt(time.Now())
 				}
@@ -293,7 +293,7 @@ func (model *workspaceModel) focusFileContext(world *module.Content) {
 			return
 		}
 		c.needsFocus = false
-		if field := module.ContentMut[engineui.TextField](world, control); field != nil {
+		if field := world.Mut[engineui.TextField](control); field != nil {
 			field.Anchor = 0
 		}
 	}
@@ -423,7 +423,7 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 		} else if text == "" {
 			text = "."
 		}
-		state, _ := module.ContentResource[*input.State](world)
+		state, _ := world.Resource[*input.State]()
 		if !state.SetClipboardText(text) {
 			model.setProjectStatus(project, "无法写入剪贴板")
 		}

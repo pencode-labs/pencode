@@ -16,7 +16,7 @@ func (m *workspaceModel) terminalFocused(world *module.Content) bool {
 	if m.bottom.active != pencodePanelTerminal {
 		return false
 	}
-	field, ok := module.ContentGet[engineui.TextField](world, m.terminalView.control)
+	field, ok := world.Get[engineui.TextField](m.terminalView.control)
 	return ok && field.Focused
 }
 
@@ -216,14 +216,14 @@ func (m *workspaceModel) updateTerminalPointer(world *module.Content, state *inp
 	s := item.screen
 	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
 	if s.MouseTracking != 0 && !shift {
-		text := module.ContentMut[scene.Text2D](world, m.terminalView.text)
+		text := world.Mut[scene.Text2D](m.terminalView.text)
 		node, _ := world.HTMLNode(m.surface, "terminal-content")
 		bounds, _ := node.Bounds()
 		width, height, ok := scene.MeasureTextValue2D(text, "M")
 		if !ok || width <= 0 || height <= 0 {
 			return false
 		}
-		link, _ := module.ContentGet[htmlui.ControlText](world, m.terminalView.text)
+		link, _ := world.Get[htmlui.ControlText](m.terminalView.text)
 		col := max(1, min(s.Cols, int((x-float32(bounds.X)-link.Content.X)/width)+1))
 		row := max(1, min(s.Rows, int((y-float32(bounds.Y)-link.Content.Y)/height)+1))
 		code := -1

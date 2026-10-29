@@ -12,15 +12,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/lsp"
-	"github.com/pencode-labs/pencode/peb"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/lsp"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 func languageInteractionFixture(t *testing.T) (*onix.App, *workspaceModel, *pencodeLanguageSession, *input.State) {
@@ -37,12 +35,12 @@ func languageInteractionFixture(t *testing.T) (*onix.App, *workspaceModel, *penc
 	model.syncLanguageDocuments()
 	model.fontResources.Focus(model.editor.control)
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	languageInteractionStep(t, app)
-	state, ok := ecs.GetResource[*input.State](app.World)
+	state, ok := app.World.GetResource[*input.State]()
 	if !ok {
 		t.Fatal("missing input state")
 	}
@@ -119,7 +117,7 @@ func TestLanguageAutomaticCompletionAndNativeAcceptance(t *testing.T) {
 			state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "r"})
 			languageInteractionStep(t, app)
 			if model.languageUI.completionFile != model.activeFile() {
-				t.Fatalf("native typing did not schedule suggestions: state=%+v field=%+v content=%q", model.languageUI, module.ContentRef[engineui.TextField](world, model.editor.control), model.activeContent())
+				t.Fatalf("native typing did not schedule suggestions: state=%+v field=%+v content=%q", model.languageUI, world.Ref[engineui.TextField](model.editor.control), model.activeContent())
 			}
 			model.languageUI.completionDue = time.Now().Add(-time.Millisecond)
 			languageInteractionStep(t, app)
@@ -134,14 +132,14 @@ func TestLanguageAutomaticCompletionAndNativeAcceptance(t *testing.T) {
 			if !model.languages.panel.completion || len(model.languages.panel.rows) != 25 {
 				t.Fatal("suggestions were not displayed")
 			}
-			field, _ := module.ContentGet[engineui.TextField](world, model.editor.control)
+			field, _ := world.Get[engineui.TextField](model.editor.control)
 			originalCaret := field.Caret
 			for range 13 {
 				state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyDown})
 				state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyDown})
 				languageInteractionStep(t, app)
 			}
-			field, _ = module.ContentGet[engineui.TextField](world, model.editor.control)
+			field, _ = world.Get[engineui.TextField](model.editor.control)
 			if model.languages.panel.completionIndex != 13 || field.Caret != originalCaret {
 				t.Fatal("suggestion navigation moved the document caret")
 			}
@@ -219,14 +217,14 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			if dx, dy := hoverRect.X-bodyRect.X-wantX, hoverRect.Y-bodyRect.Y-wantY; dx < -1.1 || dx > 1.1 || dy < -1.1 || dy > 1.1 {
 				t.Fatalf("zoom %d %s: hover detached from mouse: bounds=%+v body=%+v, want local (%g, %g)", zoom, name, hoverRect, bodyRect, wantX, wantY)
 			}
-			rendered, _ := module.ContentGet[scene.Text2D](world, model.editor.text)
+			rendered, _ := world.Get[scene.Text2D](model.editor.text)
 			originalSpans := slices.Clone(rendered.Spans)
 			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftControl})
 			languageInteractionStep(t, app)
 			if !model.languageUI.hover.link {
 				t.Fatal("control hover did not underline a symbol with a definition provider")
 			}
-			rendered, _ = module.ContentGet[scene.Text2D](world, model.editor.text)
+			rendered, _ = world.Get[scene.Text2D](model.editor.text)
 			for offset := range value {
 				want := pencodeTestColour(originalSpans, offset)
 				if offset >= index && offset < index+len(name) {
@@ -236,8 +234,8 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 					t.Fatalf("Ctrl hover changed the wrong color at byte %d: got %v want %v", offset, got, want)
 				}
 			}
-			field, _ := module.ContentGet[engineui.TextField](world, model.editor.control)
-			valueText := module.ContentMut[scene.Text2D](world, model.editor.text)
+			field, _ := world.Get[engineui.TextField](model.editor.control)
+			valueText := world.Mut[scene.Text2D](model.editor.text)
 			if allocations := testing.AllocsPerRun(100, func() { model.editor.syncHighlight(valueText, field, model) }); allocations != 0 {
 				t.Fatalf("cached Ctrl hover highlighting allocated %g times", allocations)
 			}
@@ -245,7 +243,7 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(hoverRect.X+hoverRect.Width/2) * scale, Y: float64(hoverRect.Y+hoverRect.Height/2) * scale})
 			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyLeftControl})
 			languageInteractionStep(t, app)
-			rendered, _ = module.ContentGet[scene.Text2D](world, model.editor.text)
+			rendered, _ = world.Get[scene.Text2D](model.editor.text)
 			if model.languageUI.hover.link || !slices.Equal(rendered.Spans, originalSpans) {
 				t.Fatalf("zoom %d %s: releasing Ctrl did not restore the original syntax highlighting", zoom, name)
 			}
@@ -273,9 +271,10 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			if model.languages.panel.open || model.languages.panel.pending || model.activeFile() == nil || model.activeFile().Path != "main.go" {
 				t.Fatal("control-click did not navigate to the definition")
 			}
-			field, _ = module.ContentGet[engineui.TextField](world, model.editor.control)
-			if field.Caret != utf8.RuneCountInString(model.activeContent()[:strings.Index(model.activeContent(), "\n")+1])+5 {
-				t.Fatal("definition navigation did not select the first returned location")
+			field, _ = world.Get[engineui.TextField](model.editor.control)
+			wantCaret := utf8.RuneCountInString(model.activeContent()[:strings.Index(model.activeContent(), "\n")+1]) + 5
+			if field.Caret != wantCaret || field.Anchor != wantCaret+4 {
+				t.Fatalf("definition navigation did not highlight the first returned location: caret=%d anchor=%d", field.Caret, field.Anchor)
 			}
 			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyLeftControl})
 			model.dismissLanguagePanel()
@@ -411,9 +410,9 @@ func TestLanguageLocationNavigationCentersTarget(t *testing.T) {
 		t.Fatal("language location was not accepted")
 	}
 	languageInteractionStep(t, app)
-	text, _ := module.ContentGet[scene.Text2D](world, model.editor.text)
-	textarea, _ := module.ContentGet[engineui.Textarea](world, model.editor.control)
-	link, _ := module.ContentGet[htmlui.ControlText](world, model.editor.text)
+	text, _ := world.Get[scene.Text2D](model.editor.text)
+	textarea, _ := world.Get[engineui.Textarea](model.editor.control)
+	link, _ := world.Get[htmlui.ControlText](model.editor.text)
 	_, y, _, height, ok := scene.TextCaretRect2D(&text, content, pencodeLineCaret(content, 51))
 	if !ok || math.Abs(float64(y+height/2-textarea.ScrollY-link.Content.Height/2)) > 1 {
 		t.Fatalf("language target is not centered: y=%v height=%v scroll=%v viewport=%v", y, height, textarea.ScrollY, link.Content.Height)
@@ -427,7 +426,7 @@ func TestLanguageContextPreservesSelectionAndStaleHoverIsRejected(t *testing.T) 
 	model.updateActiveContent(value)
 	caret := strings.Index(value, "value")
 	model.setEditorValueAndCaret(world, value, caret+len("value"))
-	module.ContentMut[engineui.TextField](world, model.editor.control).Anchor = caret
+	world.Mut[engineui.TextField](model.editor.control).Anchor = caret
 	model.syncLanguageDocuments()
 	languageInteractionStep(t, app)
 	editorNode, _ := world.HTMLNode(model.surface, "editor")
@@ -438,7 +437,7 @@ func TestLanguageContextPreservesSelectionAndStaleHoverIsRejected(t *testing.T) 
 	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseRight, X: float64(ox + x), Y: float64(oy + y + height/2)})
 	languageInteractionStep(t, app)
 	if !model.languageUI.contextOpen || model.languageUI.contextAnchor != caret || model.languageUI.contextCaret != caret+len("value") {
-		t.Fatalf("context menu lost the selection: state=%+v field=%+v", model.languageUI, module.ContentRef[engineui.TextField](world, model.editor.control))
+		t.Fatalf("context menu lost the selection: state=%+v field=%+v", model.languageUI, world.Ref[engineui.TextField](model.editor.control))
 	}
 	group, _ := world.HTMLNode(model.surface, "editor-context-group-2")
 	groupRect, _ := group.Bounds()
@@ -630,7 +629,7 @@ func TestLanguageCompletionResolvesAdditionalEditsAndRejectsChangedContent(t *te
 func TestLanguageIdleInteractionDoesNotAllocate(t *testing.T) {
 	app, model, _, _ := languageInteractionFixture(t)
 	languageInteractionStep(t, app)
-	state, _ := module.ContentResource[*input.State](model.fontResources)
+	state, _ := model.fontResources.Resource[*input.State]()
 	model.updateLanguageInteractions(model.fontResources, state)
 	if count := testing.AllocsPerRun(100, func() { model.updateLanguageInteractions(model.fontResources, state) }); count != 0 {
 		t.Fatalf("idle editor interaction allocated %g times", count)

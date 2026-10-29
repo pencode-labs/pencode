@@ -3,7 +3,6 @@ package workbench
 import (
 	"testing"
 
-	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
@@ -46,13 +45,13 @@ func TestWireRegionPatchRetainsNativeDraftAndSelection(t *testing.T) {
 		t.Fatal("missing prompt")
 	}
 	w.SetControlValue(prompt, "draft being typed")
-	field := module.ContentMut[engineui.TextField](w, prompt)
+	field := w.Mut[engineui.TextField](prompt)
 	field.Anchor, field.Caret = 2, 7
 	show(peb.UI{ID: "chat", Title: "Chat", Kind: peb.EditorTab, ViewVersion: 2, Patch: &peb.ViewPatch{Base: 1, Regions: []peb.ViewRegion{{Ref: "stream", HTML: "<p>second中😀</p>"}}}})
 	if next, ok := w.HTMLControl(m.surface, promptID); !ok || next != prompt || w.FocusedControl() != prompt {
 		t.Fatal("patch replaced or unfocused input")
 	}
-	field = module.ContentMut[engineui.TextField](w, prompt)
+	field = w.Mut[engineui.TextField](prompt)
 	if field.Value != "draft being typed" || field.Anchor != 2 || field.Caret != 7 || surface.definition != definition || surface.regions[0].definition != history {
 		t.Fatal("patch lost retained content or local input")
 	}

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/diiyw/onix/module"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
@@ -113,7 +112,7 @@ func TestRecentProjectsLauncherOpenAndRemove(t *testing.T) {
 	}
 	click := func(ref string) {
 		t.Helper()
-		for entity, access := range module.ContentQuery[htmlui.Component[pencodeRecentProjectProps, struct{}]](m.fontResources) {
+		for entity, access := range m.fontResources.Query[htmlui.Component[pencodeRecentProjectProps, struct{}]]() {
 			component := access.Get()
 			if component.Props.Model == m && component.Props.Entry.Path == directory {
 				component.Definition.Behavior.HandleEvent(&htmlui.ComponentEventContext[pencodeRecentProjectProps, struct{}]{
@@ -136,7 +135,7 @@ func TestRecentProjectsLauncherOpenAndRemove(t *testing.T) {
 	closeProject()
 	click("remove")
 	step()
-	for _, access := range module.ContentQuery[htmlui.Component[pencodeRecentProjectProps, struct{}]](m.fontResources) {
+	for _, access := range m.fontResources.Query[htmlui.Component[pencodeRecentProjectProps, struct{}]]() {
 		if access.Get().Props.Model == m {
 			t.Fatal("removed recent row remained mounted")
 		}

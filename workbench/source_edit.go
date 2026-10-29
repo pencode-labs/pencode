@@ -23,7 +23,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 	tab := s.activeTab()
 	if tab != nil && !tab.Binary && tab.Kind == "merge" {
 		if control, ok := world.HTMLControl(m.surface, "sc-merge-result"); ok {
-			if field := module.ContentMut[engineui.TextField](world, control); field != nil {
+			if field := world.Mut[engineui.TextField](control); field != nil {
 				field.Buffer = tab.textBuffer(tab.Result)
 			}
 		}
@@ -38,22 +38,22 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		if !ok {
 			continue
 		}
-		if binding := module.ContentMut[htmlui.Control](world, control); binding != nil {
+		if binding := world.Mut[htmlui.Control](control); binding != nil {
 			binding.Wrap = false
 			binding.ReadOnly = side == 0 || !tab.editable() || s.busy()
 		}
-		if field := module.ContentMut[engineui.Textarea](world, control); field != nil {
+		if field := world.Mut[engineui.Textarea](control); field != nil {
 			field.Wrap, field.CaptureTab, field.SelectTokens = false, true, true
 			field.BarSize = -1
 		}
 		font := m.codeFont()
-		if binding := module.ContentMut[htmlui.ControlTextFont](world, control); binding != nil {
+		if binding := world.Mut[htmlui.ControlTextFont](control); binding != nil {
 			binding.Font = font
 		} else {
-			_ = module.ContentInsert(world, control, htmlui.ControlTextFont{Font: font})
+			_ = world.Insert(control, htmlui.ControlTextFont{Font: font})
 		}
 		value := tab.sourceText(side)
-		field := module.ContentMut[engineui.TextField](world, control)
+		field := world.Mut[engineui.TextField](control)
 		if field == nil {
 			continue
 		}
@@ -72,11 +72,11 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 			count := utf8.RuneCountInString(value)
 			field.Caret, field.Anchor = min(field.Caret, count), min(field.Anchor, count)
 		}
-		entity, ok := module.ContentFindPart[engineui.ValuePart, scene.Text2D](world, control)
+		entity, ok := world.FindPart[engineui.ValuePart, scene.Text2D](control)
 		if !ok {
 			continue
 		}
-		text := module.ContentMut[scene.Text2D](world, entity)
+		text := world.Mut[scene.Text2D](entity)
 		text.Font, text.LineHeight, text.LineLayout = font, 20, &tab.LineLayouts[side]
 		if width, ok := world.ControlTextTabWidth(control, text); ok {
 			text.TabWidth = width
@@ -94,7 +94,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		if field.Focused && (s.diffEditors[side].caretContent != value || s.diffEditors[side].caretIndex != field.Caret) {
 			if node, ok := world.HTMLNode(m.surface, [...]string{"sc-code-left", "sc-code-right"}[side]); ok {
 				if area, ok := node.ScrollContainer(); ok {
-					if scroll := module.ContentMut[scene.UIScroll](world, area); scroll != nil {
+					if scroll := world.Mut[scene.UIScroll](area); scroll != nil {
 						x, y, _, height, ok := scene.TextCaretRect2D(text, value, field.Caret)
 						if ok {
 							left, top := -scroll.Position[0], -scroll.Position[1]

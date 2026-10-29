@@ -186,7 +186,7 @@ type pencodeProjectDirectoryProps struct {
 }
 
 func newProjectDirectoryDefinition(content *module.Content) (*htmlui.Definition[pencodeProjectDirectoryProps, struct{}], error) {
-	return module.ContentDefine[pencodeProjectDirectoryProps, struct{}](content,
+	return content.Define[pencodeProjectDirectoryProps, struct{}](
 		htmlui.NewTemplate(`<button data-ref="directory" class="pencode-project-directory" type="button"><span aria-hidden="true">›</span><span data-ref="name"></span></button>`), "",
 		module.ContentBehavior[pencodeProjectDirectoryProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProjectDirectoryProps, struct{}], view *htmlui.View) {
@@ -236,7 +236,7 @@ func (model *workspaceModel) renderProjectPicker(view *htmlui.View, definition *
 		if !p.matches(name) {
 			continue
 		}
-		htmlui.AppendComponentChild(view, "connection-project-list", componentKey(p.path+"/"+name), definition, pencodeProjectDirectoryProps{Model: model, Name: name}, struct{}{})
+		view.AppendComponentChild("connection-project-list", componentKey(p.path+"/"+name), definition, pencodeProjectDirectoryProps{Model: model, Name: name}, struct{}{})
 		count++
 	}
 	message := p.message

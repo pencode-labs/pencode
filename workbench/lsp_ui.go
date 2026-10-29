@@ -30,7 +30,7 @@ type pencodeLanguagePanel struct {
 	job                        pencodeLanguageJob
 	message                    chan pencodeLanguageReply
 	navigate                   *openFile
-	offset                     int
+	offset, endOffset          int
 	completion                 bool
 	completionIndex            int
 	controlClick               bool
@@ -49,6 +49,7 @@ type pencodeLanguageRow struct {
 	raw                  json.RawMessage
 	kind                 string
 	sortText             string
+	completionKind       int
 }
 
 var pencodeLanguageRowRefs = [...]string{"lsp-row-0", "lsp-row-1", "lsp-row-2", "lsp-row-3", "lsp-row-4", "lsp-row-5", "lsp-row-6", "lsp-row-7", "lsp-row-8", "lsp-row-9", "lsp-row-10", "lsp-row-11"}
@@ -69,6 +70,20 @@ var pencodeLanguageRowDetailRefs = [...]struct{ path, count, toggle string }{
 	{"lsp-row-11-path", "lsp-row-11-count", "lsp-row-11-toggle"},
 }
 var pencodeCompletionRefs = [...]string{"lsp-completion-0", "lsp-completion-1", "lsp-completion-2", "lsp-completion-3", "lsp-completion-4", "lsp-completion-5", "lsp-completion-6", "lsp-completion-7", "lsp-completion-8", "lsp-completion-9", "lsp-completion-10", "lsp-completion-11"}
+var pencodeCompletionDetailRefs = [...]struct{ icon, label string }{
+	{"lsp-completion-0-icon", "lsp-completion-0-label"},
+	{"lsp-completion-1-icon", "lsp-completion-1-label"},
+	{"lsp-completion-2-icon", "lsp-completion-2-label"},
+	{"lsp-completion-3-icon", "lsp-completion-3-label"},
+	{"lsp-completion-4-icon", "lsp-completion-4-label"},
+	{"lsp-completion-5-icon", "lsp-completion-5-label"},
+	{"lsp-completion-6-icon", "lsp-completion-6-label"},
+	{"lsp-completion-7-icon", "lsp-completion-7-label"},
+	{"lsp-completion-8-icon", "lsp-completion-8-label"},
+	{"lsp-completion-9-icon", "lsp-completion-9-label"},
+	{"lsp-completion-10-icon", "lsp-completion-10-label"},
+	{"lsp-completion-11-icon", "lsp-completion-11-label"},
+}
 var pencodeLanguageContextRefs = [...]string{"lsp-context-0", "lsp-context-1", "lsp-context-2", "lsp-context-3", "lsp-context-4", "lsp-context-5", "lsp-context-6", "lsp-context-7", "lsp-context-8", "lsp-context-9", "lsp-context-10", "lsp-context-11", "lsp-context-12", "lsp-context-13", "lsp-context-14", "lsp-context-15", "lsp-context-16", "lsp-context-17", "lsp-context-18", "lsp-context-19", "lsp-context-20", "lsp-context-21", "lsp-context-22"}
 var pencodeLanguageActions = [...]struct{ method, capability, label string }{
 	{"textDocument/completion", "completionProvider", "代码补全"},
@@ -273,7 +288,11 @@ func (model *workspaceModel) renderLanguageEditorPopups(view *htmlui.View) {
 				continue
 			}
 			view.RemoveAttr(ref, "hidden")
-			view.Text(ref, panel.rows[start+i].label)
+			row := &panel.rows[start+i]
+			detail := pencodeCompletionDetailRefs[i]
+			icon := languageCompletionIcon(row.completionKind)
+			view.Attr(detail.icon, "src", model.themedIcon(icon.source, icon.foreground))
+			view.Text(detail.label, row.label)
 			view.Attr(ref, "aria-selected", boolAttribute(start+i == panel.completionIndex))
 		}
 	} else {
@@ -409,7 +428,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 		p.query = ""
 		p.job = pencodeLanguageJob{document: doc, content: doc.content, version: doc.version}
 		if world != nil {
-			if field, ok := module.ContentGet[engineui.TextField](world, model.editor.control); ok {
+			if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
 				p.anchorX, p.anchorY = model.editorPopupPoint(world, runeOffsetBytes(doc.content, field.Caret))
 				p.originX, p.originY = p.anchorX, p.anchorY
 			}
@@ -422,7 +441,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 	}
 	caret, anchor := 0, 0
 	if world != nil {
-		if field, ok := module.ContentGet[engineui.TextField](world, model.editor.control); ok {
+		if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
 			caret, anchor = field.Caret, field.Anchor
 		}
 	}
@@ -630,7 +649,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 				if order == "" {
 					order = item.Label
 				}
-				p.rows = append(p.rows, pencodeLanguageRow{label: label, raw: raw, kind: "completion", sortText: order})
+				p.rows = append(p.rows, pencodeLanguageRow{label: label, raw: raw, kind: "completion", sortText: order, completionKind: item.Kind})
 			}
 		}
 		sort.SliceStable(p.rows, func(i, j int) bool { return p.rows[i].sortText < p.rows[j].sortText })
@@ -1077,7 +1096,7 @@ func (model *workspaceModel) selectLanguageRange(world *module.Content, doc *pen
 	if err != nil {
 		return
 	}
-	if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
+	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 		field.Anchor = utf8.RuneCountInString(doc.content[:start])
 		field.Caret = utf8.RuneCountInString(doc.content[:end])
 		model.revealEditorCaret(world, field.Caret)
@@ -1118,7 +1137,7 @@ func (model *workspaceModel) languageHierarchyRows(method string, raw json.RawMe
 }
 func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 	if world != nil && model.languageUI.contextFocus {
-		if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
+		if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 			caret, anchor := field.Caret, field.Anchor
 			world.Focus(model.editor.control)
 			field.Caret, field.Anchor = caret, anchor
@@ -1135,10 +1154,11 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 		}
 	}
 	if p.navigate != nil && model.editor.file == p.navigate {
-		caret := utf8.RuneCountInString(p.navigate.Content[:min(p.offset, len(p.navigate.Content))])
-		// The editor has already bound this document; navigation only moves the caret.
-		if field := module.ContentMut[engineui.TextField](world, model.editor.control); field != nil {
-			field.Caret, field.Anchor = caret, caret
+		buffer := p.navigate.textBuffer(p.navigate.Content)
+		caret, anchor := buffer.RuneOffset(p.offset), buffer.RuneOffset(max(p.offset, p.endOffset))
+		// The editor has already bound this document; select the target without rewriting it.
+		if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
+			field.Caret, field.Anchor = caret, anchor
 		}
 		model.revealEditorCaret(world, caret)
 		p.navigate = nil
@@ -1150,7 +1170,7 @@ func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *in
 	}
 	defer func() {
 		if handled {
-			if field, ok := module.ContentGet[engineui.TextField](world, model.editor.control); ok && field.Focused {
+			if field, ok := world.Get[engineui.TextField](model.editor.control); ok && field.Focused {
 				model.languageUI.keysHandled = true
 			}
 		}
@@ -1187,7 +1207,7 @@ func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *in
 		model.runLanguageAction(world, p.method, true)
 		return true
 	}
-	field, ok := module.ContentGet[engineui.TextField](world, model.editor.control)
+	field, ok := world.Get[engineui.TextField](model.editor.control)
 	if !ok || !field.Focused {
 		return false
 	}

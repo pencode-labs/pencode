@@ -6,7 +6,6 @@ import (
 
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 )
@@ -37,7 +36,7 @@ func editorContextClick(t *testing.T, app *onix.App, model *workspaceModel, stat
 func editorContextOpen(t *testing.T, app *onix.App, model *workspaceModel, caret, anchor int, x, y float32) {
 	t.Helper()
 	model.setEditorValueAndCaret(model.fontResources, model.activeContent(), caret)
-	module.ContentMut[engineui.TextField](model.fontResources, model.editor.control).Anchor = anchor
+	model.fontResources.Mut[engineui.TextField](model.editor.control).Anchor = anchor
 	model.languageUI = pencodeLanguageInteraction{
 		contextOpen: true, contextFile: model.activeFile(), contextContent: model.activeContent(),
 		contextCaret: caret, contextAnchor: anchor, contextX: x, contextY: y,
@@ -63,7 +62,7 @@ func TestEditorContextClipboardWithoutLanguageServer(t *testing.T) {
 
 	editorContextOpen(t, app, model, 3, 1, 150, 20)
 	editorContextClick(t, app, model, state, "editor-context-copy")
-	field := module.ContentRef[engineui.TextField](model.fontResources, model.editor.control)
+	field := model.fontResources.Ref[engineui.TextField](model.editor.control)
 	if clipboard != "乙🙂" || model.activeContent() != original || field.Caret != 3 || field.Anchor != 1 || model.languageUI.contextOpen {
 		t.Fatalf("copy did not preserve Unicode selection: clipboard=%q field=%+v", clipboard, field)
 	}
@@ -80,7 +79,7 @@ func TestEditorContextClipboardWithoutLanguageServer(t *testing.T) {
 	clipboard = "中\r\n🙂"
 	editorContextOpen(t, app, model, 3, 1, 150, 20)
 	editorContextClick(t, app, model, state, "editor-context-paste")
-	field = module.ContentRef[engineui.TextField](model.fontResources, model.editor.control)
+	field = model.fontResources.Ref[engineui.TextField](model.editor.control)
 	if model.activeContent() != "甲中\n🙂尾\n" || field.Caret != 4 || field.Anchor != 4 {
 		t.Fatalf("paste did not use native text normalization: content=%q field=%+v", model.activeContent(), field)
 	}
@@ -97,7 +96,7 @@ func TestEditorContextClipboardWithoutLanguageServer(t *testing.T) {
 
 	editorContextOpen(t, app, model, 2, 2, 150, 20)
 	editorContextClick(t, app, model, state, "editor-context-select-all")
-	field = module.ContentRef[engineui.TextField](model.fontResources, model.editor.control)
+	field = model.fontResources.Ref[engineui.TextField](model.editor.control)
 	if field.Anchor != 0 || field.Caret != 5 || !field.Focused {
 		t.Fatalf("select all: %+v", field)
 	}
@@ -176,7 +175,7 @@ func TestEditorContextSubmenusHoverKeyboardAndPlacement(t *testing.T) {
 func TestEditorContextIdleAndHoverDoNotAllocate(t *testing.T) {
 	app, model, _, _ := languageInteractionFixture(t)
 	editorContextOpen(t, app, model, 0, 0, 20, 10)
-	state, _ := module.ContentResource[*input.State](model.fontResources)
+	state, _ := model.fontResources.Resource[*input.State]()
 	if allocations := testing.AllocsPerRun(100, func() { model.updateLanguageInteractions(model.fontResources, state) }); allocations != 0 {
 		t.Fatalf("open idle menu allocated %g times", allocations)
 	}

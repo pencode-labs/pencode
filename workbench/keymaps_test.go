@@ -181,7 +181,7 @@ func TestShortcutSettingsUIRecordsAndSwitchesProfiles(t *testing.T) {
 	// Clipboard uses the selected binding and suppresses the native old chord.
 	m.settingsOpen = false
 	m.fontResources.Focus(m.editor.control)
-	field := module.ContentMut[engineui.TextField](m.fontResources, m.editor.control)
+	field := m.fontResources.Mut[engineui.TextField](m.editor.control)
 	field.Anchor, field.Caret = 0, 2
 	clipboard := ""
 	state.SetClipboard(func(value string) bool { clipboard = value; return true }, func() (string, bool) { return clipboard, true })

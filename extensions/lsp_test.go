@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/peb"
 )
 
@@ -68,8 +69,12 @@ func TestGoLanguageExtensionRegistration(t *testing.T) {
 	if len(server.Args) != 2 || server.Args[1] != "gopls" || server.DocumentLanguage("go.mod") != "go.mod" || server.DocumentLanguage("go.work") != "go.work" {
 		t.Fatalf("invalid Go launcher or document types: %+v", server)
 	}
-	adapters := server.remote.Contributions.DebugAdapters
+	adapters := bundle.DebugAdapters
 	if len(adapters) != 1 || adapters[0].ID != "Delve" || adapters[0].Command != "bin/go" || adapters[0].Args[1] != "dlv" {
 		t.Fatalf("missing Delve launcher: %+v", adapters)
+	}
+	templates, err := debugger.ParseConfigs([]byte(adapters[0].Templates), "${workspaceFolder}")
+	if err != nil || len(templates) != 2 || templates[0].Adapter != "Delve" {
+		t.Fatalf("missing imported Go templates: %+v, %v", templates, err)
 	}
 }

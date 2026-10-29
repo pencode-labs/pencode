@@ -9,8 +9,9 @@ debugger for a remote project.
 
 Enable the Go extension to detect/install gopls and Delve automatically. Without
 the extension, install `dlv` in the workspace server’s PATH. Select **Debug** in the
-status bar and click **添加启动器** to open `.pencode/debug.json`. Add a Go launch
-configuration using the examples below, save it, and refresh the debug configurations.
+status bar and click **添加启动器**, then choose a registered Go project or package
+test template. Pencode writes it to `.pencode/debug.json` and opens the JSON for
+edits. Save any changes to refresh the debug configurations automatically.
 Choose the configured package or its tests, set a breakpoint by clicking the
 left edge of the gutter or pressing F9, and press F5.
 
@@ -33,10 +34,17 @@ and the `Debugger` Output channel.
 
 Launchers come from the project's `.pencode/debug.json` array. Without configured
 launchers, the selector shows **暂无启动器** and starting debug is disabled; no language-specific
-defaults are inserted. **添加启动器** opens the file in the editor, creating an empty
-`[]` array if needed. Add entries to the array and use **刷新调试配置** after saving.
+defaults are inserted. **添加启动器** opens a popup menu of templates registered by loaded extensions.
+Selecting one appends its configuration to the JSON file and opens it for editing,
+without starting a debug session. Existing entries and workspace placeholders are
+preserved; save unsaved config edits before adding another template. **手动编辑配置…**
+opens the file directly, creating an empty `[]` array if needed. With no registered
+templates, the menu offers manual editing. Saving refreshes the launcher list;
+use **刷新调试配置** for changes made outside the editor.
 An empty array is also valid. `configuration` is the adapter's launch/attach
 payload, and `${workspaceFolder}` is expanded recursively in its string values.
+`${file}` and `${fileDirname}` resolve to the selected editor file on the workspace
+machine when debugging starts; launchers using them require an open file.
 
 ```json
 [
@@ -72,6 +80,10 @@ payload, and `${workspaceFolder}` is expanded recursively in its string values.
 machine to an existing adapter. `request` accepts `launch` or `attach`; stopping
 an attach session sends `disconnect` with `terminateDebuggee: false`.
 
+Extensions register optional JSON templates with `peb.DebugAdapter.Templates`.
+The Go extension provides project and package test templates; PHP provides
+current-file launch and Xdebug listener templates.
+
 Extensions can also contribute named stdio adapters. Set `adapter` to the
 contributed ID, such as `Xdebug` from the [PHP extension](../extensions/php/README.md),
 and omit `command`/`args` to use its launcher. An explicit `command` overrides the
@@ -93,6 +105,7 @@ not included.
 go test ./dap ./debugger ./terminal ./client ./server
 PENCODE_TEST_DLV=/path/to/dlv go test ./debugger -run TestDelve
 PENCODE_TEST_DLV=/path/to/dlv go test ./workbench -run '^TestDebug'
+PENCODE_TEST_PHP_EXTENSIONS=/path/to/extensions PENCODE_TEST_PHP_XDEBUG=/path/to/xdebug.so go test ./debugger -run TestPHPWithXdebugExtension
 ```
 
 The real-Delve tests exercise the CS boundary, breakpoints, variable values,

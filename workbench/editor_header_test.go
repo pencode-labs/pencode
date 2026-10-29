@@ -5,7 +5,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -43,7 +42,7 @@ func TestPencodeEditorOpenWithToolbarVisibility(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	step := func(wantHeader, wantTools bool) {
 		t.Helper()
 		markPencodeRootDirtyByModel(model.fontResources, model)

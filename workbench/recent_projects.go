@@ -147,7 +147,7 @@ type pencodeRecentProjectProps struct {
 }
 
 func newRecentProjectDefinition(content *module.Content) (*htmlui.Definition[pencodeRecentProjectProps, struct{}], error) {
-	return module.ContentDefine[pencodeRecentProjectProps, struct{}](content,
+	return content.Define[pencodeRecentProjectProps, struct{}](
 		htmlui.NewTemplate(`<div class="pencode-recent-row" role="listitem"><button data-ref="open" class="pencode-recent-open" type="button"><img data-ref="icon" src="icons/folder-opened.svg" alt=""><span class="pencode-recent-copy"><span data-ref="name" class="pencode-recent-name"></span><span data-ref="path" class="pencode-recent-path"></span></span></button><button data-ref="remove" class="pencode-icon-button" type="button" title="从最近打开中移除"><img data-ref="remove-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div>`), "",
 		module.ContentBehavior[pencodeRecentProjectProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeRecentProjectProps, struct{}], view *htmlui.View) {
@@ -190,7 +190,7 @@ func (m *workspaceModel) renderRecentProjects(view *htmlui.View, definition *htm
 	view.Attr("recent-projects-empty", "hidden", "")
 	h := m.session.recentProjects
 	for _, entry := range h.entries[:h.count] {
-		htmlui.AppendComponentChild(view, "recent-projects", componentKey(entry.key), definition,
+		view.AppendComponentChild("recent-projects", componentKey(entry.key), definition,
 			pencodeRecentProjectProps{Model: m, Theme: m.workbenchTheme, Entry: entry}, struct{}{})
 	}
 }

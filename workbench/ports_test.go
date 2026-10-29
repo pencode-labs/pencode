@@ -10,7 +10,6 @@ import (
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
@@ -244,8 +243,8 @@ func TestPortsPanelInlineInteractions(t *testing.T) {
 	}
 	var headingVisual ecs.Entity
 	var headingY float32
-	for entity, sprite := range ecs.Query[scene.Sprite2D](app.World).All {
-		position := ecs.GetRef[scene.UIGlobalTransform](app.World, entity)
+	for entity, sprite := range app.World.Query[scene.Sprite2D]().All {
+		position := app.World.GetRef[scene.UIGlobalTransform](entity)
 		if sprite.Ref().Width == heading.Width && position != nil && position.Matrix[12] == heading.X && position.Matrix[13] >= heading.Y && position.Matrix[13] < heading.Y+heading.Height {
 			headingVisual, headingY = entity, position.Matrix[13]
 			break
@@ -256,15 +255,15 @@ func TestPortsPanelInlineInteractions(t *testing.T) {
 	if !ok || headingVisual == 0 {
 		t.Fatalf("missing list scroll container or rendered heading: scroll=%v heading=%d headingBounds=%+v body=%+v", ok, headingVisual, heading, body)
 	}
-	scroll := module.ContentMut[scene.UIScroll](world, scrollEntity)
+	scroll := world.Mut[scene.UIScroll](scrollEntity)
 	if scroll.ContentSize[1] <= scroll.ViewportSize[1] {
 		t.Fatal("port rows did not overflow the list viewport")
 	}
 	firstControl, _ := world.HTMLControl(m.surface, "ports-row:"+firstKey)
-	firstY := ecs.GetRef[scene.UIGlobalTransform](app.World, firstControl).Matrix[13]
+	firstY := app.World.GetRef[scene.UIGlobalTransform](firstControl).Matrix[13]
 	scroll.Position[1] = -60
 	languageInteractionStep(t, app)
-	if ecs.GetRef[scene.UIGlobalTransform](app.World, headingVisual).Matrix[13] != headingY || ecs.GetRef[scene.UIGlobalTransform](app.World, firstControl).Matrix[13] != firstY-60 {
+	if app.World.GetRef[scene.UIGlobalTransform](headingVisual).Matrix[13] != headingY || app.World.GetRef[scene.UIGlobalTransform](firstControl).Matrix[13] != firstY-60 {
 		t.Fatal("scrolling the list moved the heading or failed to move the rows")
 	}
 	m.session.connection.workspaceProfile = connection.Profile{}
@@ -409,7 +408,7 @@ func TestPortsBackendReplacementAndWorkspaceSwitch(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("APPDATA", t.TempDir())
 	backend := newPencodeBackend(t)
-	session := NewSession(backend)
+	session := newPencodeTestSession(t, backend)
 	session.connection = &pencodeConnection{workspaceProfile: connection.Profile{SSH: remote.Target{Host: "development"}}}
 	m := &workspaceModel{session: session, backend: backend, projectPath: t.TempDir()}
 	defer m.closePorts()

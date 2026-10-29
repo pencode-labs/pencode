@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
@@ -80,7 +79,7 @@ func TestMarketplaceButtonOutsideWindowDragRegion(t *testing.T) {
 	model := session.active.model
 	// The headless fixture starts with the adaptive viewport's 1x1 placeholder.
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	for _, zoom := range [...]int{70, 100, 150} {
 		model.setZoom(model.fontResources, zoom)
 		if _, err := app.Step(); err != nil {
@@ -124,11 +123,11 @@ func TestMarketplaceAndSettingsDismissOutsideClick(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	step := func() {
 		t.Helper()
 		markPencodeRootDirtyByModel(model.fontResources, model)
@@ -196,14 +195,14 @@ func TestMarketplaceAndSettingsDismissOutsideClick(t *testing.T) {
 		if !ok {
 			t.Fatal("settings theme select was not mounted")
 		}
-		if control := module.ContentMut[htmlui.Control](model.fontResources, entity); control != nil {
+		if control := model.fontResources.Mut[htmlui.Control](entity); control != nil {
 			control.Open = true
 		}
 		clickAt(float64(panel.X-30), float64(panel.Y+30))
 		if !model.settingsOpen {
 			t.Fatal("an outside press dismissed settings while an option picker was open")
 		}
-		if control := module.ContentMut[htmlui.Control](model.fontResources, entity); control != nil {
+		if control := model.fontResources.Mut[htmlui.Control](entity); control != nil {
 			control.Open = false
 		}
 		clickAt(float64(panel.X-30), float64(panel.Y+30))

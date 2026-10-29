@@ -37,11 +37,11 @@ func (m *workspaceModel) updateDebugPointer(world *module.Content, state *input.
 	if !ok || x < float32(bounds.X) || x >= float32(bounds.X)+18 || y < float32(bounds.Y) || y >= float32(bounds.Y+bounds.Height) {
 		return false
 	}
-	text := module.ContentMut[scene.Text2D](world, m.editor.text)
+	text := world.Mut[scene.Text2D](m.editor.text)
 	if text == nil || text.LineHeight <= 0 {
 		return false
 	}
-	transform, _ := module.ContentGet[scene.UITransform](world, m.editor.text)
+	transform, _ := world.Get[scene.UITransform](m.editor.text)
 	visual := int(math.Floor(float64((y - float32(bounds.Y) - transform.Translation.Y.Value) / text.LineHeight)))
 	if visual < 0 || visual >= scene.TextLineCount2D(text) {
 		return false
@@ -69,11 +69,11 @@ func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 	used := 0
 	defer func() {
 		for _, entity := range paint.dots[used:] {
-			module.ContentSetIfChanged(world, entity, scene.Visibility{})
+			world.SetIfChanged(entity, scene.Visibility{})
 		}
 	}()
 	if paint.execution != 0 {
-		module.ContentSetIfChanged(world, paint.execution, scene.Visibility{})
+		world.SetIfChanged(paint.execution, scene.Visibility{})
 	}
 	if !visible || m.workbenchTheme == nil {
 		return
@@ -82,12 +82,12 @@ func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 		paint.file, paint.project = file, project
 		paint.filename = path.Join(project.Path, file.Path)
 	}
-	text := module.ContentMut[scene.Text2D](world, m.editor.text)
+	text := world.Mut[scene.Text2D](m.editor.text)
 	if text == nil || text.LineHeight <= 0 || text.Value != file.Content || !world.IsAlive(m.editor.gutter) {
 		return
 	}
-	transform, _ := module.ContentGet[scene.UITransform](world, m.editor.text)
-	stack, _ := module.ContentGet[scene.UIStackIndex](world, m.editor.text)
+	transform, _ := world.Get[scene.UITransform](m.editor.text)
+	stack, _ := world.Get[scene.UIStackIndex](m.editor.text)
 	bps := project.debugBreakpoints[file.Path]
 	color := m.workbenchTheme.diagnosticColors[1]
 	executionLine := 0
@@ -121,10 +121,10 @@ func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 				pool, count := []ecs.Entity(nil), 0
 				paint.execution = paint.entity(world, &pool, &count, m.editor.control, stack-1)
 			}
-			size, _ := module.ContentGet[scene.Size2D](world, m.editor.control)
+			size, _ := world.Get[scene.Size2D](m.editor.control)
 			background := m.workbenchTheme.diagnosticColors[2]
 			background.A = .14
-			module.ContentSetIfChanged(world, paint.execution, scene.Visibility{Visible: true})
+			world.SetIfChanged(paint.execution, scene.Visibility{Visible: true})
 			paint.sprite(world, paint.execution, 0, y, size.Width, text.LineHeight, scene.RoundedRectShape2D(background, 0))
 		}
 	}
@@ -133,29 +133,29 @@ func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 func (paint *pencodeDebugPaint) entity(world *module.Content, pool *[]ecs.Entity, used *int, parent ecs.Entity, stack scene.UIStackIndex) ecs.Entity {
 	if *used == len(*pool) {
 		bundle := ecs.NewBundle(8)
-		ecs.Put(&bundle, scene.UITransformFromXY(0, 0))
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: parent})
-		ecs.Put(&bundle, scene.AnchorTopLeft)
-		ecs.Put(&bundle, scene.Visibility{})
-		ecs.Put(&bundle, scene.NewSprite2D())
-		ecs.Put(&bundle, scene.Size2D{})
-		ecs.Put(&bundle, stack)
+		bundle.Put(scene.UITransformFromXY(0, 0))
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: parent})
+		bundle.Put(scene.AnchorTopLeft)
+		bundle.Put(scene.Visibility{})
+		bundle.Put(scene.NewSprite2D())
+		bundle.Put(scene.Size2D{})
+		bundle.Put(stack)
 		*pool = append(*pool, world.Spawn(bundle))
 	}
 	entity := (*pool)[*used]
 	*used++
-	module.ContentSetIfChanged(world, entity, scene.Visibility{Visible: true})
-	module.ContentSetIfChanged(world, entity, stack)
+	world.SetIfChanged(entity, scene.Visibility{Visible: true})
+	world.SetIfChanged(entity, stack)
 	return entity
 }
 
 func (paint *pencodeDebugPaint) sprite(world *module.Content, entity ecs.Entity, x, y, width, height float32, shape scene.Shape2D) {
-	module.ContentSetIfChanged(world, entity, scene.UITransformFromXY(x, y))
-	module.ContentSetIfChanged(world, entity, scene.Size2D{Width: width, Height: height})
+	world.SetIfChanged(entity, scene.UITransformFromXY(x, y))
+	world.SetIfChanged(entity, scene.Size2D{Width: width, Height: height})
 	sprite := scene.NewSprite2D()
 	sprite.Width, sprite.Height, sprite.Shape = width, height, shape
-	module.ContentSetIfChanged(world, entity, sprite)
+	world.SetIfChanged(entity, sprite)
 }
 
 func (paint *pencodeDebugPaint) dispose(world *module.Content) {

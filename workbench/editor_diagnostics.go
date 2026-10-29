@@ -49,7 +49,7 @@ type pencodeDiagnosticPaintKey struct {
 
 func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspaceModel) {
 	file := model.activeFile()
-	text := module.ContentMut[scene.Text2D](world, model.editor.text)
+	text := world.Mut[scene.Text2D](model.editor.text)
 	visible := model.screen == pencodeWorkspace && !model.settingsOpen && model.textEditorActive() && file != nil &&
 		text != nil && text.Value == file.Content && model.workbenchTheme != nil
 	if !visible {
@@ -113,9 +113,9 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 		paint.hide(world)
 		return
 	}
-	transform, _ := module.ContentGet[scene.UITransform](world, model.editor.text)
-	size, _ := module.ContentGet[scene.Size2D](world, model.editor.control)
-	stack, _ := module.ContentGet[scene.UIStackIndex](world, model.editor.text)
+	transform, _ := world.Get[scene.UITransform](model.editor.text)
+	size, _ := world.Get[scene.Size2D](model.editor.control)
+	stack, _ := world.Get[scene.UIStackIndex](model.editor.text)
 	key := pencodeDiagnosticPaintKey{
 		layout: pencodeGutterLayoutKey{text.Value, text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
 		file:   file, revision: paint.revision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
@@ -141,19 +141,19 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 	}
 	if !world.IsAlive(paint.root) {
 		bundle := ecs.NewBundle(7)
-		ecs.Put(&bundle, scene.UITransformFromXY(0, 0))
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: model.editor.control})
-		ecs.Put(&bundle, scene.AnchorTopLeft)
-		ecs.Put(&bundle, scene.Visibility{})
-		ecs.Put(&bundle, scene.ClipRect2D{})
-		ecs.Put(&bundle, scene.Size2D{})
+		bundle.Put(scene.UITransformFromXY(0, 0))
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: model.editor.control})
+		bundle.Put(scene.AnchorTopLeft)
+		bundle.Put(scene.Visibility{})
+		bundle.Put(scene.ClipRect2D{})
+		bundle.Put(scene.Size2D{})
 		paint.root = world.Spawn(bundle)
 	}
-	module.ContentSetIfChanged(world, paint.root, scene.Parent{Entity: model.editor.control})
-	module.ContentSetIfChanged(world, paint.root, scene.Visibility{Visible: true})
-	module.ContentSetIfChanged(world, paint.root, scene.ClipRect2D{Width: size.Width, Height: size.Height})
-	module.ContentSetIfChanged(world, paint.root, size)
+	world.SetIfChanged(paint.root, scene.Parent{Entity: model.editor.control})
+	world.SetIfChanged(paint.root, scene.Visibility{Visible: true})
+	world.SetIfChanged(paint.root, scene.ClipRect2D{Width: size.Width, Height: size.Height})
+	world.SetIfChanged(paint.root, size)
 	quadCount, labelCount, waveCount := 0, 0, 0
 	first := max(0, int(math.Floor(float64(-key.y/text.LineHeight))))
 	for line := first; line < count; line++ {
@@ -201,13 +201,13 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 		}
 	}
 	for _, entity := range paint.quads[quadCount:] {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{})
+		world.SetIfChanged(entity, scene.Visibility{})
 	}
 	for _, entity := range paint.labels[labelCount:] {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{})
+		world.SetIfChanged(entity, scene.Visibility{})
 	}
 	for _, entity := range paint.waves[waveCount:] {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{})
+		world.SetIfChanged(entity, scene.Visibility{})
 	}
 	paint.key = key
 }
@@ -216,15 +216,15 @@ func (paint *pencodeDiagnosticPaint) hide(world *module.Content) {
 	if paint.key.file == nil {
 		return
 	}
-	module.ContentSetIfChanged(world, paint.root, scene.Visibility{})
+	world.SetIfChanged(paint.root, scene.Visibility{})
 	for _, entity := range paint.quads {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{})
+		world.SetIfChanged(entity, scene.Visibility{})
 	}
 	for _, entity := range paint.labels {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{})
+		world.SetIfChanged(entity, scene.Visibility{})
 	}
 	for _, entity := range paint.waves {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{})
+		world.SetIfChanged(entity, scene.Visibility{})
 	}
 	paint.key = pencodeDiagnosticPaintKey{}
 }
@@ -233,20 +233,20 @@ func (paint *pencodeDiagnosticPaint) hide(world *module.Content) {
 func pencodeDiagnosticEntity[T any](paint *pencodeDiagnosticPaint, world *module.Content, pool *[]ecs.Entity, used *int, stack scene.UIStackIndex, visual T) ecs.Entity {
 	if *used == len(*pool) {
 		bundle := ecs.NewBundle(8)
-		ecs.Put(&bundle, scene.UITransformFromXY(0, 0))
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: paint.root})
-		ecs.Put(&bundle, scene.AnchorTopLeft)
-		ecs.Put(&bundle, scene.Visibility{})
-		ecs.Put(&bundle, scene.Size2D{})
-		ecs.Put(&bundle, stack)
-		ecs.Put(&bundle, visual)
+		bundle.Put(scene.UITransformFromXY(0, 0))
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: paint.root})
+		bundle.Put(scene.AnchorTopLeft)
+		bundle.Put(scene.Visibility{})
+		bundle.Put(scene.Size2D{})
+		bundle.Put(stack)
+		bundle.Put(visual)
 		*pool = append(*pool, world.Spawn(bundle))
 	}
 	entity := (*pool)[*used]
 	*used++
-	module.ContentSetIfChanged(world, entity, stack)
-	module.ContentSetIfChanged(world, entity, scene.Visibility{Visible: true})
+	world.SetIfChanged(entity, stack)
+	world.SetIfChanged(entity, scene.Visibility{Visible: true})
 	return entity
 }
 
@@ -254,17 +254,17 @@ func (paint *pencodeDiagnosticPaint) quad(world *module.Content, used *int, stac
 	entity := pencodeDiagnosticEntity(paint, world, &paint.quads, used, stack, scene.NewSprite2D())
 	transform := scene.UITransformFromXY(x, y)
 	transform.Rotation = angle
-	module.ContentSetIfChanged(world, entity, transform)
-	module.ContentSetIfChanged(world, entity, scene.Size2D{Width: width, Height: height})
+	world.SetIfChanged(entity, transform)
+	world.SetIfChanged(entity, scene.Size2D{Width: width, Height: height})
 	sprite := scene.NewSprite2D()
 	sprite.Width, sprite.Height, sprite.Shape = width, height, scene.RoundedRectShape2D(color, 0)
-	module.ContentSetIfChanged(world, entity, sprite)
+	world.SetIfChanged(entity, sprite)
 }
 
 func (paint *pencodeDiagnosticPaint) label(world *module.Content, used *int, stack scene.UIStackIndex, x, y float32, message string, source *scene.Text2D, color graphics.ColorRGBA) {
 	entity := pencodeDiagnosticEntity(paint, world, &paint.labels, used, stack, scene.NewText2D(""))
-	module.ContentSetIfChanged(world, entity, scene.UITransformFromXY(x, y))
-	text := module.ContentMut[scene.Text2D](world, entity)
+	world.SetIfChanged(entity, scene.UITransformFromXY(x, y))
+	text := world.Mut[scene.Text2D](entity)
 	text.Value, text.Font, text.FontSize, text.DPI = message, source.Font, source.FontSize, source.DPI
 	text.LineHeight, text.InkOffsetY, text.LetterSpacing = source.LineHeight, source.InkOffsetY, source.LetterSpacing
 	text.WrapMode, text.Color = scene.TextWrapNone, color
@@ -278,12 +278,12 @@ func (paint *pencodeDiagnosticPaint) wave(world *module.Content, used *int, stac
 	}
 	view := paint.waveViews[index]
 	view.U, view.MaxU = u, maxU
-	module.ContentSetIfChanged(world, entity, scene.UITransformFromXY(x, y))
-	module.ContentSetIfChanged(world, entity, scene.Size2D{Width: width, Height: 3})
+	world.SetIfChanged(entity, scene.UITransformFromXY(x, y))
+	world.SetIfChanged(entity, scene.Size2D{Width: width, Height: 3})
 	sprite := scene.NewSprite2D()
 	sprite.Texture, sprite.Tint, sprite.Width, sprite.Height = view, color, width, 3
 	// UVs can change while a clipped sprite keeps the same position and size.
-	*module.ContentMut[scene.Sprite2D](world, entity) = sprite
+	*world.Mut[scene.Sprite2D](entity) = sprite
 }
 
 func (paint *pencodeDiagnosticPaint) dispose(world *module.Content) {

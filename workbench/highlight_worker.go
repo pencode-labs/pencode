@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	engineui "github.com/diiyw/onix/ui"
@@ -218,8 +217,8 @@ func (model *workspaceModel) pollHighlight() bool {
 		// Retire references from the live field before returning the previous
 		// paint buffer to the worker, which may start another parse immediately.
 		if model.fontResources != nil {
-			if value := module.ContentMut[scene.Text2D](model.fontResources, model.editor.text); value != nil {
-				field, _ := module.ContentGet[engineui.TextField](model.fontResources, model.editor.control)
+			if value := model.fontResources.Mut[scene.Text2D](model.editor.text); value != nil {
+				field, _ := model.fontResources.Get[engineui.TextField](model.editor.control)
 				model.editor.syncHighlight(value, field, model)
 			}
 		}

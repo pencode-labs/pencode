@@ -3,6 +3,7 @@ package textsearch
 import (
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -38,6 +39,114 @@ func TestSearchAndReplace(t *testing.T) {
 			}
 			if got := p.Replace(tc.content, tc.replacement, matches); got != tc.want {
 				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func checkRegexpRange(t testing.TB, content, query string, wholeWord bool, start, end, limit int, countAll bool) {
+	t.Helper()
+	p, err := Compile(query, Options{Regex: true, WholeWord: wholeWord})
+	if err != nil || query == "" {
+		return
+	}
+	var want []Match
+	count := 0
+	for _, groups := range p.re.FindAllStringSubmatchIndex(content, -1) {
+		if groups[0] < start || groups[1] > end || !p.boundary(content, groups[0], groups[1]) {
+			continue
+		}
+		count++
+		if limit < 0 || len(want) < limit {
+			want = append(want, Match{groups[0], groups[1], groups})
+		}
+		if !countAll && limit > 0 && count == limit {
+			break
+		}
+	}
+	if limit == 0 && !countAll {
+		count = 0
+	}
+	got, total := p.FindRange(content, nil, start, end, limit, countAll)
+	if total != count || !slices.EqualFunc(got, want, func(a, b Match) bool {
+		const replacement = `$0|$1|${word}`
+		groups := a.groups
+		if groups == nil {
+			groups = []int{a.Start, a.End}
+		}
+		return a.Start == b.Start && a.End == b.End && slices.Equal(groups, b.groups) && p.Replacement(content, a, replacement) == string(p.re.ExpandString(nil, replacement, content, b.groups))
+	}) {
+		t.Fatalf("%q / %q, whole=%t range=%d:%d limit=%d countAll=%t: got %v/%d want %v/%d", content, query, wholeWord, start, end, limit, countAll, got, total, want, count)
+	}
+}
+
+func TestRegexpIterationPreservesContextAndCaptures(t *testing.T) {
+	for _, content := range []string{"", "aaa\na a\n", "a\r\nb\r\n", "a界🙂 a\xffb", "ab ax ab", " b b "} {
+		for _, query := range []string{`a`, `(?i)a`, `a\.`, `\x{FFFD}`, `^`, `$`, `\A|a`, `\z`, `\b`, `\B`, `a*`, `a*?`, `(?:)`, `a|aa`, `a($)|(a)`, `(^a)|(\ba\b)|(a)`, `(?m)^.*$`, `(?-m)^.*$`, `(?s)(.*)`, `(?P<a>a)?(b)`, `\b(a+)|\B(b)`, `\A(?:a*)|(?m:^b)`} {
+			for _, wholeWord := range []bool{false, true} {
+				for _, countAll := range []bool{false, true} {
+					for _, limit := range []int{-1, 0, 1, 3} {
+						for _, bounds := range [][2]int{{0, len(content)}, {min(1, len(content)), len(content)}, {0, len(content) / 2}} {
+							checkRegexpRange(t, content, query, wholeWord, bounds[0], bounds[1], limit, countAll)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestLiteralRegexpCountDoesNotAllocate(t *testing.T) {
+	content := strings.Repeat("K k K ", 10000)
+	p, err := Compile(`(?i)k`, Options{Regex: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst, _ := p.FindRange(content, nil, 0, len(content), 5000, true)
+	if n := testing.AllocsPerRun(20, func() {
+		var count int
+		dst, count = p.FindRange(content, dst, 0, len(content), 5000, true)
+		if count != 30000 || len(dst) != 5000 {
+			t.Fatal(len(dst), count)
+		}
+	}); n != 0 {
+		t.Fatalf("warm literal regexp count allocated %g times", n)
+	}
+	if got := p.Replacement(content, dst[0], `[$0]`); got != "[K]" {
+		t.Fatal("literal regexp lost replacement captures", got)
+	}
+}
+
+func FuzzRegexpIteration(f *testing.F) {
+	for _, query := range []string{`a*`, `\b(a)|(b)`, `\A|^|$|\z`, `(?s:.*)`, `(a$)|(a)`, `\B`, `(?:)`, `(?P<word>\w+)`} {
+		f.Add("a\r\nb界🙂 a\n", query, false, uint8(1), uint8(9), int8(2), true)
+	}
+	f.Add("\xffa\xfe", `\x{FFFD}`, false, uint8(0), uint8(3), int8(2), true)
+	f.Fuzz(func(t *testing.T, content, query string, wholeWord bool, first, last uint8, limit int8, countAll bool) {
+		if len(content) > 4096 || len(query) > 256 {
+			t.Skip()
+		}
+		start, end := int(first)%(len(content)+1), int(last)%(len(content)+1)
+		if start > end {
+			start, end = end, start
+		}
+		checkRegexpRange(t, content, query, wholeWord, start, end, int(limit)%8, countAll)
+	})
+}
+
+func BenchmarkRegexpCountBounded(b *testing.B) {
+	content := strings.Repeat("a ", 1<<19)
+	for _, query := range []string{`a`, `(a)`, `\ba\b`} {
+		b.Run(query, func(b *testing.B) {
+			p, _ := Compile(query, Options{Regex: true})
+			dst, _ := p.FindRange(content, nil, 0, len(content), 5000, true)
+			b.ReportAllocs()
+			for b.Loop() {
+				var count int
+				dst, count = p.FindRange(content, dst, 0, len(content), 5000, true)
+				if len(dst) != 5000 || count != 1<<19 {
+					b.Fatal(len(dst), count)
+				}
 			}
 		})
 	}

@@ -5,9 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -18,8 +16,8 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
 	m.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	process := &extensions.ActionSession{}
@@ -49,7 +47,7 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 			t.Fatal("background busy update changed selection or lost state")
 		}
 		found := false
-		for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](m.fontResources) {
+		for _, access := range m.fontResources.Query[htmlui.Component[tabProps, struct{}]]() {
 			props := access.Ref().Props
 			if props.Surface == surface {
 				found = true
@@ -65,10 +63,10 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 	check(false)
 	show(true)
 	check(true)
-	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](m.fontResources, m.root)
+	root, _ := m.fontResources.Get[htmlui.Component[appProps, appState]](m.root)
 	show(true)
 	check(true)
-	current, _ := module.ContentGet[htmlui.Component[appProps, appState]](m.fontResources, m.root)
+	current, _ := m.fontResources.Get[htmlui.Component[appProps, appState]](m.root)
 	if root.State.Revision != current.State.Revision {
 		t.Fatal("unchanged busy streaming update rebuilt the workbench")
 	}
@@ -76,7 +74,7 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 	check(false)
 	show(true)
 	check(true)
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	editorContextClick(t, app, m, state, "file-tab-close:"+surface.rootID)
 	for range 3 {
 		languageInteractionStep(t, app)
@@ -91,7 +89,7 @@ func TestExtensionEditorTabFollowsOutputUntilUserScrolls(t *testing.T) {
 	m := session.active.model
 	w := m.fontResources
 	m.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	show := func(lines int) {
 		t.Helper()
 		if err := m.applyExtensionUI("codex-test", &extensions.ActionSession{}, peb.UI{ID: "stream", Title: "Stream", Kind: peb.EditorTab, View: &peb.EditorView{HTML: strings.Repeat(`<p>streamed output</p>`, lines)}}); err != nil {
@@ -110,7 +108,7 @@ func TestExtensionEditorTabFollowsOutputUntilUserScrolls(t *testing.T) {
 		if !ok {
 			t.Fatal("content has no scroll container")
 		}
-		s := module.ContentMut[scene.UIScroll](w, area)
+		s := w.Mut[scene.UIScroll](area)
 		if s == nil {
 			t.Fatal("content scroll missing")
 		}
@@ -140,7 +138,7 @@ func TestExtensionEditorTabsRetainSelectionAndFile(t *testing.T) {
 	m := session.active.model
 	world := m.fontResources
 	m.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	file, project := m.activeFile(), m.activeProjectState()
 	process := &extensions.ActionSession{}
 	results := make(chan extensions.ActionResult, 1)
@@ -173,7 +171,7 @@ func TestExtensionEditorTabsRetainSelectionAndFile(t *testing.T) {
 		t.Fatal("retained background update stole tab selection")
 	}
 	var tabCount int
-	for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](world) {
+	for _, access := range world.Query[htmlui.Component[tabProps, struct{}]]() {
 		p := access.Get().Props
 		if p.Surface != nil {
 			tabCount++
@@ -200,11 +198,11 @@ func TestExtensionEditorTabsRetainSelectionAndFile(t *testing.T) {
 	sourceWait(t, app, m)
 	settlePencodeHighlight(t, m)
 	languageInteractionStep(t, app)
-	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](world, m.root)
-	editor, _ := module.ContentGet[htmlui.Control](world, m.editor.control)
+	root, _ := world.Get[htmlui.Component[appProps, appState]](m.root)
+	editor, _ := world.Get[htmlui.Control](m.editor.control)
 	show("one", "Renamed first task", "output while editing a file")
-	currentRoot, _ := module.ContentGet[htmlui.Component[appProps, appState]](world, m.root)
-	currentEditor, _ := module.ContentGet[htmlui.Control](world, m.editor.control)
+	currentRoot, _ := world.Get[htmlui.Component[appProps, appState]](m.root)
+	currentEditor, _ := world.Get[htmlui.Control](m.editor.control)
 	if m.activeFile() != file || currentRoot.State.Revision != root.State.Revision || currentEditor.RenderRevision != editor.RenderRevision {
 		t.Fatalf("background chat update refreshed the active file editor: file retained %t, root %d -> %d, editor %d -> %d", m.activeFile() == file, root.State.Revision, currentRoot.State.Revision, editor.RenderRevision, currentEditor.RenderRevision)
 	}

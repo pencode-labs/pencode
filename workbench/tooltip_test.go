@@ -7,9 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/extensions"
@@ -19,8 +17,8 @@ import (
 func TestIconTooltipStaysInsideViewportAtEveryZoom(t *testing.T) {
 	app, model, _, state := languageInteractionFixture(t)
 	model.app.GetViewport = func() (int, int) { return 2400, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 2400, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 2400, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(2400, 900)
 	}
 	a := peb.Action{ID: "tooltip-edge", Text: "Tip", Tooltip: strings.Repeat("说明按钮作用，", 12), Icon: "icons/add.svg", Location: peb.StatusBar}
@@ -167,8 +165,8 @@ func TestTooltipTemplateAnonymousExtensionButtons(t *testing.T) {
 	if !found {
 		t.Fatal("missing extension button")
 	}
-	position := module.ContentRef[scene.UIGlobalTransform](model.fontResources, control)
-	size := module.ContentRef[scene.Size2D](model.fontResources, control)
+	position := model.fontResources.Ref[scene.UIGlobalTransform](control)
+	size := model.fontResources.Ref[scene.Size2D](control)
 	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(position.Matrix[12] + size.Width/2), Y: float64(position.Matrix[13] + size.Height/2)})
 	languageInteractionStep(t, app)
 	model.syncTooltip(model.fontResources, model.tooltip.due)

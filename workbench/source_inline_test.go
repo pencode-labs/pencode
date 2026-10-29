@@ -7,7 +7,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 )
@@ -156,8 +155,8 @@ func TestSourceInlinePaint(t *testing.T) {
 	var texts [2]*scene.Text2D
 	for side, id := range [...]string{"sc-code-left-input", "sc-code-right-input"} {
 		control, _ := model.fontResources.HTMLControl(model.surface, id)
-		entity, _ := module.ContentFindPart[engineui.ValuePart, scene.Text2D](model.fontResources, control)
-		texts[side] = module.ContentRef[scene.Text2D](model.fontResources, entity)
+		entity, _ := model.fontResources.FindPart[engineui.ValuePart, scene.Text2D](control)
+		texts[side] = model.fontResources.Ref[scene.Text2D](entity)
 	}
 	assertSourceInlinePaint(t, model, tab, texts)
 	// Suppress stale right-side ranges while an edited comparison is pending.

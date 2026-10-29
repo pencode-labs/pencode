@@ -499,7 +499,7 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		var offset float32
 		if node, ok := world.HTMLNode(m.surface, "sc-graph"); ok {
 			if entity, ok := node.ScrollContainer(); ok {
-				if scroll, ok := module.ContentGet[scene.UIScroll](world, entity); ok {
+				if scroll, ok := world.Get[scene.UIScroll](entity); ok {
 					offset = scroll.Position[1]
 				}
 			}
@@ -549,7 +549,7 @@ func (m *workspaceModel) handleSourceEvent(event htmlui.Event) bool {
 			if s.MessageMultiline && !strings.ContainsRune(event.Value, '\n') {
 				s.MessageMultiline = false
 				if m.fontResources != nil {
-					if field, ok := module.ContentGet[engineui.TextField](m.fontResources, event.Target); ok && field.Focused {
+					if field, ok := m.fontResources.Get[engineui.TextField](event.Target); ok && field.Focused {
 						s.MessageFocus = true
 						s.MessageAnchor, s.MessageCaret = field.Anchor, field.Caret
 					}
@@ -689,7 +689,7 @@ func (m *workspaceModel) syncSourceScroll(world *module.Content) {
 	for i, id := range [...]string{"sc-code-left", "sc-code-right"} {
 		if node, ok := world.HTMLNode(m.surface, id); ok {
 			if entity, ok := node.ScrollContainer(); ok {
-				scrolls[i] = module.ContentMut[scene.UIScroll](world, entity)
+				scrolls[i] = world.Mut[scene.UIScroll](entity)
 			}
 		}
 	}
@@ -743,7 +743,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 	if s.RestoreGraph && m.bottom.active == pencodePanelSourceControl {
 		if node, ok := world.HTMLNode(m.surface, "sc-graph"); ok {
 			if entity, ok := node.ScrollContainer(); ok {
-				if scroll := module.ContentMut[scene.UIScroll](world, entity); scroll != nil {
+				if scroll := world.Mut[scene.UIScroll](entity); scroll != nil {
 					scroll.Position[1] = s.GraphScrollY
 					s.RestoreGraph = false
 				}
@@ -758,7 +758,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 			return
 		}
 		if entity, ok := world.HTMLControl(m.surface, "sc-message"); ok && world.Focus(entity) {
-			if field := module.ContentMut[engineui.TextField](world, entity); field != nil {
+			if field := world.Mut[engineui.TextField](entity); field != nil {
 				field.Anchor, field.Caret = s.MessageAnchor, s.MessageCaret
 			}
 			s.MessageFocus = false
@@ -795,16 +795,16 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 		}
 	}
 	if entity, ok := world.HTMLControl(m.surface, "sc-merge-result"); ok {
-		if field := module.ContentMut[engineui.Textarea](world, entity); field != nil {
+		if field := world.Mut[engineui.Textarea](entity); field != nil {
 			field.CaptureTab, field.SelectTokens, field.Wrap = true, true, false
 		}
-		if font := module.ContentMut[htmlui.ControlTextFont](world, entity); font != nil {
+		if font := world.Mut[htmlui.ControlTextFont](entity); font != nil {
 			font.Font = m.codeFont()
 		} else {
-			_ = module.ContentInsert(world, entity, htmlui.ControlTextFont{Font: m.codeFont()})
+			_ = world.Insert(entity, htmlui.ControlTextFont{Font: m.codeFont()})
 		}
 		if tab := s.activeTab(); tab != nil {
-			field, _ := module.ContentGet[engineui.TextField](world, entity)
+			field, _ := world.Get[engineui.TextField](entity)
 			if field.Value != tab.Result {
 				world.SetControlValue(entity, tab.Result)
 			}
@@ -820,7 +820,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 			for i, id := range [...]string{"sc-code-left", "sc-code-right"} {
 				if node, ok := world.HTMLNode(m.surface, id); ok {
 					if entity, ok := node.ScrollContainer(); ok {
-						if scroll := module.ContentMut[scene.UIScroll](world, entity); scroll != nil {
+						if scroll := world.Mut[scene.UIScroll](entity); scroll != nil {
 							scrolls[i] = scroll
 						}
 					}
@@ -868,7 +868,7 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	}
 	if m.bottom.active == pencodePanelSourceControl && !s.MessageMultiline && !s.busy() && m.commandMatches("source-newline", state, goos) {
 		if entity, ok := world.HTMLControl(m.surface, "sc-message"); ok {
-			if field, ok := module.ContentGet[engineui.TextField](world, entity); ok && field.Focused {
+			if field, ok := world.Get[engineui.TextField](entity); ok && field.Focused {
 				start, end := min(field.Anchor, field.Caret), max(field.Anchor, field.Caret)
 				first, last := pencodeSelectionBytes(field.Value, start, end)
 				s.CommitMessage = field.Value[:first] + "\n" + field.Value[last:]
@@ -900,7 +900,7 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 		}
 		if tab := s.activeTab(); tab != nil && (tab.Kind == "merge" || tab.editable()) && !s.busy() && (action == pencodeShortcutUndo || action == pencodeShortcutRedo) {
 			if entity, ok := world.HTMLControl(m.surface, "sc-code-left-input"); ok {
-				if field, ok := module.ContentGet[engineui.TextField](world, entity); ok && field.Focused {
+				if field, ok := world.Get[engineui.TextField](entity); ok && field.Focused {
 					return true, false
 				}
 			}
@@ -975,7 +975,7 @@ func (m *workspaceModel) syncSourceGraph(world *module.Content) bool {
 	if !ok {
 		return false
 	}
-	scroll := module.ContentMut[scene.UIScroll](world, entity)
+	scroll := world.Mut[scene.UIScroll](entity)
 	if scroll == nil {
 		return false
 	}

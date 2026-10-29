@@ -506,7 +506,7 @@ func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 		}
 		message = document.message
 		if document.definition != nil {
-			htmlui.AppendComponentChild(view, "custom-editor-content", 1, document.definition, document, struct{}{})
+			view.AppendComponentChild("custom-editor-content", 1, document.definition, document, struct{}{})
 		}
 	}
 	view.Text("custom-editor-status", message)

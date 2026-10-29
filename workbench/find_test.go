@@ -17,7 +17,7 @@ func TestFindReplaceNativeControlsAndUndo(t *testing.T) {
 	content := "中🙂 foo Foo food\nfoo"
 	m.updateActiveContent(content)
 	m.setEditorValueAndCaret(world, content, 6)
-	module.ContentMut[engineui.TextField](world, m.editor.control).Anchor = 3
+	world.Mut[engineui.TextField](m.editor.control).Anchor = 3
 	m.runShortcut(world, pencodeShortcutFind)
 	markPencodeRootDirtyByModel(world, m)
 	for range 3 {

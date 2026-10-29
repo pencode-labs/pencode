@@ -16,19 +16,19 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	model := session.active.model
 	world := model.fontResources
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	project := model.activeProjectState()
 	first := model.activeFile()
 	first.Content = strings.Repeat(strings.Repeat("x", 256)+"\n", 150)
 	model.setEditorValueAndCaret(world, first.Content, 80)
-	module.ContentMut[engineui.TextField](world, model.editor.control).Anchor = 5
+	world.Mut[engineui.TextField](model.editor.control).Anchor = 5
 	markPencodeRootDirtyByModel(world, model)
 	languageInteractionStep(t, app)
 	// Scroll away from the caret, as with the wheel or scrollbar thumb.
-	textarea := module.ContentMut[engineui.Textarea](world, model.editor.control)
+	textarea := world.Mut[engineui.Textarea](model.editor.control)
 	textarea.ScrollX, textarea.ScrollY = 100, 600
 	languageInteractionStep(t, app)
 	want := first.editorView
@@ -46,7 +46,7 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 		// clamps the shared control's caret when the destination is shorter.
 		world.Focus(0)
 		var component ecs.Entity
-		for entity, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](world) {
+		for entity, access := range world.Query[htmlui.Component[tabProps, struct{}]]() {
 			if access.Get().Props.Path == file.Path {
 				component = entity
 				break
@@ -63,14 +63,14 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	}
 	assertView := func(want pencodeEditorView) {
 		t.Helper()
-		field := module.ContentRef[engineui.TextField](world, model.editor.control)
-		textarea := module.ContentRef[engineui.Textarea](world, model.editor.control)
+		field := world.Ref[engineui.TextField](model.editor.control)
+		textarea := world.Ref[engineui.Textarea](model.editor.control)
 		got := pencodeEditorView{field.Caret, field.Anchor, textarea.ScrollX, textarea.ScrollY}
 		if got != want || !field.Focused {
 			t.Fatalf("editor view = %+v (focused=%v), want %+v", got, field.Focused, want)
 		}
-		link, _ := module.ContentGet[htmlui.ControlText](world, model.editor.text)
-		transform := module.ContentRef[scene.UITransform](world, model.editor.text)
+		link, _ := world.Get[htmlui.ControlText](model.editor.text)
+		transform := world.Ref[scene.UITransform](model.editor.text)
 		if transform.Translation.X.Value != link.Content.X-want.scrollX || transform.Translation.Y.Value != link.Content.Y-want.scrollY {
 			t.Fatalf("text transform does not match restored scroll: %+v", transform)
 		}
@@ -78,7 +78,7 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	selectTab(other)
 	assertView(pencodeEditorView{})
 	model.setEditorValueAndCaret(world, other.Content, 2)
-	module.ContentMut[engineui.TextField](world, model.editor.control).Anchor = 1
+	world.Mut[engineui.TextField](model.editor.control).Anchor = 1
 	languageInteractionStep(t, app)
 	for range 2 {
 		selectTab(first)
@@ -111,7 +111,7 @@ func TestPencodeOpeningFileFocusesEditorAtStart(t *testing.T) {
 	model, world := session.active.model, session.active.model.fontResources
 	assertStart := func() {
 		t.Helper()
-		field, _ := module.ContentGet[engineui.TextField](world, model.editor.control)
+		field, _ := world.Get[engineui.TextField](model.editor.control)
 		if !field.Focused || field.Caret != 0 || field.Anchor != 0 || field.ScrollX != 0 {
 			t.Fatalf("opened file is not active at its start: %+v", field)
 		}
@@ -137,7 +137,7 @@ func TestPencodeOpeningFileFocusesEditorAtStart(t *testing.T) {
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
 	}
-	if field, _ := module.ContentGet[engineui.TextField](world, model.editor.control); !field.Focused || field.Caret != 60 || field.Anchor != 60 {
+	if field, _ := world.Get[engineui.TextField](model.editor.control); !field.Focused || field.Caret != 60 || field.Anchor != 60 {
 		t.Fatalf("returning to a file lost its caret: %+v", field)
 	}
 	// An ordinary render must preserve the user's caret.
@@ -146,7 +146,7 @@ func TestPencodeOpeningFileFocusesEditorAtStart(t *testing.T) {
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
 	}
-	if field, _ := module.ContentGet[engineui.TextField](world, model.editor.control); !field.Focused || field.Caret != 5 {
+	if field, _ := world.Get[engineui.TextField](model.editor.control); !field.Focused || field.Caret != 5 {
 		t.Fatalf("render moved caret: %+v", field)
 	}
 }
@@ -191,11 +191,11 @@ func TestPencodeCaretStatus(t *testing.T) {
 		model.activeFile().Content = fixture.value
 		model.setEditorValueAndCaret(world, fixture.value, fixture.caret)
 		// A selection reports the moving caret, regardless of its anchor.
-		module.ContentMut[engineui.TextField](world, model.editor.control).Anchor = 0
+		world.Mut[engineui.TextField](model.editor.control).Anchor = 0
 		markPencodeRootDirtyByModel(world, model)
 		assertStatus(fixture.want)
 	}
-	module.ContentMut[engineui.TextField](world, model.editor.control).Caret = 3
+	world.Mut[engineui.TextField](model.editor.control).Caret = 3
 	app.RequestRender()
 	assertStatus("Ln 2, Col 2")
 	// Root renders must preserve the status even when the caret stays still.
@@ -249,10 +249,10 @@ func TestPencodeEditorWidthPercentSettingsAndLayout(t *testing.T) {
 			t.Fatal(err)
 		}
 		editor := &model.editor
-		link, _ := module.ContentGet[htmlui.ControlText](model.fontResources, editor.text)
-		text, _ := module.ContentGet[scene.Text2D](model.fontResources, editor.text)
-		textarea, _ := module.ContentGet[engineui.Textarea](model.fontResources, editor.control)
-		guide, _ := module.ContentGet[scene.UITransform](model.fontResources, editor.guide)
+		link, _ := model.fontResources.Get[htmlui.ControlText](editor.text)
+		text, _ := model.fontResources.Get[scene.Text2D](editor.text)
+		textarea, _ := model.fontResources.Get[engineui.Textarea](editor.control)
+		guide, _ := model.fontResources.Get[scene.UITransform](editor.guide)
 		if text.WrapMode != scene.TextWrapTokens || text.WrapWidth != link.Content.Width*.5 ||
 			!textarea.WrapTokens || textarea.WrapWidthPercent != 50 || textarea.DisableHorizontalScroll ||
 			guide.Translation.X.Value != link.Content.X+text.WrapWidth {

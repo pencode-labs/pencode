@@ -10,15 +10,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/lsp"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	"github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 func pencodeTestColour(spans []scene.TextSpan2D, offset int) graphics.ColorRGBA {
@@ -164,11 +163,11 @@ func TestPencodeThemeSelectionAndEditorColors(t *testing.T) {
 	if pencodeTestColour(model.highlightScratch, comment) == before {
 		t.Fatal("theme selection did not update syntax colors")
 	}
-	text, _ := module.ContentGet[scene.Text2D](content, model.editor.text)
+	text, _ := content.Get[scene.Text2D](model.editor.text)
 	if text.Color != graphics.Black {
 		t.Fatalf("plain editor text did not adopt the light theme: %+v", text.Color)
 	}
-	numbers, _ := module.ContentGet[scene.Text2D](content, model.editor.numbers)
+	numbers, _ := content.Get[scene.Text2D](model.editor.numbers)
 	if numbers.Color != pencodeSyntaxColor(model.syntaxTheme.Color("editorLineNumber.foreground")) {
 		t.Fatal("gutter did not adopt the theme")
 	}
@@ -176,8 +175,8 @@ func TestPencodeThemeSelectionAndEditorColors(t *testing.T) {
 	if !ok {
 		t.Fatal("theme selector is missing")
 	}
-	field, _ := module.ContentGet[ui.Selector](content, selector)
-	control, _ := module.ContentGet[htmlui.Control](content, selector)
+	field, _ := content.Get[ui.Selector](selector)
+	control, _ := content.Get[htmlui.Control](selector)
 	if field.Selected != 2 || len(control.Options) != 3 {
 		t.Fatalf("theme options or selection are stale: %+v", field)
 	}
@@ -239,16 +238,16 @@ func TestPencodeInputFramePreservesHighlight(t *testing.T) {
 	}
 	step()
 	prefix := strings.Index(model.activeContent(), "text") + 2
-	field := module.ContentMut[ui.TextField](content, editor.control)
+	field := content.Mut[ui.TextField](editor.control)
 	source := field.Value
 	field.Caret = utf8.RuneCountInString(field.Value[:prefix])
 	field.Anchor = field.Caret
 	colour := pencodeTestColour(model.highlightScratch, prefix)
 	keywordColour := pencodeTestColour(model.highlightScratch, 0)
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	assertColour := func(offset int) {
 		t.Helper()
-		value, _ := module.ContentGet[scene.Text2D](content, editor.text)
+		value, _ := content.Get[scene.Text2D](editor.text)
 		if pencodeTestColour(value.Spans, offset) != colour {
 			t.Fatalf("input frame lost colour at %d: %v", offset, value.Spans)
 		}
@@ -258,14 +257,14 @@ func TestPencodeInputFramePreservesHighlight(t *testing.T) {
 	assertColour(prefix)
 	assertColour(prefix + len("中文"))
 	assertColour(prefix - 1)
-	value, _ := module.ContentGet[scene.Text2D](content, editor.text)
+	value, _ := content.Get[scene.Text2D](editor.text)
 	if value.Value != source[:prefix]+"中文"+source[prefix:] || pencodeTestColour(value.Spans, 0) != keywordColour || model.activeContent() != source {
-		field, _ := module.ContentGet[ui.TextField](content, editor.control)
+		field, _ := content.Get[ui.TextField](editor.control)
 		t.Fatalf("composition changed the source or cleared unrelated syntax colours: value=%q caret=%d composition=%q colour=%v want=%v sourceChanged=%v", value.Value[:min(80, len(value.Value))], field.Caret, field.Composition, pencodeTestColour(value.Spans, 0), keywordColour, model.activeContent() != source)
 	}
 	if allocs := testing.AllocsPerRun(100, func() {
-		field, _ := module.ContentGet[ui.TextField](content, editor.control)
-		value := module.ContentMut[scene.Text2D](content, editor.text)
+		field, _ := content.Get[ui.TextField](editor.control)
+		value := content.Mut[scene.Text2D](editor.text)
 		editor.syncHighlight(value, field, model)
 	}); allocs != 0 {
 		t.Fatalf("composition highlight allocated %g times", allocs)
@@ -277,7 +276,7 @@ func TestPencodeInputFramePreservesHighlight(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "x"})
 	step()
 	assertColour(prefix + len("中文"))
-	committed, _ := module.ContentGet[ui.TextField](content, editor.control)
+	committed, _ := content.Get[ui.TextField](editor.control)
 	if committed.Composition != "" || committed.Value != source[:prefix]+"中文x"+source[prefix:] || model.activeContent() != committed.Value {
 		t.Fatal("committed composition did not reach the editor and source in the same frame")
 	}

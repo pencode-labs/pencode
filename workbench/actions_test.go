@@ -5,10 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/diiyw/onix/module"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/peb"
-	htmlui "github.com/diiyw/onix/ui/html"
 )
 
 func TestTitlebarActionsDoNotOverlapBuiltInControls(t *testing.T) {
@@ -77,7 +76,7 @@ func TestPencodeActionsRenderClickUpdateAndRemove(t *testing.T) {
 	languageInteractionStep(t, app)
 	var button htmlui.Control
 	found := false
-	for _, access := range module.ContentQuery[htmlui.Component[pencodeActionProps, struct{}]](model.fontResources) {
+	for _, access := range model.fontResources.Query[htmlui.Component[pencodeActionProps, struct{}]]() {
 		props := access.Get().Props
 		if props.Action.ID != updated.ID {
 			continue
@@ -89,7 +88,7 @@ func TestPencodeActionsRenderClickUpdateAndRemove(t *testing.T) {
 		if !ok {
 			t.Fatal("missing action control")
 		}
-		button, _ = module.ContentGet[htmlui.Control](model.fontResources, entity)
+		button, _ = model.fontResources.Get[htmlui.Control](entity)
 		found = true
 	}
 	if !found || !button.Disabled {

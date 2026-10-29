@@ -17,7 +17,7 @@ type pencodeFindPaint struct {
 }
 
 func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
-	text := module.ContentMut[scene.Text2D](world, m.editor.text)
+	text := world.Mut[scene.Text2D](m.editor.text)
 	if !m.findOpen || m.settingsOpen || !m.textEditorActive() || text == nil || m.workbenchTheme == nil || text.Value != m.activeContent() {
 		paint.hide(world)
 		return
@@ -27,9 +27,9 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 		paint.hide(world)
 		return
 	}
-	transform, _ := module.ContentGet[scene.UITransform](world, m.editor.text)
-	size, _ := module.ContentGet[scene.Size2D](world, m.editor.control)
-	stack, _ := module.ContentGet[scene.UIStackIndex](world, m.editor.text)
+	transform, _ := world.Get[scene.UITransform](m.editor.text)
+	size, _ := world.Get[scene.Size2D](m.editor.control)
+	stack, _ := world.Get[scene.UIStackIndex](m.editor.text)
 	colors := m.workbenchTheme.findColors
 	key := pencodeDiagnosticPaintKey{
 		layout: pencodeGutterLayoutKey{text.Value, text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
@@ -44,19 +44,19 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 	}
 	if !world.IsAlive(paint.root) {
 		bundle := ecs.NewBundle(7)
-		ecs.Put(&bundle, scene.UITransformFromXY(0, 0))
-		ecs.Put(&bundle, scene.UIGlobalTransform{})
-		ecs.Put(&bundle, scene.Parent{Entity: m.editor.control})
-		ecs.Put(&bundle, scene.AnchorTopLeft)
-		ecs.Put(&bundle, scene.Visibility{})
-		ecs.Put(&bundle, scene.ClipRect2D{})
-		ecs.Put(&bundle, scene.Size2D{})
+		bundle.Put(scene.UITransformFromXY(0, 0))
+		bundle.Put(scene.UIGlobalTransform{})
+		bundle.Put(scene.Parent{Entity: m.editor.control})
+		bundle.Put(scene.AnchorTopLeft)
+		bundle.Put(scene.Visibility{})
+		bundle.Put(scene.ClipRect2D{})
+		bundle.Put(scene.Size2D{})
 		paint.root = world.Spawn(bundle)
 	}
-	module.ContentSetIfChanged(world, paint.root, scene.Parent{Entity: m.editor.control})
-	module.ContentSetIfChanged(world, paint.root, scene.Visibility{Visible: true})
-	module.ContentSetIfChanged(world, paint.root, scene.ClipRect2D{Width: size.Width, Height: size.Height})
-	module.ContentSetIfChanged(world, paint.root, size)
+	world.SetIfChanged(paint.root, scene.Parent{Entity: m.editor.control})
+	world.SetIfChanged(paint.root, scene.Visibility{Visible: true})
+	world.SetIfChanged(paint.root, scene.ClipRect2D{Width: size.Width, Height: size.Height})
+	world.SetIfChanged(paint.root, size)
 	used := 0
 	count := scene.TextLineCount2D(text)
 	first := max(0, int(math.Floor(float64(-key.y/text.LineHeight))))
@@ -92,17 +92,17 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 			if i == m.findIndex {
 				// Keep the outline above native selection without tinting the code.
 				entity := pencodeDiagnosticEntity(&paint.pencodeDiagnosticPaint, world, &paint.quads, &used, stack+1, scene.NewSprite2D())
-				module.ContentSetIfChanged(world, entity, scene.UITransformFromXY(key.x+bounds.X, y))
-				module.ContentSetIfChanged(world, entity, scene.Size2D{Width: max(2, bounds.Width), Height: rect.Height})
+				world.SetIfChanged(entity, scene.UITransformFromXY(key.x+bounds.X, y))
+				world.SetIfChanged(entity, scene.Size2D{Width: max(2, bounds.Width), Height: rect.Height})
 				sprite := scene.NewSprite2D()
 				sprite.Width, sprite.Height = max(2, bounds.Width), rect.Height
 				sprite.Shape = scene.OutlinedRoundedRectShape2D(graphics.ColorRGBA{}, colors[2], 0, 1)
-				module.ContentSetIfChanged(world, entity, sprite)
+				world.SetIfChanged(entity, sprite)
 			}
 		}
 	}
 	for _, entity := range paint.quads[used:] {
-		module.ContentSetIfChanged(world, entity, scene.Visibility{})
+		world.SetIfChanged(entity, scene.Visibility{})
 	}
 	paint.key, paint.index, paint.theme = key, m.findIndex, m.workbenchTheme
 }

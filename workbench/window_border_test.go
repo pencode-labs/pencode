@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 )
 
@@ -19,9 +18,9 @@ func TestPencodeWindowBorderIgnoresZoomAndTracksResize(t *testing.T) {
 		for _, zoom := range []int{70, 100, 150} {
 			model.settings.Zoom = zoom
 			model.syncZoom(content)
-			size, _ := module.ContentGet[scene.Size2D](content, border)
-			transform, _ := module.ContentGet[scene.UITransform](content, border)
-			outline, _ := module.ContentGet[scene.UIBorder2D](content, border)
+			size, _ := content.Get[scene.Size2D](border)
+			transform, _ := content.Get[scene.UITransform](border)
+			outline, _ := content.Get[scene.UIBorder2D](border)
 			if size.Width != viewport[0] || size.Height != viewport[1] || transform.Scale.X() != 1 || transform.Scale.Y() != 1 {
 				t.Fatalf("zoom %d changed window border bounds: size=%+v transform=%+v", zoom, size, transform)
 			}

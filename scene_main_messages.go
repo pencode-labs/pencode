@@ -12,7 +12,7 @@ func (m *SceneMain) OnMessage(c *module.Context, message module.Message) error {
 }
 func routePencodeScene(c *module.Context, message module.Message) error {
 	if message.Topic == "pencode.navigate" && message.From == "workbench" {
-		workspace, ok := module.Value[bool](message)
+		workspace, ok := message.Value[bool]()
 		if !ok {
 			return module.ErrType
 		}
@@ -23,9 +23,9 @@ func routePencodeScene(c *module.Context, message module.Message) error {
 		return c.Switch(module.SceneSwitchRequest{Scene: id, Retain: true})
 	}
 	if message.Topic == "scene.switch.result" {
-		result, _ := module.Value[module.SceneSwitchResult](message)
+		result, _ := message.Value[module.SceneSwitchResult]()
 		if result.Err != nil {
-			return module.Send(c, "workbench", "pencode.error", result.Err.Error())
+			return c.Send("workbench", "pencode.error", result.Err.Error())
 		}
 	}
 	if message.Topic == "openProject" {

@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 )
 
 func (a *workspaceModel) sourceMutation(message string, operation func(sourceRepository) error) {
@@ -370,7 +369,7 @@ func (a *workspaceModel) sourceAction(id string) {
 		op := strings.TrimPrefix(id, "sc-op:")
 		if op == "copy" {
 			if a.fontResources != nil {
-				if state, ok := module.ContentResource[*input.State](a.fontResources); ok {
+				if state, ok := a.fontResources.Resource[*input.State](); ok {
 					state.SetClipboardText(s.MenuHash)
 				}
 			}

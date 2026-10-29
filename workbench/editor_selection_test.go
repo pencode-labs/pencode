@@ -5,9 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 )
@@ -16,10 +14,10 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	world := model.fontResources
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	value := "package demo\nvar foo_bar42 = 中文变量_2\n" + strings.Repeat("// wrapped text ", 40) + strings.Repeat("\n// scroll", 50) + "\nvar path = \"github.com/diiyw/onix/scene\"\nvar message = \"你好 世界\"\nvar result = foo_bar42 + 中文变量_2\n"
@@ -52,7 +50,7 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 			for click := range 2 {
 				state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: px, Y: py})
 				languageInteractionStep(t, app)
-				field, _ := module.ContentGet[engineui.TextField](world, model.editor.control)
+				field, _ := world.Get[engineui.TextField](model.editor.control)
 				if click == 0 && field.Anchor != field.Caret {
 					t.Fatalf("single click selected text: %+v", field)
 				}
@@ -62,7 +60,7 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 				state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: px, Y: py})
 				languageInteractionStep(t, app)
 			}
-			field, _ := module.ContentGet[engineui.TextField](world, model.editor.control)
+			field, _ := world.Get[engineui.TextField](model.editor.control)
 			config := state.TextInputConfig()
 			if field.Anchor != start || field.Caret != end || config.SelectionStart != start || config.SelectionEnd != end {
 				t.Fatalf("release/platform lost token selection: field=%d:%d platform=%d:%d", field.Anchor, field.Caret, config.SelectionStart, config.SelectionEnd)
@@ -81,7 +79,7 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyLeftControl})
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "-"})
 	languageInteractionStep(t, app)
-	if field, _ := module.ContentGet[engineui.TextField](world, model.editor.control); field.Value != strings.Replace(value, " + ", " - ", 1) {
+	if field, _ := world.Get[engineui.TextField](model.editor.control); field.Value != strings.Replace(value, " + ", " - ", 1) {
 		t.Fatal("typing did not replace the selected token")
 	}
 }

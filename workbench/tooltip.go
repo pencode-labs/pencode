@@ -110,7 +110,7 @@ func (model *workspaceModel) renderTooltip(view *htmlui.View) {
 }
 
 func (model *workspaceModel) syncTooltip(world *module.Content, now time.Time) {
-	state, ok := module.ContentResource[*input.State](world)
+	state, ok := world.Resource[*input.State]()
 	if !ok || state == nil {
 		return
 	}
@@ -120,7 +120,7 @@ func (model *workspaceModel) syncTooltip(world *module.Content, now time.Time) {
 	var control ecs.Entity
 	var button htmlui.Control
 	if p.Device == input.PointerDeviceMouse {
-		for entity, pair := range module.ContentQuery2[htmlui.Control, scene.InputState2D](world) {
+		for entity, pair := range world.Query2[htmlui.Control, scene.InputState2D]() {
 			c, pointer := pair.A.Get(), pair.B.Get()
 			if c.Owner == model.surface && c.Tag == "button" && c.ID != "" && pointer.Hovered {
 				control, button = entity, c
@@ -164,8 +164,8 @@ func (model *workspaceModel) syncTooltip(world *module.Content, now time.Time) {
 	if !t.open {
 		return
 	}
-	position := module.ContentRef[scene.UIGlobalTransform](world, t.control)
-	buttonSize := module.ContentRef[scene.Size2D](world, t.control)
+	position := world.Ref[scene.UIGlobalTransform](t.control)
+	buttonSize := world.Ref[scene.Size2D](t.control)
 	root, _ := world.HTMLNode(model.surface, "pencode-root")
 	viewport, _ := root.Bounds()
 	size, measured := popup.Bounds()

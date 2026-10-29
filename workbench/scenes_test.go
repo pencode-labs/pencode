@@ -15,6 +15,16 @@ import (
 )
 
 func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
+	for _, preload := range []bool{false, true} {
+		name := "on-demand"
+		if preload {
+			name = "preloaded"
+		}
+		t.Run(name, func(t *testing.T) { testRetainedWorkspace(t, preload) })
+	}
+}
+
+func testRetainedWorkspace(t *testing.T, preload bool) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("APPDATA", t.TempDir())
 	source := os.DirFS("..")
@@ -22,16 +32,16 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := NewSession(newPencodeBackend(t))
+	session := newPencodeTestSession(t, newPencodeBackend(t))
 	registry := module.Registry{}
 	if err := session.Register(&registry); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range [...]project.SceneID{"main.json", "workspace.json"} {
-		err = module.RegisterScene(&registry, id, func() struct{} { return struct{}{} }, module.Lifecycle[struct{}]{
+		err = registry.RegisterScene(id, func() struct{} { return struct{}{} }, module.Lifecycle[struct{}]{
 			OnMessage: func(c *module.Context, _ *struct{}, message module.Message) error {
 				if message.Topic == "pencode.navigate" {
-					workspace, _ := module.Value[bool](message)
+					workspace, _ := message.Value[bool]()
 					target := project.SceneID("main.json")
 					if workspace {
 						target = "workspace.json"
@@ -39,7 +49,7 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 					return c.Switch(module.SceneSwitchRequest{Scene: target, Retain: true})
 				}
 				if message.Topic == "scene.switch.result" {
-					result, _ := module.Value[module.SceneSwitchResult](message)
+					result, _ := message.Value[module.SceneSwitchResult]()
 					return result.Err
 				}
 				return nil
@@ -51,22 +61,28 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	}
 	app := onix.NewApp()
 	t.Cleanup(app.Destroy)
-	if err := onix.InstallSystems[onix.UIHTML](app); err != nil {
+	if err := app.InstallSystems[onix.UIHTML](); err != nil {
 		t.Fatal(err)
 	}
-	entry, err := app.LoadModules(plan, registry, module.Options{Source: source})
+	entry, err := app.LoadModules[module.FullContent](plan, registry, module.Options{Source: source})
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime, manager := app.Modules(), app.Modules().Manager()
 	launcher := session.active
 	launcher.model.selectTheme("light-plus")
-	prepared, err := manager.Preload(module.ScenePreloadRequest{Scene: "workspace.json"})
-	if err != nil {
-		t.Fatal(err)
+	if len(session.views) != 1 {
+		t.Fatal("launcher installed an unused workspace view")
 	}
-	if session.active != launcher || prepared.State() != module.SceneReady {
-		t.Fatal("preload changed foreground model")
+	var prepared *module.Scene
+	if preload {
+		prepared, err = manager.Preload(module.ScenePreloadRequest{Scene: "workspace.json"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if session.active != launcher || prepared.State() != module.SceneReady {
+			t.Fatal("preload changed foreground model")
+		}
 	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package demo\n"), 0644); err != nil {
@@ -109,6 +125,9 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	waitPencodeScanSignal(t, entered)
 	step()
 	workspace := session.active
+	if !preload {
+		prepared = manager.Active()
+	}
 	if manager.Active() != prepared || workspace == launcher || entry.State() != module.SceneSuspended {
 		t.Fatal("project did not activate separate workspace")
 	}
@@ -117,7 +136,7 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	if root == launcher.model.root || surface == launcher.model.surface || border == launcher.model.windowBorder || workspace.model.projectPath != dir {
 		t.Fatal("view identity or project state leaked across scenes")
 	}
-	if value, _ := module.ContentGet[html.Surface](workspace.model.fontResources, surface); value.CSS != workspace.model.workbenchTheme.css || workspace.model.settings.Theme != "light-plus" {
+	if value, _ := workspace.model.fontResources.Get[html.Surface](surface); value.CSS != workspace.model.workbenchTheme.css || workspace.model.settings.Theme != "light-plus" {
 		t.Fatal("launcher theme did not follow the workspace")
 	}
 	if loadingProject.scan == nil || workspace.model.activeFile() != nil || !workspace.model.fontResources.IsAlive(root) {
@@ -138,7 +157,7 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	step()
 	step()
 	content, editor := workspace.model.fontResources, &workspace.model.editor
-	if binding, ok := module.ContentGet[html.ControlTextFont](content, editor.control); !ok || binding.Font != workspace.model.codeFont() {
+	if binding, ok := content.Get[html.ControlTextFont](editor.control); !ok || binding.Font != workspace.model.codeFont() {
 		t.Fatal("editor code font was not bound for HTML reconciliation")
 	}
 	if !content.IsAlive(editor.guide) || !content.IsAlive(editor.gutter) || !content.IsAlive(editor.numbers) {
@@ -146,16 +165,16 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	}
 	assertGuide := func(percent int) {
 		t.Helper()
-		link, ok := module.ContentGet[html.ControlText](content, editor.text)
+		link, ok := content.Get[html.ControlText](editor.text)
 		if !ok {
 			t.Fatal("editor text has no layout link")
 		}
-		controlSize, _ := module.ContentGet[scene.Size2D](content, editor.control)
-		transform := module.ContentMut[scene.UITransform](content, editor.guide)
-		sprite := module.ContentMut[scene.Sprite2D](content, editor.guide)
-		size, _ := module.ContentGet[scene.Size2D](content, editor.guide)
-		visibility, _ := module.ContentGet[scene.Visibility](content, editor.guide)
-		parent, _ := module.ContentGet[scene.Parent](content, editor.guide)
+		controlSize, _ := content.Get[scene.Size2D](editor.control)
+		transform := content.Mut[scene.UITransform](editor.guide)
+		sprite := content.Mut[scene.Sprite2D](editor.guide)
+		size, _ := content.Get[scene.Size2D](editor.guide)
+		visibility, _ := content.Get[scene.Visibility](editor.guide)
+		parent, _ := content.Get[scene.Parent](editor.guide)
 		width := link.Content.Width * float32(percent) / 100
 		if transform == nil || sprite == nil || transform.Translation.X.Value != link.Content.X+width ||
 			sprite.Width != 1 || sprite.Height != controlSize.Height || size.Width != 1 || size.Height != controlSize.Height ||
@@ -169,10 +188,10 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	if editor.guide != guide || editor.gutter != gutter || editor.numbers != numbers {
 		t.Fatal("editor recreated committed decorations")
 	}
-	if visibility, _ := module.ContentGet[scene.Visibility](content, editor.gutter); !visibility.Visible {
+	if visibility, _ := content.Get[scene.Visibility](editor.gutter); !visibility.Visible {
 		t.Fatal("line number gutter remained hidden after initialization")
 	}
-	if value, _ := module.ContentGet[scene.Text2D](content, editor.numbers); value.Value == "" {
+	if value, _ := content.Get[scene.Text2D](editor.numbers); value.Value == "" {
 		t.Fatal("line numbers were not synchronized")
 	}
 	for _, width := range [...]int{0, 80, 100} {
@@ -198,7 +217,7 @@ func TestRetainedWorkspaceKeepsPrivateViewAndSharedProjectState(t *testing.T) {
 	if session.active != launcher || manager.Active() != entry || launcher.model.files[launcher.model.activePath] != file {
 		t.Fatal("return lost project state")
 	}
-	if value, _ := module.ContentGet[html.Surface](launcher.model.fontResources, launcher.model.surface); value.CSS != launcher.model.workbenchTheme.css || launcher.model.settings.Theme != "dark-plus" {
+	if value, _ := launcher.model.fontResources.Get[html.Surface](launcher.model.surface); value.CSS != launcher.model.workbenchTheme.css || launcher.model.settings.Theme != "dark-plus" {
 		t.Fatal("workspace theme did not follow the launcher")
 	}
 	if err := loadProjectAndWait(t, launcher.model, dir); err != nil {

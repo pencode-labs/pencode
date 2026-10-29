@@ -423,3 +423,24 @@ Creative Commons may be contacted at creativecommons.org.
 ---
 
 Git Logo by [Jason Long](https://bsky.app/profile/jasonlong.me) is licensed under the [Creative Commons Attribution 3.0 Unported License](https://creativecommons.org/licenses/by/3.0/).
+Completion symbols selected with better-icons; retrieved at the upstream revision above:
+symbol-class.svg: codicon:symbol-class
+symbol-color.svg: codicon:symbol-color
+symbol-constant.svg: codicon:symbol-constant
+symbol-enum-member.svg: codicon:symbol-enum-member
+symbol-enum.svg: codicon:symbol-enum
+symbol-event.svg: codicon:symbol-event
+symbol-field.svg: codicon:symbol-field
+symbol-interface.svg: codicon:symbol-interface
+symbol-keyword.svg: codicon:symbol-keyword
+symbol-method.svg: codicon:symbol-method
+symbol-misc.svg: codicon:symbol-misc
+symbol-namespace.svg: codicon:symbol-namespace
+symbol-numeric.svg: codicon:symbol-numeric
+symbol-operator.svg: codicon:symbol-operator
+symbol-property.svg: codicon:symbol-property
+symbol-ruler.svg: codicon:symbol-ruler
+symbol-snippet.svg: codicon:symbol-snippet
+symbol-string.svg: codicon:symbol-string
+symbol-structure.svg: codicon:symbol-structure
+symbol-variable.svg: codicon:symbol-variable

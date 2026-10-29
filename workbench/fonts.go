@@ -8,11 +8,10 @@ import (
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/font"
-	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/extensions"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/text"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
 )
 
 type pencodeFont struct {
@@ -144,7 +143,7 @@ func (model *workspaceModel) applyUIFont() {
 	if model.fontResources == nil {
 		return
 	}
-	if surface := module.ContentMut[htmlui.Surface](model.fontResources, model.surface); surface != nil {
+	if surface := model.fontResources.Mut[htmlui.Surface](model.surface); surface != nil {
 		surface.Font, surface.BoldFont = model.uiFont()
 	}
 }
@@ -259,7 +258,7 @@ func (model *workspaceModel) removeFonts(prefix string) bool {
 			}
 			// ContentQuery excludes suspended scenes. Set their retained surface
 			// directly so Enter rebuilds HTML with a live face before rendering.
-			if s := module.ContentMut[htmlui.Surface](world, view.surface); s != nil {
+			if s := world.Mut[htmlui.Surface](view.surface); s != nil {
 				if removed[s.Font] {
 					s.Font = model.defaultFont
 				}
@@ -267,15 +266,15 @@ func (model *workspaceModel) removeFonts(prefix string) bool {
 					s.BoldFont = nil
 				}
 			}
-			if binding := module.ContentMut[htmlui.ControlTextFont](world, view.editor.control); binding != nil && removed[binding.Font] {
+			if binding := world.Mut[htmlui.ControlTextFont](view.editor.control); binding != nil && removed[binding.Font] {
 				binding.Font = model.defaultFont
 			}
 			for _, entity := range [...]ecs.Entity{view.editor.text, view.editor.numbers} {
-				if value := module.ContentMut[scene.Text2D](world, entity); value != nil && removed[value.Font] {
+				if value := world.Mut[scene.Text2D](entity); value != nil && removed[value.Font] {
 					value.Font = model.defaultFont
 				}
 			}
-			for _, access := range module.ContentQuery[htmlui.Surface](world) {
+			for _, access := range world.Query[htmlui.Surface]() {
 				s := access.Ref()
 				if removed[s.Font] {
 					s.Font = model.defaultFont
@@ -284,13 +283,13 @@ func (model *workspaceModel) removeFonts(prefix string) bool {
 					s.BoldFont = nil
 				}
 			}
-			for _, access := range module.ContentQuery[htmlui.ControlTextFont](world) {
+			for _, access := range world.Query[htmlui.ControlTextFont]() {
 				binding := access.Ref()
 				if removed[binding.Font] {
 					binding.Font = model.defaultFont
 				}
 			}
-			for _, access := range module.ContentQuery[scene.Text2D](world) {
+			for _, access := range world.Query[scene.Text2D]() {
 				value := access.Ref()
 				if removed[value.Font] {
 					value.Font = model.defaultFont

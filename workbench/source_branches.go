@@ -234,7 +234,7 @@ func (m *workspaceModel) positionSourceBranchSubmenu(world *module.Content) bool
 		return false
 	}
 	if entity, ok := menu.ScrollContainer(); ok {
-		if scroll, ok := module.ContentGet[scene.UIScroll](world, entity); ok {
+		if scroll, ok := world.Get[scene.UIScroll](entity); ok {
 			row.Y += scroll.Position[1]
 		}
 	}
@@ -274,7 +274,7 @@ func (m *workspaceModel) hoverSourceBranches(world *module.Content, x, y float32
 	}
 	var offset float32
 	if entity, ok := menu.ScrollContainer(); ok {
-		if scroll, ok := module.ContentGet[scene.UIScroll](world, entity); ok {
+		if scroll, ok := world.Get[scene.UIScroll](entity); ok {
 			offset = scroll.Position[1]
 		}
 	}
@@ -449,7 +449,7 @@ func (m *workspaceModel) focusSourceBranches(world *module.Content) {
 			bounds, _ := menu.Bounds()
 			row, _ := item.Bounds()
 			if entity, ok := menu.ScrollContainer(); ok {
-				if scroll := module.ContentMut[scene.UIScroll](world, entity); scroll != nil {
+				if scroll := world.Mut[scene.UIScroll](entity); scroll != nil {
 					top, bottom := row.Y-bounds.Y, row.Y+row.Height-bounds.Y
 					position := scroll.Position[1]
 					if top+position < 5 {

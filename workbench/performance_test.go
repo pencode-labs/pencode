@@ -17,9 +17,8 @@ import (
 	"github.com/diiyw/onix/ui"
 )
 
-// ONIX_PENCODE_PROFILE_PROJECT optionally selects a real project for profiling.
-// The default fixture keeps the benchmark reproducible without a native window.
-func newPencodeTestApp(b testing.TB) (*onix.App, *Session) {
+// Load the launcher without a native window or a preinstalled workspace view.
+func newPencodeTestLauncher(b testing.TB) (*onix.App, *Session) {
 	b.Helper()
 	b.Setenv("XDG_CONFIG_HOME", b.TempDir())
 	b.Setenv("APPDATA", b.TempDir())
@@ -41,17 +40,16 @@ func newPencodeTestApp(b testing.TB) (*onix.App, *Session) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	session := NewSession(newPencodeBackend(b))
-	session.quickHistory = loadPencodeQuickHistory(b.TempDir())
+	session := newPencodeTestSession(b, newPencodeBackend(b))
 	registry := module.Registry{}
 	if err := session.Register(&registry); err != nil {
 		b.Fatal(err)
 	}
 	for _, id := range [...]project.SceneID{"main.json", "workspace.json"} {
-		err := module.RegisterScene(&registry, id, func() struct{} { return struct{}{} }, module.Lifecycle[struct{}]{
+		err := registry.RegisterScene(id, func() struct{} { return struct{}{} }, module.Lifecycle[struct{}]{
 			OnMessage: func(c *module.Context, _ *struct{}, message module.Message) error {
 				if message.Topic == "pencode.navigate" {
-					workspace, _ := module.Value[bool](message)
+					workspace, _ := message.Value[bool]()
 					target := project.SceneID("main.json")
 					if workspace {
 						target = "workspace.json"
@@ -67,15 +65,23 @@ func newPencodeTestApp(b testing.TB) (*onix.App, *Session) {
 	}
 	app := onix.NewApp()
 	b.Cleanup(app.Destroy)
-	if err := onix.InstallSystems[onix.UIHTML](app); err != nil {
+	if err := app.InstallSystems[onix.UIHTML](); err != nil {
 		b.Fatal(err)
 	}
 	if err := app.AddSystems(onix.StagePostUpdate, session.ScrollSystem(), session.LayoutSystem()); err != nil {
 		b.Fatal(err)
 	}
-	if _, err := app.LoadModules(plan, registry, module.Options{Source: source}); err != nil {
+	if _, err := app.LoadModules[module.FullContent](plan, registry, module.Options{Source: source}); err != nil {
 		b.Fatal(err)
 	}
+	return app, session
+}
+
+// ONIX_PENCODE_PROFILE_PROJECT optionally selects a real project for profiling.
+// The default fixture keeps the benchmark reproducible without a native window.
+func newPencodeTestApp(b testing.TB) (*onix.App, *Session) {
+	b.Helper()
+	app, session := newPencodeTestLauncher(b)
 	dir := os.Getenv("ONIX_PENCODE_PROFILE_PROJECT")
 	if dir == "" {
 		dir = b.TempDir()
@@ -206,15 +212,15 @@ func TestPencodeOpenFileIdleAndScroll(t *testing.T) {
 	}
 	model := session.active.model
 	editor := &model.editor
-	textarea := module.ContentMut[ui.Textarea](model.fontResources, editor.control)
+	textarea := model.fontResources.Mut[ui.Textarea](editor.control)
 	textarea.ScrollY = 120
 	app.RequestRender()
 	if !step() {
 		t.Fatal("scroll did not wake the app")
 	}
-	text, _ := module.ContentGet[scene.Text2D](model.fontResources, editor.text)
-	transform, _ := module.ContentGet[scene.UITransform](model.fontResources, editor.text)
-	numbers, _ := module.ContentGet[scene.UITransform](model.fontResources, editor.numbers)
+	text, _ := model.fontResources.Get[scene.Text2D](editor.text)
+	transform, _ := model.fontResources.Get[scene.UITransform](editor.text)
+	numbers, _ := model.fontResources.Get[scene.UITransform](editor.numbers)
 	if textarea.ScrollY == 0 || editor.firstLine == 0 || numbers.Translation.Y.Value != transform.Translation.Y.Value+float32(editor.firstLine)*text.LineHeight {
 		t.Fatal("line numbers lagged behind textarea scroll")
 	}

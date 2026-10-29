@@ -177,6 +177,7 @@ func (model *workspaceModel) retireConnection(closeBackend bool) {
 	s.extensions.Close()
 	s.extensions = nil
 	model.closeActions()
+	model.removeDebugTemplates("extensions/")
 	model.closeLanguageServers()
 	model.closeCustomEditors()
 	for view := range s.views {
@@ -977,7 +978,7 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	}
 	for index := range c.profiles {
 		profile := c.profiles[index]
-		htmlui.AppendComponentChild(view, "connection-list", componentKey(profile.Name+"\x00"+profile.Address()), definition,
+		view.AppendComponentChild("connection-list", componentKey(profile.Name+"\x00"+profile.Address()), definition,
 			pencodeConnectionProps{Model: model, Profile: profile, Index: index}, pencodeConnectionState{})
 	}
 	if len(c.profiles) == 0 {
@@ -1093,12 +1094,12 @@ func (model *workspaceModel) focusConnectionPassword(world *module.Content) {
 	if !ok {
 		return
 	}
-	if !module.ContentHas[ui.TextField](world, field) {
+	if !world.Has[ui.TextField](field) {
 		if err := world.SyncHTML(); err != nil {
 			return
 		}
 		field, ok = world.HTMLControl(model.surface, "connection-password")
-		if !ok || !module.ContentHas[ui.TextField](world, field) {
+		if !ok || !world.Has[ui.TextField](field) {
 			return
 		}
 	}

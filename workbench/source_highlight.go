@@ -145,12 +145,12 @@ func (m *workspaceModel) syncSourceMergePaint(world *module.Content) {
 	if !ok {
 		return
 	}
-	entity, ok := module.ContentFindPart[engineui.ValuePart, scene.Text2D](world, control)
+	entity, ok := world.FindPart[engineui.ValuePart, scene.Text2D](control)
 	if !ok {
 		return
 	}
-	value := module.ContentMut[scene.Text2D](world, entity)
-	field, _ := module.ContentGet[engineui.TextField](world, control)
+	value := world.Mut[scene.Text2D](entity)
+	field, _ := world.Get[engineui.TextField](control)
 	h := &tab.Highlight[2]
 	var spans []scene.TextSpan2D
 	if h.ready && h.source == field.Value && h.theme == m.syntaxTheme && h.definitions == m.syntaxDefinitions {

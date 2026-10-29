@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
@@ -81,21 +80,21 @@ func TestSourceDiffNativeEditingCopyRevertAndSave(t *testing.T) {
 	if !ok {
 		t.Fatal("missing editable editor")
 	}
-	leftBinding, _ := module.ContentGet[htmlui.Control](m.fontResources, leftControl)
-	rightBinding, _ := module.ContentGet[htmlui.Control](m.fontResources, rightControl)
+	leftBinding, _ := m.fontResources.Get[htmlui.Control](leftControl)
+	rightBinding, _ := m.fontResources.Get[htmlui.Control](rightControl)
 	if !leftBinding.ReadOnly || rightBinding.ReadOnly {
 		t.Fatal("wrong editor permissions")
 	}
 	if leftBinding.DefaultValue != "" || rightBinding.DefaultValue != "" || leftBinding.Value != left || rightBinding.Value != right {
 		t.Fatal("comparison must bind live text without duplicating it in HTML layout")
 	}
-	valueEntity, _ := module.ContentFindPart[engineui.ValuePart, scene.Text2D](m.fontResources, rightControl)
-	value := module.ContentRef[scene.Text2D](m.fontResources, valueEntity)
+	valueEntity, _ := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](rightControl)
+	value := m.fontResources.Ref[scene.Text2D](valueEntity)
 	if value.Value != right || len(value.Spans) == 0 || value.LineLayout == nil {
 		t.Fatal("native editor lost source text/highlighting/alignment")
 	}
-	leftTextEntity, _ := module.ContentFindPart[engineui.ValuePart, scene.Text2D](m.fontResources, leftControl)
-	leftText := module.ContentRef[scene.Text2D](m.fontResources, leftTextEntity)
+	leftTextEntity, _ := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](leftControl)
+	leftText := m.fontResources.Ref[scene.Text2D](leftTextEntity)
 	_, leftY, _, _, leftOK := scene.TextCaretRect2D(leftText, left, utf8.RuneCountInString(left[:strings.Index(left, "var B")]))
 	_, rightY, _, _, rightOK := scene.TextCaretRect2D(value, right, utf8.RuneCountInString(right[:strings.Index(right, "var B")]))
 	if !leftOK || !rightOK || leftY != rightY || leftY != 120 {
@@ -104,11 +103,11 @@ func TestSourceDiffNativeEditingCopyRevertAndSave(t *testing.T) {
 	var copied string
 	state.SetClipboard(func(value string) bool { copied = value; return true }, func() (string, bool) { return "PASTE", true })
 	m.fontResources.Focus(leftControl)
-	field := module.ContentMut[engineui.TextField](m.fontResources, leftControl)
+	field := m.fontResources.Mut[engineui.TextField](leftControl)
 	field.Anchor, field.Caret = 0, 0
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "forbidden"})
 	languageInteractionStep(t, app)
-	if module.ContentRef[engineui.TextField](m.fontResources, leftControl).Value != left {
+	if m.fontResources.Ref[engineui.TextField](leftControl).Value != left {
 		t.Fatal("readonly side accepted input")
 	}
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftControl})
@@ -138,7 +137,7 @@ func TestSourceDiffNativeEditingCopyRevertAndSave(t *testing.T) {
 	}
 	settle()
 	m.fontResources.Focus(rightControl)
-	field = module.ContentMut[engineui.TextField](m.fontResources, rightControl)
+	field = m.fontResources.Mut[engineui.TextField](rightControl)
 	field.Anchor, field.Caret = utf8.RuneCountInString(right), utf8.RuneCountInString(right)
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "// manual\n"})
 	languageInteractionStep(t, app)
@@ -202,8 +201,8 @@ func TestSourceDiffRestoresFileEditorPointerAndInput(t *testing.T) {
 				m.sourceChanged()
 				languageInteractionStep(t, app)
 				control, ok := m.fontResources.HTMLControl(m.surface, "editor")
-				visibility := module.ContentRef[scene.Visibility](m.fontResources, control)
-				field := module.ContentRef[engineui.TextField](m.fontResources, control)
+				visibility := m.fontResources.Ref[scene.Visibility](control)
+				field := m.fontResources.Ref[engineui.TextField](control)
 				if !ok || control != editor || visibility == nil || visibility.Visible || field == nil || field.Focused {
 					t.Fatal("comparison did not retain and deactivate the file editor")
 				}
@@ -219,7 +218,7 @@ func TestSourceDiffRestoresFileEditorPointerAndInput(t *testing.T) {
 			languageInteractionStep(t, app)
 			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
 			languageInteractionStep(t, app)
-			field := module.ContentRef[engineui.TextField](m.fontResources, m.editor.control)
+			field := m.fontResources.Ref[engineui.TextField](m.editor.control)
 			if !field.Focused || field.Caret == 0 {
 				t.Fatalf("click did not place file editor caret: %+v", field)
 			}

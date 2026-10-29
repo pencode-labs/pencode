@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
@@ -42,13 +41,13 @@ func TestExtensionHistoryRegionRetainsChatAndInput(t *testing.T) {
 		t.Fatal("cannot focus prompt")
 	}
 	w.SetControlValue(control, "draft still being typed")
-	field := module.ContentMut[engineui.TextField](w, control)
+	field := w.Mut[engineui.TextField](control)
 	field.Anchor, field.Caret = 3, 8
 	show(`<button data-ref="saved" class="history-row">Updated task</button><p>More history</p>`)
 	if current, ok := w.HTMLControl(m.surface, promptID); !ok || current != control || w.FocusedControl() != control {
 		t.Fatal("history refresh replaced or unfocused the prompt")
 	}
-	field = module.ContentMut[engineui.TextField](w, control)
+	field = w.Mut[engineui.TextField](control)
 	if field.Value != "draft still being typed" || field.Anchor != 3 || field.Caret != 8 {
 		t.Fatalf("history refresh changed the draft or selection: %+v", field)
 	}

@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/module"
-
 	engineui "github.com/diiyw/onix/ui"
 )
 
@@ -14,7 +13,7 @@ func (model *workspaceModel) indentEditorSelection(world *module.Content, uninde
 	if model.activeFile() == nil || world == nil {
 		return false
 	}
-	field, ok := module.ContentGet[engineui.TextField](world, model.editor.control)
+	field, ok := world.Get[engineui.TextField](model.editor.control)
 	if !ok || !field.Focused {
 		return false
 	}
@@ -77,7 +76,7 @@ func (model *workspaceModel) indentEditorSelection(world *module.Content, uninde
 	value := result.String()
 	if model.updateActiveContent(value) {
 		setPencodeEditorValue(world, model.surface, value)
-		if updated := module.ContentMut[engineui.TextField](world, model.editor.control); updated != nil {
+		if updated := world.Mut[engineui.TextField](model.editor.control); updated != nil {
 			updated.Anchor, updated.Caret = anchor, caret
 		}
 	}

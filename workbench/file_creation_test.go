@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
@@ -30,11 +29,11 @@ func TestFileCreationInlineValidationAndCancellation(t *testing.T) {
 		t.Fatal("creation did not expand the destination's ancestors")
 	}
 	control, ok := world.HTMLControl(model.surface, "file-tree-name")
-	field := module.ContentMut[engineui.TextField](world, control)
+	field := world.Mut[engineui.TextField](control)
 	if !ok || field == nil || !field.Focused {
 		t.Fatalf("inline name input was not focused: control=%v found=%v field=%+v context=%+v entries=%+v rows=%v", control, ok, field, model.fileContext, project.Entries, project.visibleTreeRows(model))
 	}
-	if editor := module.ContentRef[htmlui.Control](world, model.editor.control); editor.Disabled {
+	if editor := world.Ref[htmlui.Control](model.editor.control); editor.Disabled {
 		t.Fatal("inline creation disabled the background editor")
 	}
 	parent := editorContextBounds(t, model, model.projectTreeRowID(project, "src/nested"))
@@ -48,7 +47,7 @@ func TestFileCreationInlineValidationAndCancellation(t *testing.T) {
 		languageInteractionStep(t, app)
 	}
 	typeName := func(name string) {
-		field := module.ContentMut[engineui.TextField](world, control)
+		field := world.Mut[engineui.TextField](control)
 		field.Anchor = 0
 		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: name})
 		languageInteractionStep(t, app)
@@ -116,13 +115,13 @@ func TestFileCreationVirtualTreeAndInactiveProject(t *testing.T) {
 	languageInteractionStep(t, app)
 	languageInteractionStep(t, app)
 	control, ok := world.HTMLControl(model.surface, "file-tree-name")
-	field := module.ContentRef[engineui.TextField](world, control)
+	field := world.Ref[engineui.TextField](control)
 	if !ok || field == nil || !field.Focused || other.Collapsed || model.activeProjectState() != active {
 		t.Fatal("creation failed to reveal/focus the inactive project's destination")
 	}
 	row := editorContextBounds(t, model, "file-tree-create")
 	viewport := editorContextBounds(t, model, treeRowID(other.Path))
-	scroll := module.ContentRef[scene.UIScroll](world, other.tree.area)
+	scroll := world.Ref[scene.UIScroll](other.tree.area)
 	if scroll == nil || row.Y+scroll.Position.Y() < viewport.Y || row.Y+scroll.Position.Y()+row.Height > viewport.Y+viewport.Height {
 		t.Fatalf("virtualized input was outside the viewport: row=%+v viewport=%+v scroll=%+v", row, viewport, scroll)
 	}
@@ -172,7 +171,7 @@ func TestFileCreationBackendFailureAndClickAway(t *testing.T) {
 	}
 	editorContextBounds(t, model, "file-tree-error")
 	control, _ := world.HTMLControl(model.surface, "file-tree-name")
-	field := module.ContentMut[engineui.TextField](world, control)
+	field := world.Mut[engineui.TextField](control)
 	field.Anchor = 0
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "created.txt"})
 	languageInteractionStep(t, app)

@@ -20,7 +20,7 @@ import (
 func problemControl(t *testing.T, model *workspaceModel, label string) ecs.Entity {
 	t.Helper()
 	position, _, _ := strings.Cut(label, " ")
-	for _, access := range module.ContentQuery2[scene.Text2D, htmlui.ControlText](model.fontResources) {
+	for _, access := range model.fontResources.Query2[scene.Text2D, htmlui.ControlText]() {
 		if strings.TrimSpace(access.A.Ref().Value) == position {
 			return access.B.Ref().Control
 		}
@@ -38,13 +38,13 @@ func TestPencodeBottomPanelEditorCaret(t *testing.T) {
 	languageInteractionStep(t, app)
 	assertCaret := func(t *testing.T) {
 		t.Helper()
-		if clock, ok := ecs.GetResource[*scene.Time](app.World); ok {
+		if clock, ok := app.World.GetResource[*scene.Time](); ok {
 			clock.Set(0, 0, clock.Frame)
 		}
 		languageInteractionStep(t, app)
-		field := module.ContentRef[engineui.TextField](world, model.editor.control)
+		field := world.Ref[engineui.TextField](model.editor.control)
 		var caret ecs.Entity
-		for entity, access := range module.ContentQuery[htmlui.ControlVisual](world) {
+		for entity, access := range world.Query[htmlui.ControlVisual]() {
 			visual := access.Get()
 			if visual.Control == model.editor.control && visual.Kind == htmlui.ControlVisualCaret && !visual.Selection {
 				caret = entity
@@ -54,13 +54,13 @@ func TestPencodeBottomPanelEditorCaret(t *testing.T) {
 		if caret == 0 {
 			t.Fatal("missing editor caret")
 		}
-		if !module.ContentHas[engineui.Part[engineui.CaretPart]](world, caret) || module.ContentHas[engineui.Part[engineui.SelectionPart]](world, caret) {
+		if !world.Has[engineui.Part[engineui.CaretPart]](caret) || world.Has[engineui.Part[engineui.SelectionPart]](caret) {
 			t.Fatal("editor caret retained a different visual's runtime role")
 		}
-		global, _ := module.ContentGet[scene.UIGlobalTransform](world, caret)
+		global, _ := world.Get[scene.UIGlobalTransform](caret)
 		clip, clipped := global.ClipRect()
-		visibility, _ := module.ContentGet[scene.Visibility](world, caret)
-		size, _ := module.ContentGet[scene.Size2D](world, caret)
+		visibility, _ := world.Get[scene.Visibility](caret)
+		size, _ := world.Get[scene.Size2D](caret)
 		if !field.Focused || !visibility.Visible || size.Width <= 0 || size.Height <= 0 {
 			t.Fatalf("editor caret is hidden: focused=%v visible=%v size=%+v", field.Focused, visibility.Visible, size)
 		}
@@ -106,11 +106,11 @@ func TestPencodePanelClosePreservesEditorSelection(t *testing.T) {
 				value := "甲乙🙂尾\nsecond line\nlast line\n" + strings.Repeat(strings.Repeat("x", 256)+"\n", 150)
 				model.updateActiveContent(value)
 				model.setEditorValueAndCaret(world, value, selection.caret)
-				module.ContentMut[engineui.TextField](world, model.editor.control).Anchor = selection.anchor
+				world.Mut[engineui.TextField](model.editor.control).Anchor = selection.anchor
 				model.bottom.active = panel
 				markPencodeRootDirtyByModel(world, model)
 				languageInteractionStep(t, app)
-				textarea := module.ContentMut[engineui.Textarea](world, model.editor.control)
+				textarea := world.Mut[engineui.Textarea](model.editor.control)
 				textarea.ScrollX, textarea.ScrollY = 100, 600
 				languageInteractionStep(t, app)
 				wantView := model.activeFile().editorView
@@ -124,7 +124,7 @@ func TestPencodePanelClosePreservesEditorSelection(t *testing.T) {
 				state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
 				languageInteractionStep(t, app)
 				languageInteractionStep(t, app)
-				field := module.ContentRef[engineui.TextField](world, model.editor.control)
+				field := world.Ref[engineui.TextField](model.editor.control)
 				if model.bottom.active != pencodePanelClosed || !field.Focused || field.Caret != selection.caret || field.Anchor != selection.anchor {
 					t.Fatalf("closing panel %d (split=%v) changed selection %+v: caret=%d anchor=%d focused=%v active=%d", panel, split, selection, field.Caret, field.Anchor, field.Focused, model.bottom.active)
 				}
@@ -145,8 +145,8 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 	file := model.activeFile()
 	doc := model.languages.documents[file]
 	items := []lsp.Diagnostic{
-		{Message: "first problem", Range: lsp.Range{Start: lsp.Position{Line: 1, Character: 3}}},
-		{Message: "second problem", Range: lsp.Range{Start: lsp.Position{Line: 2, Character: 5}}},
+		{Message: "first problem", Range: lsp.Range{Start: lsp.Position{Line: 1, Character: 3}, End: lsp.Position{Line: 1, Character: 8}}},
+		{Message: "second problem", Range: lsp.Range{Start: lsp.Position{Line: 2, Character: 5}, End: lsp.Position{Line: 2, Character: 9}}},
 	}
 	doc.diagnostics[provider] = items
 	model.setProblems(provider, doc.uri, items)
@@ -165,7 +165,7 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 		// A reconciliation would replace the untouched sibling's props. Mark them
 		// so this catches list rendering even when the final DOM looks identical.
 		var sibling ecs.Entity
-		for entity, access := range module.ContentQuery[htmlui.Component[pencodeProblemProps, struct{}]](world) {
+		for entity, access := range world.Query[htmlui.Component[pencodeProblemProps, struct{}]]() {
 			if access.Get().Props.Problem.label != problem.label {
 				sibling = entity
 				access.Ref().Props.Problem.path = "unchanged sibling"
@@ -173,8 +173,8 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 			}
 		}
 		control := problemControl(t, model, problem.label)
-		transform := module.ContentRef[scene.UIGlobalTransform](world, control)
-		size := module.ContentRef[scene.Size2D](world, control)
+		transform := world.Ref[scene.UIGlobalTransform](control)
+		size := world.Ref[scene.Size2D](control)
 		scale := float64(model.settings.Zoom) / 100
 		x, y := float64(transform.Matrix[12]+size.Width/2)*scale, float64(transform.Matrix[13]+size.Height/2)*scale
 		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
@@ -182,13 +182,14 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 		for range 3 {
 			languageInteractionStep(t, app)
 		}
-		if sibling == 0 || module.ContentRef[htmlui.Component[pencodeProblemProps, struct{}]](world, sibling).Props.Problem.path != "unchanged sibling" {
+		if sibling == 0 || world.Ref[htmlui.Component[pencodeProblemProps, struct{}]](sibling).Props.Problem.path != "unchanged sibling" {
 			t.Fatal("problem click reconciled the unchanged problem list")
 		}
-		field, _ := module.ContentGet[engineui.TextField](world, model.editor.control)
+		field, _ := world.Get[engineui.TextField](model.editor.control)
 		offset, err := lsp.OffsetAt(content, problem.location.Range.Start, lsp.UTF16)
-		if err != nil || !field.Focused || field.Caret != offset || field.Anchor != offset {
-			t.Fatalf("problem did not focus its location: caret=%d anchor=%d focused=%v want=%d err=%v", field.Caret, field.Anchor, field.Focused, offset, err)
+		end, endErr := lsp.OffsetAt(content, problem.location.Range.End, lsp.UTF16)
+		if err != nil || endErr != nil || !field.Focused || field.Caret != offset || field.Anchor != end {
+			t.Fatalf("problem did not highlight its range: caret=%d anchor=%d focused=%v want=%d:%d errors=%v,%v", field.Caret, field.Anchor, field.Focused, offset, end, err, endErr)
 		}
 		if file.Content != content || doc.version != version || model.bottom.problemRevision != revision || len(doc.diagnostics[provider]) != len(items) {
 			t.Fatalf("navigation changed diagnostics: version=%d want=%d revision=%d want=%d", doc.version, version, model.bottom.problemRevision, revision)
@@ -207,7 +208,7 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 func TestPencodeProblemNavigationOnlyMovesCaret(t *testing.T) {
 	_, model, _, _ := languageInteractionFixture(t)
 	world := model.fontResources
-	control := module.ContentMut[htmlui.Control](world, model.editor.control)
+	control := world.Mut[htmlui.Control](model.editor.control)
 	control.DirtyValue = false
 	model.languages.panel.navigate = model.activeFile()
 	model.languages.panel.offset = 3
@@ -215,7 +216,7 @@ func TestPencodeProblemNavigationOnlyMovesCaret(t *testing.T) {
 	if control.DirtyValue {
 		t.Fatal("navigation rewrote unchanged editor content")
 	}
-	field := module.ContentRef[engineui.TextField](world, model.editor.control)
+	field := world.Ref[engineui.TextField](model.editor.control)
 	if field.Caret != 3 || field.Anchor != 3 || model.languages.panel.navigate != nil {
 		t.Fatal("navigation did not move the caret")
 	}
@@ -228,7 +229,7 @@ func TestPencodeProblemNavigationAcrossFilesKeepsRows(t *testing.T) {
 	resourceTestWrite(t, project, "other.go", "package demo\n// first line\n// second line\n")
 	model.setProblems(provider, model.languages.documents[main].uri, []lsp.Diagnostic{{Message: "main problem", Range: lsp.Range{Start: lsp.Position{Line: 1, Character: 3}}}})
 	otherURI := lsp.FileURI(filepath.Join(project.Path, "other.go"))
-	model.setProblems(provider, otherURI, []lsp.Diagnostic{{Message: "other problem", Range: lsp.Range{Start: lsp.Position{Line: 2, Character: 5}}}})
+	model.setProblems(provider, otherURI, []lsp.Diagnostic{{Message: "other problem", Range: lsp.Range{Start: lsp.Position{Line: 2, Character: 5}, End: lsp.Position{Line: 2, Character: 9}}}})
 	model.syncProblems()
 	for _, group := range model.bottom.problemGroups {
 		group.expanded = true
@@ -246,15 +247,15 @@ func TestPencodeProblemNavigationAcrossFilesKeepsRows(t *testing.T) {
 	for i := range 4 {
 		problem := model.bottom.problems[i%2]
 		var sibling ecs.Entity
-		for entity, access := range module.ContentQuery[htmlui.Component[pencodeProblemProps, struct{}]](world) {
+		for entity, access := range world.Query[htmlui.Component[pencodeProblemProps, struct{}]]() {
 			if access.Get().Props.Problem.label != problem.label {
 				sibling = entity
 				access.Ref().Props.Problem.path = "unchanged sibling"
 			}
 		}
 		control := problemControl(t, model, problem.label)
-		transform := module.ContentRef[scene.UIGlobalTransform](world, control)
-		size := module.ContentRef[scene.Size2D](world, control)
+		transform := world.Ref[scene.UIGlobalTransform](control)
+		size := world.Ref[scene.Size2D](control)
 		scale := float64(model.settings.Zoom) / 100
 		x, y := float64(transform.Matrix[12]+size.Width/2)*scale, float64(transform.Matrix[13]+size.Height/2)*scale
 		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
@@ -269,7 +270,13 @@ func TestPencodeProblemNavigationAcrossFilesKeepsRows(t *testing.T) {
 		if model.activeFile().Path != problem.path || model.bottom.problemRevision != revision {
 			t.Fatal("cross-file navigation changed the problem list or missed its target")
 		}
-		if sibling == 0 || module.ContentRef[htmlui.Component[pencodeProblemProps, struct{}]](world, sibling).Props.Problem.path != "unchanged sibling" {
+		if problem.location.URI == otherURI {
+			field := world.Ref[engineui.TextField](model.editor.control)
+			if !field.Focused || field.Value[field.Caret:field.Anchor] != "cond" {
+				t.Fatalf("cross-file problem did not highlight its range: caret=%d anchor=%d focused=%v", field.Caret, field.Anchor, field.Focused)
+			}
+		}
+		if sibling == 0 || world.Ref[htmlui.Component[pencodeProblemProps, struct{}]](sibling).Props.Problem.path != "unchanged sibling" {
 			t.Fatal("cross-file navigation reconciled unchanged problem rows")
 		}
 		newDocument := !opened && problem.location.URI == otherURI
@@ -307,10 +314,10 @@ func TestPencodeProblemNavigationPreservesScroll(t *testing.T) {
 	if !ok {
 		t.Fatal("missing problem scroll container")
 	}
-	scroll := module.ContentMut[scene.UIScroll](world, area)
+	scroll := world.Mut[scene.UIScroll](area)
 	scroll.Position[1] = -300
 	groupEntity := func() uint64 {
-		for entity, access := range module.ContentQuery[htmlui.Component[pencodeProblemGroupProps, pencodeProblemGroupState]](world) {
+		for entity, access := range world.Query[htmlui.Component[pencodeProblemGroupProps, pencodeProblemGroupState]]() {
 			if access.Get().Props.Group.uri == uri {
 				return uint64(entity)
 			}
@@ -319,7 +326,7 @@ func TestPencodeProblemNavigationPreservesScroll(t *testing.T) {
 	}
 	originalGroup := groupEntity()
 	var props pencodeProblemProps
-	for _, access := range module.ContentQuery[htmlui.Component[pencodeProblemProps, struct{}]](world) {
+	for _, access := range world.Query[htmlui.Component[pencodeProblemProps, struct{}]]() {
 		props = access.Get().Props
 		break
 	}
@@ -332,7 +339,7 @@ func TestPencodeProblemNavigationPreservesScroll(t *testing.T) {
 	}
 	for range 3 {
 		languageInteractionStep(t, app)
-		current, exists := module.ContentGet[scene.UIScroll](world, area)
+		current, exists := world.Get[scene.UIScroll](area)
 		if !exists || current.Position.Y() != -300 {
 			t.Fatalf("navigation reset problem scroll: %+v", current)
 		}
@@ -344,7 +351,7 @@ func TestPencodeProblemNavigationPreservesScroll(t *testing.T) {
 	if model.bottom.problemRevision != revision {
 		t.Fatal("unchanged diagnostics rebuilt the problem list")
 	}
-	if current, exists := module.ContentGet[scene.UIScroll](world, area); !exists || current.Position.Y() != -300 {
+	if current, exists := world.Get[scene.UIScroll](area); !exists || current.Position.Y() != -300 {
 		t.Fatalf("diagnostic republish reset problem scroll: %+v", current)
 	}
 	model.setProblems(provider, lsp.FileURI(filepath.Join(model.projectPath, "a.go")), []lsp.Diagnostic{{Message: "new file"}})
@@ -353,7 +360,7 @@ func TestPencodeProblemNavigationPreservesScroll(t *testing.T) {
 	if groupEntity() != originalGroup {
 		t.Fatal("new file diagnostics remounted an existing file group")
 	}
-	if current, exists := module.ContentGet[scene.UIScroll](world, area); !exists || current.Position.Y() != -300 {
+	if current, exists := world.Get[scene.UIScroll](area); !exists || current.Position.Y() != -300 {
 		t.Fatalf("new file diagnostics reset problem scroll: %+v", current)
 	}
 }
@@ -395,7 +402,7 @@ func TestPencodeBottomPanelsDiagnosticsAndOutput(t *testing.T) {
 		t.Fatalf("panel not docked above status bar: editor=%+v panel=%+v status=%+v", editor, panel, status)
 	}
 	rows := 0
-	for _, access := range module.ContentQuery[htmlui.Component[pencodeProblemProps, struct{}]](world) {
+	for _, access := range world.Query[htmlui.Component[pencodeProblemProps, struct{}]]() {
 		props := access.Get().Props
 		if strings.Contains(props.Problem.label, "undefined symbol") {
 			rows++
@@ -435,7 +442,7 @@ func TestPencodeBottomPanelsDiagnosticsAndOutput(t *testing.T) {
 		t.Fatal("Output did not open")
 	}
 	entity, ok := world.HTMLControl(model.surface, "output-source")
-	control, exists := module.ContentGet[htmlui.Control](world, entity)
+	control, exists := world.Get[htmlui.Control](entity)
 	if !ok || !exists || len(control.Options) < 2 {
 		t.Fatalf("missing output sources: %+v", control)
 	}
@@ -451,7 +458,7 @@ func TestPencodeBottomPanelsDiagnosticsAndOutput(t *testing.T) {
 	readOutput := func() htmlui.Control {
 		t.Helper()
 		entity, ok := world.HTMLControl(model.surface, "output-content")
-		control, exists := module.ContentGet[htmlui.Control](world, entity)
+		control, exists := world.Get[htmlui.Control](entity)
 		if !ok || !exists || !control.ReadOnly {
 			t.Fatal("missing read-only output control")
 		}
@@ -615,7 +622,7 @@ func TestPencodeProblemsGroupByFile(t *testing.T) {
 	assertRows := func(want ...string) {
 		t.Helper()
 		rows := 0
-		for _, access := range module.ContentQuery[htmlui.Component[pencodeProblemProps, struct{}]](world) {
+		for _, access := range world.Query[htmlui.Component[pencodeProblemProps, struct{}]]() {
 			label := access.Get().Props.Problem.label
 			matched := false
 			for _, message := range want {
@@ -633,7 +640,7 @@ func TestPencodeProblemsGroupByFile(t *testing.T) {
 	toggle := func(uri lsp.URI) {
 		t.Helper()
 		found := false
-		for _, access := range module.ContentQuery[htmlui.Component[pencodeProblemGroupProps, pencodeProblemGroupState]](world) {
+		for _, access := range world.Query[htmlui.Component[pencodeProblemGroupProps, pencodeProblemGroupState]]() {
 			props := access.Get().Props
 			if props.Group.uri == uri {
 				handleProblemGroupEvent(&module.ContentEventContext[pencodeProblemGroupProps, pencodeProblemGroupState]{World: world, Props: &props, Ref: "toggle"})

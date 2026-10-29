@@ -3,7 +3,6 @@ package workbench
 import (
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
 	"github.com/pencode-labs/pencode/extensions"
@@ -13,8 +12,8 @@ import (
 func TestPencodeExtensionOutputAfterSceneSwitch(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	session.active.model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	session.active.model.screen = pencodeLauncher
@@ -46,7 +45,7 @@ func TestPencodeExtensionOutputAfterSceneSwitch(t *testing.T) {
 	for range 3 {
 		languageInteractionStep(t, app)
 	}
-	state, ok := ecs.GetResource[*input.State](app.World)
+	state, ok := app.World.GetResource[*input.State]()
 	if !ok {
 		t.Fatal("missing input state")
 	}

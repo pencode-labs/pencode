@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/module"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
@@ -47,7 +46,7 @@ func TestExtensionSettingsNavigationControlsAndPersistence(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing control %s", id)
 		}
-		ecs.WriteMessage(app.World, htmlui.Event{Entity: m.surface, Target: control, Kind: htmlui.EventChange, Value: value, Checked: checked, Bubbles: true})
+		app.World.WriteMessage(htmlui.Event{Entity: m.surface, Target: control, Kind: htmlui.EventChange, Value: value, Checked: checked, Bubbles: true})
 		languageInteractionStep(t, app)
 	}
 	change("name", "中文名称", false)

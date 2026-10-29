@@ -33,7 +33,7 @@ func (model *workspaceModel) syncTabScroll(world *module.Content) {
 		model.tabScroll = pencodeTabScroll{}
 		return
 	}
-	scroll := module.ContentMut[scene.UIScroll](world, area)
+	scroll := world.Mut[scene.UIScroll](area)
 	if scroll == nil {
 		return
 	}
@@ -97,7 +97,7 @@ func (model *workspaceModel) updateTabWheel(world *module.Content, state *input.
 	} else {
 		return
 	}
-	scroll := module.ContentMut[scene.UIScroll](world, area)
+	scroll := world.Mut[scene.UIScroll](area)
 	if scroll == nil || !scroll.Horizontal || scroll.DisableInput {
 		return
 	}
@@ -380,7 +380,7 @@ func (model *workspaceModel) focusCloseDialog(world *module.Content, surface ecs
 	if !model.closing.needsFocus {
 		return
 	}
-	for entity, access := range module.ContentQuery[htmlui.Focusable](world) {
+	for entity, access := range world.Query[htmlui.Focusable]() {
 		focusable := access.Get()
 		if focusable.Owner == surface && focusable.ID == "close-save" && world.Focus(entity) {
 			model.closing.needsFocus = false

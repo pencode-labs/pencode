@@ -49,7 +49,7 @@ func (model *workspaceModel) renderExtensionTabs(view *htmlui.View, definition *
 				break
 			}
 		}
-		htmlui.AppendComponentChild(view, "file-tabs", componentKey(surface.rootID), definition,
+		view.AppendComponentChild("file-tabs", componentKey(surface.rootID), definition,
 			tabProps{Model: model, Surface: surface, Theme: model.workbenchTheme, Icons: model.fileIcons,
 				Path: surface.rootID, Name: surface.ui.Title, Icon: icon, Active: surface.live(), Busy: surface.ui.Busy}, struct{}{})
 	}

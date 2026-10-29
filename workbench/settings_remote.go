@@ -7,7 +7,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
@@ -38,10 +37,10 @@ func (model *workspaceModel) applyConfiguration(snapshot configuration.Snapshot,
 func (model *workspaceModel) applySettingsToView() {
 	model.applyUIFont()
 	if world := model.fontResources; world != nil {
-		if surface := module.ContentMut[htmlui.Surface](world, model.surface); surface != nil {
+		if surface := world.Mut[htmlui.Surface](model.surface); surface != nil {
 			surface.FontSize = float64(model.settings.UIFontSize)
 		}
-		if textarea := module.ContentMut[engineui.Textarea](world, model.editor.control); textarea != nil {
+		if textarea := world.Mut[engineui.Textarea](model.editor.control); textarea != nil {
 			textarea.WrapWidthPercent = float32(model.settings.EditorWidth)
 		}
 		model.syncZoom(world)

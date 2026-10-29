@@ -41,6 +41,7 @@ func (model *workspaceModel) unloadContributions(prefix, sourcePrefix string) {
 			model.removeExtensionSettings(group.id)
 		}
 	}
+	model.removeDebugTemplates(prefix)
 	model.removeLanguageServers(prefix)
 	model.removeEditors(prefix)
 	selected, active := model.settings.Theme, "monokai"
@@ -241,15 +242,7 @@ func (model *workspaceModel) importExtension(bundle *extensions.Bundle) error {
 		model.extensionIcons[source] = data
 	}
 	selected, active := model.settings.Theme, model.workbenchTheme.id
-	previousCount := len(model.themes)
 	model.themes = append(model.themes, prepared...)
-	for i := range model.themes {
-		icons := bundle.Icons
-		if i >= previousCount {
-			icons = model.extensionIcons
-		}
-		model.themes[i].cacheExtensionIcons(icons)
-	}
 	model.rebuildThemeOptions()
 	if !model.selectTheme(selected) {
 		model.selectTheme(active)
@@ -261,27 +254,13 @@ func (model *workspaceModel) importExtension(bundle *extensions.Bundle) error {
 	sort.Slice(model.fileIconThemes, func(i, j int) bool { return model.fileIconThemes[i].id < model.fileIconThemes[j].id })
 	model.rebuildIconThemeOptions()
 	model.selectIconTheme(model.settings.IconTheme)
+	model.importDebugTemplates(bundle.ID, bundle.DebugAdapters)
 	model.importLanguageServers(bundle.LanguageServers)
 	model.importExtensionSettings(bundle.ID, bundle.Label, bundle.Settings)
 	model.importActions(bundle.Actions)
 	model.importEditors(bundle.Editors)
 	model.importFonts(bundle.Fonts)
 	return nil
-}
-
-func (theme *pencodeTheme) cacheExtensionIcons(icons map[string][]byte) {
-	if len(icons) == 0 {
-		return
-	}
-	for _, foreground := range [...]string{"icon.foreground", "list.activeSelectionForeground", "tab.activeForeground", "tab.inactiveForeground"} {
-		suffix := strings.TrimPrefix(theme.icons[pencodeIconKey{"icons/file-text.svg", foreground}], "icons/file-text.svg")
-		for source := range icons {
-			key := pencodeIconKey{source, foreground}
-			if _, exists := theme.icons[key]; !exists {
-				theme.icons[key] = source + suffix
-			}
-		}
-	}
 }
 
 func appearanceOption(key uint64, id, label string, selected bool) htmlui.VNode {

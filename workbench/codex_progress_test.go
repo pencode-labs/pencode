@@ -18,11 +18,11 @@ func TestCodexActivitySweepRetainsTextWithoutAllocations(t *testing.T) {
 	}
 	world := ecs.NewWorld()
 	clock := scene.NewTime()
-	ecs.InsertResource(world, clock)
+	world.InsertResource(clock)
 	view := htmlui.New(`<style>` + string(css) + `</style><article class="codex-chat"><button id="activity" class="codex-activity-summary" type="button" aria-expanded="false"><span class="codex-sweep-text" style="color:#cccccc"><span style="animation-delay:0ms">正</span><span style="animation-delay:65ms">在</span><span style="animation-delay:130ms">搜</span><span style="animation-delay:195ms">索</span></span></button></article>`)
 	view.Width, view.Height, view.Font = 640, 240, notosanssc.NotoSansSCRegular
 	bundle := ecs.NewBundle(1)
-	ecs.Put(&bundle, view)
+	bundle.Put(view)
 	owner := world.Spawn(bundle)
 	sync := func(delta time.Duration) {
 		clock.Set(delta, clock.Elapsed+delta, clock.Frame+1)
@@ -35,7 +35,7 @@ func TestCodexActivitySweepRetainsTextWithoutAllocations(t *testing.T) {
 		t.Fatal("activity does not schedule animation frames")
 	}
 	var letters [4]ecs.Entity
-	for entity, access := range ecs.Query[scene.Text2D](world).All {
+	for entity, access := range world.Query[scene.Text2D]().All {
 		switch access.Ref().Value {
 		case "正":
 			letters[0] = entity
@@ -54,14 +54,14 @@ func TestCodexActivitySweepRetainsTextWithoutAllocations(t *testing.T) {
 	}
 	// The first letter reaches its peak before the last letter.
 	sync(480 * time.Millisecond)
-	first, _ := ecs.Get[scene.Text2D](world, letters[0])
-	last, _ := ecs.Get[scene.Text2D](world, letters[3])
+	first, _ := world.Get[scene.Text2D](letters[0])
+	last, _ := world.Get[scene.Text2D](letters[3])
 	if first.Alpha < .99 || last.Alpha >= first.Alpha {
 		t.Fatalf("sweep did not begin on the left: first=%g last=%g", first.Alpha, last.Alpha)
 	}
 	sync(195 * time.Millisecond)
-	first, _ = ecs.Get[scene.Text2D](world, letters[0])
-	last, _ = ecs.Get[scene.Text2D](world, letters[3])
+	first, _ = world.Get[scene.Text2D](letters[0])
+	last, _ = world.Get[scene.Text2D](letters[3])
 	if last.Alpha < .99 || first.Alpha >= last.Alpha {
 		t.Fatalf("sweep did not move right: first=%g last=%g", first.Alpha, last.Alpha)
 	}

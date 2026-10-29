@@ -6,7 +6,6 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/render"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
@@ -168,7 +167,7 @@ func TestPencodeIconsFollowSelectionAndTabState(t *testing.T) {
 				t.Fatalf("missing %v texture", key)
 			}
 			var found bool
-			for _, access := range module.ContentQuery[scene.Sprite2D](model.fontResources) {
+			for _, access := range model.fontResources.Query[scene.Sprite2D]() {
 				found = found || access.Ref().Texture == texture
 			}
 			if !found {
@@ -223,12 +222,12 @@ func TestExtensionUIReusesIDEIconTextures(t *testing.T) {
 				t.Fatalf("%s must use IDE 4x sampling and mipmaps", icon.source)
 			}
 			found := false
-			for entity, access := range module.ContentQuery[scene.Sprite2D](model.fontResources) {
-				parent, ok := module.ContentGet[scene.Parent](model.fontResources, entity)
+			for entity, access := range model.fontResources.Query[scene.Sprite2D]() {
+				parent, ok := model.fontResources.Get[scene.Parent](entity)
 				if !ok {
 					continue
 				}
-				control, ok := module.ContentGet[htmlui.Control](model.fontResources, parent.Entity)
+				control, ok := model.fontResources.Get[htmlui.Control](parent.Entity)
 				if ok && control.ID == icon.id+"-button" {
 					found = found || access.Ref().Texture == texture
 				}

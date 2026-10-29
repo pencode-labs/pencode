@@ -54,8 +54,19 @@ the workspace machine. On first launch it downloads the latest
 dependencies, and runs `extension/out/phpDebug.js` through Node.js. Xdebug itself
 must be installed and enabled in the PHP runtime separately.
 
-Add this entry to the workspace's `.pencode/debug.json`, refresh the debugger
-configuration, and start it before running PHP with Xdebug enabled:
+To run a PHP CLI file, open it and choose **添加启动器 → PHP: 当前文件** in Debug.
+The generated JSON uses `${file}` and `${fileDirname}`, resolved from the selected
+editor file each time debugging starts. The adapter launches PHP with debugging
+enabled and a free loopback port, and stops at the first executable line. Save
+configuration changes, return to the PHP file and press F5. PHP must load the
+Xdebug runtime extension (`php --ri xdebug`); downloading the Node.js adapter does
+not install this PHP module. If needed, add `-dzend_extension=/path/to/xdebug.so`
+to `runtimeArgs` or enable Xdebug in the PHP runtime's INI configuration.
+
+For browser or externally launched requests, choose
+**添加启动器 → PHP: 监听 Xdebug** to write the listener template
+to `.pencode/debug.json` and open it for editing. Save changes to refresh the
+configuration, then start it before running PHP with Xdebug enabled:
 
 ```json
 [
@@ -78,7 +89,7 @@ channel. An explicit debugger `command`/`args` overrides the contributed launche
 
 ## Build and install
 
-Requires Go 1.27.0 or newer and the current Pencode peb v10 SDK.
+Requires Go 1.27.0 or newer and the current Pencode peb v14 SDK.
 
 ```sh
 go build -o bin/php .

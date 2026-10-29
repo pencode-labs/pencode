@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -32,7 +30,7 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 		t.Fatal(err)
 	}
 	m.app.GetViewport = func() (int, int) { return 1024, 768 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
 	process := &extensions.ActionSession{}
 	results := make(chan extensions.ActionResult, 1)
 	process.Results = results
@@ -56,8 +54,8 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 	}
 	sourceWait(t, app, m)
 	s := m.actions.ui.editor
-	root, _ := module.ContentGet[htmlui.Component[appProps, appState]](w, m.root)
-	editor, _ := module.ContentGet[htmlui.Control](w, m.editor.control)
+	root, _ := w.Get[htmlui.Component[appProps, appState]](m.root)
+	editor, _ := w.Get[htmlui.Control](m.editor.control)
 	tree, ok := w.HTMLNode(m.surface, m.projectTreeRowID(m.activeProjectState(), "main.go"))
 	if !ok {
 		t.Fatal("missing file tree row")
@@ -66,7 +64,7 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 	if !ok {
 		t.Fatal("missing file tree control")
 	}
-	treeRender, _ := module.ContentGet[htmlui.Control](w, treeControl)
+	treeRender, _ := w.Get[htmlui.Control](treeControl)
 	definition := s.definition
 	transcript, ok := w.HTMLNode(m.surface, s.prefix+"control-transcript")
 	if !ok {
@@ -94,10 +92,10 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 		// Check the first rendered frame as well as the settled layout.
 		for frame := range 3 {
 			languageInteractionStep(t, app)
-			currentRoot, _ := module.ContentGet[htmlui.Component[appProps, appState]](w, m.root)
-			currentEditor, _ := module.ContentGet[htmlui.Control](w, m.editor.control)
+			currentRoot, _ := w.Get[htmlui.Component[appProps, appState]](m.root)
+			currentEditor, _ := w.Get[htmlui.Control](m.editor.control)
 			currentTree, ok := w.HTMLNode(m.surface, m.projectTreeRowID(m.activeProjectState(), "main.go"))
-			currentTreeRender, _ := module.ContentGet[htmlui.Control](w, treeControl)
+			currentTreeRender, _ := w.Get[htmlui.Control](treeControl)
 			if currentTreeRender.RenderRevision != treeRender.RenderRevision {
 				t.Fatalf("tree control refreshed on toggle %d frame %d: %d -> %d", toggle, frame, treeRender.RenderRevision, currentTreeRender.RenderRevision)
 			}
@@ -121,18 +119,18 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 			if _, ok := w.HTMLControl(m.surface, s.prefix+"control-item/cmd"); ok != (details != "") {
 				t.Fatal("activity expansion did not update the command control")
 			}
-			scroll, ok := module.ContentGet[scene.UIScroll](w, area)
+			scroll, ok := w.Get[scene.UIScroll](area)
 			if !ok || scroll.Position.Y() >= 0 || math.Abs(float64(scroll.Position.Y()+scroll.ContentSize.Y()-scroll.ViewportSize.Y())) > 1 {
 				t.Fatalf("activity toggle lost the bottom position on frame %d: %+v", frame, scroll)
 			}
-			for entity, values := range ecs.Query2[htmlui.ScrollContent, scene.UITransform](app.World).All {
+			for entity, values := range app.World.Query2[htmlui.ScrollContent, scene.UITransform]().All {
 				content, transform := values.A.Get(), values.B.Get()
 				if content.Area == area && math.Abs(float64(transform.Translation.Y.Value-content.Y-scroll.Position.Y())) > 1 {
 					t.Fatalf("paint saw stale scroll offset on toggle %d frame %d entity %v: y=%g, want %g", toggle, frame, entity, transform.Translation.Y.Value, content.Y+scroll.Position.Y())
 				}
 			}
 			thumbFound := false
-			for _, values := range ecs.Query3[htmlui.ScrollbarPart, scene.UITransform, scene.Size2D](app.World).All {
+			for _, values := range app.World.Query3[htmlui.ScrollbarPart, scene.UITransform, scene.Size2D]().All {
 				part := values.A.Get()
 				if part.Area == area && part.Axis == htmlui.ScrollbarVertical && part.Kind == htmlui.ScrollbarThumb {
 					thumbFound = true
@@ -152,7 +150,7 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 				t.Fatalf("last message disappeared on frame %d: viewport=%+v message=%+v", frame, viewport, last)
 			}
 			painted := false
-			for _, text := range ecs.Query[scene.Text2D](app.World).All {
+			for _, text := range app.World.Query[scene.Text2D]().All {
 				painted = painted || text.Ref().Value == "Completed"
 			}
 			if !painted {
@@ -177,7 +175,7 @@ func TestCodexTranscriptMessageLayout(t *testing.T) {
 	process := &extensions.ActionSession{}
 	for _, size := range [][2]int{{1440, 900}, {1024, 768}, {800, 600}, {640, 800}} {
 		width, height = size[0], size[1]
-		ecs.InsertResource(app.World, scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
+		app.World.InsertResource(scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
 		if err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
 			HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript"><article class="codex-chat"><section id="pencode-extension-short-user" class="codex-message codex-user"><div class="codex-text">git pull</div></section><section id="pencode-extension-long-user" class="codex-message codex-user"><div class="codex-text">` + strings.Repeat("调整聊天列表布局，保留输入框。", 12) + `</div></section><section id="pencode-extension-assistant" class="codex-message"><p>我会检查当前分支，然后拉取更新。</p></section><section id="pencode-extension-activity" class="codex-message codex-activity"><button id="pencode-extension-summary" class="codex-activity-summary" type="button" aria-expanded="false"><img src="resources/icons/terminal.svg" alt=""><span id="pencode-extension-activity-label">运行了命令</span><span id="pencode-extension-activity-status" class="codex-activity-status codex-status">失败</span><img class="codex-activity-chevron" src="resources/icons/chevron-down.svg" alt=""></button></section></article></div></section><aside class="codex-sidebar">历史会话</aside></main>`,
 			CSS:  string(css),
@@ -222,7 +220,7 @@ func TestCodexActivityGroupLayout(t *testing.T) {
 	process := &extensions.ActionSession{}
 	for _, size := range [][2]int{{1440, 900}, {640, 800}} {
 		width, height = size[0], size[1]
-		ecs.InsertResource(app.World, scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
+		app.World.InsertResource(scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
 		row := `<section class="codex-message codex-activity"><button class="codex-activity-summary" type="button" aria-expanded="false"><img src="resources/icons/terminal.svg" alt=""><span>已运行 go test ./... -count=1 -timeout=60s</span><img class="codex-activity-chevron" src="resources/icons/chevron-down.svg" alt=""></button></section>`
 		if err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
 			HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript"><article class="codex-chat"><section id="pencode-extension-group" class="codex-activity-group"><button id="pencode-extension-group-summary" class="codex-activity-summary" type="button" aria-expanded="true"><img src="resources/icons/pencil.svg" alt=""><span>编辑了文件、读取了文件、列出了文件、进行了搜索、运行了命令</span><span id="pencode-extension-group-status" class="codex-activity-status codex-status">失败</span><img class="codex-activity-chevron" src="resources/icons/chevron-down.svg" alt=""></button><div id="pencode-extension-activity-list" class="codex-activity-list" data-ref="activity/list" data-pencode-scroll="preserve"><section class="codex-message codex-activity"><button id="pencode-extension-command-summary" class="codex-activity-summary" type="button" aria-expanded="true"><img src="resources/icons/terminal.svg" alt=""><span id="pencode-extension-command-label">已运行 ` + strings.Repeat("go test ./... ", 30) + `</span><img class="codex-activity-chevron" src="resources/icons/chevron-down.svg" alt=""></button><div id="pencode-extension-command-details" class="codex-activity-details"><pre><code>` + strings.Repeat("test output\n", 8) + `</code></pre></div></section>` + strings.Repeat(row, 16) + `</div></section><section id="pencode-extension-group-reply" class="codex-message"><p>检查完成。</p></section></article></div></section><aside class="codex-sidebar">历史会话</aside></main>`,

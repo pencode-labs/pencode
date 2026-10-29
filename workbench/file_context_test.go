@@ -10,7 +10,6 @@ import (
 
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
@@ -68,7 +67,7 @@ func TestFileContextNativeRenameCreateDeleteAndRefresh(t *testing.T) {
 	if model.fileContext.dialog != "rename" {
 		t.Fatal("rename did not show the name dialog")
 	}
-	if editor := module.ContentRef[htmlui.Control](model.fontResources, model.editor.control); editor == nil || !editor.Disabled {
+	if editor := model.fontResources.Ref[htmlui.Control](model.editor.control); editor == nil || !editor.Disabled {
 		t.Fatal("name dialog did not disable background editor controls")
 	}
 	languageInteractionStep(t, app)
@@ -180,7 +179,7 @@ func TestFileContextTargetsScrolledRowsAndInactiveProjects(t *testing.T) {
 	if !ok {
 		t.Fatal("missing file tree scroll area")
 	}
-	scroll := module.ContentMut[scene.UIScroll](model.fontResources, area)
+	scroll := model.fontResources.Mut[scene.UIScroll](area)
 	for index, entry := range project.visibleTreeRows(model) {
 		if project.Entries[entry].Path == "item-35.txt" {
 			scroll.Position[1] = 40 - 5 - float32(index*pencodeTreeRowHeight)
@@ -209,19 +208,19 @@ func TestFileContextTargetsScrolledRowsAndInactiveProjects(t *testing.T) {
 
 func TestFileContextIdleDoesNotAllocate(t *testing.T) {
 	app, model, _, state := languageInteractionFixture(t)
-	local, _ := module.ContentResource[*input.State](model.fontResources)
+	local, _ := model.fontResources.Resource[*input.State]()
 	if allocations := testing.AllocsPerRun(100, func() { model.updateFileContext(model.fontResources, local) }); allocations != 0 {
 		t.Fatalf("idle file context allocated %g times", allocations)
 	}
 	fileContextRightClick(t, app, model, state, model.projectTreeRowID(model.activeProjectState(), "main.go"))
-	local, _ = module.ContentResource[*input.State](model.fontResources)
+	local, _ = model.fontResources.Resource[*input.State]()
 	if allocations := testing.AllocsPerRun(100, func() { model.updateFileContext(model.fontResources, local) }); allocations != 0 {
 		t.Fatalf("open idle file context allocated %g times", allocations)
 	}
 	if allocations := testing.AllocsPerRun(100, func() { model.handleFileContextKeys(model.fontResources, local, "linux") }); allocations != 0 {
 		t.Fatalf("idle file context shortcuts allocated %g times", allocations)
 	}
-	field := module.ContentRef[engineui.TextField](model.fontResources, model.editor.control)
+	field := model.fontResources.Ref[engineui.TextField](model.editor.control)
 	if field == nil {
 		t.Fatal("file context replaced the native editor")
 	}

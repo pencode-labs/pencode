@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 )
 
@@ -24,7 +23,7 @@ func TestPencodeTabContextTargetClipboardAndKeyboard(t *testing.T) {
 	state.SetClipboard(func(value string) bool { clipboard = value; return true }, func() (string, bool) { return clipboard, true })
 	rightClick := func(ref string) {
 		t.Helper()
-		scroll := module.ContentRef[scene.UIScroll](world, model.tabScroll.area)
+		scroll := world.Ref[scene.UIScroll](model.tabScroll.area)
 		r := editorContextBounds(t, model, ref)
 		scale := float64(model.settings.Zoom) / 100
 		x, y := float64(r.X+scroll.Position.X()+r.Width/2)*scale, float64(r.Y+r.Height/2)*scale
@@ -46,7 +45,7 @@ func TestPencodeTabContextTargetClipboardAndKeyboard(t *testing.T) {
 		if menu.X < root.X || menu.X+menu.Width > root.X+root.Width || menu.Y+menu.Height > root.Y+root.Height || last.Y+last.Height > menu.Y+menu.Height {
 			t.Fatalf("tab menu is clipped: menu=%+v root=%+v last=%+v", menu, root, last)
 		}
-		local, _ := module.ContentResource[*input.State](world)
+		local, _ := world.Resource[*input.State]()
 		if n := testing.AllocsPerRun(100, func() { model.updateTabContext(world, local) }); n != 0 {
 			t.Fatalf("idle tab context allocated %g times", n)
 		}
@@ -81,7 +80,7 @@ func TestPencodeTabContextTargetClipboardAndKeyboard(t *testing.T) {
 	if project.Files["document-19.txt"] != nil || project.Files["document-18.txt"] == nil || model.activePath != "document-18.txt" {
 		t.Fatal("close right did not act on the clicked tab")
 	}
-	local, _ := module.ContentResource[*input.State](world)
+	local, _ := world.Resource[*input.State]()
 	if n := testing.AllocsPerRun(100, func() { model.updateTabContext(world, local) }); n != 0 {
 		t.Fatalf("closed idle tab context allocated %g times", n)
 	}

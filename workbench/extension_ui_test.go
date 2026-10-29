@@ -170,7 +170,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 				t.Fatalf("paint saw popup at stale position: %+v, want (%g,%g)", bounds, x, y)
 			}
 			control, ok := model.fontResources.HTMLControl(model.surface, "pencode-extension-query")
-			transform, positioned := ecs.Get[scene.UIGlobalTransform](app.World, control)
+			transform, positioned := app.World.Get[scene.UIGlobalTransform](control)
 			if !ok || !positioned || transform.Matrix[12] < bounds.X || transform.Matrix[12] >= bounds.X+bounds.Width || transform.Matrix[13] < bounds.Y || transform.Matrix[13] >= bounds.Y+bounds.Height {
 				t.Fatalf("paint saw input outside popup: transform=%+v popup=%+v", transform, bounds)
 			}
@@ -291,7 +291,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	definition := dialog.definition
 	model.fontResources.SetControlValue(control, "Updated title")
-	ecs.WriteMessage(app.World, htmlui.Event{Entity: model.surface, Target: control, Kind: htmlui.EventInput, Value: "Updated title", Bubbles: true})
+	app.World.WriteMessage(htmlui.Event{Entity: model.surface, Target: control, Kind: htmlui.EventInput, Value: "Updated title", Bubbles: true})
 	wait(func() bool { return dialog.ui.Title == "Updated title" })
 	if dialog.definition != definition {
 		t.Fatal("nil View replaced the retained DOM")
@@ -343,7 +343,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		languageInteractionStep(t, app)
 	}
 	value := func() string {
-		field, _ := ecs.Get[engineui.TextField](app.World, prompt)
+		field, _ := app.World.Get[engineui.TextField](prompt)
 		return field.Value
 	}
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "last character"})
@@ -384,7 +384,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		t.Fatal("ordinary textarea could not receive focus")
 	}
 	pressEnter(0)
-	if field, _ := ecs.Get[engineui.TextField](app.World, notes); field.Value != "\n" {
+	if field, _ := app.World.Get[engineui.TextField](notes); field.Value != "\n" {
 		t.Fatalf("ordinary textarea lost native Enter behavior: %q", field.Value)
 	}
 	if allocs := testing.AllocsPerRun(100, func() { model.syncExtensionUI(model.fontResources) }); allocs != 0 {
@@ -455,14 +455,14 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	popupDefinition := popup.definition
 	model.fontResources.SetControlValue(query, "retained query")
-	ecs.WriteMessage(app.World, htmlui.Event{Entity: model.surface, Target: query, Kind: htmlui.EventInput, Value: "retained query", Bubbles: true})
+	app.World.WriteMessage(htmlui.Event{Entity: model.surface, Target: query, Kind: htmlui.EventInput, Value: "retained query", Bubbles: true})
 	wait(func() bool { return popup.ui.Title == "Search: retained query" })
 	settle()
 	assertPosition(260, 180)
 	if same, ok := model.fontResources.HTMLControl(model.surface, "pencode-extension-query"); !ok || same != query || popup.definition != popupDefinition {
 		t.Fatal("moving popup replaced its input or view")
 	}
-	if field, ok := ecs.Get[engineui.TextField](app.World, query); !ok || field.Value != "retained query" {
+	if field, ok := app.World.Get[engineui.TextField](query); !ok || field.Value != "retained query" {
 		t.Fatalf("moving popup lost its input value: %+v", field)
 	}
 	// Tab can leave a nonmodal popup and return through native traversal.
@@ -513,8 +513,8 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	assertPosition(1000, 600)
 	resize := func(width, height int) {
 		model.app.GetViewport = func() (int, int) { return width, height }
-		ecs.InsertResource(app.World, scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
-		for _, camera := range ecs.Query[scene.Camera](app.World).All {
+		app.World.InsertResource(scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
+		for _, camera := range app.World.Query[scene.Camera]().All {
 			camera.Mut().UpdateViewport(width, height)
 		}
 		settle()
@@ -571,7 +571,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		t.Helper()
 		definition := popup.definition
 		model.fontResources.SetControlValue(query, value)
-		ecs.WriteMessage(app.World, htmlui.Event{Entity: model.surface, Target: query, Kind: htmlui.EventInput, Value: value, Bubbles: true})
+		app.World.WriteMessage(htmlui.Event{Entity: model.surface, Target: query, Kind: htmlui.EventInput, Value: value, Bubbles: true})
 		wait(func() bool { return popup.ui.Title == "Search: "+value && popup.ui.CloseOnOutsideClick == enabled })
 		settle()
 		if same, ok := model.fontResources.HTMLControl(model.surface, "pencode-extension-query"); !ok || same != query || popup.definition != definition {
@@ -757,7 +757,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	node, _ := model.fontResources.HTMLNode(model.surface, "pencode-extension-notifications")
 	area, scrolling := node.ScrollContainer()
-	scroll, hasScroll := ecs.Get[scene.UIScroll](app.World, area)
+	scroll, hasScroll := app.World.Get[scene.UIScroll](area)
 	if !scrolling || !hasScroll || scroll.Position.Y() >= 0 || math.Abs(float64(scroll.Position.Y()+scroll.ContentSize.Y()-scroll.ViewportSize.Y())) > .2 {
 		t.Fatalf("new notifications were not revealed: %+v", scroll)
 	}

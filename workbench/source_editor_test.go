@@ -11,7 +11,6 @@ import (
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	engineui "github.com/diiyw/onix/ui"
@@ -171,7 +170,7 @@ func TestSourceEditorFirstChangeTabsAndNativeScroll(t *testing.T) {
 		if !ok {
 			t.Fatal("missing diff scroll container")
 		}
-		scrolls[i] = module.ContentMut[scene.UIScroll](m.fontResources, entity)
+		scrolls[i] = m.fontResources.Mut[scene.UIScroll](entity)
 	}
 	changeY := float32(251*20) + scrolls[0].Position[1]
 	if changeY < 0 || changeY >= scrolls[0].ViewportSize[1] || tab.FirstRow == 0 {
@@ -183,11 +182,11 @@ func TestSourceEditorFirstChangeTabsAndNativeScroll(t *testing.T) {
 	var numberEntities [2]ecs.Entity
 	var numberPositions [2][2]float32
 	label := strconv.Itoa(tab.Rows[251].LeftNumber)
-	for entity, access := range module.ContentQuery[scene.Text2D](m.fontResources) {
+	for entity, access := range m.fontResources.Query[scene.Text2D]() {
 		if access.Ref().Value != label {
 			continue
 		}
-		transform, ok := module.ContentGet[scene.UIGlobalTransform](m.fontResources, entity)
+		transform, ok := m.fontResources.Get[scene.UIGlobalTransform](entity)
 		if !ok {
 			continue
 		}
@@ -207,7 +206,7 @@ func TestSourceEditorFirstChangeTabsAndNativeScroll(t *testing.T) {
 	scrolls[0].Position[0] = -300
 	languageInteractionStep(t, app)
 	for side, entity := range numberEntities {
-		transform, _ := module.ContentGet[scene.UIGlobalTransform](m.fontResources, entity)
+		transform, _ := m.fontResources.Get[scene.UIGlobalTransform](entity)
 		if transform.Matrix[12] != numberPositions[side][0] || transform.Matrix[13] != numberPositions[side][1] {
 			t.Fatalf("pane %d line number moved horizontally: %v", side, transform.Matrix)
 		}
@@ -215,7 +214,7 @@ func TestSourceEditorFirstChangeTabsAndNativeScroll(t *testing.T) {
 	scrolls[0].Position[1] -= 20
 	languageInteractionStep(t, app)
 	for side, entity := range numberEntities {
-		transform, _ := module.ContentGet[scene.UIGlobalTransform](m.fontResources, entity)
+		transform, _ := m.fontResources.Get[scene.UIGlobalTransform](entity)
 		if transform.Matrix[12] != numberPositions[side][0] || math.Abs(float64(transform.Matrix[13]-numberPositions[side][1]+20)) > .01 {
 			t.Fatalf("pane %d line number lost vertical alignment: %v", side, transform.Matrix)
 		}
@@ -273,8 +272,8 @@ func assertSourceDiffScrollGeometry(t *testing.T, m *workspaceModel) {
 	for side, id := range [...]string{"sc-code-left", "sc-code-right"} {
 		bounds[side] = editorContextBounds(t, m, id)
 		control, _ := m.fontResources.HTMLControl(m.surface, id+"-input")
-		entity, _ := module.ContentFindPart[engineui.ValuePart, scene.Text2D](m.fontResources, control)
-		transform := module.ContentRef[scene.UIGlobalTransform](m.fontResources, entity)
+		entity, _ := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](control)
+		transform := m.fontResources.Ref[scene.UIGlobalTransform](entity)
 		if math.Abs(float64(transform.Matrix[13]-bounds[side].Y-tab.ScrollY)) > .01 {
 			t.Fatalf("pane %d native text lagged behind scroll: y=%g scroll=%g", side, transform.Matrix[13], tab.ScrollY)
 		}
@@ -282,18 +281,18 @@ func assertSourceDiffScrollGeometry(t *testing.T, m *workspaceModel) {
 		if side == 1 {
 			number = tab.Rows[row].RightNumber
 		}
-		text := module.ContentRef[scene.Text2D](m.fontResources, entity)
+		text := m.fontResources.Ref[scene.Text2D](entity)
 		if text.LineLayout.Offsets[number-1] != float32(row*20) {
 			t.Fatalf("pane %d native line %d lost diff padding", side, number)
 		}
 		labels[side] = strconv.Itoa(number)
 	}
-	for entity, access := range module.ContentQuery[scene.Text2D](m.fontResources) {
+	for entity, access := range m.fontResources.Query[scene.Text2D]() {
 		for side, label := range labels {
 			if access.Ref().Value != label {
 				continue
 			}
-			global := module.ContentRef[scene.UIGlobalTransform](m.fontResources, entity)
+			global := m.fontResources.Ref[scene.UIGlobalTransform](entity)
 			if global.Matrix[12] < bounds[side].X-50 || global.Matrix[12] >= bounds[side].X {
 				continue
 			}
@@ -312,16 +311,16 @@ func assertSourceDiffScrollGeometry(t *testing.T, m *workspaceModel) {
 func assertSourceDiffGutterIcon(t *testing.T, m *workspaceModel) {
 	t.Helper()
 	gutter := editorContextBounds(t, m, "sc-diff-gutter")
-	for entity, access := range module.ContentQuery[scene.Sprite2D](m.fontResources) {
+	for entity, access := range m.fontResources.Query[scene.Sprite2D]() {
 		sprite := access.Ref()
 		if sprite.Texture == nil {
 			continue
 		}
-		transform, ok := module.ContentGet[scene.UIGlobalTransform](m.fontResources, entity)
+		transform, ok := m.fontResources.Get[scene.UIGlobalTransform](entity)
 		if !ok {
 			continue
 		}
-		anchor, _ := module.ContentGet[scene.Anchor](m.fontResources, entity)
+		anchor, _ := m.fontResources.Get[scene.Anchor](entity)
 		x, y, right, bottom, ok := scene.SpriteBounds2D(sprite, anchor, transform.Matrix, true)
 		if !ok || x < gutter.X || right > gutter.X+gutter.Width || y < gutter.Y || bottom > gutter.Y+gutter.Height {
 			continue

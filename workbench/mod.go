@@ -24,7 +24,7 @@ func (m *Mod) Install(c *module.Context) error {
 	if err != nil {
 		return err
 	}
-	isWorkspace, err := module.ReadSlot[bool](slot)
+	isWorkspace, err := slot.Read[bool]()
 	if err != nil {
 		return err
 	}
@@ -65,10 +65,10 @@ func (m *Mod) Install(c *module.Context) error {
 	model.surface = spawnPencodeSurface(content, uiFont, uiBold, model.settings.UIFontSize)
 	model.windowBorder = spawnPencodeWindowBorder(content, model.workbenchTheme.border)
 	m.icons = &pencodeIconProvider{content: content, model: model, textures: make(map[string]*graphics.Texture)}
-	if surface := module.ContentMut[html.Surface](content, model.surface); surface != nil {
+	if surface := content.Mut[html.Surface](model.surface); surface != nil {
 		surface.Images = &html.Images{Provider: m.icons}
 	}
-	model.root, err = module.ContentMount(content, model.surface, definitions.root, appProps{Model: model, Screen: m.screen}, appState{}, 1)
+	model.root, err = content.Mount(model.surface, definitions.root, appProps{Model: model, Screen: m.screen}, appState{}, 1)
 	if err != nil {
 		return err
 	}
@@ -212,7 +212,7 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 			return nil
 		}
 		m.switching = true
-		return module.Send(c, module.SceneTarget, "pencode.navigate", m.model.screen == pencodeWorkspace)
+		return c.Send(module.SceneTarget, "pencode.navigate", m.model.screen == pencodeWorkspace)
 	}
 	activePath := m.model.activePath
 	treeChanged := m.model.pollProjectScans()
@@ -253,14 +253,14 @@ func (m *Mod) OnOpenProject(c *module.Context, value string) error {
 }
 func (m *Mod) OnMessage(c *module.Context, message module.Message) error {
 	if message.Topic == "openProject" {
-		value, ok := module.Value[string](message)
+		value, ok := message.Value[string]()
 		if !ok {
 			return module.ErrType
 		}
 		return m.OnOpenProject(c, value)
 	}
 	if message.Topic == "pencode.error" {
-		value, ok := module.Value[string](message)
+		value, ok := message.Value[string]()
 		if !ok {
 			return module.ErrType
 		}

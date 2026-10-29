@@ -6,9 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
@@ -25,7 +23,7 @@ func TestCodexComposerGrowsUpwardBeforeScrolling(t *testing.T) {
 	}
 	width := 1024
 	m.app.GetViewport = func() (int, int) { return width, 768 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
 	show := func(draft string) {
 		t.Helper()
 		if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
@@ -51,7 +49,7 @@ func TestCodexComposerGrowsUpwardBeforeScrolling(t *testing.T) {
 	if !ok || !w.Focus(control) || initial.Height != 38 {
 		t.Fatalf("invalid initial input: %+v", initial)
 	}
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "first\nsecond\nthird\n"})
 	languageInteractionStep(t, app)
 	grown := bounds()
@@ -61,30 +59,30 @@ func TestCodexComposerGrowsUpwardBeforeScrolling(t *testing.T) {
 	if current := editorContextBounds(t, m, "pencode-extension-composer-footer"); current != footer {
 		t.Fatalf("growing input moved the footer: before=%+v after=%+v", footer, current)
 	}
-	textarea := module.ContentMut[engineui.Textarea](w, control)
+	textarea := w.Mut[engineui.Textarea](control)
 	if textarea.ScrollY != 0 {
 		t.Fatalf("input scrolled before reaching its limit: %v", textarea.ScrollY)
 	}
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: strings.Repeat("more\n", 30)})
 	languageInteractionStep(t, app)
-	if b := bounds(); b.Height != 240 || module.ContentMut[engineui.Textarea](w, control).ScrollY <= 0 {
-		t.Fatalf("long input did not scroll at its height limit: bounds=%+v scroll=%v", b, module.ContentMut[engineui.Textarea](w, control).ScrollY)
+	if b := bounds(); b.Height != 240 || w.Mut[engineui.Textarea](control).ScrollY <= 0 {
+		t.Fatalf("long input did not scroll at its height limit: bounds=%+v scroll=%v", b, w.Mut[engineui.Textarea](control).ScrollY)
 	}
 	w.SetControlValue(control, "short")
 	languageInteractionStep(t, app)
-	if b := bounds(); b != initial || module.ContentMut[engineui.Textarea](w, control).ScrollY != 0 {
+	if b := bounds(); b != initial || w.Mut[engineui.Textarea](control).ScrollY != 0 {
 		t.Fatalf("shortened input did not shrink and reset scroll: %+v", b)
 	}
 	show(strings.Repeat("wide text ", 18))
 	wide := bounds()
 	width = 640
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 640, Height: 768, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 640, Height: 768, ScaleFactor: 1})
 	languageInteractionStep(t, app)
 	if narrow := bounds(); narrow.Height <= wide.Height {
 		t.Fatalf("soft wrapping did not resize the input: wide=%+v narrow=%+v", wide, narrow)
 	}
 	width = 1024
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
 	languageInteractionStep(t, app)
 	if b := bounds(); b.Height != wide.Height {
 		t.Fatalf("widening the input did not shrink it: wide=%+v current=%+v", wide, b)
@@ -103,8 +101,8 @@ func TestCodexComposerPointerFocusAcceptsText(t *testing.T) {
 	m := session.active.model
 	w := m.fontResources
 	m.app.GetViewport = func() (int, int) { return 1024, 768 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1024, Height: 768, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1024, 768)
 	}
 	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
@@ -125,7 +123,7 @@ func TestCodexComposerPointerFocusAcceptsText(t *testing.T) {
 		}
 	}
 	show("")
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	id := m.actions.ui.editor.prefix + "control-prompt"
 	settingsID := m.actions.ui.editor.prefix + "control-settings"
 	for _, point := range []struct {
@@ -144,13 +142,13 @@ func TestCodexComposerPointerFocusAcceptsText(t *testing.T) {
 		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
 		languageInteractionStep(t, app)
 		control, ok := w.HTMLControl(m.surface, id)
-		field := module.ContentMut[engineui.TextField](w, control)
+		field := w.Mut[engineui.TextField](control)
 		if !ok || field == nil || w.FocusedControl() != control || !field.Focused || !state.TextInputConfig().Active {
 			t.Fatalf("pointer %v did not focus the prompt: control=%v focused=%v field=%+v", point, control, w.FocusedControl(), field)
 		}
 		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "输入"})
 		languageInteractionStep(t, app)
-		field = module.ContentMut[engineui.TextField](w, control)
+		field = w.Mut[engineui.TextField](control)
 		if field.Value != "输入" {
 			t.Fatalf("pointer %v focused the prompt without accepting text: %+v", point, field)
 		}
@@ -169,7 +167,7 @@ func TestCodexComposerPointerFocusAcceptsText(t *testing.T) {
 	languageInteractionStep(t, app)
 	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x + 80*scale, Y: y})
 	languageInteractionStep(t, app)
-	field := module.ContentMut[engineui.TextField](w, control)
+	field := w.Mut[engineui.TextField](control)
 	if field.Anchor == field.Caret || w.FocusedControl() != control {
 		t.Fatalf("card prevented text selection: %+v", field)
 	}

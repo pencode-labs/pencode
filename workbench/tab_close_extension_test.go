@@ -3,9 +3,7 @@ package workbench
 import (
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -17,8 +15,8 @@ func TestClosingFileRevealsExtensionEditorTab(t *testing.T) {
 	m := session.active.model
 	world := m.fontResources
 	m.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	project, path := m.activeProjectState(), m.activePath
@@ -32,7 +30,7 @@ func TestClosingFileRevealsExtensionEditorTab(t *testing.T) {
 	m.selectProjectTab(project, path)
 	markPencodeRootDirtyByModel(world, m)
 	languageInteractionStep(t, app)
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	editorContextClick(t, app, m, state, "file-tab-close:"+project.Path+":"+path)
 	languageInteractionStep(t, app)
 	if m.actions.ui.editor != chat || !chat.live() || m.activeFile() != nil {
@@ -45,7 +43,7 @@ func TestClosingFileRevealsExtensionEditorTab(t *testing.T) {
 		editorContextBounds(t, m, id)
 	}
 	var active int
-	for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](world) {
+	for _, access := range world.Query[htmlui.Component[tabProps, struct{}]]() {
 		props := access.Get().Props
 		if props.Active {
 			active++

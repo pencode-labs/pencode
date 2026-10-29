@@ -1,10 +1,11 @@
 package workbench
 
 import (
+	"runtime"
+
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
 	engineui "github.com/diiyw/onix/ui"
-	"runtime"
 )
 
 var pencodeEditorClipboardCommands = [...]struct{ id, ref string }{
@@ -16,7 +17,7 @@ func (m *workspaceModel) editorClipboardShortcut(world *module.Content, state *i
 	if world == nil || !m.textEditorActive() || m.settingsOpen || m.quickOpen || m.findOpen {
 		return false
 	}
-	field, ok := module.ContentGet[engineui.TextField](world, m.editor.control)
+	field, ok := world.Get[engineui.TextField](m.editor.control)
 	if !ok || !field.Focused {
 		return false
 	}

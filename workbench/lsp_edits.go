@@ -249,7 +249,7 @@ func (model *workspaceModel) navigateLanguageLocation(world *module.Content, loc
 	if project != nil {
 		model.activateProject(project)
 	}
-	navigation := &fileNavigation{offset: func(content string) (int, error) { return lsp.OffsetAt(content, r.Start, encoding) }}
+	navigation := &fileNavigation{selection: &r, encoding: encoding}
 	if err := model.requestFileOpen(project, relative, false, true, navigation); err != nil {
 		model.setActiveStatus(err.Error())
 		return false

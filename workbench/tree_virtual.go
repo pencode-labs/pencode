@@ -57,7 +57,7 @@ func (project *pencodeProject) visibleTreeRows(model *workspaceModel) []int {
 func (project *pencodeProject) treeRange(world *module.Content, model *workspaceModel) (int, int) {
 	rows := project.visibleTreeRows(model)
 	height, position := float32(900), float32(0)
-	if scroll := module.ContentRef[scene.UIScroll](world, project.tree.area); scroll != nil {
+	if scroll := world.Ref[scene.UIScroll](project.tree.area); scroll != nil {
 		height, position = scroll.ViewportSize.Y(), scroll.Position.Y()
 	}
 	c := &model.fileContext
@@ -68,7 +68,7 @@ func (project *pencodeProject) treeRange(world *module.Content, model *workspace
 				continue
 			}
 			position = min(0, max(height/2-float32(5+i*pencodeTreeRowHeight+pencodeTreeRowHeight/2), -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)))
-			if scroll := module.ContentMut[scene.UIScroll](world, project.tree.area); scroll != nil {
+			if scroll := world.Mut[scene.UIScroll](project.tree.area); scroll != nil {
 				scroll.Position[1] = position
 			}
 			break
@@ -90,12 +90,12 @@ func renderPencodeTree(context module.ContentRenderContext[projectProps, struct{
 	view.Components("tree-window", nil)
 	for _, index := range rows[first:end] {
 		if index < 0 {
-			htmlui.AppendComponentChild(view, "tree-window", componentKey("\x00create"), creationDefinition,
+			view.AppendComponentChild("tree-window", componentKey("\x00create"), creationDefinition,
 				treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Depth: model.fileContext.depth, Editing: true}, struct{}{})
 			continue
 		}
 		entry := project.Entries[index]
-		htmlui.AppendComponentChild(view, "tree-window", componentKey(entry.Path), definition,
+		view.AppendComponentChild("tree-window", componentKey(entry.Path), definition,
 			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name, Depth: entry.Depth, IsDir: entry.IsDir, Openable: entry.Openable, HasErrors: !entry.IsDir && model.fileHasErrors(project, entry.Path)}, struct{}{})
 	}
 }
@@ -105,7 +105,7 @@ func (model *workspaceModel) syncTreeScroll(world *module.Content) {
 	if world == nil || model.sidebarHidden {
 		return
 	}
-	for entity, access := range module.ContentQuery[htmlui.Component[projectProps, struct{}]](world) {
+	for entity, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {
 		props := access.Get().Props
 		if props.Model != model || props.Project == nil || props.Project.Collapsed {
 			continue
@@ -116,7 +116,7 @@ func (model *workspaceModel) syncTreeScroll(world *module.Content) {
 		}
 		first, end := project.treeRange(world, model)
 		if first != project.tree.first || end != project.tree.end {
-			module.ContentUpdateState[projectProps, struct{}](world, entity, func(*struct{}) {})
+			world.UpdateState[projectProps, struct{}](entity, func(*struct{}) {})
 			if model.app != nil {
 				model.app.RequestRender()
 			}

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
@@ -34,7 +33,7 @@ func TestTitlebarSearchResultLayout(t *testing.T) {
 	model.quickQuery = "main.go"
 	for _, width := range [...]int{720, 1440} {
 		model.app.GetViewport = func() (int, int) { return width, 900 }
-		ecs.InsertResource(app.World, scene.ViewportSize{Width: float32(width), Height: 900, ScaleFactor: 1})
+		app.World.InsertResource(scene.ViewportSize{Width: float32(width), Height: 900, ScaleFactor: 1})
 		for _, zoom := range [...]int{70, 100, 150} {
 			model.setZoom(model.fontResources, zoom)
 			model.openQuickOpen()
@@ -67,7 +66,7 @@ func TestTitlebarSearchOpensFileAtLine(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	model.syncZoom(model.fontResources)
 	const name = "location.go"
 	content := strings.Repeat("// 中文🙂\r\n", 100)
@@ -102,13 +101,13 @@ func TestTitlebarSearchOpensFileAtLine(t *testing.T) {
 		} else if strings.HasSuffix(query, ":999") {
 			want = utf8.RuneCountInString(content)
 		}
-		field, _ := module.ContentGet[ui.TextField](model.fontResources, model.editor.control)
+		field, _ := model.fontResources.Get[ui.TextField](model.editor.control)
 		if model.activePath != name || !field.Focused || field.Caret != want || field.Anchor != want || model.quickTargetLine != 0 || model.quickOpen {
 			t.Fatalf("%s: caret=%d anchor=%d focused=%v pending=%d open=%v focusPending=%v, want %d", query, field.Caret, field.Anchor, field.Focused, model.quickTargetLine, model.quickOpen, model.quickNeedsFocus, want)
 		}
-		text, _ := module.ContentGet[scene.Text2D](model.fontResources, model.editor.text)
-		textarea, _ := module.ContentGet[ui.Textarea](model.fontResources, model.editor.control)
-		link, _ := module.ContentGet[htmlui.ControlText](model.fontResources, model.editor.text)
+		text, _ := model.fontResources.Get[scene.Text2D](model.editor.text)
+		textarea, _ := model.fontResources.Get[ui.Textarea](model.editor.control)
+		link, _ := model.fontResources.Get[htmlui.ControlText](model.editor.text)
 		_, y, _, height, ok := scene.TextCaretRect2D(&text, content, want)
 		if !ok || y < textarea.ScrollY || y+height > textarea.ScrollY+link.Content.Height {
 			t.Fatalf("%s: target line is outside viewport: y=%v height=%v scroll=%v viewport=%v", query, y, height, textarea.ScrollY, link.Content.Height)
@@ -195,7 +194,7 @@ func TestTitlebarSearchFocusesFiltersAndOpensFile(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	model.syncZoom(model.fontResources)
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
@@ -227,11 +226,11 @@ func TestTitlebarSearchFocusesFiltersAndOpensFile(t *testing.T) {
 	if bounds, ok := node.Bounds(); !ok || bounds.Y >= pencodeTitlebarHeight+pencodeTitlebarInset {
 		t.Fatal("search input moved out of the titlebar")
 	}
-	field, fieldOK := module.ContentGet[ui.TextField](model.fontResources, control)
+	field, fieldOK := model.fontResources.Get[ui.TextField](control)
 	if !ok || !fieldOK || !field.Focused {
 		t.Fatalf("titlebar search did not focus the query input: control=%v exists=%v field=%+v pending=%v", control, ok, field, model.quickNeedsFocus)
 	}
-	inputState, _ := ecs.GetResource[*input.State](app.World)
+	inputState, _ := app.World.GetResource[*input.State]()
 	inputState.Enqueue(input.Event{Kind: input.EventTextInput, Text: "MAIN"})
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
@@ -259,7 +258,7 @@ func TestTitlebarSearchFocusesFiltersAndOpensFile(t *testing.T) {
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
 	}
-	queryControl, _ := module.ContentGet[htmlui.Control](model.fontResources, control)
+	queryControl, _ := model.fontResources.Get[htmlui.Control](control)
 	if model.quickQuery != "" || queryControl.Value != "" {
 		t.Fatalf("successful navigation did not clear search: query=%q input=%q", model.quickQuery, queryControl.Value)
 	}
@@ -287,8 +286,8 @@ func TestTitlebarSearchOutsideClickAndResultSelection(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	for _, camera := range ecs.Query[scene.Camera](app.World).All {
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
 	const selectedFile = "selected.go"
@@ -299,7 +298,7 @@ func TestTitlebarSearchOutsideClickAndResultSelection(t *testing.T) {
 	model.startProjectScan(project, false)
 	waitPencodeProjectScan(t, project, func() { model.pollProjectScans() })
 	model.quickQuery = selectedFile
-	state, _ := ecs.GetResource[*input.State](app.World)
+	state, _ := app.World.GetResource[*input.State]()
 	step := func() {
 		t.Helper()
 		if _, err := app.Step(); err != nil {

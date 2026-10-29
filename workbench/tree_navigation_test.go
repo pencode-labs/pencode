@@ -6,10 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/lsp"
 	"github.com/diiyw/onix/scene"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 func TestPencodeFileNavigationQueuesTreeReveal(t *testing.T) {
@@ -101,7 +100,7 @@ func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
-	ecs.InsertResource(app.World, scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	world := model.fontResources
 	project := model.activeProjectState()
 	const directory = "src/nested"
@@ -125,9 +124,9 @@ func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
 			if !ok {
 				t.Fatal("missing tree scroll area")
 			}
-			module.ContentMut[scene.UIScroll](world, area).Position[1] = 0
+			world.Mut[scene.UIScroll](area).Position[1] = 0
 			if action == "tree" {
-				module.ContentMut[scene.UIScroll](world, area).Position[1] = -900
+				world.Mut[scene.UIScroll](area).Position[1] = -900
 			} else {
 				project.Collapsed = true
 				clear(project.ExpandedDirs)
@@ -147,7 +146,7 @@ func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
 					if project.ActivePath != relative || model.activePath != relative {
 						t.Fatalf("tree click did not activate %s", relative)
 					}
-					if got := module.ContentRef[scene.UIScroll](world, area).Position.Y(); got != -900 {
+					if got := world.Ref[scene.UIScroll](area).Position.Y(); got != -900 {
 						t.Fatalf("tree click moved the list: %v", got)
 					}
 				}
@@ -171,7 +170,7 @@ func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
 			languageInteractionStep(t, app)
 			row := editorContextBounds(t, model, model.projectTreeRowID(project, target))
 			viewport := editorContextBounds(t, model, treeRowID(project.Path))
-			scroll := module.ContentMut[scene.UIScroll](world, area)
+			scroll := world.Mut[scene.UIScroll](area)
 			want := min(max(viewport.Y+scroll.ViewportSize.Y()/2-row.Y-row.Height/2, -max(scroll.ContentSize.Y()-scroll.ViewportSize.Y(), 0)), 0)
 			if action == "tree" {
 				want = -900
@@ -184,7 +183,7 @@ func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
 			}
 			scroll.Position[1] = -48
 			languageInteractionStep(t, app)
-			if got := module.ContentRef[scene.UIScroll](world, area).Position.Y(); got != -48 {
+			if got := world.Ref[scene.UIScroll](area).Position.Y(); got != -48 {
 				t.Fatalf("idle layout reset manual scrolling: %v", got)
 			}
 		})

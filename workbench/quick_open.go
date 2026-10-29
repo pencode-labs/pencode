@@ -2,18 +2,17 @@ package workbench
 
 import (
 	"context"
-	"github.com/pencode-labs/pencode/client"
-	"github.com/pencode-labs/pencode/peb"
-	"github.com/pencode-labs/pencode/protocol"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/module"
-
 	"github.com/diiyw/onix/ecs"
+	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/peb"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 var pencodeQuickRowRefs = [...]string{
@@ -221,7 +220,7 @@ func (model *workspaceModel) openQuickMatch(world *module.Content, index int) {
 func (model *workspaceModel) handleQuickOpenEvent(context *module.ContentEventContext[appProps, appState]) bool {
 	if context.Ref == "quick-open-query" && context.Event.Kind == htmlui.EventFocus {
 		// Focus notifications can arrive after a result has already been opened.
-		field, ok := module.ContentGet[ui.TextField](context.World, context.Event.Target)
+		field, ok := context.World.Get[ui.TextField](context.Event.Target)
 		if model.quickFocusEditor || !ok || !field.Focused {
 			return true
 		}
@@ -259,7 +258,7 @@ func (model *workspaceModel) focusQuickControls(world *module.Content, surface e
 		model.quickFocusEditor = false
 		if model.quickTargetLine > 0 {
 			caret := pencodeLineCaret(model.activeContent(), model.quickTargetLine)
-			if field := module.ContentMut[ui.TextField](world, model.editor.control); field != nil {
+			if field := world.Mut[ui.TextField](model.editor.control); field != nil {
 				field.Caret, field.Anchor = caret, caret
 			}
 			model.revealEditorCaret(world, caret)
@@ -274,12 +273,12 @@ func (model *workspaceModel) focusQuickControls(world *module.Content, surface e
 		return
 	}
 	// Newly mounted DOM controls must bind their native text fields before focus.
-	if !module.ContentHas[ui.TextField](world, entity) {
+	if !world.Has[ui.TextField](entity) {
 		if err := world.SyncHTML(); err != nil {
 			return
 		}
 		entity, ok = world.HTMLControl(surface, "quick-open-query")
-		if !ok || !module.ContentHas[ui.TextField](world, entity) {
+		if !ok || !world.Has[ui.TextField](entity) {
 			return
 		}
 	}

@@ -348,7 +348,7 @@ func (m *workspaceModel) focusFolderSearch(world *module.Content) {
 	s := &m.folderSearch
 	m.revealFolderSearchResult(world)
 	if s.navigate != nil && !s.open && m.editor.file == s.navigate && m.activeFile() == s.navigate && world.Focus(m.editor.control) {
-		if field := module.ContentMut[engineui.TextField](world, m.editor.control); field != nil {
+		if field := world.Mut[engineui.TextField](m.editor.control); field != nil {
 			field.Anchor, field.Caret = s.navigateStart, s.navigateEnd
 		}
 		m.revealEditorCaret(world, s.navigateEnd)
@@ -358,15 +358,15 @@ func (m *workspaceModel) focusFolderSearch(world *module.Content) {
 		return
 	}
 	for _, ref := range [...]string{"folder-search-query", "folder-search-replacement"} {
-		if entity, ok := world.HTMLControl(m.surface, ref); ok && !module.ContentHas[engineui.TextFieldKeyHandler](world, entity) {
-			_ = module.ContentInsert(world, entity, engineui.TextFieldKeyHandler{Handle: func(state *input.State) bool {
+		if entity, ok := world.HTMLControl(m.surface, ref); ok && !world.Has[engineui.TextFieldKeyHandler](entity) {
+			_ = world.Insert(entity, engineui.TextFieldKeyHandler{Handle: func(state *input.State) bool {
 				return s.open && !state.Composing() && (m.uiKey(state, input.KeyUp) || m.uiKey(state, input.KeyDown) || m.uiKey(state, input.KeyEnter) || m.uiKey(state, input.KeyEscape) || m.uiKey(state, input.KeyPageUp) || m.uiKey(state, input.KeyPageDown))
 			}})
 		}
 	}
-	if entity, ok := world.HTMLControl(m.surface, "folder-search-query"); ok && module.ContentHas[engineui.TextField](world, entity) && world.Focus(entity) {
+	if entity, ok := world.HTMLControl(m.surface, "folder-search-query"); ok && world.Has[engineui.TextField](entity) && world.Focus(entity) {
 		s.needsFocus = false
-		if field := module.ContentMut[engineui.TextField](world, entity); field != nil {
+		if field := world.Mut[engineui.TextField](entity); field != nil {
 			field.Anchor = 0
 		}
 	}
@@ -389,7 +389,7 @@ func (m *workspaceModel) revealFolderSearchResult(world *module.Content) {
 	if !ok {
 		return
 	}
-	if scroll := module.ContentMut[scene.UIScroll](world, area); scroll != nil {
+	if scroll := world.Mut[scene.UIScroll](area); scroll != nil {
 		bounds, _ := list.Bounds()
 		row, _ := item.Bounds()
 		top, bottom := row.Y-bounds.Y, row.Y+row.Height-bounds.Y

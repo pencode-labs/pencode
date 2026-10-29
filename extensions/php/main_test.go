@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/peb"
 )
 
@@ -72,6 +73,10 @@ func TestRegistrationAndDocumentLanguages(t *testing.T) {
 			}
 		}
 		adapter := decoded.DebugAdapters[0]
+		templates, err := debugger.ParseConfigs([]byte(adapter.Templates), "${workspaceFolder}")
+		if err != nil || len(templates) != 2 || templates[0].Adapter != "Xdebug" {
+			t.Fatal("Xdebug template", templates, err)
+		}
 		if adapter.ID != "Xdebug" || adapter.Command != ls.Command || strings.Join(adapter.Args, " ") != "--tool xdebug" {
 			t.Fatal(adapter)
 		}

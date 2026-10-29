@@ -60,7 +60,7 @@ func TestRemoteConfigurationFollowsWorkspaceAndSavesOnServer(t *testing.T) {
 	settings := parsePencodeSettings([]byte(`{"fontSize":21,"uiFontSize":18,"editorWidth":65,"zoom":120,"theme":"themes/custom.jsonc","iconTheme":"extensions/remote/icons","codeFont":"extensions/remote/code"}`))
 	settings.Bindings["save"] = pencodeKeybinding{Key: input.KeyL, Primary: true}
 	local, backend := settingsBackend(t, localDirectory), settingsBackend(t, remoteDirectory)
-	s := NewSession(local)
+	s := newPencodeTestSession(t, local)
 	model := &workspaceModel{session: s, backend: local}
 	model.settings, model.settingsPath = loadPencodeSettings()
 	if err := model.loadSyntaxSettings(); err != nil {
@@ -145,7 +145,7 @@ func TestConnectionRecoveryReloadsRemoteConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	next := settingsBackend(t, directory)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	profile := connection.Profile{SSH: remote.Target{Host: "remote"}}
 	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) { return next, nil }, connection.Profile{})
@@ -170,7 +170,7 @@ func TestRemoteSettingsSaveReportsServerFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	backend := settingsBackend(t, directory)
-	s := NewSession(backend)
+	s := newPencodeTestSession(t, backend)
 	t.Cleanup(s.Close)
 	model := &workspaceModel{session: s, backend: backend, settingsRemote: true, settings: defaultPencodeSettings()}
 	model.saveSettings()

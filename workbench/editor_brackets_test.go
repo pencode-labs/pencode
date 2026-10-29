@@ -7,7 +7,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	engineui "github.com/diiyw/onix/ui"
@@ -193,7 +192,7 @@ func TestPencodeBracketEditorPaint(t *testing.T) {
 		if _, err := app.Step(); err != nil {
 			t.Fatal(err)
 		}
-		value, _ := module.ContentGet[scene.Text2D](world, model.editor.text)
+		value, _ := world.Get[scene.Text2D](model.editor.text)
 		return value.Spans
 	}
 	start, end := strings.Index(source, "{"), strings.LastIndex(source, "}")

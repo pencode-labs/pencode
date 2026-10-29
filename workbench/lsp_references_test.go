@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/pencode-labs/pencode/lsp"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	engineui "github.com/diiyw/onix/ui"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 func TestLanguageReferencesGroupInterleavedFiles(t *testing.T) {
@@ -200,9 +200,9 @@ func TestLanguageReferenceGroupControlsAndNavigation(t *testing.T) {
 	checkHighlights := func(want int) {
 		t.Helper()
 		count := 0
-		for entity, access := range module.ContentQuery[scene.Sprite2D](world) {
+		for entity, access := range world.Query[scene.Sprite2D]() {
 			sprite := access.Ref()
-			visible, _ := module.ContentGet[scene.Visibility](world, entity)
+			visible, _ := world.Get[scene.Visibility](entity)
 			if visible.Visible && sprite.Shape.Fill == background && sprite.Width > 0 && sprite.Height > 0 {
 				count++
 			}
@@ -238,6 +238,11 @@ func TestLanguageReferenceGroupControlsAndNavigation(t *testing.T) {
 	model.chooseLanguageRow(world, 2)
 	if panel.open || panel.navigate != model.activeFile() || panel.offset != strings.LastIndex(value, "symbol") {
 		t.Fatalf("grouped reference did not navigate to its original location: open=%v offset=%d", panel.open, panel.offset)
+	}
+	languageInteractionStep(t, app)
+	field := world.Ref[engineui.TextField](model.editor.control)
+	if !field.Focused || field.Value[field.Caret:field.Anchor] != "symbol" {
+		t.Fatalf("reference navigation did not highlight its target: caret=%d anchor=%d focused=%v", field.Caret, field.Anchor, field.Focused)
 	}
 }
 

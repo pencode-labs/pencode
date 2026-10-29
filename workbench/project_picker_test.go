@@ -7,9 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/connection"
@@ -57,13 +55,13 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 	typePath := func(value string) {
 		t.Helper()
 		model.fontResources.SetControlValue(field, value)
-		ecs.WriteMessage(app.World, htmlui.Event{Entity: model.surface, Target: field, Kind: htmlui.EventInput, Value: value, Bubbles: true})
+		app.World.WriteMessage(htmlui.Event{Entity: model.surface, Target: field, Kind: htmlui.EventInput, Value: value, Bubbles: true})
 		step()
 	}
 	checkChoices := func(want ...string) {
 		t.Helper()
 		var names []string
-		for _, access := range module.ContentQuery[htmlui.Component[pencodeProjectDirectoryProps, struct{}]](model.fontResources) {
+		for _, access := range model.fontResources.Query[htmlui.Component[pencodeProjectDirectoryProps, struct{}]]() {
 			names = append(names, access.Get().Props.Name)
 		}
 		slices.Sort(names)
@@ -73,8 +71,8 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 	}
 	checkInput := func(want string) {
 		t.Helper()
-		control, _ := module.ContentGet[htmlui.Control](model.fontResources, field)
-		text, _ := module.ContentGet[ui.TextField](model.fontResources, field)
+		control, _ := model.fontResources.Get[htmlui.Control](field)
+		text, _ := model.fontResources.Get[ui.TextField](field)
 		if control.Value != want || text.Value != want {
 			t.Fatalf("displayed path = %q / %q, want %q", control.Value, text.Value, want)
 		}
@@ -90,7 +88,7 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 	typePath(directory + "/ap")
 	checkChoices("app")
 	checkInput(directory + "/ap")
-	for entity, access := range module.ContentQuery[htmlui.Component[pencodeProjectDirectoryProps, struct{}]](model.fontResources) {
+	for entity, access := range model.fontResources.Query[htmlui.Component[pencodeProjectDirectoryProps, struct{}]]() {
 		component := access.Get()
 		component.Definition.Behavior.HandleEvent(&htmlui.ComponentEventContext[pencodeProjectDirectoryProps, struct{}]{World: app.World, Component: entity, Props: &component.Props, Ref: "directory", Event: htmlui.Event{Kind: htmlui.EventClick}})
 		break
@@ -114,7 +112,7 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 
 func TestProjectPickerLatestInputWinsAndCachedFilteringDoesNotAllocate(t *testing.T) {
 	model, project := resourceTestModel(t)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	s.ConfigureConnection(nil, connection.Profile{})
 	t.Cleanup(s.Close)
@@ -170,7 +168,7 @@ func TestSSHProjectPickerRequiresSelectionAndKeepsCurrentWorkspace(t *testing.T)
 	model.syncActiveProjectFields()
 	model.updateActiveContent("package unsaved\n")
 	file, document := model.activeFile(), model.activeFile().document
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	s.ConfigureConnection(nil, connection.Profile{})
 	t.Cleanup(s.Close)
@@ -225,7 +223,7 @@ func TestSSHProjectPickerRequiresSelectionAndKeepsCurrentWorkspace(t *testing.T)
 
 func TestSSHProjectPickerDismissRestoresConnectionVisibility(t *testing.T) {
 	model, project := resourceTestModel(t)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	s.ConfigureConnection(nil, connection.Profile{})
 	t.Cleanup(s.Close)
@@ -256,7 +254,7 @@ func TestSSHProjectPickerDismissRestoresConnectionVisibility(t *testing.T) {
 
 func TestSSHProjectPickerCancelAndFailureKeepLocalBackend(t *testing.T) {
 	model, project := resourceTestModel(t)
-	s := NewSession(project.backend)
+	s := newPencodeTestSession(t, project.backend)
 	model.session = s
 	s.ConfigureConnection(nil, connection.Profile{})
 	t.Cleanup(s.Close)
@@ -295,7 +293,7 @@ func TestSSHProjectPickerCancelAndFailureKeepLocalBackend(t *testing.T) {
 
 func TestSSHProjectPickerSwitchesLauncherBackendOnlyOnConfirm(t *testing.T) {
 	local, backend := newPencodeBackend(t), newPencodeBackend(t)
-	s := NewSession(local)
+	s := newPencodeTestSession(t, local)
 	s.ConfigureConnection(nil, connection.Profile{})
 	t.Cleanup(s.Close)
 	model := &workspaceModel{session: s, backend: local}

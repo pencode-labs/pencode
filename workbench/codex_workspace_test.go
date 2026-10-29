@@ -12,9 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
@@ -136,7 +134,7 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		t.Fatal("Codex button did not open its editor tab")
 	}
 	tabFound := false
-	for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](model.fontResources) {
+	for _, access := range model.fontResources.Query[htmlui.Component[tabProps, struct{}]]() {
 		props := access.Ref().Props
 		if props.Surface == surface {
 			tabFound = true
@@ -328,7 +326,7 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 	process := &extensions.ActionSession{}
 	show := func(key string, lines int) {
 		t.Helper()
-		ecs.InsertResource(app.World, scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
+		app.World.InsertResource(scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
 		err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Title: key, Kind: peb.EditorTab, View: &peb.EditorView{
 			HTML: `<main id="pencode-extension-codex-workspace" class="codex-workspace" data-pencode-layout="fill"><section id="pencode-extension-codex-chat-pane" class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-scroll="end" data-pencode-scroll-key="` + key + `"><article class="codex-chat">` + strings.Repeat(`<p>streamed output</p>`, lines) + `</article></div><section class="codex-composer"><form id="pencode-extension-codex-input-card" class="codex-input-card"><textarea data-ref="prompt" class="codex-prompt">draft</textarea><div class="codex-input-footer"><button type="button">+</button><button type="button">请批准</button><span class="codex-input-spacer"></span><button type="button">默认</button><button type="button">发送</button></div></form></section></section><aside id="pencode-extension-codex-sidebar" class="codex-sidebar"><section class="codex-history"><div class="codex-history-header"><h3>当前项目的会话</h3><button id="pencode-extension-codex-refresh" class="codex-icon-button" type="button" title="刷新会话" aria-label="刷新会话"><img src="resources/icons/refresh-cw.svg" alt=""></button></div><div class="codex-history-list" data-ref="history-list" data-pencode-scroll="preserve" data-pencode-scroll-key="project">` + strings.Repeat(`<button class="codex-history-row" type="button">Saved conversation</button>`, 60) + `</div></section></aside></main>`,
 			CSS:  string(css), Events: []peb.EditorBinding{{Ref: "prompt", Kind: "input"}},
@@ -351,7 +349,7 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s has no scroll container", id)
 		}
-		return module.ContentMut[scene.UIScroll](w, area)
+		return w.Mut[scene.UIScroll](area)
 	}
 	scroll := func() *scene.UIScroll { return scrollAt(m.actions.ui.editor.scrollTarget()) }
 	checkScrollTheme := func(id string) {
@@ -380,7 +378,7 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 		t.Fatal("input could not receive focus")
 	}
 	languageInteractionStep(t, app)
-	field := module.ContentMut[engineui.TextField](w, control)
+	field := w.Mut[engineui.TextField](control)
 	field.Anchor, field.Caret = 2, 4
 	prompt := editorContextBounds(t, m, promptID)
 	historyID := m.actions.ui.editor.prefix + "control-history-list"
@@ -394,7 +392,7 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 	if !ok || w.FocusedControl() != control {
 		t.Fatalf("streaming unfocused the input: control=%v focused=%v", control, w.FocusedControl())
 	}
-	field = module.ContentMut[engineui.TextField](w, control)
+	field = w.Mut[engineui.TextField](control)
 	if field.Value != "draft" || field.Anchor != 2 || field.Caret != 4 {
 		t.Fatalf("streaming changed the draft or selection: %+v", field)
 	}

@@ -6,7 +6,6 @@ import (
 	"testing/fstest"
 
 	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 )
@@ -25,28 +24,28 @@ func TestFindHighlightBackgroundAndCurrentBorder(t *testing.T) {
 		t.Helper()
 		backgrounds, borders := 0, 0
 		var outline ecs.Entity
-		textStack, _ := module.ContentGet[scene.UIStackIndex](world, m.editor.text)
+		textStack, _ := world.Get[scene.UIStackIndex](m.editor.text)
 		for _, entity := range paint.quads {
-			visible, _ := module.ContentGet[scene.Visibility](world, entity)
+			visible, _ := world.Get[scene.Visibility](entity)
 			if !visible.Visible {
 				continue
 			}
-			sprite, _ := module.ContentGet[scene.Sprite2D](world, entity)
-			stack, _ := module.ContentGet[scene.UIStackIndex](world, entity)
+			sprite, _ := world.Get[scene.Sprite2D](entity)
+			stack, _ := world.Get[scene.UIStackIndex](entity)
 			if sprite.Shape.BorderWidth > 0 {
 				borders++
 				outline = entity
 				if sprite.Shape.Fill.A != 0 || sprite.Shape.Border != m.workbenchTheme.findColors[2] || stack <= textStack {
 					t.Fatalf("current border must remain above native selection: %+v, stack=%d text=%d", sprite.Shape, stack, textStack)
 				}
-				text := module.ContentMut[scene.Text2D](world, m.editor.text)
+				text := world.Mut[scene.Text2D](m.editor.text)
 				match := m.findMatches[m.findIndex]
 				var widths [2]float32
 				offsets := [2]int{match.Start, match.End}
 				if !scene.MeasureTextLineOffsets2D(text, "\t中文🙂 22009 22009", offsets[:], widths[:]) {
 					t.Fatal("missing match geometry")
 				}
-				transform, _ := module.ContentGet[scene.UITransform](world, entity)
+				transform, _ := world.Get[scene.UITransform](entity)
 				if math.Abs(float64(transform.Translation.X.Value-paint.key.x-widths[0])) > .1 || math.Abs(float64(sprite.Width-(widths[1]-widths[0]))) > .1 {
 					t.Fatal("border lost tab/Unicode match alignment")
 				}
@@ -63,11 +62,11 @@ func TestFindHighlightBackgroundAndCurrentBorder(t *testing.T) {
 		return outline
 	}
 	outline := assertPaint()
-	before, _ := module.ContentGet[scene.UITransform](world, outline)
+	before, _ := world.Get[scene.UITransform](outline)
 	m.advanceFind(world, 1)
 	paint.sync(world, m)
 	outline = assertPaint()
-	after, _ := module.ContentGet[scene.UITransform](world, outline)
+	after, _ := world.Get[scene.UITransform](outline)
 	if after.Translation.X.Value <= before.Translation.X.Value {
 		t.Fatal("next match did not move the border")
 	}
@@ -77,9 +76,9 @@ func TestFindHighlightBackgroundAndCurrentBorder(t *testing.T) {
 	m.workbenchTheme = &theme
 	paint.sync(world, m)
 	assertPaint()
-	module.ContentMut[scene.UITransform](world, m.editor.text).Translation.Y.Value -= 3
+	world.Mut[scene.UITransform](m.editor.text).Translation.Y.Value -= 3
 	paint.sync(world, m)
-	scrolled, _ := module.ContentGet[scene.UITransform](world, outline)
+	scrolled, _ := world.Get[scene.UITransform](outline)
 	if scrolled.Translation.Y.Value != after.Translation.Y.Value-3 {
 		t.Fatal("border did not follow scrolling")
 	}
@@ -87,7 +86,7 @@ func TestFindHighlightBackgroundAndCurrentBorder(t *testing.T) {
 		t.Fatal("warm highlight allocated", allocations)
 	}
 	if allocations := testing.AllocsPerRun(100, func() {
-		module.ContentMut[scene.UITransform](world, m.editor.text).Translation.Y.Value -= .001
+		world.Mut[scene.UITransform](m.editor.text).Translation.Y.Value -= .001
 		paint.sync(world, m)
 	}); allocations != 0 {
 		t.Fatal("scrolling highlight allocated", allocations)
@@ -95,7 +94,7 @@ func TestFindHighlightBackgroundAndCurrentBorder(t *testing.T) {
 	m.closeFind(world)
 	paint.sync(world, m)
 	for _, entity := range paint.quads {
-		if visible, _ := module.ContentGet[scene.Visibility](world, entity); visible.Visible {
+		if visible, _ := world.Get[scene.Visibility](entity); visible.Visible {
 			t.Fatal("closed search left a highlight visible")
 		}
 	}

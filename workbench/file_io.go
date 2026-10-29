@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
@@ -64,7 +65,8 @@ type fileIOJob struct {
 }
 type fileNavigation struct {
 	line        int
-	offset      func(string) (int, error)
+	selection   *lsp.Range
+	encoding    lsp.PositionEncoding
 	history     bool
 	query       string
 	searchMatch *protocol.TextMatch
@@ -496,15 +498,20 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 	}
 	m.quickFocusEditor = true
 	m.quickTargetLine = n.line
-	if n.offset != nil {
-		offset, err := n.offset(f.Content)
+	if n.selection != nil {
+		offset, err := lsp.OffsetAt(f.Content, n.selection.Start, n.encoding)
 		if err != nil {
 			m.setProjectStatus(p, err.Error())
 			return
 		}
+		end, err := lsp.OffsetAt(f.Content, n.selection.End, n.encoding)
+		if err != nil || end < offset {
+			end = offset
+		}
 		if m.languages != nil {
 			m.languages.panel.navigate = f
 			m.languages.panel.offset = offset
+			m.languages.panel.endOffset = end
 		}
 	}
 }
@@ -561,6 +568,9 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 		f.Dirty = f.Content != j.content
 		f.saveRevision++
 		m.syncDebugBreakpoints(j.project, f)
+		if j.relative == pencodeDebugConfigPath && j.project == m.activeProjectState() {
+			m.loadDebugConfigs()
+		}
 		m.setProjectStatus(j.project, "已保存 "+f.Name)
 		m.syncLanguageDocuments()
 	} else {

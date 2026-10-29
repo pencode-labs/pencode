@@ -11,7 +11,6 @@ import (
 	"github.com/diiyw/onix/html/css"
 	"github.com/diiyw/onix/html/dom"
 	"github.com/diiyw/onix/html/style"
-	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	engineui "github.com/diiyw/onix/ui"
@@ -237,26 +236,26 @@ func TestPencodeWorkbenchThemeSyncReusesCache(t *testing.T) {
 	model := session.active.model
 	content := model.fontResources
 	editor := model.editor.control
-	field := module.ContentMut[engineui.TextField](content, editor)
+	field := content.Mut[engineui.TextField](editor)
 	field.Caret, field.Anchor = 18, 8
 	model.selectTheme("light-plus")
 	markPencodeRootDirtyByModel(content, model)
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
 	}
-	surface, _ := module.ContentGet[htmlui.Surface](content, model.surface)
-	border, _ := module.ContentGet[scene.UIBorder2D](content, model.windowBorder)
-	guide, _ := module.ContentGet[scene.Sprite2D](content, model.editor.guide)
+	surface, _ := content.Get[htmlui.Surface](model.surface)
+	border, _ := content.Get[scene.UIBorder2D](model.windowBorder)
+	guide, _ := content.Get[scene.Sprite2D](model.editor.guide)
 	if surface.CSS != model.workbenchTheme.css || border.Shape.Border != model.workbenchTheme.border || guide.Shape.Fill != model.workbenchTheme.guide || editor != model.editor.control {
 		t.Fatal("theme switch left stale workbench styles or replaced the editor")
 	}
-	field = module.ContentMut[engineui.TextField](content, editor)
-	nativeStyle, ok := module.ContentGet[engineui.StyleOverride[engineui.TextFieldStyle]](content, editor)
+	field = content.Mut[engineui.TextField](editor)
+	nativeStyle, ok := content.Get[engineui.StyleOverride[engineui.TextFieldStyle]](editor)
 	if field.Caret != 18 || field.Anchor != 8 || !ok || nativeStyle.Value.Caret.Background.Fill != graphics.Black || nativeStyle.Value.Selection.Background.Fill != pencodeSyntaxColor(model.syntaxTheme.Color("editor.selectionBackground")) {
 		t.Fatalf("theme switch: caret=%d anchor=%d style=%v caretColor=%+v selectionColor=%+v", field.Caret, field.Anchor, ok, nativeStyle.Value.Caret.Background.Fill, nativeStyle.Value.Selection.Background.Fill)
 	}
 	var treeIconFound bool
-	for _, access := range module.ContentQuery[htmlui.Component[treeProps, struct{}]](content) {
+	for _, access := range content.Query[htmlui.Component[treeProps, struct{}]]() {
 		component := access.Ref()
 		if component.Props.Theme != model.workbenchTheme {
 			t.Fatal("directory row retained the previous theme")
@@ -266,7 +265,7 @@ func TestPencodeWorkbenchThemeSyncReusesCache(t *testing.T) {
 	if !treeIconFound {
 		t.Fatal("fixture has no directory row")
 	}
-	for _, access := range module.ContentQuery[htmlui.Component[tabProps, struct{}]](content) {
+	for _, access := range content.Query[htmlui.Component[tabProps, struct{}]]() {
 		if access.Ref().Props.Theme != model.workbenchTheme {
 			t.Fatal("tab retained the previous theme")
 		}
@@ -287,7 +286,7 @@ func TestPencodeIconOnlyThemeChangeUpdatesTexture(t *testing.T) {
 	if !ok {
 		t.Fatal("settings icon was not decoded")
 	}
-	data, err := os.ReadFile("../../../syntax/resources/themes/monokai.json")
+	data, err := os.ReadFile("../../onix/syntax/resources/themes/monokai.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +313,7 @@ func TestPencodeIconOnlyThemeChangeUpdatesTexture(t *testing.T) {
 		t.Fatal("icon color reused the previous texture")
 	}
 	var found bool
-	for _, access := range module.ContentQuery[scene.Sprite2D](model.fontResources) {
+	for _, access := range model.fontResources.Query[scene.Sprite2D]() {
 		if access.Ref().Texture == original {
 			t.Fatal("rendered icon retained its old texture")
 		}
@@ -336,12 +335,12 @@ func TestPencodeSettingsIndicatorsAndOptionsFollowThemes(t *testing.T) {
 			t.Fatal(err)
 		}
 		found := 0
-		for entity, access := range module.ContentQuery[scene.UIImage2D](model.fontResources) {
-			parent, ok := module.ContentGet[scene.Parent](model.fontResources, entity)
+		for entity, access := range model.fontResources.Query[scene.UIImage2D]() {
+			parent, ok := model.fontResources.Get[scene.Parent](entity)
 			if !ok {
 				continue
 			}
-			control, ok := module.ContentGet[htmlui.Control](model.fontResources, parent.Entity)
+			control, ok := model.fontResources.Get[htmlui.Control](parent.Entity)
 			if !ok || control.Tag != "select" {
 				continue
 			}
@@ -355,7 +354,7 @@ func TestPencodeSettingsIndicatorsAndOptionsFollowThemes(t *testing.T) {
 		if found == 0 {
 			t.Fatal("no rendered settings indicators")
 		}
-		palette, ok := module.ContentGet[engineui.HTMLSelectStyle](model.fontResources, model.surface)
+		palette, ok := model.fontResources.Get[engineui.HTMLSelectStyle](model.surface)
 		if !ok {
 			t.Fatal("HTML surface has no themed option palette")
 		}

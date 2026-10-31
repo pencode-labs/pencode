@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/pencode-labs/pencode/internal/buffer"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
@@ -19,12 +20,13 @@ var ErrClosed = errors.New("pencode: server connection closed")
 var ErrBusy = errors.New("pencode: request queue is full")
 
 type call struct {
-	id                uint64
-	offset            int
-	kind              protocol.Kind
-	payload, response []byte
-	done              chan struct{}
-	err               error
+	id       uint64
+	offset   int
+	kind     protocol.Kind
+	payload  *buffer.Buffer
+	response []byte
+	done     chan struct{}
+	err      error
 }
 type Client struct {
 	conn    io.ReadWriteCloser
@@ -101,15 +103,23 @@ func (c *Client) request(ctx context.Context, kind protocol.Kind, payload []byte
 		c.mu.Unlock()
 		return nil, ErrBusy
 	}
-	r := &call{kind: kind, payload: append([]byte(nil), payload...), done: make(chan struct{})}
+	upload := buffer.Get(len(payload))
+	if c.uploadBytes+cap(upload.Bytes) > maxBufferedBytes {
+		buffer.Put(upload)
+		c.mu.Unlock()
+		return nil, ErrBusy
+	}
+	copy(upload.Bytes, payload)
+	r := &call{kind: kind, payload: upload, done: make(chan struct{})}
 	c.next++
 	r.id = c.next
 	c.pending[r.id] = r
 	select {
 	case c.queue <- r:
-		c.uploadBytes += len(payload)
+		c.uploadBytes += cap(upload.Bytes)
 	default:
 		delete(c.pending, r.id)
+		buffer.Put(upload)
 		c.mu.Unlock()
 		return nil, ErrBusy
 	}
@@ -138,9 +148,11 @@ func (c *Client) request(ctx context.Context, kind protocol.Kind, payload []byte
 
 func (c *Client) releaseUpload(r *call) {
 	c.mu.Lock()
-	c.uploadBytes -= len(r.payload)
+	upload := r.payload
+	c.uploadBytes -= cap(upload.Bytes)
 	r.payload = nil
 	c.mu.Unlock()
+	buffer.Put(upload)
 }
 
 func (c *Client) write() {
@@ -230,7 +242,7 @@ func (c *Client) write() {
 			c.releaseUpload(r)
 			continue
 		}
-		payload := r.payload[r.offset:]
+		payload := r.payload.Bytes[r.offset:]
 		kind := r.kind
 		if len(payload) > protocol.MaxPayload {
 			kind = protocol.Data

@@ -15,6 +15,15 @@ const (
 	EditorTab    // Document-independent tab in the editor area.
 )
 
+// NotificationSeverity selects the notification's theme colors and status icon.
+type NotificationSeverity uint32
+
+const (
+	NotificationInfo NotificationSeverity = iota
+	NotificationWarning
+	NotificationError
+)
+
 // UIPosition selects the origin for Placement.X/Y, in workspace CSS pixels.
 type UIPosition uint32
 
@@ -71,6 +80,8 @@ type UI struct {
 	// AutoCloseMS dismisses a Notification after this many milliseconds. Zero
 	// keeps it open until closed by the user or extension. Updates reset the timer.
 	AutoCloseMS uint32
+	// Severity applies only to Notification. Zero uses the information style.
+	Severity NotificationSeverity
 	// Busy replaces an EditorTab's close icon with a processing animation.
 	Busy bool
 }
@@ -104,6 +115,7 @@ func EncodeUI(dst []byte, v UI) ([]byte, error) {
 	e.number(math.Float32bits(v.Placement.Height))
 	e.number(boolNumber(v.CloseOnOutsideClick))
 	e.number(v.AutoCloseMS)
+	e.number(uint32(v.Severity))
 	e.number(boolNumber(v.Busy))
 	encodeActionContext(&e, v.Context)
 	encodeView(&e, v.View)
@@ -129,6 +141,7 @@ func DecodeUI(data []byte) (UI, error) {
 	v.Placement = UIPlacement{Mode: UIPosition(d.number()), X: math.Float32frombits(d.number()), Y: math.Float32frombits(d.number()), Width: math.Float32frombits(d.number()), Height: math.Float32frombits(d.number())}
 	v.CloseOnOutsideClick = d.boolean()
 	v.AutoCloseMS = d.number()
+	v.Severity = NotificationSeverity(d.number())
 	v.Busy = d.boolean()
 	v.Context, v.View = decodeActionContext(&d), decodeView(&d)
 	v.ViewVersion = d.number()
@@ -146,6 +159,7 @@ func DecodeUI(data []byte) (UI, error) {
 
 func (v UI) valid() bool {
 	return v.Kind <= EditorTab && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (v.AutoCloseMS == 0 || v.Kind == Notification) &&
+		v.Severity <= NotificationError && (v.Severity == NotificationInfo || v.Kind == Notification) &&
 		(v.Patch == nil || v.View == nil && !v.Close && v.Patch.Base != 0 && v.Patch.Base < ^uint32(0) && v.ViewVersion == v.Patch.Base+1)
 }
 

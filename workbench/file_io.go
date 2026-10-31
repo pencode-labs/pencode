@@ -6,6 +6,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/diiyw/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/protocol"
@@ -55,7 +56,8 @@ type fileIOJob struct {
 	workspace, targetWorkspace                            uint64
 	file                                                  *openFile
 	document                                              *client.Document
-	root, relative, destination, content, baseline        string
+	root, relative, destination, content                  string
+	text, baseline                                        piecetree.Snapshot
 	preview, reveal, directory, cut, duplicate, clipboard bool
 	moves                                                 []fileMove
 	reload                                                []fileReloadResult
@@ -192,13 +194,13 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 				return
 			}
 			r.document = document
-			if saved != j.baseline {
+			if !snapshotText(saved).Equal(j.baseline) {
 				r.err = &protocol.Error{Code: protocol.Conflict, Message: "文件已被其他程序修改，请先比较或重新加载"}
 				return
 			}
-			document.Update("", j.content, -1, 0, 0)
+			document.Update(piecetree.Snapshot{}, j.text, -1, 0, 0)
 		}
-		r.err = document.SaveSnapshot(j.ctx, j.content)
+		r.err = document.SaveSnapshot(j.ctx, j.text)
 	case fileCreate:
 		r.err = j.backend.Create(j.ctx, j.workspace, j.destination, j.directory)
 	case fileRemove:
@@ -459,7 +461,7 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 		if m.files[j.relative] != nil {
 			return
 		}
-		f := &openFile{document: r.document, Path: j.relative, Name: path.Base(j.relative), Content: r.content, savedContent: r.content}
+		f := &openFile{document: r.document, Path: j.relative, Name: path.Base(j.relative), contentSnapshot: snapshotText(r.content), savedContent: snapshotText(r.content)}
 		r.document = nil
 		m.files[j.relative] = f
 		m.tabs = append(m.tabs, j.relative)
@@ -499,12 +501,12 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 	m.quickFocusEditor = true
 	m.quickTargetLine = n.line
 	if n.selection != nil {
-		offset, err := lsp.OffsetAt(f.Content, n.selection.Start, n.encoding)
+		offset, err := lsp.OffsetAt(f.content(), n.selection.Start, n.encoding)
 		if err != nil {
 			m.setProjectStatus(p, err.Error())
 			return
 		}
-		end, err := lsp.OffsetAt(f.Content, n.selection.End, n.encoding)
+		end, err := lsp.OffsetAt(f.content(), n.selection.End, n.encoding)
 		if err != nil || end < offset {
 			end = offset
 		}
@@ -531,14 +533,14 @@ func (m *workspaceModel) requestFileSave(p *pencodeProject, f *openFile) (*fileI
 				return nil, fmt.Errorf("请等待重新加载完成")
 			}
 			if j.kind == fileSave && j.file == f {
-				if j.content == f.Content {
+				if j.text.Equal(f.snapshot()) {
 					return j, nil
 				}
 				return nil, fmt.Errorf("该文件正在保存，新更改保留在编辑器中，请稍后再保存")
 			}
 		}
 	}
-	j := &fileIOJob{kind: fileSave, project: p, file: f, document: f.document, relative: f.Path, root: m.projectPath, content: f.Content, baseline: f.savedContent}
+	j := &fileIOJob{kind: fileSave, project: p, file: f, document: f.document, relative: f.Path, root: m.projectPath, text: f.snapshot(), baseline: f.savedContent}
 	if p != nil {
 		j.root = p.Path
 		j.workspace = p.workspace.ID
@@ -561,11 +563,11 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 			if f.document == nil {
 				f.document = r.document
 				r.document = nil
-				f.document.Update("", f.Content, -1, 0, 0)
+				f.document.Update(piecetree.Snapshot{}, f.snapshot(), -1, 0, 0)
 			}
 		}
-		f.savedContent = j.content
-		f.Dirty = f.Content != j.content
+		f.savedContent = j.text
+		f.Dirty = !f.snapshot().Equal(j.text)
 		f.saveRevision++
 		m.syncDebugBreakpoints(j.project, f)
 		if j.relative == pencodeDebugConfigPath && j.project == m.activeProjectState() {
@@ -601,7 +603,7 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		if f.document == item.previous {
 			f.document = nil
 		}
-		if f.Content != item.before {
+		if f.content() != item.before {
 			m.setProjectStatus(p, "重新加载期间内容已改变，保留当前编辑")
 			continue
 		}
@@ -613,10 +615,10 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		f.closeDocument()
 		f.document = item.document
 		item.document = nil
-		start, oldEnd, newEnd, _ := pencodeChangedRange(f.Content, item.content)
-		m.rebaseDebugBreakpoints(p, f, item.content, start, oldEnd, newEnd)
-		f.Content = item.content
-		f.savedContent = item.content
+		start, oldEnd, newEnd, _ := pencodeChangedRange(f.content(), item.content)
+		m.rebaseDebugBreakpoints(p, f, snapshotText(item.content), start, oldEnd, newEnd)
+		f.contentSnapshot = snapshotText(item.content)
+		f.savedContent = snapshotText(item.content)
 		f.Dirty = false
 		f.pencodeEditHistory = pencodeEditHistory{}
 		m.syncDebugBreakpoints(p, f)
@@ -706,7 +708,7 @@ func (m *workspaceModel) requestFileReload(p *pencodeProject, cleanOnly bool) er
 	job := &fileIOJob{kind: fileReload, project: p, workspace: p.workspace.ID}
 	for _, relative := range p.Tabs {
 		if f := p.Files[relative]; f != nil && (!cleanOnly || !f.Dirty) {
-			job.reload = append(job.reload, fileReloadResult{file: f, relative: relative, before: f.Content, previous: f.document})
+			job.reload = append(job.reload, fileReloadResult{file: f, relative: relative, before: f.content(), previous: f.document})
 		}
 	}
 	return m.submitFileIO(job)

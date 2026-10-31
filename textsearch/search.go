@@ -78,14 +78,20 @@ func needsLeftContext(re *syntax.Regexp) bool {
 	return false
 }
 
-func (p *Pattern) nextMatch(content string, position int) []int {
+func (p *Pattern) nextMatch[T string | []byte](content T, position int) []int {
 	base, re := position, p.re
 	if position > 0 && p.after != nil {
-		_, width := utf8.DecodeLastRuneInString(content[:position])
+		_, width := decodeLastRune(content[:position])
 		base -= width
 		re = p.after
 	}
-	groups := re.FindStringSubmatchIndex(content[base:])
+	var groups []int
+	switch value := any(content).(type) {
+	case string:
+		groups = re.FindStringSubmatchIndex(value[base:])
+	case []byte:
+		groups = re.FindSubmatchIndex(value[base:])
+	}
 	if len(groups) == 0 {
 		return nil
 	}
@@ -104,24 +110,24 @@ func word(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }
 
-func (p *Pattern) boundary(content string, start, end int) bool {
+func (p *Pattern) boundary[T string | []byte](content T, start, end int) bool {
 	if !p.options.WholeWord {
 		return true
 	}
-	left, _ := utf8.DecodeLastRuneInString(content[:start])
-	right, _ := utf8.DecodeRuneInString(content[end:])
+	left, _ := decodeLastRune(content[:start])
+	right, _ := decodeRune(content[end:])
 	return (start == 0 || !word(left)) && (end == len(content) || !word(right))
 }
 
 // FindAll reuses caller-owned storage. A negative limit retains every match.
-func (p *Pattern) FindAll(content string, dst []Match, limit int) []Match {
+func (p *Pattern) FindAll[T string | []byte](content T, dst []Match, limit int) []Match {
 	dst, _ = p.FindRange(content, dst, 0, len(content), limit, false)
 	return dst
 }
 
 // FindRange keeps document-relative offsets and word/regexp boundary semantics.
 // countAll counts matches beyond the storage limit without retaining them.
-func (p *Pattern) FindRange(content string, dst []Match, start, end, limit int, countAll bool) ([]Match, int) {
+func (p *Pattern) FindRange[T string | []byte](content T, dst []Match, start, end, limit int, countAll bool) ([]Match, int) {
 	clear(dst)
 	dst = dst[:0]
 	if p == nil || p.query == "" || limit == 0 && !countAll {
@@ -152,7 +158,7 @@ func (p *Pattern) FindRange(content string, dst []Match, start, end, limit int, 
 			if groups[1] > position {
 				position = groups[1]
 			} else if position < len(content) {
-				_, width := utf8.DecodeRuneInString(content[position:])
+				_, width := decodeRune(content[position:])
 				position += width
 			} else {
 				break
@@ -163,7 +169,7 @@ func (p *Pattern) FindRange(content string, dst []Match, start, end, limit int, 
 	for offset := 0; offset < end; {
 		first, last := -1, -1
 		if p.options.CaseSensitive {
-			if i := strings.Index(content[offset:end], p.query); i >= 0 {
+			if i := index(content[offset:end], p.query); i >= 0 {
 				first = offset + i
 				last = first + len(p.query)
 			}
@@ -183,7 +189,7 @@ func (p *Pattern) FindRange(content string, dst []Match, start, end, limit int, 
 
 // Unicode simple folding includes equivalences with different UTF-8 lengths,
 // such as K/K and S/ſ. Neither document nor query needs a lowercase copy.
-func indexFold(content, query string, start, end int) (int, int) {
+func indexFold[T string | []byte](content T, query string, start, end int) (int, int) {
 	for start < end {
 		offset, matched := start, true
 		for _, want := range query {
@@ -191,7 +197,7 @@ func indexFold(content, query string, start, end int) (int, int) {
 				matched = false
 				break
 			}
-			got, size := utf8.DecodeRuneInString(content[offset:end])
+			got, size := decodeRune(content[offset:end])
 			if got != want {
 				equal := false
 				if got < utf8.RuneSelf && want < utf8.RuneSelf {
@@ -214,7 +220,7 @@ func indexFold(content, query string, start, end int) (int, int) {
 		if matched {
 			return start, offset
 		}
-		_, size := utf8.DecodeRuneInString(content[start:end])
+		_, size := decodeRune(content[start:end])
 		start += size
 	}
 	return -1, -1

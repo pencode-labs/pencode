@@ -191,7 +191,7 @@ func testRetainedWorkspace(t *testing.T, preload bool) {
 	if visibility, _ := content.Get[scene.Visibility](editor.gutter); !visibility.Visible {
 		t.Fatal("line number gutter remained hidden after initialization")
 	}
-	if value, _ := content.Get[scene.Text2D](editor.numbers); value.Value == "" {
+	if value, _ := content.Get[scene.Text2D](editor.numbers); value.Text().String() == "" {
 		t.Fatal("line numbers were not synchronized")
 	}
 	for _, width := range [...]int{0, 80, 100} {
@@ -207,7 +207,7 @@ func testRetainedWorkspace(t *testing.T, preload bool) {
 	if highlightWorker == nil {
 		t.Fatal("workspace did not start its private syntax worker")
 	}
-	file.Content = "package edited\n"
+	file.contentSnapshot = snapshotText("package edited\n")
 	workspace.model.selectTheme("dark-plus")
 	workspace.model.screen = pencodeLauncher
 	step()
@@ -224,7 +224,7 @@ func testRetainedWorkspace(t *testing.T, preload bool) {
 		t.Fatal(err)
 	}
 	step()
-	if session.active != workspace || manager.Active() != prepared || workspace.model.root != root || workspace.model.surface != surface || workspace.model.windowBorder != border || workspace.model.files[workspace.model.activePath].Content != "package edited\n" {
+	if session.active != workspace || manager.Active() != prepared || workspace.model.root != root || workspace.model.surface != surface || workspace.model.windowBorder != border || workspace.model.files[workspace.model.activePath].content() != "package edited\n" {
 		t.Fatal("resume replaced retained workspace or lost edits")
 	}
 	if workspace.model.highlightWorker != highlightWorker {

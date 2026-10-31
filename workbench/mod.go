@@ -147,12 +147,12 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	previousFile := m.model.activeFile()
-	previousContent := ""
+	previousContent := m.model.activeSnapshot()
 	if previousFile != nil {
-		previousContent = previousFile.Content
+		previousContent = previousFile.snapshot()
 	}
 	if m.model.pollFileIO() {
-		if previousFile != m.model.activeFile() || previousContent != m.model.activeContent() {
+		if previousFile != m.model.activeFile() || previousContent != m.model.activeSnapshot() {
 			setPencodeEditorValue(c.Content(), m.model.surface, m.model.activeContent())
 		}
 		markPencodeRootDirtyByModel(c.Content(), m.model)

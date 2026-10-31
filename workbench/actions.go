@@ -234,7 +234,7 @@ func (model *workspaceModel) runAction(world *module.Content, id string) {
 		model.fileContext.open = false
 	case peb.RightContextMenu:
 		ui := &model.languageUI
-		if !ui.contextOpen || ui.contextFile != model.activeFile() || ui.contextContent != model.activeContent() {
+		if !ui.contextOpen || ui.contextFile != model.activeFile() || ui.contextContent != model.activeSnapshot() {
 			return
 		}
 		c.Caret, c.Anchor = uint32(max(0, ui.contextCaret)), uint32(max(0, ui.contextAnchor))

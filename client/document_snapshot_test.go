@@ -60,7 +60,7 @@ func TestDocumentSaveSnapshotRetainsNewerEdits(t *testing.T) {
 	doc.mu.Lock()
 	latest := doc.latest.content
 	doc.mu.Unlock()
-	if latest != "newer GUI text" {
+	if latest.String() != "newer GUI text" {
 		t.Fatal("save replaced latest mailbox", latest)
 	}
 	// Saving an older, already superseded snapshot must restore confirmed text too.
@@ -74,14 +74,14 @@ func TestDocumentSaveSnapshotRetainsNewerEdits(t *testing.T) {
 	latest = doc.latest.content
 	doc.mu.Unlock()
 	data, _ = os.ReadFile(filename)
-	if string(data) != "older snapshot" || latest != "newer GUI text" {
+	if string(data) != "older snapshot" || latest.String() != "newer GUI text" {
 		t.Fatal(string(data), latest)
 	}
 	if err := doc.SaveSnapshot(ctx, latest); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filename)
-	if string(data) != latest {
+	if string(data) != latest.String() {
 		t.Fatal("explicit subsequent save lost edits")
 	}
 }

@@ -22,8 +22,8 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	}
 	project := model.activeProjectState()
 	first := model.activeFile()
-	first.Content = strings.Repeat(strings.Repeat("x", 256)+"\n", 150)
-	model.setEditorValueAndCaret(world, first.Content, 80)
+	first.contentSnapshot = snapshotText(strings.Repeat(strings.Repeat("x", 256)+"\n", 150))
+	model.setEditorValueAndCaret(world, first.content(), 80)
 	world.Mut[engineui.TextField](model.editor.control).Anchor = 5
 	markPencodeRootDirtyByModel(world, model)
 	languageInteractionStep(t, app)
@@ -35,7 +35,7 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	if want.caret != 80 || want.anchor != 5 || want.scrollX != 100 || want.scrollY != 600 {
 		t.Fatalf("could not establish a scrolled view: %+v", want)
 	}
-	other := &openFile{Path: "other.go", Name: "other.go", Content: "中🙂"}
+	other := &openFile{Path: "other.go", Name: "other.go", contentSnapshot: snapshotText("中🙂")}
 	project.Files[other.Path] = other
 	project.Tabs = append(project.Tabs, other.Path)
 	markPencodeRootDirtyByModel(world, model)
@@ -77,7 +77,7 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	}
 	selectTab(other)
 	assertView(pencodeEditorView{})
-	model.setEditorValueAndCaret(world, other.Content, 2)
+	model.setEditorValueAndCaret(world, other.content(), 2)
 	world.Mut[engineui.TextField](model.editor.control).Anchor = 1
 	languageInteractionStep(t, app)
 	for range 2 {
@@ -90,7 +90,7 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	assertView(want)
 	// Comparison tabs hide the shared file editor and later reuse it.
 	source := model.sourceState()
-	tab := &sourceTab{Key: "changes::" + first.Path, Kind: "changes", Path: first.Path, Local: first.Content, Result: first.Content}
+	tab := &sourceTab{Key: "changes::" + first.Path, Kind: "changes", Path: first.Path, Local: first.content(), Result: first.content()}
 	source.Tabs, source.Active = []*sourceTab{tab}, tab.Key
 	model.sourceChanged()
 	languageInteractionStep(t, app)
@@ -98,7 +98,7 @@ func TestPencodeTabsPreserveEditorView(t *testing.T) {
 	assertView(want)
 	// A background reload can shorten an inactive file; clamp by rune count.
 	selectTab(other)
-	first.Content = "中🙂"
+	first.contentSnapshot = snapshotText("中🙂")
 	selectTab(first)
 	assertView(pencodeEditorView{caret: 2, anchor: 2})
 	if allocations := testing.AllocsPerRun(100, func() { model.editor.saveView(world, model) }); allocations != 0 {
@@ -118,11 +118,11 @@ func TestPencodeOpeningFileFocusesEditorAtStart(t *testing.T) {
 	}
 	assertStart()
 	file := model.activeFile()
-	model.setEditorValueAndCaret(world, file.Content, 60)
+	model.setEditorValueAndCaret(world, file.content(), 60)
 	languageInteractionStep(t, app)
 	world.Focus(0)
 	// Switching documents reuses the native textarea and its previous scroll.
-	other := &openFile{Path: "other.go", Name: "other.go", Content: strings.Repeat("// next\n", 80)}
+	other := &openFile{Path: "other.go", Name: "other.go", contentSnapshot: snapshotText(strings.Repeat("// next\n", 80))}
 	project := model.activeProjectState()
 	project.Files[other.Path] = other
 	project.Tabs = append(project.Tabs, other.Path)
@@ -141,7 +141,7 @@ func TestPencodeOpeningFileFocusesEditorAtStart(t *testing.T) {
 		t.Fatalf("returning to a file lost its caret: %+v", field)
 	}
 	// An ordinary render must preserve the user's caret.
-	model.setEditorValueAndCaret(world, file.Content, 5)
+	model.setEditorValueAndCaret(world, file.content(), 5)
 	markPencodeRootDirtyByModel(world, model)
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestPencodeCaretStatus(t *testing.T) {
 		{"中文🙂\r\n\talpha\n", 1, "Ln 1, Col 2"},
 		{"a\nb", 1, "Ln 1, Col 2"},
 	} {
-		model.activeFile().Content = fixture.value
+		model.activeFile().contentSnapshot = snapshotText(fixture.value)
 		model.setEditorValueAndCaret(world, fixture.value, fixture.caret)
 		// A selection reports the moving caret, regardless of its anchor.
 		world.Mut[engineui.TextField](model.editor.control).Anchor = 0

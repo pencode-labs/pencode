@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/pencode-labs/pencode/protocol"
 )
 
-func fixture(t *testing.T) (*Store, protocol.Workspace) {
+func fixture(t testing.TB) (*Store, protocol.Workspace) {
 	t.Helper()
 	s := new(Store)
 	t.Cleanup(s.Close)
@@ -20,10 +22,62 @@ func fixture(t *testing.T) (*Store, protocol.Workspace) {
 	}
 	return s, p
 }
-func write(t *testing.T, p protocol.Workspace, name, content string) {
+func write(t testing.TB, p protocol.Workspace, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(p.Path, name), []byte(content), 0640); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSaveEditedChunksAndEmptyDocument(t *testing.T) {
+	s, p := fixture(t)
+	text := strings.Repeat("中🙂\r\n", 10000)
+	write(t, p, "text", text)
+	doc, err := s.OpenDocument(p.ID, "text", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := doc.Version
+	for _, value := range []string{text[:32760] + "替换\r\n" + text[32768:], "", "restored🙂"} {
+		version, err = s.Change(doc.ID, version, 0, uint32(len(text)), value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			if err := s.Save(doc.ID, version); err != nil {
+				t.Fatal("saved digest did not match disk", err)
+			}
+		}
+		data, err := os.ReadFile(filepath.Join(p.Path, "text"))
+		if err != nil || string(data) != value {
+			t.Fatal("chunked save changed text", err)
+		}
+		text = value
+	}
+}
+
+func BenchmarkDocumentSave(b *testing.B) {
+	for _, size := range []int{64 << 10, 2 << 20} {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			s, p := fixture(b)
+			write(b, p, "text", strings.Repeat("a", size))
+			doc, err := s.OpenDocument(p.ID, "text", true)
+			if err != nil {
+				b.Fatal(err)
+			}
+			version, index := doc.Version, 0
+			b.ReportAllocs()
+			for b.Loop() {
+				version, err = s.Change(doc.ID, version, 1000, 1001, []string{"x", "y"}[index%2])
+				index++
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := s.Save(doc.ID, version); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 func assertCode(t *testing.T, err error, code protocol.Code) {

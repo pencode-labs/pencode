@@ -60,6 +60,9 @@ func NewReader(source io.Reader) *Reader { return &Reader{source: bufio.NewReade
 
 // Read borrows its result until the next Read; framing storage is reused.
 func (r *Reader) Read() ([]byte, error) {
+	if cap(r.buffer) > maxRetainedMessage {
+		r.buffer = nil
+	}
 	length, headers := -1, 0
 	for {
 		line, err := r.source.ReadSlice('\n')
@@ -150,7 +153,7 @@ type response struct {
 	err  error
 }
 type outbound struct {
-	data []byte
+	data *bytes.Buffer
 	ack  chan struct{}
 }
 type inbound struct {
@@ -167,6 +170,7 @@ type Conn struct {
 	outgoing chan outbound
 	incoming chan inbound
 	handler  Handler
+	sendMu   sync.RWMutex
 	mu       sync.Mutex
 	next     uint64
 	pending  map[string]chan response
@@ -207,13 +211,34 @@ func (c *Conn) fail(err error) {
 }
 func (c *Conn) send(ctx context.Context, m Message) error {
 	m.JSONRPC = "2.0"
-	data, err := json.Marshal(m)
+	return c.sendValue(ctx, m)
+}
+
+func (c *Conn) sendValue[T any](ctx context.Context, message T) error {
+	select {
+	case <-c.done:
+		return c.Err()
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	data, err := encodeMessage(message)
 	if err != nil {
 		return err
 	}
-	if len(data) > MaxMessage {
-		return errors.New("lsp: message too large")
-	}
+	return c.enqueue(ctx, outbound{data: data})
+}
+
+func (c *Conn) enqueue(ctx context.Context, packet outbound) (err error) {
+	// Shutdown waits for enqueuers before draining, including a select that
+	// races between a ready queue and a closed connection.
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+	defer func() {
+		if err != nil {
+			releaseMessage(packet.data)
+		}
+	}()
 	select {
 	case <-c.done:
 		return c.Err()
@@ -226,26 +251,20 @@ func (c *Conn) send(ctx context.Context, m Message) error {
 		return c.Err()
 	case <-ctx.Done():
 		return ctx.Err()
-	case c.outgoing <- outbound{data: data}:
+	case c.outgoing <- packet:
 		return nil
 	}
 }
-func marshal(v any) (json.RawMessage, error) {
-	if v == nil {
-		return nil, nil
-	}
-	return json.Marshal(v)
-}
 
 func (c *Conn) Notify(ctx context.Context, method string, params any) error {
+	return c.notify(ctx, method, params)
+}
+
+func (c *Conn) notify[P any](ctx context.Context, method string, params P) error {
 	if method == "" {
 		return errors.New("lsp: empty method")
 	}
-	data, err := marshal(params)
-	if err != nil {
-		return err
-	}
-	return c.send(ctx, Message{Method: method, Params: data})
+	return c.sendValue(ctx, requestMessage[P]{JSONRPC: "2.0", Method: method, Params: params})
 }
 
 // PendingCall owns one response slot. Exactly one Wait must follow BeginCall,
@@ -262,17 +281,13 @@ func (c *Conn) BeginCall(ctx context.Context, method string, params any) (Pendin
 	if method == "" {
 		return PendingCall{}, errors.New("lsp: empty method")
 	}
-	data, err := marshal(params)
-	if err != nil {
-		return PendingCall{}, err
-	}
 	ch := make(chan response, 1)
 	c.mu.Lock()
 	c.next++
 	id := strconv.FormatUint(c.next, 10)
 	c.pending[id] = ch
 	c.mu.Unlock()
-	if err := c.send(ctx, Message{ID: json.RawMessage(id), Method: method, Params: data}); err != nil {
+	if err := c.sendValue(ctx, requestMessage[any]{JSONRPC: "2.0", ID: json.RawMessage(id), Method: method, Params: params}); err != nil {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
@@ -297,12 +312,31 @@ func (call PendingCall) Wait(ctx context.Context, result any) error {
 		return c.Err()
 	case <-ctx.Done():
 		// Cancellation must never wait for a blocked server pipe or a full queue.
-		cancel, _ := json.Marshal(Message{JSONRPC: "2.0", Method: "$/cancelRequest", Params: json.RawMessage(`{"id":` + call.id + `}`)})
-		select {
-		case c.outgoing <- outbound{data: cancel}:
-		default:
-		}
+		c.cancelRequest(call.id)
 		return ctx.Err()
+	}
+}
+
+func (c *Conn) cancelRequest(id string) {
+	type params struct {
+		ID json.RawMessage `json:"id"`
+	}
+	data, err := encodeMessage(requestMessage[params]{JSONRPC: "2.0", Method: "$/cancelRequest", Params: params{json.RawMessage(id)}})
+	if err != nil {
+		return
+	}
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+	select {
+	case <-c.done:
+		releaseMessage(data)
+		return
+	default:
+	}
+	select {
+	case c.outgoing <- outbound{data: data}:
+	default:
+		releaseMessage(data)
 	}
 }
 
@@ -423,6 +457,18 @@ func (c *Conn) read(input io.Reader) {
 	}
 }
 func (c *Conn) write(output io.Writer) {
+	defer func() {
+		c.sendMu.Lock()
+		defer c.sendMu.Unlock()
+		for {
+			select {
+			case packet := <-c.outgoing:
+				releaseMessage(packet.data)
+			default:
+				return
+			}
+		}
+	}()
 	w := Writer{Target: output}
 	for {
 		select {
@@ -430,7 +476,9 @@ func (c *Conn) write(output io.Writer) {
 			return
 		case packet := <-c.outgoing:
 			if packet.data != nil {
-				if err := w.Write(packet.data); err != nil {
+				err := w.Write(packet.data.Bytes())
+				releaseMessage(packet.data)
+				if err != nil {
 					c.fail(err)
 					return
 				}
@@ -489,12 +537,8 @@ func (c *Conn) dispatch() {
 // Flush waits until preceding messages have reached the server pipe.
 func (c *Conn) Flush(ctx context.Context) error {
 	ack := make(chan struct{})
-	select {
-	case c.outgoing <- outbound{ack: ack}:
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-c.done:
-		return c.Err()
+	if err := c.enqueue(ctx, outbound{ack: ack}); err != nil {
+		return err
 	}
 	select {
 	case <-ack:

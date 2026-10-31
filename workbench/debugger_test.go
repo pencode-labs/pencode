@@ -65,7 +65,7 @@ func TestDebugAddLauncherOpensProjectConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := m.activeFile()
-	if f == nil || f.Path != ".pencode/debug.json" || f.Content != "[]\n" || len(m.debug.configs) != 0 {
+	if f == nil || f.Path != ".pencode/debug.json" || f.content() != "[]\n" || len(m.debug.configs) != 0 {
 		t.Fatalf("add did not open an empty project config: %+v", f)
 	}
 	config := `[{"label":"PHP","adapter":"Xdebug","request":"launch","configuration":{"port":9003,"cwd":"${workspaceFolder}"}}]`
@@ -74,7 +74,7 @@ func TestDebugAddLauncherOpensProjectConfig(t *testing.T) {
 	m.debugEvent(nil, "debug-add", "")
 	m.debugEvent(nil, "debug-template:edit", "")
 	waitDebugConfigs(t, m)
-	if m.activeFile() != f || f.Content != config || !f.Dirty {
+	if m.activeFile() != f || f.content() != config || !f.Dirty {
 		t.Fatal("add overwrote the existing config buffer")
 	}
 	if err := saveFileAndWait(t, m, p.Path, f); err != nil {
@@ -101,7 +101,7 @@ func TestDebugInvalidConfigsRemainEditable(t *testing.T) {
 	if err := awaitFileIO(t, m); err != nil {
 		t.Fatal(err)
 	}
-	if m.activeFile() == nil || m.activeFile().Content != "invalid json" || m.debug.message == "" || len(m.debug.configs) != 0 {
+	if m.activeFile() == nil || m.activeFile().content() != "invalid json" || m.debug.message == "" || len(m.debug.configs) != 0 {
 		t.Fatal("invalid config was overwritten or could not be opened")
 	}
 }
@@ -556,11 +556,11 @@ func TestDebugTemplatesGenerateAndAppendProjectJSON(t *testing.T) {
 				t.Fatal(err)
 			}
 			f := m.activeFile()
-			if f == nil || f.Path != pencodeDebugConfigPath || f.Dirty || !strings.Contains(f.Content, "${workspaceFolder}") || len(m.debug.configs) != 1 || m.debug.session != nil || m.debug.adding {
+			if f == nil || f.Path != pencodeDebugConfigPath || f.Dirty || !strings.Contains(f.content(), "${workspaceFolder}") || len(m.debug.configs) != 1 || m.debug.session != nil || m.debug.adding {
 				t.Fatalf("template was not written and opened for editing: file=%+v debug=%+v", f, m.debug)
 			}
 			var entries []json.RawMessage
-			if err := json.Unmarshal([]byte(f.Content), &entries); err != nil {
+			if err := json.Unmarshal([]byte(f.content()), &entries); err != nil {
 				t.Fatal(err)
 			}
 			// Extra fields and other adapter entries must survive appending.
@@ -582,14 +582,14 @@ func TestDebugTemplatesGenerateAndAppendProjectJSON(t *testing.T) {
 			waitDebugConfigs(t, m)
 			f = m.activeFile()
 			data, err := os.ReadFile(filepath.Join(p.Path, pencodeDebugConfigPath))
-			if err != nil || f.Content != string(data) || f.Dirty || len(m.debug.configs) != 2 || !strings.Contains(string(data), `"custom": true`) || !strings.Contains(string(data), "${workspaceFolder}") || m.debug.session != nil {
+			if err != nil || f.content() != string(data) || f.Dirty || len(m.debug.configs) != 2 || !strings.Contains(string(data), `"custom": true`) || !strings.Contains(string(data), "${workspaceFolder}") || m.debug.session != nil {
 				t.Fatalf("append lost configuration or failed to save: file=%+v configs=%+v err=%v", f, m.debug.configs, err)
 			}
-			m.updateActiveContent(f.Content + " ")
-			before := f.Content
+			m.updateActiveContent(f.content() + " ")
+			before := f.content()
 			m.debugEvent(nil, "debug-add", "")
 			m.debugEvent(nil, "debug-template:0", "")
-			if f.Content != before || !f.Dirty || m.debug.message == "" {
+			if f.content() != before || !f.Dirty || m.debug.message == "" {
 				t.Fatal("template overwrote unsaved editor content")
 			}
 			unchanged, err := os.ReadFile(filepath.Join(p.Path, pencodeDebugConfigPath))
@@ -616,7 +616,7 @@ func TestDebugTemplatesInvalidConfigAndExtensionRemoval(t *testing.T) {
 	if err := awaitFileIO(t, m); err != nil {
 		t.Fatal(err)
 	}
-	if m.activeFile() == nil || m.activeFile().Content != "invalid json" || m.debug.message == "" {
+	if m.activeFile() == nil || m.activeFile().content() != "invalid json" || m.debug.message == "" {
 		t.Fatal("invalid file was replaced or was not editable")
 	}
 	m.debugEvent(nil, "debug-add", "")

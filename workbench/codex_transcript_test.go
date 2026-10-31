@@ -25,7 +25,7 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
 	w := m.fontResources
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 			}
 			painted := false
 			for _, text := range app.World.Query[scene.Text2D]().All {
-				painted = painted || text.Ref().Value == "Completed"
+				painted = painted || text.Ref().Text().String() == "Completed"
 			}
 			if !painted {
 				t.Fatalf("last message was not mounted for painting on toggle %d frame %d", toggle, frame)
@@ -166,7 +166,7 @@ func testCodexActivityExpansionAtBottom(t *testing.T, rebuild bool) {
 func TestCodexTranscriptMessageLayout(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestCodexTranscriptMessageLayout(t *testing.T) {
 func TestCodexActivityGroupLayout(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}

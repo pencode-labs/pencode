@@ -127,7 +127,7 @@ func TestFileIOSaveSnapshotAndCloseBarrier(t *testing.T) {
 	}
 	f := p.Files["main.go"]
 	disk, _ := os.ReadFile(filepath.Join(p.Path, "main.go"))
-	if string(disk) != "package snapshot\n" || f == nil || !f.Dirty || f.Content != "package newer\n" || len(f.undo) != history {
+	if string(disk) != "package snapshot\n" || f == nil || !f.Dirty || f.content() != "package newer\n" || len(f.undo) != history {
 		t.Fatal("save lost newer edit or closed dirty tab", string(disk))
 	}
 	if m.closing.saveID != 0 || m.closing.error == "" {
@@ -163,7 +163,7 @@ func TestFileIOReloadRetainsTypingAndConflictBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := m.activeFile()
-	if f.Content != "package typing\n" || !f.Dirty || len(f.undo) != 1 || f.document != nil {
+	if f.content() != "package typing\n" || !f.Dirty || len(f.undo) != 1 || f.document != nil {
 		t.Fatal("reload overwrote typing or retained retired handle")
 	}
 	if err := saveFileAndWait(t, m, p.Path, f); err == nil {
@@ -195,7 +195,7 @@ func TestFileIORenamePreservesEditsAndDefersClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := p.Files["renamed.go"]
-	if f == nil || f.Content != "package typed\n" || len(f.undo) != 1 || m.closing.path != "renamed.go" {
+	if f == nil || f.content() != "package typed\n" || len(f.undo) != 1 || m.closing.path != "renamed.go" {
 		t.Fatal("rename lost edits or close target")
 	}
 	m.clearCloseRequest()
@@ -203,7 +203,7 @@ func TestFileIORenamePreservesEditsAndDefersClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	disk, _ := os.ReadFile(filepath.Join(p.Path, "renamed.go"))
-	if string(disk) != f.Content {
+	if string(disk) != f.content() {
 		t.Fatal("moved document did not save")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/pencode-labs/pencode/textchange"
 	"golang.org/x/net/html"
 )
 
@@ -20,6 +21,45 @@ type ViewRegion struct {
 type ViewPatch struct {
 	Base    uint32
 	Regions []ViewRegion
+}
+
+// ViewRegionSplitter reuses region boundaries when an update changes only one
+// region. The returned region slice is borrowed until the next successful Split.
+// Strings remain immutable. A splitter must not be used concurrently.
+type ViewRegionSplitter struct {
+	source, template string
+	regions          []ViewRegion
+}
+
+func (s *ViewRegionSplitter) Split(source string) (string, []ViewRegion, error) {
+	if source == s.source {
+		return s.template, s.regions, nil
+	}
+	start, oldEnd, newEnd := textchange.Between(s.source, source)
+	shift := newEnd - oldEnd
+	for _, region := range s.regions {
+		if start < region.start || oldEnd > region.end || !validRegionHTML(source[region.start:region.end+shift], region.tag) {
+			continue
+		}
+		for i := range s.regions {
+			r := &s.regions[i]
+			if r.start > region.end {
+				r.start += shift
+				r.end += shift
+			} else if r.start == region.start {
+				r.end += shift
+			}
+			r.HTML = source[r.start:r.end]
+		}
+		s.source = source
+		return s.template, s.regions, nil
+	}
+	template, regions, err := SplitViewRegions(source)
+	if err != nil {
+		return "", nil, err
+	}
+	s.source, s.template, s.regions = source, template, regions
+	return template, regions, nil
 }
 
 // SplitViewRegions separates outer region contents from their surrounding

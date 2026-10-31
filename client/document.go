@@ -5,19 +5,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/diiyw/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/textchange"
 )
 
 type documentUpdate struct {
-	base, content         string
+	base, content         piecetree.Snapshot
 	start, oldEnd, newEnd int
 	sequence              uint64
 }
 
 type documentSave struct {
 	ctx     context.Context
-	content string
+	content piecetree.Snapshot
 	result  chan error
 }
 
@@ -44,12 +45,13 @@ type Document struct {
 
 func newDocument(c *Client, id, version uint64, content string) *Document {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &Document{client: c, id: id, version: version, latest: documentUpdate{content: content}, notify: make(chan struct{}), signal: make(chan struct{}, 1), done: make(chan struct{}), cancel: cancel, saves: make(chan documentSave, 8), closed: make(chan struct{}), operations: make(chan struct{}, 1)}
-	go d.run(ctx, version, content)
+	d := &Document{client: c, id: id, version: version, latest: documentUpdate{content: piecetree.FromString(content)}, notify: make(chan struct{}), signal: make(chan struct{}, 1), done: make(chan struct{}), cancel: cancel, saves: make(chan documentSave, 8), closed: make(chan struct{}), operations: make(chan struct{}, 1)}
+	go d.run(ctx, version, piecetree.FromString(content))
 	return d
 }
 
-func (d *Document) Update(base, content string, start, oldEnd, newEnd int) {
+func (d *Document) Update[V piecetree.Value](baseValue, contentValue V, start, oldEnd, newEnd int) {
+	base, content := piecetree.Text(baseValue), piecetree.Text(contentValue)
 	d.mu.Lock()
 	if d.latest.content != content {
 		d.latest = documentUpdate{base: base, content: content, start: start, oldEnd: oldEnd, newEnd: newEnd, sequence: d.latest.sequence + 1}
@@ -61,7 +63,7 @@ func (d *Document) Update(base, content string, start, oldEnd, newEnd int) {
 	d.mu.Unlock()
 }
 
-func (d *Document) run(ctx context.Context, version uint64, content string) {
+func (d *Document) run(ctx context.Context, version uint64, content piecetree.Snapshot) {
 	defer close(d.done)
 	var e protocol.Encoder
 	for {
@@ -95,15 +97,18 @@ func (d *Document) run(ctx context.Context, version uint64, content string) {
 		}
 		if err == nil && content != job.content {
 			start, end, next := job.start, job.oldEnd, job.newEnd
-			if job.base != content || start < 0 || start > end || end > len(content) || next < start || next > len(job.content) {
-				start, end, next = changedRange(content, job.content)
+			if job.base != content || start < 0 || start > end || end > content.Len() || next < start || next > job.content.Len() {
+				start, end, next = content.ChangedRange(job.content)
 			}
 			e.Reset()
 			e.U64(d.id)
 			e.U64(version)
 			e.U32(uint32(start))
 			e.U32(uint32(end))
-			e.String(job.content[start:next])
+			e.U32(uint32(next - start))
+			for part := range job.content.Chunks(start, next) {
+				e.Buffer = append(e.Buffer, part...)
+			}
 			var payload []byte
 			payload, err = d.client.request(requestCtx, protocol.DocumentChange, e.Buffer)
 			if err == nil {
@@ -191,7 +196,8 @@ func (d *Document) Save(ctx context.Context, content string) error {
 // SaveSnapshot persists exactly content while Update may continue accepting
 // newer GUI edits. The document worker owns both the version and save barrier;
 // newer text is restored in memory afterwards and is never saved implicitly.
-func (d *Document) SaveSnapshot(ctx context.Context, content string) error {
+func (d *Document) SaveSnapshot[V piecetree.Value](ctx context.Context, value V) error {
+	content := piecetree.Text(value)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

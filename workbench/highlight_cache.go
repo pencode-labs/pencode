@@ -3,6 +3,7 @@ package workbench
 import (
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	"github.com/diiyw/onix/text/piecetree"
 )
 
 // Cache paint spans and bracket offsets, never per-tab trees. Brackets count
@@ -16,7 +17,7 @@ const (
 type pencodeHighlightCacheEntry struct {
 	file        *openFile
 	path        string // Set only while a replaced preview has no live file.
-	source      string
+	source      piecetree.Snapshot
 	theme       *syntax.Theme
 	definitions *syntax.Definitions
 	spans       []scene.TextSpan2D
@@ -37,7 +38,7 @@ func (cache *pencodeHighlightCache) retainPreview(file *openFile) {
 	if entry.file != file {
 		return
 	}
-	if !entry.valid || len(entry.source) > pencodeHighlightPreviewByteLimit {
+	if !entry.valid || entry.source.Len() > pencodeHighlightPreviewByteLimit {
 		cache.remove(file)
 		return
 	}
@@ -45,13 +46,13 @@ func (cache *pencodeHighlightCache) retainPreview(file *openFile) {
 	bytes := 0
 	for i := range cache.entries {
 		if cached := &cache.entries[i]; cached.file == nil {
-			bytes += len(cached.source)
+			bytes += cached.source.Len()
 		}
 	}
 	for i := cache.next; bytes > pencodeHighlightPreviewByteLimit; i = (i + 1) % len(cache.entries) {
 		cached := &cache.entries[i]
 		if cached.file == nil {
-			bytes -= len(cached.source)
+			bytes -= cached.source.Len()
 			cache.spans -= cap(cached.spans) + cap(cached.brackets)
 			*cached = pencodeHighlightCacheEntry{}
 		}
@@ -64,7 +65,7 @@ func (cache *pencodeHighlightCache) restorePreview(file *openFile) {
 	}
 	for i := range cache.entries {
 		entry := &cache.entries[i]
-		if entry.file == nil && entry.valid && entry.path == file.Path && entry.source == file.Content {
+		if entry.file == nil && entry.valid && entry.path == file.Path && entry.source.Equal(file.snapshot()) {
 			entry.file, entry.path = file, ""
 			file.highlightSlot = uint8(i)
 			return
@@ -83,7 +84,7 @@ func (cache *pencodeHighlightCache) get(file *openFile, theme *syntax.Theme, def
 	if cache != nil {
 		entry := &cache.entries[file.highlightSlot]
 		if entry.file == file {
-			return entry, entry.valid && entry.source == file.Content && entry.theme == theme && entry.definitions == definitions
+			return entry, entry.valid && entry.source.Equal(file.snapshot()) && entry.theme == theme && entry.definitions == definitions
 		}
 	}
 	return nil, false
@@ -109,7 +110,7 @@ func (cache *pencodeHighlightCache) invalidate(file *openFile) {
 	if cache != nil {
 		entry := &cache.entries[file.highlightSlot]
 		if entry.file == file {
-			entry.source, entry.lineInfo, entry.valid = "", "", false
+			entry.source, entry.lineInfo, entry.valid = piecetree.Snapshot{}, "", false
 			entry.theme, entry.definitions = nil, nil
 		}
 	}

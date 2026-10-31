@@ -86,7 +86,7 @@ func Open(root *os.Root, directory string, manifest Manifest, stderr io.Writer) 
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("extension entry is not a regular file")
 	}
-	return transport.StartWithOutput(directory, filepath.Join(directory, filepath.FromSlash(manifest.Entry)), stderr, manifest.Args...)
+	return transport.StartPeerIn(directory, filepath.Join(directory, filepath.FromSlash(manifest.Entry)), stderr, manifest.Args...)
 }
 
 func exchange(p io.ReadWriter) (peb.Contributions, error) {

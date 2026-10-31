@@ -48,12 +48,12 @@ func (m *workspaceModel) updateDebugPointer(world *module.Content, state *input.
 	}
 	start, _, _, _ := scene.TextLineRange2D(text, visual)
 	file := m.activeFile()
-	buffer := file.textBuffer(file.Content)
+	buffer := file.snapshotBuffer()
 	line := 0
-	if buffer.Matches(text.Value) {
+	if buffer.MatchesSnapshot(text.Text()) {
 		line, _ = buffer.Position(start)
 	} else {
-		line = strings.Count(text.Value[:start], "\n")
+		line, _ = text.Text().Position(start)
 	}
 	line++
 	if line <= 0 {
@@ -83,7 +83,7 @@ func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 		paint.filename = path.Join(project.Path, file.Path)
 	}
 	text := world.Mut[scene.Text2D](m.editor.text)
-	if text == nil || text.LineHeight <= 0 || text.Value != file.Content || !world.IsAlive(m.editor.gutter) {
+	if text == nil || text.LineHeight <= 0 || text.Text() != file.snapshot() || !world.IsAlive(m.editor.gutter) {
 		return
 	}
 	transform, _ := world.Get[scene.UITransform](m.editor.text)

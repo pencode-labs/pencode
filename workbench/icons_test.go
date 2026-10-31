@@ -39,7 +39,7 @@ func TestCodexStatusBarIconRenders(t *testing.T) {
 	launcher := session.active
 	model := launcher.model
 	const source = "peb://codex/resources/icons/chatgpt.svg"
-	data, err := os.ReadFile("../extensions/codex/resources/icons/chatgpt.svg")
+	data, err := os.ReadFile("testdata/codex/icons/chatgpt.svg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,15 @@ func TestCodexStatusBarIconRenders(t *testing.T) {
 func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	theme, err := syntax.LoadTheme(fstest.MapFS{"resources/icons.json": &fstest.MapFile{Data: []byte(`{
   "type":"light", "colors":{
-   "icon.foreground":"#2468ac80", "button.foreground":"#135790",
+   "icon.foreground":"#2468ac80", "button.foreground":"#135790", "textLink.foreground":"#315ac8",
+   "symbolIcon.textForeground":"#2468ac80", "symbolIcon.methodForeground":"#652d90", "symbolIcon.functionForeground":"#652d90",
+   "symbolIcon.constructorForeground":"#652d90", "symbolIcon.fieldForeground":"#0070c1", "symbolIcon.variableForeground":"#0070c1",
+   "symbolIcon.classForeground":"#9e6a03", "symbolIcon.interfaceForeground":"#008070", "symbolIcon.moduleForeground":"#a06c00",
+   "symbolIcon.propertyForeground":"#a06c00", "symbolIcon.unitForeground":"#a06c00", "symbolIcon.numberForeground":"#a06c00",
+   "symbolIcon.enumeratorForeground":"#9e6a03", "symbolIcon.keywordForeground":"#af00db", "symbolIcon.snippetForeground":"#2468ac80",
+   "symbolIcon.colorForeground":"#2468ac80", "symbolIcon.fileForeground":"#2468ac80", "symbolIcon.referenceForeground":"#2468ac80",
+   "symbolIcon.folderForeground":"#9e6a03", "symbolIcon.enumeratorMemberForeground":"#0070c1", "symbolIcon.constantForeground":"#0070c1",
+   "symbolIcon.structForeground":"#008070", "symbolIcon.eventForeground":"#9e6a03", "symbolIcon.operatorForeground":"#af00db", "symbolIcon.typeParameterForeground":"#008070",
    "problemsErrorIcon.foreground":"#e81123", "problemsWarningIcon.foreground":"#bf8803",
    "problemsInfoIcon.foreground":"#1a85ff", "editorHint.foreground":"#6c6c6c",
    "list.activeSelectionForeground":"#cc00dd", "tab.activeForeground":"#112233", "tab.inactiveForeground":"#aabbcc",
@@ -128,7 +136,7 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	defer func() { device.Destroy(); previous.Activate() }()
 	provider := pencodeIconProvider{root: filepath.Join("..", "resources", "workbench", "assets")}
 	const codexIcon = "peb://codex/resources/icons/chatgpt.svg"
-	data, err := os.ReadFile("../extensions/codex/resources/icons/chatgpt.svg")
+	data, err := os.ReadFile("testdata/codex/icons/chatgpt.svg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +214,7 @@ func TestPencodeIconsFollowSelectionAndTabState(t *testing.T) {
 	model, provider := session.active.model, session.active.icons
 	project := model.activeProjectState()
 	// Both files are real retained tabs and appear in the tree.
-	other := &openFile{Path: "other.go", Name: "other.go", Content: "package demo\n"}
+	other := &openFile{Path: "other.go", Name: "other.go", contentSnapshot: snapshotText("package demo\n")}
 	project.Files[other.Path] = other
 	project.Tabs = append(project.Tabs, other.Path)
 	project.Entries = append(project.Entries, treeEntry{Path: other.Path, Name: other.Name, Openable: true})
@@ -254,7 +262,7 @@ func TestPencodeIconsFollowSelectionAndTabState(t *testing.T) {
 func TestExtensionUIReusesIDEIconTextures(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model, provider := session.active.model, session.active.icons
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -38,7 +38,7 @@ func TestPencodeTerminalNativeInputAndLifecycle(t *testing.T) {
 	if !ok || !model.terminalFocused(world) {
 		t.Fatal("terminal did not receive focus")
 	}
-	if field, ok := world.Get[engineui.TextField](control); !ok || field.Value == "" {
+	if field, ok := world.Get[engineui.TextField](control); !ok || field.Text().String() == "" {
 		t.Fatal("native terminal screen missing")
 	}
 	panel := editorContextBounds(t, model, "terminal-pane")
@@ -82,8 +82,8 @@ func TestPencodeTerminalNativeInputAndLifecycle(t *testing.T) {
 	var copied string
 	state.SetClipboard(func(value string) bool { copied = value; return true }, func() (string, bool) { return "", false })
 	field := world.Mut[engineui.TextField](control)
-	start := strings.Index(field.Value, "PEN_中文")
-	field.Anchor = utf8.RuneCountInString(field.Value[:start])
+	start := strings.Index(field.Text().String(), "PEN_中文")
+	field.Anchor = utf8.RuneCountInString(field.Text().String()[:start])
 	field.Caret = field.Anchor + utf8.RuneCountInString("PEN_中文")
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftControl})
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftShift})
@@ -208,11 +208,11 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	languageInteractionStep(t, app)
 	languageInteractionStep(t, app)
 	field := world.Mut[engineui.TextField](model.terminalView.control)
-	start := strings.Index(field.Value, "CONTEXT_COPY")
+	start := strings.Index(field.Text().String(), "CONTEXT_COPY")
 	if start < 0 {
 		t.Fatal("selection fixture missing")
 	}
-	field.Anchor = utf8.RuneCountInString(field.Value[:start])
+	field.Anchor = utf8.RuneCountInString(field.Text().String()[:start])
 	field.Caret = field.Anchor + len("CONTEXT_COPY")
 	var copied string
 	state.SetClipboard(func(value string) bool { copied = value; return true }, func() (string, bool) {

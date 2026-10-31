@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 )
 
@@ -93,18 +94,10 @@ func pencodeIndentPositionChange(position, line, removed, inserted int) int {
 	return 0
 }
 
-func pencodeSelectionBytes(content string, start, end int) (int, int) {
-	startByte, endByte := len(content), len(content)
-	runeIndex := 0
-	for byteIndex := range content {
-		if runeIndex == start {
-			startByte = byteIndex
-		}
-		if runeIndex == end {
-			endByte = byteIndex
-			break
-		}
-		runeIndex++
+func pencodeSelectionBytes[V piecetree.Value](content V, start, end int) (int, int) {
+	value := piecetree.Text(content)
+	if start > end {
+		start, end = end, start
 	}
-	return startByte, endByte
+	return value.ByteOffset(start), value.ByteOffset(end)
 }

@@ -17,7 +17,7 @@ func (m *workspaceModel) captureFindScope(world *module.Content) {
 		return
 	}
 	if field, ok := world.Get[engineui.TextField](m.editor.control); ok && field.Caret != field.Anchor {
-		buffer := m.activeFile().textBuffer(m.activeContent())
+		buffer := m.activeFile().snapshotBuffer()
 		m.findScope = pencodeFindScope{m.activeFile(), buffer.ByteOffset(min(field.Anchor, field.Caret)), buffer.ByteOffset(max(field.Anchor, field.Caret))}
 	}
 }
@@ -46,8 +46,8 @@ func (m *workspaceModel) rebaseFindScope(file *openFile, start, oldEnd, newEnd i
 		}
 		return newEnd
 	}
-	m.findScope.start = max(0, min(len(file.Content), rebase(m.findScope.start, false)))
-	m.findScope.end = max(m.findScope.start, min(len(file.Content), rebase(m.findScope.end, true)))
+	m.findScope.start = max(0, min(file.snapshot().Len(), rebase(m.findScope.start, false)))
+	m.findScope.end = max(m.findScope.start, min(file.snapshot().Len(), rebase(m.findScope.end, true)))
 }
 
 func renderReplaceToggle(view *html.View, ref string, expanded bool) {

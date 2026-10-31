@@ -349,7 +349,7 @@ func renderPencodeMarketItem(c module.ContentRenderContext[pencodeMarketProps, s
 	view.Attr("item", "class", class)
 	view.Attr("item", "aria-pressed", boolAttribute(p.Selected))
 	view.Text("name", p.Item.Label())
-	view.Text("publisher", p.Item.ID)
+	view.Text("description", p.Item.Description)
 	view.Event("item", htmlui.EventClick)
 }
 

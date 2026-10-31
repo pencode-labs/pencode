@@ -77,3 +77,20 @@ func TestProcessCloseDrainsPeerOutput(t *testing.T) {
 		t.Fatal("server was killed before graceful cleanup", err)
 	}
 }
+
+func TestWorkspacePeerCloseDrainsOutput(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := StartPeerIn(t.TempDir(), executable, io.Discard, "-test.run=^TestClosingPeer$", "--", "pencode-closing-peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.(*process).Wait(); err != nil {
+		t.Fatal("workspace peer was killed before graceful cleanup", err)
+	}
+}

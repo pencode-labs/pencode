@@ -10,6 +10,7 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
+	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
@@ -139,7 +140,7 @@ func BenchmarkExtensionStreamingUpdate(b *testing.B) {
 			_, session := newPencodeTestApp(b)
 			m := session.active.model
 			views := [2]*peb.EditorView{streamingView(count, "Streaming A"), streamingView(count, "Streaming B")}
-			css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+			css, err := os.ReadFile("testdata/codex/chat.css")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -175,21 +176,36 @@ func BenchmarkNativeEditFrame(b *testing.B) {
 			app, session := newPencodeTestApp(b)
 			m := session.active.model
 			file := m.activeFile()
-			buffer := file.textBuffer(file.Content)
-			edits := [2][1]input.TextEdit{{{Text: "x"}}, {{Text: "y"}}}
+			middle := file.snapshotBuffer().Runes() / 2
+			if !m.fontResources.Focus(m.editor.control) {
+				b.Fatal("editor could not receive focus")
+			}
+			state, _ := app.World.GetResource[*input.State]()
+			edits := [2]string{"x", "y"}
 			index := 0
 			b.ReportAllocs()
-			for b.Loop() {
+			editFrame := func() {
 				index = 1 - index
-				end := buffer.Runes() - 1
-				value, caret, _ := buffer.ApplyTextEditsInRange(file.Content, end-1, end, 0, true, edits[index][:])
-				m.updateActiveContent(value)
-				m.setEditorValueAndCaret(m.fontResources, value, caret)
-				m.refreshRegion(m.fontResources, pencodeRefreshEditor)
+				before := file.snapshot()
+				field := m.fontResources.Mut[engineui.TextField](m.editor.control)
+				field.Anchor, field.Caret = middle, middle+1
+				state.Enqueue(input.Event{Kind: input.EventTextInput, Text: edits[index]})
 				app.RequestRender()
 				if _, err := app.Step(); err != nil {
 					b.Fatal(err)
 				}
+				if file.snapshot() == before {
+					b.Fatal("native input did not publish an edited version")
+				}
+			}
+			for range 3 {
+				editFrame()
+			}
+			for b.Loop() {
+				editFrame()
+			}
+			if file.snapshot().Materialized() {
+				b.Fatal("native edit materialized the document")
 			}
 		})
 	}
@@ -210,7 +226,8 @@ func TestVisibleGutterUsesDocumentLinesAndPreservesIMEBuffer(t *testing.T) {
 	transform := w.Mut[scene.UITransform](m.editor.text)
 	transform.Translation.Y.Value = -600
 	for _, visual := range []string{value, "输入中\n" + value, value} {
-		text.Value = visual
+		text.Value = ""
+		text.Source = snapshotText(visual)
 		m.editor.syncGutter(w, m.surface, m)
 		if m.editor.firstLine == 0 || len(m.editor.sourceLines) != m.editor.lastLine-m.editor.firstLine || len(m.editor.sourceLines) >= scene.TextLineCount2D(text) {
 			t.Fatal("gutter did not retain only the visible lines")

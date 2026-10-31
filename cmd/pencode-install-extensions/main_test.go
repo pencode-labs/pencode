@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 
+	"github.com/pencode-labs/pencode/peb"
 	"github.com/pencode-labs/pencode/server/extensionhost"
 )
 
@@ -17,8 +19,8 @@ func TestInstallReplacesExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"go.mod":                   "module example.test/extension\n\ngo 1.27.0\n",
-		"main.go":                  "package main\nfunc main() { println(\"extension ready\") }\n",
+		"go.mod":                   "module example.test/extension\n\ngo 1.27.0\n\nrequire github.com/pencode-labs/pencode v0.0.0-20261029165847-e535e9d97dba\n",
+		"main.go":                  fmt.Sprintf("package main\nimport \"github.com/pencode-labs/pencode/peb\"\nfunc main() { if peb.Version != %d { panic(\"SDK mismatch\") }; println(\"extension ready\") }\n", peb.Version),
 		"LICENSE":                  "fixture license\n",
 		"resources/extension.json": `{"id":"test","entry":"bin/test","name":"Test","args":["--test"]}`,
 		"resources/theme.css":      "body {}\n",
@@ -28,7 +30,7 @@ func TestInstallReplacesExtension(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Each extension must ignore a workspace and use its own module unchanged.
+	// Local builds ignore the caller's workspace and leave module files unchanged.
 	t.Setenv("GOWORK", filepath.Join(t.TempDir(), "missing.work"))
 	directory := t.TempDir()
 	target := filepath.Join(directory, "test")
@@ -39,7 +41,7 @@ func TestInstallReplacesExtension(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(target, "obsolete"), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := install("go", source, directory); err != nil {
+		if err := install("go", source, directory, "../.."); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(target, "obsolete")); !os.IsNotExist(err) {
@@ -78,7 +80,7 @@ func TestInstallReplacesExtension(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "main.go"), []byte("invalid Go source"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := install("go", source, directory); err == nil {
+	if err := install("go", source, directory, "../.."); err == nil {
 		t.Fatal("installed a failed build")
 	}
 	if _, err := os.Stat(binary); err != nil {
@@ -92,7 +94,7 @@ func TestInstallReplacesExtension(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "resources", "extension.json"), []byte(files["resources/extension.json"]), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := install("go", source, directory); err == nil {
+	if err := install("go", source, directory, "../.."); err == nil {
 		t.Fatal("accepted an extension ID outside its installation directory")
 	}
 }

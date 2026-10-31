@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/pencode-labs/pencode/internal/extensionbuild"
 	"github.com/pencode-labs/pencode/server/extensionhost"
 )
 
@@ -41,14 +42,14 @@ func installAll(goCommand, directory string) error {
 			continue
 		}
 		source := filepath.Join("extensions", entry.Name())
-		if err := install(goCommand, source, directory); err != nil {
+		if err := install(goCommand, source, directory, "."); err != nil {
 			return fmt.Errorf("install %s: %w", source, err)
 		}
 	}
 	return nil
 }
 
-func install(goCommand, source, directory string) error {
+func install(goCommand, source, directory, sdk string) error {
 	if _, err := os.Stat(filepath.Join(source, "go.mod")); err != nil {
 		return fmt.Errorf("independent go.mod required: %w", err)
 	}
@@ -88,7 +89,15 @@ func install(goCommand, source, directory string) error {
 	}
 	command := exec.Command(goCommand, "build", "-mod=readonly", "-o", filepath.Join(stage, filepath.FromSlash(manifest.Entry)), ".")
 	command.Dir = source
-	command.Env = append(os.Environ(), "GOWORK=off")
+	buildDirectory, err := os.MkdirTemp("", "pencode-extension-build-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(buildDirectory)
+	command.Env, err = extensionbuild.Environment(buildDirectory, sdk, source)
+	if err != nil {
+		return err
+	}
 	command.Stdout, command.Stderr = os.Stdout, os.Stderr
 	if err := command.Run(); err != nil {
 		return err

@@ -194,7 +194,7 @@ func (m *workspaceModel) addDebugTemplate(index int) {
 			m.debug.message = "请先保存调试配置，再添加启动器"
 			return
 		}
-		content, err := appendDebugTemplate([]byte(f.Content), template)
+		content, err := appendDebugTemplate([]byte(f.content()), template)
 		if err == nil {
 			m.updateActiveContent(content)
 			_, err = m.requestFileSave(p, f)

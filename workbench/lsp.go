@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/lsp"
 )
@@ -26,16 +27,17 @@ type pencodeLanguageState struct {
 	panel            pencodeLanguagePanel
 }
 type pencodeLanguageDocument struct {
-	file           *openFile
-	project        *pencodeProject
-	root           string
-	uri            lsp.URI
-	content, saved string
-	version        int
-	semantic       *pencodeSemanticTokens
-	seen           bool
-	servers        map[*pencodeLanguageSession]pencodeLanguageSynced
-	diagnostics    map[*pencodeLanguageSession][]lsp.Diagnostic
+	file        *openFile
+	project     *pencodeProject
+	root        string
+	uri         lsp.URI
+	content     piecetree.Snapshot
+	saved       piecetree.Snapshot
+	version     int
+	semantic    *pencodeSemanticTokens
+	seen        bool
+	servers     map[*pencodeLanguageSession]pencodeLanguageSynced
+	diagnostics map[*pencodeLanguageSession][]lsp.Diagnostic
 }
 type pencodeLanguageSynced struct {
 	version      int
@@ -86,21 +88,23 @@ func (u *pencodeLanguageUpdate) take() pencodeLanguageJob {
 }
 
 type pencodeLanguageJob struct {
-	update                 *pencodeLanguageUpdate
-	document               *pencodeLanguageDocument
-	uri                    lsp.URI
-	content, saved, method string
-	version                int
-	close, save            bool
-	semantic               bool
-	willSave               bool
-	notify                 bool
-	context                context.Context
-	params                 any
-	token                  uint64
-	offset                 int
-	hover                  bool
-	automatic              bool
+	update      *pencodeLanguageUpdate
+	document    *pencodeLanguageDocument
+	uri         lsp.URI
+	content     piecetree.Snapshot
+	saved       piecetree.Snapshot
+	method      string
+	version     int
+	close, save bool
+	semantic    bool
+	willSave    bool
+	notify      bool
+	context     context.Context
+	params      any
+	token       uint64
+	offset      int
+	hover       bool
+	automatic   bool
 }
 type pencodeLanguageEvent struct {
 	session *pencodeLanguageSession
@@ -379,13 +383,13 @@ func (model *workspaceModel) syncLanguageDocuments() {
 				if !matched {
 					continue
 				}
-				doc = &pencodeLanguageDocument{file: file, project: project, root: root, uri: lsp.FileURI(filepath.Join(root, filepath.FromSlash(file.Path))), content: file.Content, saved: file.savedContent, version: 1, servers: make(map[*pencodeLanguageSession]pencodeLanguageSynced), diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
+				doc = &pencodeLanguageDocument{file: file, project: project, root: root, uri: lsp.FileURI(filepath.Join(root, filepath.FromSlash(file.Path))), content: file.snapshot(), saved: file.savedContent, version: 1, servers: make(map[*pencodeLanguageSession]pencodeLanguageSynced), diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
 				state.documents[file] = doc
 			}
 			doc.seen = true
-			if doc.content != file.Content {
+			if doc.content != file.snapshot() {
 				doc.version++
-				doc.content = file.Content
+				doc.content = file.snapshot()
 				for session := range doc.diagnostics {
 					model.setProblems(session, doc.uri, nil)
 				}

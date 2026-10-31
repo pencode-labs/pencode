@@ -216,7 +216,7 @@ func TestSourceControlRefreshLeavesDiffEditorWritable(t *testing.T) {
 	m.bindSourceDiffControls(m.fontResources)
 	control, ok := m.fontResources.HTMLControl(m.surface, "sc-code-right-input")
 	binding, bound := m.fontResources.Get[engineui.TextField](control)
-	if !ok || !bound || binding.Value != tab.Result {
+	if !ok || !bound || binding.Text().String() != tab.Result {
 		t.Fatal("background refresh hid the diff input")
 	}
 	if binding, ok := m.fontResources.Get[htmlui.Control](control); !ok || binding.ReadOnly {
@@ -269,7 +269,7 @@ func TestSourceControlPublishesBackgroundResultWithoutInput(t *testing.T) {
 		languageInteractionStep(t, app)
 	}
 	for _, access := range m.fontResources.Query[scene.Text2D]() {
-		if strings.Contains(access.Get().Value, next.Branch) {
+		if strings.Contains(access.Get().Text().String(), next.Branch) {
 			return
 		}
 	}

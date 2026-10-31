@@ -58,6 +58,18 @@ func TestPencodeWorkbenchThemeColors(t *testing.T) {
 			if strings.Contains(prepared.css, "var(") {
 				t.Fatal("unresolved theme color")
 			}
+			completionColors := make(map[string]int)
+			for _, kind := range []int{3, 7, 8, 14, 21} {
+				icon := languageCompletionIcon(kind)
+				_, color, ok := strings.Cut(prepared.icons[icon], "?foreground=")
+				if !ok || color == "" {
+					t.Fatalf("completion kind %d has no theme color", kind)
+				}
+				if previous, exists := completionColors[color]; exists {
+					t.Fatalf("completion kinds %d and %d use the same color", previous, kind)
+				}
+				completionColors[color] = kind
+			}
 			for severity, color := range prepared.diagnosticColors {
 				if color.A == 0 {
 					t.Fatalf("severity %d has no diagnostic color", severity)
@@ -162,7 +174,7 @@ func TestPencodeCustomWorkbenchThemeAndLightDefaults(t *testing.T) {
    "input.background":"#eeddcc", "dropdown.background":"#ffeedd",
    "widget.shadow":"#00000000", "icon.foreground":"#2468ac",
    "window.activeBorder":"#135790", "editorRuler.foreground":"#456789",
-   "scmGraph.foreground2":"#8c36b0"
+   "scmGraph.foreground2":"#8c36b0", "symbolIcon.functionForeground":"#bc246880"
   }
  }`)}}, "resources/custom.json")
 	if err != nil {
@@ -207,6 +219,9 @@ func TestPencodeCustomWorkbenchThemeAndLightDefaults(t *testing.T) {
 	}
 	if prepared.border != graphics.ColorFromRGB(0x13, 0x57, 0x90) || prepared.guide != graphics.ColorFromRGB(0x45, 0x67, 0x89) || !strings.HasSuffix(prepared.icons[pencodeIconKey{"icons/close.svg", "icon.foreground"}], "foreground=2468ac") {
 		t.Fatal("native decorations or icon palette did not adopt custom colors")
+	}
+	if source := prepared.icons[languageCompletionIcon(3)]; source != "icons/square-function.svg?foreground=bc246880" {
+		t.Fatalf("completion icon did not adopt custom color and opacity: %s", source)
 	}
 }
 

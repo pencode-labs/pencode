@@ -344,7 +344,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	value := func() string {
 		field, _ := app.World.Get[engineui.TextField](prompt)
-		return field.Value
+		return field.Text().String()
 	}
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "last character"})
 	pressEnter(0)
@@ -384,8 +384,8 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		t.Fatal("ordinary textarea could not receive focus")
 	}
 	pressEnter(0)
-	if field, _ := app.World.Get[engineui.TextField](notes); field.Value != "\n" {
-		t.Fatalf("ordinary textarea lost native Enter behavior: %q", field.Value)
+	if field, _ := app.World.Get[engineui.TextField](notes); field.Text().String() != "\n" {
+		t.Fatalf("ordinary textarea lost native Enter behavior: %q", field.Text().String())
 	}
 	if allocs := testing.AllocsPerRun(100, func() { model.syncExtensionUI(model.fontResources) }); allocs != 0 {
 		t.Fatalf("unchanged UI allocated %g", allocs)
@@ -462,7 +462,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	if same, ok := model.fontResources.HTMLControl(model.surface, "pencode-extension-query"); !ok || same != query || popup.definition != popupDefinition {
 		t.Fatal("moving popup replaced its input or view")
 	}
-	if field, ok := app.World.Get[engineui.TextField](query); !ok || field.Value != "retained query" {
+	if field, ok := app.World.Get[engineui.TextField](query); !ok || field.Text().String() != "retained query" {
 		t.Fatalf("moving popup lost its input value: %+v", field)
 	}
 	// Tab can leave a nonmodal popup and return through native traversal.

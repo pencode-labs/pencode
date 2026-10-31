@@ -53,7 +53,7 @@ func TestSourceSnapshotHighlightReleasesParser(t *testing.T) {
 
 func TestSourceDiffReusesFilePaintWithoutSkippingAlignment(t *testing.T) {
 	const source = "package demo\nvar Value = 1\n"
-	file := &openFile{Path: "main.go", Content: source}
+	file := &openFile{Path: "main.go", contentSnapshot: snapshotText(source)}
 	m := workspaceModel{files: map[string]*openFile{file.Path: file}, activePath: file.Path}
 	defer m.closeHighlightWorker()
 	settlePencodeHighlight(t, &m)
@@ -76,8 +76,8 @@ func TestSourceDiffReusesFilePaintWithoutSkippingAlignment(t *testing.T) {
 	// Matching cached text cannot replace the diff job after an edit: aligned
 	// rows and revert-block offsets must still be rebuilt for the new content.
 	tab.editResult(source + "var Added = 2\n")
-	file.Content = tab.Result
-	m.highlightCache.put(pencodeHighlightCacheEntry{file: file, source: file.Content, theme: m.syntaxTheme, definitions: m.syntaxDefinitions, spans: cached.spans})
+	file.contentSnapshot = snapshotText(tab.Result)
+	m.highlightCache.put(pencodeHighlightCacheEntry{file: file, source: file.snapshot(), theme: m.syntaxTheme, definitions: m.syntaxDefinitions, spans: cached.spans})
 	m.renderSourceHighlight()
 	if !m.highlightRequest.diff || m.highlightRequest.snapshot {
 		t.Fatal("file paint cache bypassed alignment or discarded the editable parser")

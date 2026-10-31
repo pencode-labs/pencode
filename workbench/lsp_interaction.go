@@ -14,6 +14,7 @@ import (
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/lsp"
@@ -26,24 +27,25 @@ const (
 )
 
 type pencodeLanguageInteraction struct {
-	completionDue                                time.Time
-	completionFile                               *openFile
-	completionContent, completionMethod, trigger string
-	completionCaret                              int
-	hover                                        pencodeLanguageHover
-	underlineRects                               []scene.TextRangeRect2D
-	underlineNodes                               []htmlui.VNode
-	underlineOriginX, underlineOriginY           float32
-	contextOpen                                  bool
-	contextFocus                                 bool
-	contextX, contextY                           float32
-	contextCaret, contextAnchor, contextIndex    int
-	contextGroup, contextSubIndex                int
-	contextSubX, contextSubY                     float32
-	contextPointerX, contextPointerY             float32
-	contextFile                                  *openFile
-	contextContent                               string
-	keysHandled                                  bool
+	completionDue                             time.Time
+	completionFile                            *openFile
+	completionContent                         piecetree.Snapshot
+	completionMethod, trigger                 string
+	completionCaret                           int
+	hover                                     pencodeLanguageHover
+	underlineRects                            []scene.TextRangeRect2D
+	underlineNodes                            []htmlui.VNode
+	underlineOriginX, underlineOriginY        float32
+	contextOpen                               bool
+	contextFocus                              bool
+	contextX, contextY                        float32
+	contextCaret, contextAnchor, contextIndex int
+	contextGroup, contextSubIndex             int
+	contextSubX, contextSubY                  float32
+	contextPointerX, contextPointerY          float32
+	contextFile                               *openFile
+	contextContent                            piecetree.Snapshot
+	keysHandled                               bool
 }
 
 type pencodeLanguageHover struct {
@@ -51,7 +53,8 @@ type pencodeLanguageHover struct {
 	due                time.Time
 	token              uint64
 	file               *openFile
-	content, body      string
+	content            piecetree.Snapshot
+	body               string
 	result             json.RawMessage
 	nodes              []htmlui.VNode
 	theme              *syntax.Theme
@@ -87,7 +90,7 @@ func (model *workspaceModel) languageProvider(doc *pencodeLanguageDocument, meth
 
 // Only native typing/retriggering opens suggestions; paste, undo and IME preedit
 // must not dispatch requests for intermediate documents.
-func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, event htmlui.Event, old string) {
+func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, event htmlui.Event, old piecetree.Snapshot) {
 	ui := &model.languageUI
 	wasCompletion := model.languages != nil && model.languages.panel.completion
 	model.cancelLanguageAutomatic()
@@ -101,15 +104,19 @@ func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, e
 	if !ok || !field.Focused || field.Composition != "" || state != nil && state.Composing() || field.Anchor != field.Caret {
 		return
 	}
-	start, oldEnd, newEnd, _ := pencodeChangedRange(old, event.Value)
-	inserted := event.Value[start:newEnd]
+	value := snapshotText(event.Value)
+	if event.Document {
+		value = event.Snapshot
+	}
+	start, oldEnd, newEnd := old.ChangedRange(value)
+	inserted := value.Slice(start, newEnd)
 	last, size := utf8.DecodeLastRuneInString(inserted)
 	if inserted != "" && (size != len(inserted) && event.InputType != "insertCompositionText" || strings.ContainsAny(inserted, "\r\n")) {
 		return
 	}
-	caretByte, _ := pencodeSelectionBytes(event.Value, field.Caret, field.Caret)
+	caretByte, _ := pencodeSelectionBytes(value, field.Caret, field.Caret)
 	if inserted != "" {
-		last, _ = utf8.DecodeLastRuneInString(event.Value[:caretByte])
+		last, _ = utf8.DecodeLastRuneInString(value.Slice(max(0, caretByte-4), caretByte))
 	}
 	doc := model.languageDocument()
 	method, trigger := "", ""
@@ -144,7 +151,7 @@ func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, e
 	if method == "" {
 		return
 	}
-	ui.completionFile, ui.completionContent = model.activeFile(), event.Value
+	ui.completionFile, ui.completionContent = model.activeFile(), value
 	ui.completionMethod, ui.trigger, ui.completionCaret = method, trigger, field.Caret
 	ui.completionDue = time.Now().Add(pencodeCompletionDelay)
 	model.wakeLanguageAt(ui.completionDue)
@@ -153,7 +160,7 @@ func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, e
 func (model *workspaceModel) cancelLanguageAutomatic() {
 	ui := &model.languageUI
 	ui.completionDue = time.Time{}
-	ui.completionFile, ui.completionContent, ui.trigger = nil, "", ""
+	ui.completionFile, ui.completionContent, ui.trigger = nil, piecetree.Snapshot{}, ""
 }
 
 func (model *workspaceModel) cancelLanguageHover() {
@@ -174,7 +181,7 @@ func (model *workspaceModel) languageHoverBlocked() bool {
 
 func (model *workspaceModel) dismissLanguageContext() {
 	ui := &model.languageUI
-	ui.contextOpen, ui.contextFile, ui.contextContent = false, nil, ""
+	ui.contextOpen, ui.contextFile, ui.contextContent = false, nil, piecetree.Snapshot{}
 	ui.contextGroup = 0
 }
 
@@ -182,7 +189,7 @@ func (model *workspaceModel) runLanguageContext(world *module.Content, index int
 	ui := &model.languageUI
 	file, content, caret, anchor := ui.contextFile, ui.contextContent, ui.contextCaret, ui.contextAnchor
 	model.dismissLanguageContext()
-	if world == nil || index < 0 || index >= len(pencodeLanguageActions) || file != model.activeFile() || content != model.activeContent() {
+	if world == nil || index < 0 || index >= len(pencodeLanguageActions) || file != model.activeFile() || content != model.activeSnapshot() {
 		return
 	}
 	world.Focus(model.editor.control)
@@ -210,19 +217,19 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 	changed := false
 	field, _ := world.Get[engineui.TextField](model.editor.control)
 	file := model.activeFile()
-	if ui.contextOpen && (ui.contextFile != file || ui.contextContent != model.activeContent()) {
+	if ui.contextOpen && (ui.contextFile != file || ui.contextContent != model.activeSnapshot()) {
 		model.dismissLanguageContext()
 		changed = true
 	}
 	if model.languages != nil {
 		p := &model.languages.panel
-		if p.job.document != nil && p.job.method != "workspace/executeCommand" && (p.job.document.file != file || p.job.content != file.Content || (p.method == "textDocument/completion" || p.method == "textDocument/signatureHelp") && p.job.offset != runeOffsetBytes(file.Content, field.Caret)) {
+		if p.job.document != nil && p.job.method != "workspace/executeCommand" && (p.job.document.file != file || p.job.content != file.snapshot() || (p.method == "textDocument/completion" || p.method == "textDocument/signatureHelp") && p.job.offset != runeOffsetBytes(file.snapshot(), field.Caret)) {
 			model.dismissLanguagePanel()
 			changed = true
 		}
 	}
 	if ui.completionFile != nil {
-		if ui.completionFile != file || ui.completionContent != file.Content || field.Caret != ui.completionCaret || !field.Focused || state.Composing() || field.Composition != "" {
+		if ui.completionFile != file || ui.completionContent != file.snapshot() || field.Caret != ui.completionCaret || !field.Focused || state.Composing() || field.Composition != "" {
 			model.cancelLanguageAutomatic()
 		} else if time.Now().Before(ui.completionDue) {
 			model.wakeLanguageAt(ui.completionDue)
@@ -258,7 +265,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		if caret >= min(field.Caret, field.Anchor) && caret <= max(field.Caret, field.Anchor) {
 			ui.contextCaret, ui.contextAnchor = field.Caret, field.Anchor
 		}
-		ui.contextOpen, ui.contextFile, ui.contextContent = true, file, file.Content
+		ui.contextOpen, ui.contextFile, ui.contextContent = true, file, file.snapshot()
 		ui.contextX, ui.contextY = clampLanguagePopup(x-bodyRect.X, y-bodyRect.Y, bodyRect, 240, 364)
 		ui.contextIndex, ui.contextGroup = 0, 0
 		ui.contextPointerX, ui.contextPointerY = x, y
@@ -309,7 +316,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		model.dismissLanguageContext()
 		world.Focus(model.editor.control)
 		if f := world.Mut[engineui.TextField](model.editor.control); f != nil {
-			f.Caret, f.Anchor, f.Selecting = utf8.RuneCountInString(file.Content[:offset]), utf8.RuneCountInString(file.Content[:offset]), false
+			f.Caret, f.Anchor, f.Selecting = file.snapshot().RuneOffset(offset), file.snapshot().RuneOffset(offset), false
 		}
 		var doc *pencodeLanguageDocument
 		if model.languages != nil {
@@ -323,10 +330,10 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		return true
 	}
 	h := &ui.hover
-	if h.file != file || h.content != file.Content || h.start != start || h.end != end || h.underline != underline {
+	if h.file != file || h.content != file.snapshot() || h.start != start || h.end != end || h.underline != underline {
 		model.cancelLanguageHover()
 		h = &ui.hover
-		h.file, h.content, h.offset, h.start, h.end, h.underline = file, file.Content, offset, start, end, underline
+		h.file, h.content, h.offset, h.start, h.end, h.underline = file, file.snapshot(), offset, start, end, underline
 		h.pointerX, h.pointerY = x-bodyRect.X, y-bodyRect.Y
 		h.resetPosition(bodyRect)
 		h.due = time.Now().Add(pencodeHoverDelay)
@@ -387,18 +394,18 @@ func (h *pencodeLanguageHover) resetPosition(viewport htmlui.Rect) {
 	h.x, h.y = languageHoverPoint(h.pointerX, h.pointerY, viewport, viewport.Width*pencodeHoverWidthRatio, max(0, viewport.Height-8))
 }
 
-func runeOffsetBytes(value string, offset int) int {
-	index, _ := pencodeSelectionBytes(value, max(0, offset), max(0, offset))
-	return index
+func runeOffsetBytes[V piecetree.Value](value V, offset int) int {
+	return piecetree.Text(value).ByteOffset(offset)
 }
 
 func isLanguageWordRune(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }
 
-func languageWordStart(content string, offset int) int {
+func languageWordStart[V piecetree.Value](value V, offset int) int {
+	content := piecetree.Text(value)
 	for offset > 0 {
-		r, size := utf8.DecodeLastRuneInString(content[:offset])
+		r, size := utf8.DecodeLastRuneInString(content.Slice(max(0, offset-4), offset))
 		if !isLanguageWordRune(r) {
 			break
 		}
@@ -457,15 +464,15 @@ func (model *workspaceModel) languageEditorGeometry(world *module.Content, rect 
 
 func (model *workspaceModel) editorOffsetAtPointer(world *module.Content, x, y float32, rect htmlui.Rect) int {
 	text, originX, originY := model.languageEditorGeometry(world, rect)
-	return scene.TextCaretIndex2D(text, model.activeContent(), x-originX, y-originY)
+	return scene.TextCaretIndex2D(text, model.activeSnapshot(), x-originX, y-originY)
 }
 
 func (model *workspaceModel) languageSymbolAtPointer(world *module.Content, x, y float32, editor, body htmlui.Rect) (offset, start, end int, underline htmlui.Rect, valid bool) {
 	text, originX, originY := model.languageEditorGeometry(world, editor)
-	if text == nil || text.Value != model.activeContent() {
+	if text == nil || text.Text() != model.activeSnapshot() {
 		return
 	}
-	value := text.Value
+	value := text.Text()
 	localX, localY := x-originX, y-originY
 	caret := scene.TextCaretIndex2D(text, value, localX, localY)
 	cx, cy, _, caretHeight, ok := scene.TextCaretRect2D(text, value, caret)
@@ -477,10 +484,10 @@ func (model *workspaceModel) languageSymbolAtPointer(world *module.Content, x, y
 	}
 	token := engineui.CodeTokenAt(value, caret)
 	offset, start, end = token.Offset, token.Start, token.End
-	if offset >= len(value) {
+	if offset >= value.Len() {
 		return
 	}
-	r, _ := utf8.DecodeRuneInString(value[offset:])
+	r, _ := value.DecodeRune(offset)
 	if !token.Quoted && !isLanguageWordRune(r) {
 		return
 	}
@@ -525,8 +532,8 @@ func (model *workspaceModel) editorPopupPoint(world *module.Content, offset int)
 	bodyRect, _ := body.Bounds()
 	editorRect, _ := editor.Bounds()
 	text, originX, originY := model.languageEditorGeometry(world, editorRect)
-	value := model.activeContent()
-	caret := utf8.RuneCountInString(value[:min(offset, len(value))])
+	value := model.activeSnapshot()
+	caret := value.RuneOffset(min(offset, value.Len()))
 	x, y, _, height, ok := scene.TextCaretRect2D(text, value, caret)
 	if !ok {
 		return 8, 8

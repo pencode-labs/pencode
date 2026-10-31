@@ -33,12 +33,12 @@ func StartPeerWithOutput(executable string, stderr io.Writer, args ...string) (i
 
 // StartPeerWithEnv supplies an environment only to this child process.
 func StartPeerWithEnv(executable string, stderr io.Writer, env []string, args ...string) (io.ReadWriteCloser, error) {
-	conn, err := startWithEnv("", executable, stderr, env, args...)
-	if err != nil {
-		return nil, err
-	}
-	conn.(*process).graceful = true
-	return conn, nil
+	return startWithEnv("", executable, stderr, env, true, args...)
+}
+
+// StartPeerIn owns a protocol peer in its workspace, including EOF shutdown.
+func StartPeerIn(directory, executable string, stderr io.Writer, args ...string) (io.ReadWriteCloser, error) {
+	return startWithEnv(directory, executable, stderr, nil, true, args...)
 }
 
 // Run executes a bounded bootstrap command. Cancellation kills its process
@@ -59,10 +59,10 @@ func StartIn(directory, executable string, args ...string) (io.ReadWriteCloser, 
 
 // StartWithOutput supplies a separate stderr sink; stdout stays protocol-only.
 func StartWithOutput(directory, executable string, stderr io.Writer, args ...string) (io.ReadWriteCloser, error) {
-	return startWithEnv(directory, executable, stderr, nil, args...)
+	return startWithEnv(directory, executable, stderr, nil, false, args...)
 }
 
-func startWithEnv(directory, executable string, stderr io.Writer, env []string, args ...string) (io.ReadWriteCloser, error) {
+func startWithEnv(directory, executable string, stderr io.Writer, env []string, graceful bool, args ...string) (io.ReadWriteCloser, error) {
 	cmd := exec.Command(executable, args...)
 	cmd.Env = env
 	cmd.Dir = directory
@@ -88,7 +88,7 @@ func startWithEnv(directory, executable string, stderr io.Writer, env []string, 
 		out.Close()
 		return nil, err
 	}
-	p := &process{ReadCloser: out, writer: in, cmd: cmd, done: make(chan struct{})}
+	p := &process{ReadCloser: out, writer: in, cmd: cmd, done: make(chan struct{}), graceful: graceful}
 	go func() { p.err = cmd.Wait(); close(p.done) }()
 	return p, nil
 }

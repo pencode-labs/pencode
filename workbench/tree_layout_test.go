@@ -45,7 +45,7 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 			found := false
 			y := bounds.Y + scroll.Position.Y()
 			for entity, access := range app.World.Query[scene.Text2D]().All {
-				if access.Ref().Value != entry.Name {
+				if access.Ref().Text().String() != entry.Name {
 					continue
 				}
 				found = true

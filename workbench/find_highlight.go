@@ -18,7 +18,7 @@ type pencodeFindPaint struct {
 
 func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 	text := world.Mut[scene.Text2D](m.editor.text)
-	if !m.findOpen || m.settingsOpen || !m.textEditorActive() || text == nil || m.workbenchTheme == nil || text.Value != m.activeContent() {
+	if !m.findOpen || m.settingsOpen || !m.textEditorActive() || text == nil || m.workbenchTheme == nil || text.Text() != m.activeSnapshot() {
 		paint.hide(world)
 		return
 	}
@@ -32,7 +32,7 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 	stack, _ := world.Get[scene.UIStackIndex](m.editor.text)
 	colors := m.workbenchTheme.findColors
 	key := pencodeDiagnosticPaintKey{
-		layout: pencodeGutterLayoutKey{text.Value, text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
+		layout: pencodeGutterLayoutKey{text.Text(), text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
 		file:   m.activeFile(), revision: m.findRevision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight, ink: text.InkOffsetY, stack: stack, color: colors[0],
 	}
@@ -78,7 +78,7 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 				paint.underlines, bounds, _ = scene.AppendTextUnderlineRects2D(paint.underlines[:0], text, line, left, right, 1)
 			} else {
 				// Zero-width regex matches still need a visible marker.
-				x, _, _, _, ok := scene.TextCaretRect2D(text, text.Value, m.activeFile().textBuffer(text.Value).RuneOffset(left))
+				x, _, _, _, ok := scene.TextCaretRect2D(text, text.Text(), m.activeFile().snapshotBuffer().RuneOffset(left))
 				if !ok {
 					continue
 				}

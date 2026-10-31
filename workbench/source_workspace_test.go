@@ -233,7 +233,7 @@ func TestSourceControlPencodeInteraction(t *testing.T) {
 	}
 	messageEntity, _ := m.fontResources.HTMLControl(m.surface, "sc-message")
 	messageField, ok := m.fontResources.Get[engineui.TextField](messageEntity)
-	if !ok || messageField.Value != "" || messageField.Anchor != 0 || messageField.Caret != 0 {
+	if !ok || messageField.Text().String() != "" || messageField.Anchor != 0 || messageField.Caret != 0 {
 		t.Fatalf("successful commit retained the native input value or selection: %+v", messageField)
 	}
 	m.app.GetViewport = func() (int, int) { return 960, 540 }
@@ -301,7 +301,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 		t.Fatal("Shift+Enter did not switch to a textarea")
 	}
 	field = m.fontResources.Mut[engineui.TextField](entity)
-	if !field.Focused || field.Anchor != 3 || field.Caret != 3 || field.Value != "修复\n" || s.CommitMessage != field.Value {
+	if !field.Focused || field.Anchor != 3 || field.Caret != 3 || field.Text().String() != "修复\n" || s.CommitMessage != field.Text().String() {
 		t.Fatalf("expansion lost selection, focus or message: %+v, message=%q", field, s.CommitMessage)
 	}
 	expanded := editorContextBounds(t, m, "sc-message")
@@ -351,7 +351,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 	if _, ok := m.fontResources.Get[engineui.Input](entity); !ok {
 		t.Fatal("successful commit did not restore the single-line control")
 	}
-	if field, ok := m.fontResources.Get[engineui.TextField](entity); !ok || field.Value != "" {
+	if field, ok := m.fontResources.Get[engineui.TextField](entity); !ok || field.Text().String() != "" {
 		t.Fatalf("successful multiline commit retained the native input value: %+v", field)
 	}
 	// Exercise the real layout with long subjects, refs and authors, without a
@@ -370,7 +370,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 	}
 	prefix, truncated := false, false
 	for _, text := range app.World.Query[scene.Text2D]().All {
-		value := text.Get().Value
+		value := text.Get().Text().String()
 		prefix = prefix || strings.HasPrefix(value, "long-subject-")
 		truncated = truncated || strings.HasSuffix(value, "…") && strings.Contains(c.Subject, strings.TrimSuffix(value, "…"))
 	}
@@ -430,7 +430,7 @@ func TestSourceControlPencodeMergeEditor(t *testing.T) {
 		t.Fatal("merge result not editable code textarea")
 	}
 	text, found := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](entity)
-	if value := m.fontResources.Ref[scene.Text2D](text); !found || value == nil || len(value.Spans) == 0 || value.Value != tab.Result {
+	if value := m.fontResources.Ref[scene.Text2D](text); !found || value == nil || len(value.Spans) == 0 || value.Text().String() != tab.Result {
 		t.Fatal("native merge result lacks syntax highlighting")
 	}
 	left := editorContextBounds(t, m, "sc-code-left")

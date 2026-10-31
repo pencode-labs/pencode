@@ -501,7 +501,7 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 				}
 				continue
 			}
-			if state.Err != nil || state.Disk != file.savedContent && state.Disk != file.Content {
+			if state.Err != nil || !snapshotText(state.Disk).Equal(file.savedContent) && state.Disk != file.content() {
 				if state.Document != nil {
 					state.Document.Release()
 				}
@@ -510,11 +510,11 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 				continue
 			}
 			file.document = state.Document
-			if state.Disk == file.Content {
-				file.savedContent, file.Dirty = state.Disk, false
+			if state.Disk == file.content() {
+				file.savedContent, file.Dirty = snapshotText(state.Disk), false
 			}
 			if file.document != nil {
-				file.document.Update("", file.Content, -1, 0, 0)
+				file.document.Update("", file.content(), -1, 0, 0)
 			}
 		}
 		model.startProjectWatch(project)

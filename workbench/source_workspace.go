@@ -559,11 +559,19 @@ func (m *workspaceModel) handleSourceEvent(event htmlui.Event) bool {
 			s.PromptValue = event.Value
 		case "sc-merge-result":
 			if t := s.activeTab(); t != nil && !s.busy() {
-				t.editResult(event.Value)
+				value := event.Value
+				if event.Document {
+					value = event.Snapshot.String()
+				}
+				t.editResult(value)
 			}
 		case "sc-code-right-input":
 			if t := s.activeTab(); t != nil && t.editable() && !s.busy() {
-				t.editResult(event.Value)
+				value := event.Value
+				if event.Document {
+					value = event.Snapshot.String()
+				}
+				t.editResult(value)
 			}
 		}
 	case htmlui.EventClick:

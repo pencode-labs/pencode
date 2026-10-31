@@ -77,8 +77,8 @@ func TestPencodeEditorDiagnosticsFromUnopenedProblem(t *testing.T) {
 					t.Fatalf("jump lost cached diagnostic: ranges=%d waves=%d labels=%d", len(paint.ranges), len(paint.waves), len(paint.labels))
 				}
 				label, _ := world.Get[scene.Text2D](paint.labels[0])
-				if label.Value != diagnostic.Message {
-					t.Fatalf("inline error = %q", label.Value)
+				if label.Text().String() != diagnostic.Message {
+					t.Fatalf("inline error = %q", label.Text().String())
 				}
 			}
 			if len(model.editor.diagnostics.ranges) != 1 {
@@ -127,15 +127,15 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 	app, model, provider, _ := languageInteractionFixture(t)
 	world := model.fontResources
 	file := model.activeFile()
-	file.Content = "\t中文🙂 := sourceCommand(ctx)\nnext()\n"
-	model.setEditorValueAndCaret(world, file.Content, 0)
+	file.contentSnapshot = snapshotText("\t中文🙂 := sourceCommand(ctx)\nnext()\n")
+	model.setEditorValueAndCaret(world, file.content(), 0)
 	model.syncLanguageDocuments()
 	markPencodeRootDirtyByModel(world, model)
 	languageInteractionStep(t, app)
 	doc := model.languages.documents[file]
-	start := strings.Index(file.Content, "sourceCommand")
-	position, _ := lsp.PositionAt(file.Content, start, lsp.UTF16)
-	end, _ := lsp.PositionAt(file.Content, start+len("sourceCommand"), lsp.UTF16)
+	start := strings.Index(file.content(), "sourceCommand")
+	position, _ := lsp.PositionAt(file.content(), start, lsp.UTF16)
+	end, _ := lsp.PositionAt(file.content(), start+len("sourceCommand"), lsp.UTF16)
 	diagnostic := lsp.Diagnostic{Severity: 1, Message: "undefined: sourceCommand", Range: lsp.Range{Start: position, End: end}}
 	publish := func(items []lsp.Diagnostic, version int) {
 		t.Helper()
@@ -160,7 +160,7 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 		t.Fatalf("full row background = %+v", background)
 	}
 	label, _ := world.Get[scene.Text2D](paint.labels[0])
-	if label.Value != diagnostic.Message || label.Color != paint.key.colors[1] || label.Font != model.codeFont() {
+	if label.Text().String() != diagnostic.Message || label.Color != paint.key.colors[1] || label.Font != model.codeFont() {
 		t.Fatalf("inline error label = %+v", label)
 	}
 	up, _ := world.Get[scene.UITransform](paint.waves[0])
@@ -201,7 +201,7 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 	text := world.Mut[scene.Text2D](model.editor.text)
 	var offsets = [2]int{start, start + len("sourceCommand")}
 	var widths [2]float32
-	if !scene.MeasureTextLineOffsets2D(text, strings.TrimSuffix(strings.Split(file.Content, "\n")[0], "\r"), offsets[:], widths[:]) || math.Abs(float64(up.Translation.X.Value-paint.key.x-widths[0])) > .1 {
+	if !scene.MeasureTextLineOffsets2D(text, strings.TrimSuffix(strings.Split(file.content(), "\n")[0], "\r"), offsets[:], widths[:]) || math.Abs(float64(up.Translation.X.Value-paint.key.x-widths[0])) > .1 {
 		t.Fatal("wave does not align with the diagnostic after tabs and Unicode")
 	}
 	if allocations := testing.AllocsPerRun(100, func() { paint.sync(world, model) }); allocations != 0 {
@@ -256,7 +256,7 @@ func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 		background, _ := world.Get[scene.Sprite2D](paint.quads[0])
 		wave, _ := world.Get[scene.Sprite2D](paint.waves[0])
 		label, _ := world.Get[scene.Text2D](paint.labels[0])
-		if background.Shape.Fill != fill || wave.Tint != color || label.Color != color || label.Value != diagnostic.Message {
+		if background.Shape.Fill != fill || wave.Tint != color || label.Color != color || label.Text().String() != diagnostic.Message {
 			t.Fatalf("severity %d has incorrect decoration colors: background=%+v wave=%+v label=%+v", severity, background.Shape.Fill, wave.Tint, label.Color)
 		}
 		for _, entity := range []ecs.Entity{paint.root, paint.quads[0], paint.waves[0], paint.labels[0]} {
@@ -290,8 +290,8 @@ func TestPencodeEditorDiagnosticSeverityPriority(t *testing.T) {
 	app, model, provider, _ := languageInteractionFixture(t)
 	world := model.fontResources
 	file := model.activeFile()
-	file.Content = "hint warning information error\n"
-	model.setEditorValueAndCaret(world, file.Content, 0)
+	file.contentSnapshot = snapshotText("hint warning information error\n")
+	model.setEditorValueAndCaret(world, file.content(), 0)
 	model.syncLanguageDocuments()
 	markPencodeRootDirtyByModel(world, model)
 	languageInteractionStep(t, app)
@@ -315,7 +315,7 @@ func TestPencodeEditorDiagnosticSeverityPriority(t *testing.T) {
 		background, _ := world.Get[scene.Sprite2D](paint.quads[0])
 		label, _ := world.Get[scene.Text2D](paint.labels[0])
 		message := [...]string{"", "error", "warning", "information", "hint"}[severity]
-		if background.Shape.Fill != fill || label.Color != color || label.Value != message {
+		if background.Shape.Fill != fill || label.Color != color || label.Text().String() != message {
 			t.Fatalf("row did not prioritize severity %d: background=%+v label=%+v", severity, background.Shape.Fill, label)
 		}
 		for i, diagnostic := range paint.ranges {
@@ -368,8 +368,8 @@ func TestPencodeEditorDiagnosticsWrappedRange(t *testing.T) {
 	app, model, provider, _ := languageInteractionFixture(t)
 	world := model.fontResources
 	file := model.activeFile()
-	file.Content = strings.Repeat("unknown value ", 50) + "\nnext()\n"
-	model.setEditorValueAndCaret(world, file.Content, 0)
+	file.contentSnapshot = snapshotText(strings.Repeat("unknown value ", 50) + "\nnext()\n")
+	model.setEditorValueAndCaret(world, file.content(), 0)
 	model.syncLanguageDocuments()
 	model.settings.EditorWidth = 20
 	markPencodeRootDirtyByModel(world, model)
@@ -385,14 +385,14 @@ func TestPencodeEditorDiagnosticsWrappedRange(t *testing.T) {
 	}
 	for _, entity := range paint.labels {
 		label, _ := world.Get[scene.Text2D](entity)
-		if label.Value != "first line failed" {
+		if label.Text().String() != "first line failed" {
 			t.Fatal("diagnostic message inserted a new line")
 		}
 	}
 	// Each visible wrapped line gets one background and label.
 	for line := range scene.TextLineCount2D(text) {
 		start, _, rect, _ := scene.TextLineRange2D(text, line)
-		if start == strings.Index(file.Content, "\n")+1 {
+		if start == strings.Index(file.content(), "\n")+1 {
 			for _, entity := range paint.labels {
 				position, _ := world.Get[scene.UITransform](entity)
 				if position.Translation.Y.Value == paint.key.y+rect.Y {

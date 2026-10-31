@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pencode-labs/pencode/internal/extensionbuild"
 	"github.com/pencode-labs/pencode/peb"
 )
 
@@ -48,6 +49,10 @@ func TestMaterialIconsRegistersIconTheme(t *testing.T) {
 	defer cancel()
 	command := exec.CommandContext(ctx, "go", "build", "-p", "1", "-o", filepath.Join(directory, filepath.FromSlash(entry)), ".")
 	command.Dir = "material-icons"
+	command.Env, err = extensionbuild.Environment(t.TempDir(), "..", command.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build material-icons: %v\n%s", err, output)
 	}

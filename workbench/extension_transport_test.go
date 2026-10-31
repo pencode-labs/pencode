@@ -52,7 +52,7 @@ func TestWireRegionPatchRetainsNativeDraftAndSelection(t *testing.T) {
 		t.Fatal("patch replaced or unfocused input")
 	}
 	field = w.Mut[engineui.TextField](prompt)
-	if field.Value != "draft being typed" || field.Anchor != 2 || field.Caret != 7 || surface.definition != definition || surface.regions[0].definition != history {
+	if field.Text().String() != "draft being typed" || field.Anchor != 2 || field.Caret != 7 || surface.definition != definition || surface.regions[0].definition != history {
 		t.Fatal("patch lost retained content or local input")
 	}
 }

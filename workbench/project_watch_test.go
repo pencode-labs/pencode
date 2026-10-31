@@ -33,7 +33,7 @@ func TestProjectWatchRefreshesTreeAndGitWithoutReloadingDrafts(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	draft := &openFile{Path: "main.go", Content: "unsaved draft", Dirty: true}
+	draft := &openFile{Path: "main.go", contentSnapshot: snapshotText("unsaved draft"), Dirty: true}
 	p.Files[draft.Path] = draft
 	if err := os.WriteFile(filepath.Join(p.Path, "created.go"), []byte("package created\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestProjectWatchRefreshesTreeAndGitWithoutReloadingDrafts(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if p.Files[draft.Path] != draft || draft.Content != "unsaved draft" || !draft.Dirty {
+	if p.Files[draft.Path] != draft || draft.content() != "unsaved draft" || !draft.Dirty {
 		t.Fatal("filesystem refresh overwrote an unsaved document")
 	}
 	m.discardProject(p)

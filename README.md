@@ -46,7 +46,7 @@ workspace/
 With Onix in place, clone Pencode beside it and resolve dependencies:
 
 ```sh
-git clone --recurse-submodules https://github.com/pencode-labs/pencode.git
+git clone --recurse-submodules git@github.com:pencode-labs/pencode.git
 cd pencode
 go mod tidy
 ```
@@ -93,6 +93,14 @@ These checks cover individual packages, not full application or platform validat
 git submodule foreach 'go test ./...'
 ```
 
+Workbench rendering tests use resources in `workbench/testdata/` and do not require
+the Codex submodule. To also build and run the actual Codex extension in the host:
+
+```sh
+git submodule update --init extensions/codex
+go test -p 1 -tags codex_integration ./workbench
+```
+
 ## Architecture
 
 ```text
@@ -130,10 +138,11 @@ Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host
 
 Bundled extensions include the following; see each extension for its license and build instructions:
 
+- [Codex Agent](https://github.com/pencode-labs/codex): editor chat, streaming replies, approvals, and project conversations through the Codex CLI.
 - [Go language tools](https://github.com/pencode-labs/go): provides Go language and debug support, automatically installing `gopls` and Delve when missing.
 - [Markdown preview](https://github.com/pencode-labs/markdown-preview): read-only preview with native source editing and optional split layout.
 - [Material file icons](https://github.com/pencode-labs/material-icons): a file icon theme.
-- [PHP](extensions/php/README.md): PHP/Blade language servers with automatic installation and an Xdebug adapter, ported from the Zed PHP extension.
+- [PHP](https://github.com/pencode-labs/php): PHP/Blade language servers with automatic installation and an Xdebug adapter, ported from the Zed PHP extension.
 - [Extension UI](https://github.com/pencode-labs/ui-demo): actions, dialogs, menus, popups, and panels.
 
 For an existing checkout, initialize the submodules with `git submodule update --init --recursive`. Each extension has its own Go module and build instructions. For example, build Go language tools from the repository root with:

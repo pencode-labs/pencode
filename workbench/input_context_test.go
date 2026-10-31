@@ -23,7 +23,7 @@ func openInputContext(t *testing.T, app *onix.App, model *workspaceModel, state 
 		t.Fatalf("cannot focus %s", ref)
 	}
 	field := world.Mut[engineui.TextField](entity)
-	if ref == "find-query" && field.Value != model.findQuery {
+	if ref == "find-query" && field.Text().String() != model.findQuery {
 		world.SetControlValue(entity, model.findQuery)
 	}
 	field.Caret, field.Anchor = caret, anchor
@@ -66,7 +66,7 @@ func TestInputContextExtensionOverlaysAndMultiline(t *testing.T) {
 			entity, _ := model.fontResources.HTMLControl(model.surface, "pencode-extension-context-test-input")
 			field := model.fontResources.Ref[engineui.TextField](entity)
 			control := model.fontResources.Ref[htmlui.Control](entity)
-			if field == nil || field.Value != "甲中\n🙂尾" || control.Value != field.Value || !field.Focused {
+			if field == nil || field.Text().String() != "甲中\n🙂尾" || control.Value != field.Text().String() || !field.Focused {
 				t.Fatalf("multiline paste did not synchronize native control: field=%+v control=%+v", field, control)
 			}
 			if model.actions.ui.overlay != overlay {
@@ -203,7 +203,7 @@ func TestInputContextReadOnlyPasswordAndStaleTarget(t *testing.T) {
 	}
 	field.Password, field.Value = false, "changed"
 	model.runInputContextEdit(app.World, "input-context-delete")
-	if field.Value != "changed" {
+	if field.Text().String() != "changed" {
 		t.Fatal("stale menu changed the input")
 	}
 	model.updateInputContext(model.fontResources, state)

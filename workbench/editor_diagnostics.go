@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
@@ -14,6 +13,7 @@ import (
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/render"
 	"github.com/diiyw/onix/scene"
+	"github.com/diiyw/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/lsp"
 )
 
@@ -31,7 +31,7 @@ type pencodeDiagnosticPaint struct {
 	ranges               []pencodeDiagnosticRange
 	underlines           []scene.TextRangeRect2D
 	file                 *openFile
-	content              string
+	content              piecetree.Snapshot
 	revision             uint64
 	key                  pencodeDiagnosticPaintKey
 }
@@ -51,13 +51,13 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 	file := model.activeFile()
 	text := world.Mut[scene.Text2D](model.editor.text)
 	visible := model.screen == pencodeWorkspace && !model.settingsOpen && model.textEditorActive() && file != nil &&
-		text != nil && text.Value == file.Content && model.workbenchTheme != nil
+		text != nil && text.Text() == file.snapshot() && model.workbenchTheme != nil
 	if !visible {
 		paint.hide(world)
 		return
 	}
 	model.syncProblems()
-	if paint.file != file || paint.content != file.Content || paint.revision != model.bottom.problemRevision {
+	if paint.file != file || paint.content != file.snapshot() || paint.revision != model.bottom.problemRevision {
 		clear(paint.ranges)
 		paint.ranges = paint.ranges[:0]
 		filename := path.Clean(filepath.ToSlash(filepath.Join(model.projectPath, filepath.FromSlash(file.Path))))
@@ -85,8 +85,8 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 				if severity < 1 || severity >= len(pencodeProblemSeverities) {
 					severity = 3
 				}
-				start, startErr := lsp.OffsetAt(file.Content, diagnostic.Range.Start, encoding)
-				end, endErr := lsp.OffsetAt(file.Content, diagnostic.Range.End, encoding)
+				start, startErr := lsp.OffsetAt(file.snapshot(), diagnostic.Range.Start, encoding)
+				end, endErr := lsp.OffsetAt(file.snapshot(), diagnostic.Range.End, encoding)
 				if startErr != nil || endErr != nil || end < start {
 					continue
 				}
@@ -107,7 +107,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 			}
 			return strings.Compare(a.message, b.message)
 		})
-		paint.file, paint.content, paint.revision = file, file.Content, model.bottom.problemRevision
+		paint.file, paint.content, paint.revision = file, file.snapshot(), model.bottom.problemRevision
 	}
 	if len(paint.ranges) == 0 {
 		paint.hide(world)
@@ -117,7 +117,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 	size, _ := world.Get[scene.Size2D](model.editor.control)
 	stack, _ := world.Get[scene.UIStackIndex](model.editor.text)
 	key := pencodeDiagnosticPaintKey{
-		layout: pencodeGutterLayoutKey{text.Value, text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
+		layout: pencodeGutterLayoutKey{text.Text(), text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
 		file:   file, revision: paint.revision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight,
 		ink: text.InkOffsetY, stack: stack, colors: model.workbenchTheme.diagnosticColors,
@@ -167,7 +167,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 			if diagnostic.start > end || diagnostic.end < start || diagnostic.end == start && diagnostic.start != start {
 				continue
 			}
-			if diagnostic.start == end && start < end && end < len(text.Value) && text.Value[end] != '\r' && text.Value[end] != '\n' {
+			if diagnostic.start == end && start < end && end < text.Text().Len() && text.Text().ByteAt(end) != '\r' && text.Text().ByteAt(end) != '\n' {
 				continue // A soft wrap boundary belongs to the following visual line.
 			}
 			if marked < 0 || diagnostic.severity < paint.ranges[marked].severity {
@@ -175,7 +175,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 			}
 			left, right := max(start, diagnostic.start), min(end, diagnostic.end)
 			if left == right && right < end {
-				_, length := utf8.DecodeRuneInString(text.Value[right:])
+				_, length := text.Text().DecodeRune(right)
 				right += length
 			}
 			paint.underlines = paint.underlines[:0]

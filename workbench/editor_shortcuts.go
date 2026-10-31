@@ -27,7 +27,7 @@ func (m *workspaceModel) editorClipboardShortcut(world *module.Content, state *i
 		}
 		ui := &m.languageUI
 		if !ui.contextOpen {
-			ui.contextOpen, ui.contextFile, ui.contextContent = true, m.activeFile(), m.activeContent()
+			ui.contextOpen, ui.contextFile, ui.contextContent = true, m.activeFile(), m.activeSnapshot()
 			ui.contextCaret, ui.contextAnchor = field.Caret, field.Anchor
 		}
 		m.runEditorContextEdit(world, command.ref)

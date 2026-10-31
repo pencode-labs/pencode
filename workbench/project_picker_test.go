@@ -73,8 +73,8 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 		t.Helper()
 		control, _ := model.fontResources.Get[htmlui.Control](field)
 		text, _ := model.fontResources.Get[ui.TextField](field)
-		if control.Value != want || text.Value != want {
-			t.Fatalf("displayed path = %q / %q, want %q", control.Value, text.Value, want)
+		if control.Value != want || text.Text().String() != want {
+			t.Fatalf("displayed path = %q / %q, want %q", control.Value, text.Text().String(), want)
 		}
 	}
 	checkChoices("app", "assets", "other")
@@ -184,7 +184,7 @@ func TestSSHProjectPickerRequiresSelectionAndKeepsCurrentWorkspace(t *testing.T)
 	if p.path != filepath.ToSlash(project.Path) || len(p.names) != 1 || p.names[0] != "nested" {
 		t.Fatalf("unexpected project choices: %+v", p)
 	}
-	if model.activeFile() != file || file.document != document || file.Content != "package unsaved\n" || !file.Dirty {
+	if model.activeFile() != file || file.document != document || file.content() != "package unsaved\n" || !file.Dirty {
 		t.Fatal("browsing changed the current buffer")
 	}
 	model.browseProjectDirectory(p.path + "/nested")

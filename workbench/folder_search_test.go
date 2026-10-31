@@ -52,7 +52,7 @@ func TestFolderSearchReplaceBuffersDiskAndConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	settleFolderSearch(t, m)
-	if len(m.folderSearch.rows) != 0 || p.Files["src/open.txt"].Content != "unsaved new new" {
+	if len(m.folderSearch.rows) != 0 || p.Files["src/open.txt"].content() != "unsaved new new" {
 		t.Fatal("replace all failed")
 	}
 	read := func(name string) string {

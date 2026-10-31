@@ -3,7 +3,8 @@ package lsp
 import (
 	"fmt"
 	"sort"
-	"unicode/utf8"
+
+	"github.com/diiyw/onix/text/piecetree"
 )
 
 var SemanticTokenTypes = []string{"namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator", "decorator"}
@@ -53,7 +54,8 @@ func ApplySemanticDelta(previous []uint32, edits []SemanticTokensEdit) ([]uint32
 
 // DecodeSemanticTokens resolves relative positions in one forward document scan.
 // The client does not advertise overlapping or multiline token support.
-func DecodeSemanticTokens(dst []SemanticToken, data []uint32, text string, encoding PositionEncoding, types int) ([]SemanticToken, error) {
+func DecodeSemanticTokens[V piecetree.Value](dst []SemanticToken, data []uint32, value V, encoding PositionEncoding, types int) ([]SemanticToken, error) {
+	text := piecetree.Text(value)
 	dst = dst[:0]
 	if len(data)%5 != 0 {
 		return dst, fmt.Errorf("lsp: malformed semantic tokens")
@@ -66,11 +68,11 @@ func DecodeSemanticTokens(dst []SemanticToken, data []uint32, text string, encod
 			return 0, fmt.Errorf("lsp: overlapping semantic tokens")
 		}
 		for comparePosition(position, target) < 0 {
-			if cursor >= len(text) {
+			if cursor >= text.Len() {
 				return 0, fmt.Errorf("lsp: semantic token beyond document")
 			}
-			r, size := utf8.DecodeRuneInString(text[cursor:])
-			if r == '\n' || r == '\r' && cursor+1 < len(text) && text[cursor+1] == '\n' {
+			r, size := text.DecodeRune(cursor)
+			if r == '\n' || r == '\r' && cursor+1 < text.Len() && text.ByteAt(cursor+1) == '\n' {
 				if position.Line == target.Line {
 					return 0, fmt.Errorf("lsp: semantic token beyond line")
 				}

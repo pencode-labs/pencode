@@ -13,7 +13,7 @@ import (
 
 func TestPencodeCodexModelEffortLayout(t *testing.T) {
 	app, model, _, _ := languageInteractionFixture(t)
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +43,9 @@ func TestPencodeCodexModelEffortLayout(t *testing.T) {
 		transform, _ := app.World.Get[scene.UITransform](entity)
 		rect := scene.TextRangeRect2D{X: transform.Translation.X.Value, Y: transform.Translation.Y.Value, Height: text.LineHeight}
 		switch {
-		case text.Value == "高":
+		case text.Text().String() == "高":
 			effort = rect
-		case text.Value == "GPT-6.1":
+		case text.Text().String() == "GPT-6.1":
 			name = rect
 		}
 	}

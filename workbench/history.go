@@ -5,6 +5,7 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 )
 
@@ -71,7 +72,7 @@ func (history *pencodeEditHistory) replaceContent(current, value string, start, 
 
 // restoreEdit transfers the same delta between stacks and edits only the
 // affected tree range. Carets are stored as Unicode rune indices.
-func (history *pencodeEditHistory) restoreEdit(current string, redo bool) (string, int, bool) {
+func (history *pencodeEditHistory) restoreSnapshot(current piecetree.Snapshot, redo bool) (piecetree.Snapshot, int, bool) {
 	from, to := &history.undo, &history.redo
 	if redo {
 		from, to = to, from
@@ -86,15 +87,16 @@ func (history *pencodeEditHistory) restoreEdit(current string, redo bool) (strin
 		removed, inserted, caret = edit.removed, edit.inserted, edit.newCaret
 	}
 	end := edit.start + len(removed)
-	if edit.start < 0 || end > len(current) || current[edit.start:end] != removed {
+	if edit.start < 0 || end > current.Len() || current.Slice(edit.start, end) != removed {
 		return current, 0, false
 	}
 	(*from)[i] = pencodeEdit{}
 	*from = (*from)[:i]
 	*to = append(*to, edit)
-	buffer := history.textBuffer(current)
+	history.buffer.SyncSnapshot(current)
+	buffer := &history.buffer
 	buffer.ReplaceBytes(edit.start, end, inserted)
-	return buffer.String(), caret, true
+	return buffer.Snapshot(), caret, true
 }
 
 func (model *workspaceModel) undoActiveContent(world *module.Content) bool {
@@ -108,12 +110,12 @@ func (model *workspaceModel) restoreActiveContent(world *module.Content, redo bo
 	if file == nil {
 		return false
 	}
-	value, caret, ok := file.restoreEdit(file.Content, redo)
+	value, caret, ok := file.restoreSnapshot(file.snapshot(), redo)
 	if !ok {
 		return false
 	}
-	model.applyActiveContent(value, false)
-	model.setEditorValueAndCaret(world, value, caret)
+	model.applyFileSnapshot(file, model.activeProjectState(), value, false)
+	model.setEditorSnapshotAndCaret(world, value, caret)
 	return true
 }
 
@@ -124,5 +126,36 @@ func (model *workspaceModel) setEditorValueAndCaret(world *module.Content, value
 	setPencodeEditorValue(world, model.surface, value)
 	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 		field.Caret, field.Anchor = caret, caret
+	}
+}
+
+func (history *pencodeEditHistory) restoreEdit(current string, redo bool) (string, int, bool) {
+	value, caret, ok := history.restoreSnapshot(snapshotText(current), redo)
+	return value.String(), caret, ok
+}
+func (model *workspaceModel) setEditorSnapshotAndCaret(world *module.Content, value piecetree.Snapshot, caret int) {
+	if world == nil {
+		return
+	}
+	model.bindEditorSnapshot(world, value)
+	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
+		field.Caret, field.Anchor = caret, caret
+	}
+}
+func (model *workspaceModel) bindEditorSnapshot(world *module.Content, value piecetree.Snapshot) {
+	file := model.activeFile()
+	if world == nil || file == nil {
+		return
+	}
+	control := model.editor.control
+	if control == 0 {
+		control, _ = world.HTMLControl(model.surface, "editor")
+	}
+	if field := world.Mut[engineui.TextField](control); field != nil {
+		field.Buffer = file.snapshotBuffer()
+		field.Source = value
+		field.Value = ""
+		length := field.Buffer.Runes()
+		field.Caret, field.Anchor = min(field.Caret, length), min(field.Anchor, length)
 	}
 }

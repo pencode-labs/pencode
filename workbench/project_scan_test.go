@@ -153,11 +153,11 @@ func TestPencodeScanPublishesBeforeSlowSubtreeAndKeepsUserEdits(t *testing.T) {
 	}
 	openProjectFile(project, "chosen.go")
 	file := project.Files["chosen.go"]
-	file.Content, file.Dirty = "package edited\n", true
+	file.contentSnapshot, file.Dirty = snapshotText("package edited\n"), true
 	model.syncActiveProjectFields()
 	unblock()
 	waitPencodeProjectScan(t, project, func() { model.pollFileIO(); model.pollProjectScans() })
-	if model.activeFile() != file || file.Content != "package edited\n" || !file.Dirty || len(project.Files) != 1 || project.PreviewPath != "" {
+	if model.activeFile() != file || file.content() != "package edited\n" || !file.Dirty || len(project.Files) != 1 || project.PreviewPath != "" {
 		t.Fatal("scan completion overwrote the user's file or edits")
 	}
 }

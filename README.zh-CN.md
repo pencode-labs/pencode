@@ -46,7 +46,7 @@ workspace/
 准备好 Onix 后，在其同级目录克隆 Pencode 并整理依赖：
 
 ```sh
-git clone --recurse-submodules https://github.com/pencode-labs/pencode.git
+git clone --recurse-submodules git@github.com:pencode-labs/pencode.git
 cd pencode
 go mod tidy
 ```

@@ -13,14 +13,14 @@ import (
 
 func TestPencodeOverlayCachesInvalidateReusedBuffers(t *testing.T) {
 	const source = "()abc"
-	file := &openFile{Path: "main.txt", Content: source}
-	model := workspaceModel{files: map[string]*openFile{file.Path: file}, activePath: file.Path, highlightedContent: source, highlightScratch: []scene.TextSpan2D{{Start: 0, End: len(source), Color: graphics.White}}, workbenchTheme: &pencodeTheme{bracket: graphics.ColorFromRGB(255, 0, 0), link: graphics.ColorFromRGB(0, 0, 255)}}
+	file := &openFile{Path: "main.txt", contentSnapshot: snapshotText(source)}
+	model := workspaceModel{files: map[string]*openFile{file.Path: file}, activePath: file.Path, highlightedContent: snapshotText(source), highlightScratch: []scene.TextSpan2D{{Start: 0, End: len(source), Color: graphics.White}}, workbenchTheme: &pencodeTheme{bracket: graphics.ColorFromRGB(255, 0, 0), link: graphics.ColorFromRGB(0, 0, 255)}}
 	editor := &model.editor
 	editor.brackets.set(source, []pencodeBracket{{Offset: 0, Pair: 1}, {Offset: 1, Pair: 0}})
 	field := engineui.TextField{Value: source, Focused: true}
 	text := scene.NewText2D(source)
 	hover := &model.languageUI.hover
-	hover.file, hover.content, hover.link, hover.start, hover.end = file, source, true, 2, 3
+	hover.file, hover.content, hover.link, hover.start, hover.end = file, snapshotText(source), true, 2, 3
 	editor.syncHighlight(&text, field, &model)
 	if pencodeTestColour(text.Spans, 0) != graphics.ColorFromRGB(255, 0, 0) || pencodeTestColour(text.Spans, 2) != graphics.ColorFromRGB(0, 0, 255) {
 		t.Fatal("missing overlays")
@@ -58,13 +58,13 @@ func TestPencodeCompositionCacheUTF8AndPaintRevisions(t *testing.T) {
 	buffer.Sync(source)
 	var editor pencodeEditor
 	text := scene.NewText2D(source)
-	field := engineui.TextField{Value: source, Caret: utf8.RuneCountInString(source) - 1, Composition: "输入", Buffer: &buffer}
+	field := engineui.TextField{Value: source, Source: snapshotText(source), Caret: utf8.RuneCountInString(source) - 1, Anchor: utf8.RuneCountInString(source) - 1, Composition: "输入", Buffer: &buffer}
 	spans := []scene.TextSpan2D{{Start: 0, End: len(source), Color: graphics.White}}
-	key := pencodeOverlayKey{source: source, base: &spans[0], count: len(spans), paint: 1}
+	key := pencodeOverlayKey{source: snapshotText(source), base: &spans[0], count: len(spans), paint: 1}
 	paint := func() { editor.syncPaint(&text, field, spans, key) }
 	paint()
 	prefix := buffer.ByteOffset(field.Caret)
-	if text.Value != source[:prefix]+field.Composition+source[prefix:] {
+	if text.Text().String() != source[:prefix]+field.Composition+source[prefix:] {
 		t.Fatal("IME rune caret was treated as a byte offset")
 	}
 	want := rebasePencodeSpans(nil, spans, prefix, prefix, prefix+len(field.Composition))
@@ -81,14 +81,15 @@ func TestPencodeCompositionCacheUTF8AndPaintRevisions(t *testing.T) {
 		t.Fatal("IME cache retained stale syntax paint")
 	}
 	field.Caret--
+	field.Anchor = field.Caret
 	paint()
 	prefix = buffer.ByteOffset(field.Caret)
-	if text.Value != source[:prefix]+field.Composition+source[prefix:] {
+	if text.Text().String() != source[:prefix]+field.Composition+source[prefix:] {
 		t.Fatal("IME cache retained previous caret")
 	}
 	field.Composition = ""
 	paint()
-	if text.Value != source || !slices.Equal(text.Spans, spans) || editor.compositionSource != "" {
+	if text.Text().String() != source || !slices.Equal(text.Spans, spans) || editor.compositionSource.Len() != 0 {
 		t.Fatal("IME commit retained preedit cache")
 	}
 }
@@ -97,9 +98,9 @@ func BenchmarkPencodeCachedCompositionPaint(b *testing.B) {
 	source := strings.Repeat("中文🙂\n", 50000)
 	var editor pencodeEditor
 	var text scene.Text2D
-	field := engineui.TextField{Value: source, Caret: utf8.RuneCountInString(source) - 1, Composition: "输入"}
+	field := engineui.TextField{Value: source, Caret: utf8.RuneCountInString(source) - 1, Anchor: utf8.RuneCountInString(source) - 1, Composition: "输入"}
 	spans := []scene.TextSpan2D{{Start: 0, End: len(source), Color: graphics.White}}
-	key := pencodeOverlayKey{source: source, base: &spans[0], count: 1}
+	key := pencodeOverlayKey{source: snapshotText(source), base: &spans[0], count: 1}
 	editor.syncPaint(&text, field, spans, key)
 	b.ReportAllocs()
 	for b.Loop() {

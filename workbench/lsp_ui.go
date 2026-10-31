@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
@@ -496,7 +495,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 		params = map[string]any{"query": p.query}
 	case "textDocument/inlayHint":
 		delete(params, "position")
-		last, _ := lsp.PositionAt(doc.content, len(doc.content), session.client.Encoding)
+		last, _ := lsp.PositionAt(doc.content, doc.content.Len(), session.client.Encoding)
 		params["range"] = lsp.Range{End: last}
 	case "textDocument/selectionRange":
 		delete(params, "position")
@@ -560,7 +559,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 	job := event.job
 	if job.hover {
 		h := &model.languageUI.hover
-		if model.languageHoverBlocked() || h.token != job.token || job.document == nil || job.document.file != model.activeFile() || h.file != job.document.file || job.document.file.Content != job.content || job.document.version != job.version || !job.document.seen {
+		if model.languageHoverBlocked() || h.token != job.token || job.document == nil || job.document.file != model.activeFile() || h.file != job.document.file || job.document.file.snapshot() != job.content || job.document.version != job.version || !job.document.seen {
 			return
 		}
 		if h.cancel != nil {
@@ -578,7 +577,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 		return
 	}
 	p.pending = false
-	if job.method != "workspace/executeCommand" && (job.document.file.Content != job.content || job.document.version != job.version || !job.document.seen) {
+	if job.method != "workspace/executeCommand" && (job.document.file.snapshot() != job.content || job.document.version != job.version || !job.document.seen) {
 		p.body = "文档已改变，请重新请求"
 		p.rows = nil
 		p.referenceGroups = nil
@@ -630,7 +629,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 		p.open = false
 		p.body = ""
 		prefixStart := languageWordStart(job.content, job.offset)
-		prefix := strings.ToLower(job.content[prefixStart:job.offset])
+		prefix := strings.ToLower(job.content.Slice(prefixStart, job.offset))
 		for _, raw := range items {
 			var item lsp.CompletionItem
 			if json.Unmarshal(raw, &item) == nil {
@@ -943,7 +942,7 @@ func (model *workspaceModel) chooseLanguageRow(world *module.Content, index int)
 		}
 		return
 	}
-	if p.job.document == nil || p.job.document.content != p.job.content || p.job.document.file.Content != p.job.content {
+	if p.job.document == nil || p.job.document.content != p.job.content || p.job.document.file.snapshot() != p.job.content {
 		p.body = "文档已改变，请重新请求"
 		return
 	}
@@ -985,7 +984,7 @@ func (model *workspaceModel) chooseLanguageRow(world *module.Content, index int)
 	}
 }
 func (model *workspaceModel) applyLanguageEdits(world *module.Content, session *pencodeLanguageSession, doc *pencodeLanguageDocument, edits []lsp.TextEdit) bool {
-	content, err := lsp.ApplyTextEdits(doc.file.Content, edits, session.client.Encoding)
+	content, err := lsp.ApplyTextEdits(doc.file.content(), edits, session.client.Encoding)
 	if err != nil {
 		model.languages.panel.body = err.Error()
 		return false
@@ -1040,8 +1039,8 @@ func (model *workspaceModel) applyLanguageCompletion(world *module.Content, sess
 	}
 	caretByte += len(primary.NewText)
 	if world != nil && p.job.document.file == model.activeFile() {
-		content := p.job.document.file.Content
-		model.setEditorValueAndCaret(world, content, utf8.RuneCountInString(content[:min(caretByte, len(content))]))
+		content := p.job.document.file.snapshot()
+		model.setEditorSnapshotAndCaret(world, content, content.RuneOffset(min(caretByte, content.Len())))
 	}
 	p.open, p.completion = false, false
 	if item.Command != nil {
@@ -1097,8 +1096,8 @@ func (model *workspaceModel) selectLanguageRange(world *module.Content, doc *pen
 		return
 	}
 	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
-		field.Anchor = utf8.RuneCountInString(doc.content[:start])
-		field.Caret = utf8.RuneCountInString(doc.content[:end])
+		field.Anchor = doc.content.RuneOffset(start)
+		field.Caret = doc.content.RuneOffset(end)
 		model.revealEditorCaret(world, field.Caret)
 	}
 }
@@ -1154,7 +1153,7 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 		}
 	}
 	if p.navigate != nil && model.editor.file == p.navigate {
-		buffer := p.navigate.textBuffer(p.navigate.Content)
+		buffer := p.navigate.snapshotBuffer()
 		caret, anchor := buffer.RuneOffset(p.offset), buffer.RuneOffset(max(p.offset, p.endOffset))
 		// The editor has already bound this document; select the target without rewriting it.
 		if field := world.Mut[engineui.TextField](model.editor.control); field != nil {

@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/graphics"
+	"github.com/diiyw/onix/scene"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/peb"
-	"github.com/diiyw/onix/scene"
 )
 
 func TestPencodeLanguageExtensionProcess(t *testing.T) {
@@ -66,9 +66,9 @@ func installRemoteGoServer(t *testing.T, backend *client.Client, command string)
 func languageTestModel(t *testing.T) (*workspaceModel, *pencodeProject, *openFile) {
 	t.Helper()
 	root := t.TempDir()
-	file := &openFile{Path: "main.go", Name: "main.go", Content: "package demo\n\nfunc Add(a,b int) int{return a+b}\n"}
-	file.savedContent = file.Content
-	for name, content := range map[string]string{"main.go": file.Content, "other.go": "package demo\n", "go.mod": "module example.com/workbench\n\ngo 1.26.0\n"} {
+	file := &openFile{Path: "main.go", Name: "main.go", contentSnapshot: snapshotText("package demo\n\nfunc Add(a,b int) int{return a+b}\n")}
+	file.savedContent = file.snapshot()
+	for name, content := range map[string]string{"main.go": file.content(), "other.go": "package demo\n", "go.mod": "module example.com/workbench\n\ngo 1.26.0\n"} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -85,12 +85,12 @@ func TestLanguageWorkspaceEditStagesAllFilesAndVersions(t *testing.T) {
 	model, project, file := languageTestModel(t)
 	session := &pencodeLanguageSession{key: pencodeLanguageKey{root: project.Path}, client: &lsp.Client{Encoding: lsp.UTF16}}
 	uri := lsp.FileURI(filepath.Join(project.Path, file.Path))
-	model.languages.documents[file] = &pencodeLanguageDocument{file: file, content: file.Content, version: 3}
+	model.languages.documents[file] = &pencodeLanguageDocument{file: file, content: file.snapshot(), version: 3}
 	version := 3
 	change, _ := json.Marshal(lsp.TextDocumentEdit{TextDocument: lsp.VersionedTextDocumentIdentifier{URI: uri, Version: &version}, Edits: []lsp.TextEdit{{Range: lsp.Range{Start: lsp.Position{Line: 0, Character: 8}, End: lsp.Position{Line: 0, Character: 12}}, NewText: "renamed"}}})
 	invalid := lsp.WorkspaceEdit{DocumentChanges: []json.RawMessage{change, json.RawMessage(`{"kind":"delete","uri":"file:///unrelated"}`)}}
-	if err := model.applyLanguageWorkspaceEdit(session, invalid, nil); err == nil || file.Content != file.savedContent || len(file.undo) != 0 {
-		t.Fatalf("partial edit leaked: %s %v", file.Content, err)
+	if err := model.applyLanguageWorkspaceEdit(session, invalid, nil); err == nil || !file.snapshot().Equal(file.savedContent) || len(file.undo) != 0 {
+		t.Fatalf("partial edit leaked: %s %v", file.content(), err)
 	}
 	version = 2
 	stale, _ := json.Marshal(lsp.TextDocumentEdit{TextDocument: lsp.VersionedTextDocumentIdentifier{URI: uri, Version: &version}, Edits: []lsp.TextEdit{}})
@@ -106,7 +106,7 @@ func TestLanguageWorkspaceEditStagesAllFilesAndVersions(t *testing.T) {
 	if err := awaitFileIO(t, model); err != nil {
 		t.Fatal(err)
 	}
-	if !file.Dirty || !strings.HasPrefix(file.Content, "package renamed") || len(file.undo) != 1 || len(project.Tabs) != 2 || !project.Files["other.go"].Dirty {
+	if !file.Dirty || !strings.HasPrefix(file.content(), "package renamed") || len(file.undo) != 1 || len(project.Tabs) != 2 || !project.Files["other.go"].Dirty {
 		t.Fatal("workspace edits did not enter normal document history")
 	}
 	disk, _ := os.ReadFile(filepath.Join(project.Path, "other.go"))
@@ -156,7 +156,7 @@ func TestLanguageWorkbenchGoplsAndExtensionUnload(t *testing.T) {
 	wait(func() bool { doc := model.languages.documents[file]; return doc != nil && len(doc.servers) == 1 })
 	session := model.languages.sessions[pencodeLanguageKey{project.Path, "extensions/go/gopls"}]
 	model.runLanguageAction(nil, "textDocument/formatting", false)
-	wait(func() bool { return strings.Contains(file.Content, "a, b int") })
+	wait(func() bool { return strings.Contains(file.content(), "a, b int") })
 	if !file.Dirty || len(file.undo) != 1 {
 		t.Fatal("formatting bypassed normal editing")
 	}
@@ -181,7 +181,7 @@ func TestLanguageIdlePollingDoesNotAllocate(t *testing.T) {
 	model, project, file := languageTestModel(t)
 	server := &extensions.LanguageServer{LanguageServer: peb.LanguageServer{ID: "extensions/test/test", LanguageID: "go", Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}
 	session := &pencodeLanguageSession{key: pencodeLanguageKey{project.Path, server.ID}, server: server, client: &lsp.Client{Capabilities: lsp.ServerCapabilities{}, Encoding: lsp.UTF16}, jobs: make(chan pencodeLanguageJob, 1), cancel: func() {}}
-	doc := &pencodeLanguageDocument{file: file, project: project, root: project.Path, uri: lsp.FileURI(filepath.Join(project.Path, file.Path)), version: 1, content: file.Content, saved: file.savedContent, servers: map[*pencodeLanguageSession]pencodeLanguageSynced{session: {version: 1}}, diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
+	doc := &pencodeLanguageDocument{file: file, project: project, root: project.Path, uri: lsp.FileURI(filepath.Join(project.Path, file.Path)), version: 1, content: file.snapshot(), saved: file.savedContent, servers: map[*pencodeLanguageSession]pencodeLanguageSynced{session: {version: 1}}, diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
 	model.languages.servers = []*extensions.LanguageServer{server}
 	model.languages.sessions[session.key] = session
 	model.languages.documents[file] = doc
@@ -192,12 +192,12 @@ func TestLanguageIdlePollingDoesNotAllocate(t *testing.T) {
 func TestLanguageResultCannotOverwriteChangedDocument(t *testing.T) {
 	model, project, file := languageTestModel(t)
 	session := &pencodeLanguageSession{key: pencodeLanguageKey{root: project.Path}, client: &lsp.Client{Encoding: lsp.UTF16}}
-	doc := &pencodeLanguageDocument{file: file, content: file.Content, version: 1, seen: true}
+	doc := &pencodeLanguageDocument{file: file, content: file.snapshot(), version: 1, seen: true}
 	model.languages.panel.token = 7
 	job := pencodeLanguageJob{document: doc, content: doc.content, version: 1, token: 7, method: "textDocument/formatting"}
-	file.Content = "new host content"
+	file.contentSnapshot = snapshotText("new host content")
 	model.acceptLanguageResult(nil, pencodeLanguageEvent{session: session, job: job, result: json.RawMessage(`[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"stale"}]`)})
-	if file.Content != "new host content" || !strings.Contains(model.languages.panel.body, "改变") {
+	if file.content() != "new host content" || !strings.Contains(model.languages.panel.body, "改变") {
 		t.Fatal("stale result changed the host document")
 	}
 }
@@ -210,17 +210,17 @@ func TestLanguageQueuedSnapshotsCoalesceWithoutRetainingOldVersions(t *testing.T
 	model.languages.sessions[session.key] = session
 	model.syncLanguageDocuments()
 	for range 100 {
-		file.Content += "a"
+		file.contentSnapshot = snapshotText(file.content() + "a")
 		model.syncLanguageDocuments()
 	}
 	if len(session.jobs) != 1 {
 		t.Fatalf("queued %d snapshots", len(session.jobs))
 	}
 	job := (<-session.jobs).update.take()
-	if job.content != file.Content || job.version != 101 {
+	if !job.content.Equal(file.snapshot()) || job.version != 101 {
 		t.Fatalf("queued snapshot not current: %d", job.version)
 	}
-	file.Content += "b"
+	file.contentSnapshot = snapshotText(file.content() + "b")
 	model.syncLanguageDocuments()
 	if len(session.jobs) != 1 {
 		t.Fatal("consumed snapshot could not be replaced")

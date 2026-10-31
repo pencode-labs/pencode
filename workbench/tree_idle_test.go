@@ -95,7 +95,7 @@ func TestPencodeTreeClickPublishesWithoutMouseMove(t *testing.T) {
 	}
 	child := ecs.Entity(0)
 	for entity, access := range app.World.Query[scene.Text2D]().All {
-		if access.Ref().Value == "child.txt" {
+		if access.Ref().Text().String() == "child.txt" {
 			child = entity
 			break
 		}

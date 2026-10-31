@@ -103,7 +103,7 @@ func TestFindReplaceNativeControlsAndUndo(t *testing.T) {
 }
 
 func TestFindCacheAndLargeReplace(t *testing.T) {
-	f := &openFile{Path: "file.txt", Name: "file.txt", Content: strings.Repeat("a ", pencodeFindMatchLimit+7)}
+	f := &openFile{Path: "file.txt", Name: "file.txt", contentSnapshot: snapshotText(strings.Repeat("a ", pencodeFindMatchLimit+7))}
 	m := &workspaceModel{files: map[string]*openFile{f.Path: f}, activePath: f.Path, findOpen: true, findQuery: "a", replaceQuery: "b", findOptions: textsearch.Options{CaseSensitive: true}}
 	m.refreshFindMatches()
 	if len(m.findMatches) != pencodeFindMatchLimit {
@@ -113,24 +113,24 @@ func TestFindCacheAndLargeReplace(t *testing.T) {
 		t.Fatal("warm find allocated", allocations)
 	}
 	m.replaceFindMatch(nil, true)
-	if strings.Contains(f.Content, "a") || strings.Count(f.Content, "b") != pencodeFindMatchLimit+7 {
+	if strings.Contains(f.content(), "a") || strings.Count(f.content(), "b") != pencodeFindMatchLimit+7 {
 		t.Fatal("replace all only processed displayed matches")
 	}
 }
 
 func TestFindSelectionRebasesThroughReplaceAndUndo(t *testing.T) {
-	f := &openFile{Path: "file.txt", Name: "file.txt", Content: "foo\nfoo foo\nfoo"}
+	f := &openFile{Path: "file.txt", Name: "file.txt", contentSnapshot: snapshotText("foo\nfoo foo\nfoo")}
 	m := &workspaceModel{files: map[string]*openFile{f.Path: f}, activePath: f.Path, findOpen: true, findQuery: "foo", replaceQuery: "long", findSelection: true, findScope: pencodeFindScope{f, 4, 11}}
 	m.refreshFindMatches()
 	if len(m.findMatches) != 2 {
 		t.Fatal("selection scope", m.findMatches)
 	}
 	m.replaceFindMatch(nil, true)
-	if f.Content != "foo\nlong long\nfoo" || m.findScope.start != 4 || m.findScope.end != 13 {
-		t.Fatalf("scope did not expand with replacement: %q %+v", f.Content, m.findScope)
+	if f.content() != "foo\nlong long\nfoo" || m.findScope.start != 4 || m.findScope.end != 13 {
+		t.Fatalf("scope did not expand with replacement: %q %+v", f.content(), m.findScope)
 	}
 	m.undoActiveContent(nil)
-	if f.Content != "foo\nfoo foo\nfoo" || m.findScope.end != 11 {
+	if f.content() != "foo\nfoo foo\nfoo" || m.findScope.end != 11 {
 		t.Fatal("undo did not restore scope", m.findScope)
 	}
 	m.refreshFindMatches()

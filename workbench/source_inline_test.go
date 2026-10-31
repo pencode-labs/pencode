@@ -107,8 +107,8 @@ func assertSourceInlinePaint(t *testing.T, model *workspaceModel, tab *sourceTab
 					number = line.RightNumber
 				}
 				start, _, _, _ := scene.TextLineRange2D(text, number-1)
-				caret := utf8.RuneCountInString(text.Value[:start+change.Start[side]])
-				x, y, _, _, _ := scene.TextCaretRect2D(text, text.Value, caret)
+				caret := utf8.RuneCountInString(text.Text().String()[:start+change.Start[side]])
+				x, y, _, _, _ := scene.TextCaretRect2D(text, text.Text().String(), caret)
 				id := [...]string{"sc-code-left-input", "sc-code-right-input"}[side]
 				input, _ := model.fontResources.HTMLNode(model.surface, id)
 				origin, _ := input.Bounds()

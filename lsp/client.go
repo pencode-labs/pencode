@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/diiyw/onix/text/piecetree"
 )
 
 type Options struct {
@@ -38,8 +40,9 @@ type Client struct {
 }
 
 type document struct {
-	text, language string
-	version        int
+	text     piecetree.Snapshot
+	language string
+	version  int
 }
 
 // Connect runs LSP negotiation over an owned remote stdio stream. Process

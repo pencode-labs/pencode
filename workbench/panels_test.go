@@ -21,7 +21,7 @@ func problemControl(t *testing.T, model *workspaceModel, label string) ecs.Entit
 	t.Helper()
 	position, _, _ := strings.Cut(label, " ")
 	for _, access := range model.fontResources.Query2[scene.Text2D, htmlui.ControlText]() {
-		if strings.TrimSpace(access.A.Ref().Value) == position {
+		if strings.TrimSpace(access.A.Ref().Text().String()) == position {
 			return access.B.Ref().Control
 		}
 	}
@@ -159,7 +159,7 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 		}
 	}
 	version, revision := doc.version, model.bottom.problemRevision
-	content := file.Content
+	content := file.content()
 	for i := range 4 {
 		problem := model.bottom.problems[i%len(items)]
 		// A reconciliation would replace the untouched sibling's props. Mark them
@@ -191,7 +191,7 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 		if err != nil || endErr != nil || !field.Focused || field.Caret != offset || field.Anchor != end {
 			t.Fatalf("problem did not highlight its range: caret=%d anchor=%d focused=%v want=%d:%d errors=%v,%v", field.Caret, field.Anchor, field.Focused, offset, end, err, endErr)
 		}
-		if file.Content != content || doc.version != version || model.bottom.problemRevision != revision || len(doc.diagnostics[provider]) != len(items) {
+		if file.content() != content || doc.version != version || model.bottom.problemRevision != revision || len(doc.diagnostics[provider]) != len(items) {
 			t.Fatalf("navigation changed diagnostics: version=%d want=%d revision=%d want=%d", doc.version, version, model.bottom.problemRevision, revision)
 		}
 		if len(provider.jobs) != 0 {
@@ -272,7 +272,7 @@ func TestPencodeProblemNavigationAcrossFilesKeepsRows(t *testing.T) {
 		}
 		if problem.location.URI == otherURI {
 			field := world.Ref[engineui.TextField](model.editor.control)
-			if !field.Focused || field.Value[field.Caret:field.Anchor] != "cond" {
+			if !field.Focused || field.Text().String()[field.Caret:field.Anchor] != "cond" {
 				t.Fatalf("cross-file problem did not highlight its range: caret=%d anchor=%d focused=%v", field.Caret, field.Anchor, field.Focused)
 			}
 		}
@@ -412,7 +412,7 @@ func TestPencodeBottomPanelsDiagnosticsAndOutput(t *testing.T) {
 	if rows != 1 {
 		t.Fatalf("diagnostic rows=%d", rows)
 	}
-	wantOffset, err := lsp.OffsetAt(file.Content, problem.Range.Start, lsp.UTF16)
+	wantOffset, err := lsp.OffsetAt(file.content(), problem.Range.Start, lsp.UTF16)
 	if err != nil || model.languages.panel.navigate != file || model.languages.panel.offset != wantOffset {
 		t.Fatal("diagnostic click did not navigate to its source position")
 	}

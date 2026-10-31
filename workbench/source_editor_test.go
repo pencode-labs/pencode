@@ -183,7 +183,7 @@ func TestSourceEditorFirstChangeTabsAndNativeScroll(t *testing.T) {
 	var numberPositions [2][2]float32
 	label := strconv.Itoa(tab.Rows[251].LeftNumber)
 	for entity, access := range m.fontResources.Query[scene.Text2D]() {
-		if access.Ref().Value != label {
+		if access.Ref().Text().String() != label {
 			continue
 		}
 		transform, ok := m.fontResources.Get[scene.UIGlobalTransform](entity)
@@ -289,7 +289,7 @@ func assertSourceDiffScrollGeometry(t *testing.T, m *workspaceModel) {
 	}
 	for entity, access := range m.fontResources.Query[scene.Text2D]() {
 		for side, label := range labels {
-			if access.Ref().Value != label {
+			if access.Ref().Text().String() != label {
 				continue
 			}
 			global := m.fontResources.Ref[scene.UIGlobalTransform](entity)

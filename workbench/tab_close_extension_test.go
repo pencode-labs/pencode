@@ -108,7 +108,7 @@ func TestClosingFileSelectsAdjacentTab(t *testing.T) {
 
 func TestClosingDirtyFileRevealsExtensionAfterDiscard(t *testing.T) {
 	p := &pencodeProject{Path: t.TempDir(), Tabs: []string{"a.go"}, ActivePath: "a.go", Files: map[string]*openFile{
-		"a.go": {Path: "a.go", Name: "a.go", Content: "unsaved", Dirty: true},
+		"a.go": {Path: "a.go", Name: "a.go", contentSnapshot: snapshotText("unsaved"), Dirty: true},
 	}}
 	m := &workspaceModel{projects: []*pencodeProject{p}}
 	m.syncActiveProjectFields()

@@ -1,16 +1,24 @@
 [submodule "extensions/go"]
 	path = extensions/go
-	url = https://github.com/pencode-labs/go.git
+	url = git@github.com:pencode-labs/go.git
 	branch = main
 [submodule "extensions/markdown-preview"]
 	path = extensions/markdown-preview
-	url = https://github.com/pencode-labs/markdown-preview.git
+	url = git@github.com:pencode-labs/markdown-preview.git
 	branch = main
 [submodule "extensions/material-icons"]
 	path = extensions/material-icons
-	url = https://github.com/pencode-labs/material-icons.git
+	url = git@github.com:pencode-labs/material-icons.git
 	branch = main
 [submodule "extensions/ui-demo"]
 	path = extensions/ui-demo
-	url = https://github.com/pencode-labs/ui-demo.git
+	url = git@github.com:pencode-labs/ui-demo.git
+	branch = main
+[submodule "extensions/codex"]
+	path = extensions/codex
+	url = git@github.com:pencode-labs/codex.git
+	branch = main
+[submodule "extensions/php"]
+	path = extensions/php
+	url = git@github.com:pencode-labs/php.git
 	branch = main

@@ -1,10 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/pencode-labs/pencode/internal/buffer"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/textsearch"
 )
@@ -24,9 +25,9 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 	if !fs.ValidPath(directory) || flags > 15 || count > 4096 {
 		return protocol.ErrProtocol
 	}
-	documents := make(map[string]string, count)
+	documents := make(map[string][]byte, count)
 	for range count {
-		name, content := d.String(), d.String()
+		name, content := d.String(), d.Bytes()
 		if !fs.ValidPath(name) {
 			return protocol.ErrProtocol
 		}
@@ -44,13 +45,15 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 		return err
 	}
 	defer r.Close()
+	var data *buffer.Buffer
+	defer func() { buffer.Put(data) }()
 	var result protocol.SearchResult
 	var matches []textsearch.Match
 	total := 0
 	budget := 12
 	var searchErr error
-	add := func(name, content string) bool {
-		if strings.IndexByte(content, 0) >= 0 || !utf8.ValidString(content) {
+	add := func(name string, content []byte) bool {
+		if bytes.IndexByte(content, 0) >= 0 || !utf8.Valid(content) {
 			result.Skipped++
 			return true
 		}
@@ -68,7 +71,7 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 			result.Truncated = true
 			displayed = matches[:protocol.TextSearchLimit-total]
 		}
-		digest := sha256.Sum256([]byte(content))
+		digest := sha256.Sum256(content)
 		file := protocol.SearchFile{Path: name, Digest: string(digest[:]), Count: count}
 		line, offset, lineStart := 1, 0, 0
 		for _, match := range displayed {
@@ -79,7 +82,7 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 				}
 				offset++
 			}
-			end := strings.IndexByte(content[match.Start:], '\n')
+			end := bytes.IndexByte(content[match.Start:], '\n')
 			if end < 0 {
 				end = len(content)
 			} else {
@@ -93,7 +96,7 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 			for end < len(content) && !utf8.RuneStart(content[end]) {
 				end--
 			}
-			file.Matches = append(file.Matches, protocol.TextMatch{Start: match.Start, End: match.End, Line: line, Column: utf8.RuneCountInString(content[lineStart:match.Start]) + 1, PreviewStart: start, Preview: strings.Clone(strings.TrimSuffix(content[start:end], "\r"))})
+			file.Matches = append(file.Matches, protocol.TextMatch{Start: match.Start, End: match.End, Line: line, Column: utf8.RuneCount(content[lineStart:match.Start]) + 1, PreviewStart: start, Preview: string(bytes.TrimSuffix(content[start:end], []byte("\r")))})
 		}
 		total += len(displayed)
 		budget += len(file.Path) + len(file.Digest) + 16
@@ -145,13 +148,16 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 				result.Skipped++
 				return nil
 			}
-			data, err := io.ReadAll(io.LimitReader(f, protocol.TextSearchFileLimit+1))
+			if data == nil {
+				data = buffer.Get(int(info.Size()) + 1)
+			}
+			err = data.ReadAll(f, int(info.Size()), protocol.TextSearchFileLimit)
 			f.Close()
-			if err != nil || len(data) > protocol.TextSearchFileLimit {
+			if err != nil {
 				result.Skipped++
 				return nil
 			}
-			content = string(data)
+			content = data.Bytes
 		}
 		if !add(name, content) {
 			return fs.SkipAll

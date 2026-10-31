@@ -144,7 +144,7 @@ func (m *workspaceModel) startFolderSearch() {
 	job := folderSearchJob{ctx: ctx, backend: m.backend, project: s.project, root: s.project.Path, directory: s.directory, query: s.query, options: s.options, revision: s.revision}
 	for name, f := range s.project.Files {
 		if isTextFile(name) && folderContains(s.directory, name) {
-			job.snapshots = append(job.snapshots, folderSnapshot{f, name, f.Content})
+			job.snapshots = append(job.snapshots, folderSnapshot{f, name, f.content()})
 		}
 	}
 	s.busy, s.message = true, "正在搜索…"
@@ -165,7 +165,7 @@ func (m *workspaceModel) folderSnapshotsCurrent(job folderSearchJob) bool {
 		return false
 	}
 	for _, snapshot := range job.snapshots {
-		if job.project.Files[snapshot.path] != snapshot.file || snapshot.file.Content != snapshot.content {
+		if job.project.Files[snapshot.path] != snapshot.file || snapshot.file.content() != snapshot.content {
 			return false
 		}
 	}
@@ -436,14 +436,14 @@ func (m *workspaceModel) openFolderSearchMatch(world *module.Content, index int)
 }
 
 func (m *workspaceModel) finishSearchNavigation(project *pencodeProject, file *openFile, n *fileNavigation) {
-	sum := sha256.Sum256([]byte(file.Content))
+	sum := sha256.Sum256([]byte(file.content()))
 	if string(sum[:]) != n.digest {
 		m.setProjectStatus(project, "文件已改变，请重新搜索")
 		return
 	}
 	match := n.searchMatch
 	s := &m.folderSearch
-	s.navigate, s.navigateStart, s.navigateEnd = file, utf8.RuneCountInString(file.Content[:match.Start]), utf8.RuneCountInString(file.Content[:match.End])
+	s.navigate, s.navigateStart, s.navigateEnd = file, utf8.RuneCountInString(file.content()[:match.Start]), utf8.RuneCountInString(file.content()[:match.End])
 	file.editorView.anchor, file.editorView.caret = s.navigateStart, s.navigateEnd
 	m.editor.needsFocus = true
 }
@@ -574,7 +574,7 @@ func (m *workspaceModel) replaceFolderSearch(all bool) {
 		t := folderReplaceTarget{path: file.Path, digest: file.Digest, start: start, end: end}
 		t.file = s.project.Files[file.Path]
 		if t.file != nil {
-			t.before = t.file.Content
+			t.before = t.file.content()
 		}
 		plan.targets = append(plan.targets, t)
 	}
@@ -666,7 +666,7 @@ func (m *workspaceModel) acceptFolderReplace(r *fileIOResult) {
 			err = fmt.Errorf("项目已关闭")
 		}
 		if err == nil && t.file != nil {
-			if j.project.Files[t.path] != t.file || t.file.Content != t.before {
+			if j.project.Files[t.path] != t.file || t.file.content() != t.before {
 				err = fmt.Errorf("文档已改变，保留当前编辑")
 			} else {
 				m.applyFileContent(t.file, j.project, t.after, true)

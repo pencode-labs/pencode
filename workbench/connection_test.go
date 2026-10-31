@@ -117,7 +117,7 @@ func TestConnectionRestoresCurrentUnsavedBufferAndHistory(t *testing.T) {
 	if model.terminals.active != item || !item.exited || item.screen.Revision != screenRevision {
 		t.Fatal("recovery discarded the retired terminal screen")
 	}
-	if s.backend != next || model.backend != next || project.backend != next || file.document == nil || file.document == old || file.Content != "package latest\n// 中文🙂\n" || !file.Dirty || len(file.undo) != undoCount {
+	if s.backend != next || model.backend != next || project.backend != next || file.document == nil || file.document == old || file.content() != "package latest\n// 中文🙂\n" || !file.Dirty || len(file.undo) != undoCount {
 		t.Fatal("recovery lost the current buffer, history or connection ownership", s.connection.message)
 	}
 	data, err := os.ReadFile(filepath.Join(project.Path, "main.go"))
@@ -128,7 +128,7 @@ func TestConnectionRestoresCurrentUnsavedBufferAndHistory(t *testing.T) {
 		t.Fatal("explicit save after recovery failed", err)
 	}
 	data, _ = os.ReadFile(filepath.Join(project.Path, "main.go"))
-	if string(data) != file.Content {
+	if string(data) != file.content() {
 		t.Fatal("explicit save did not use the new backend")
 	}
 	if allocations := testing.AllocsPerRun(100, func() { model.pollConnection() }); allocations != 0 {
@@ -154,7 +154,7 @@ func TestConnectionRecoveryPreservesExternalConflict(t *testing.T) {
 	resourceTestWrite(t, project, "main.go", "package external\n")
 	model.pollConnection()
 	waitConnection(t, model)
-	if file.Content != "package local\n" || !file.Dirty || file.document != nil || !strings.Contains(s.connection.message, "远端内容已变化") {
+	if file.content() != "package local\n" || !file.Dirty || file.document != nil || !strings.Contains(s.connection.message, "远端内容已变化") {
 		t.Fatal("external conflict was silently reconciled", s.connection.message)
 	}
 	if err := savePencodeFile(next, project.Path, file); err == nil {
@@ -312,7 +312,7 @@ func TestRemoteConnectionsDoNotChangeCurrentProject(t *testing.T) {
 	if calls != 4 || !model.connectionConnected(one) || !model.connectionConnected(two) || !model.connectionConnected(ssh) {
 		t.Fatal("independent remote links did not reconnect")
 	}
-	if s.backend != local || model.backend != local || project.backend != local || model.activeFile() != file || file.document != document || file.Content != "package editing\n" || !file.Dirty || len(model.projects) != 1 {
+	if s.backend != local || model.backend != local || project.backend != local || model.activeFile() != file || file.document != document || file.content() != "package editing\n" || !file.Dirty || len(model.projects) != 1 {
 		t.Fatal("maintaining remote connections changed the current project")
 	}
 	if allocations := testing.AllocsPerRun(100, func() { model.pollConnection() }); allocations != 0 {
@@ -522,7 +522,7 @@ func TestConnectionPasswordDialogMasksInputAndClearsAfterSubmit(t *testing.T) {
 	languageInteractionStep(t, app)
 	waitConnection(t, model)
 	control, _ = model.fontResources.Get[ui.TextField](field)
-	if s.connection.password != "" || control.Value != "" || !model.connectionConnected(profile) {
+	if s.connection.password != "" || control.Text().String() != "" || !model.connectionConnected(profile) {
 		t.Fatal("password was retained after submitting")
 	}
 	showPrompt()
@@ -533,7 +533,7 @@ func TestConnectionPasswordDialogMasksInputAndClearsAfterSubmit(t *testing.T) {
 	languageInteractionStep(t, app)
 	waitConnection(t, model)
 	control, _ = model.fontResources.Get[ui.TextField](field)
-	if s.connection.password != "" || control.Value != "" || !model.backendConnected() {
+	if s.connection.password != "" || control.Text().String() != "" || !model.backendConnected() {
 		t.Fatal("cancel retained password input or affected the project")
 	}
 }
@@ -560,7 +560,7 @@ func TestConnectionRestoresOnlyWorkspaceOnItsOwnSSHLink(t *testing.T) {
 		t.Fatal("workspace SSH loss did not retire stale handles")
 	}
 	waitConnection(t, model)
-	if s.backend != next || project.backend != next || s.localBackend != local || local.Err() != nil || file.Content != "package editing\n" || file.document == nil || !file.Dirty || !model.connectionConnected(profile) {
+	if s.backend != next || project.backend != next || s.localBackend != local || local.Err() != nil || file.content() != "package editing\n" || file.document == nil || !file.Dirty || !model.connectionConnected(profile) {
 		t.Fatal("SSH workspace recovery lost local state or changed another connection")
 	}
 }
@@ -614,7 +614,7 @@ func TestConnectionHostTrustDialogThenPassword(t *testing.T) {
 	waitPrompt(false)
 	field, _ = model.fontResources.HTMLControl(model.surface, "connection-password")
 	control, mounted := model.fontResources.Get[ui.TextField](field)
-	if !mounted || !control.Password || !control.Focused || control.Value != "" {
+	if !mounted || !control.Password || !control.Focused || control.Text().String() != "" {
 		t.Fatal("host confirmation did not transition to a fresh password input")
 	}
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "temporary-secret"})

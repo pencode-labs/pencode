@@ -25,6 +25,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		if control, ok := world.HTMLControl(m.surface, "sc-merge-result"); ok {
 			if field := world.Mut[engineui.TextField](control); field != nil {
 				field.Buffer = tab.textBuffer(tab.Result)
+				field.Source = snapshotText(tab.Result)
 			}
 		}
 	}
@@ -59,6 +60,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		}
 		if side == 1 && tab.editable() {
 			field.Buffer = tab.textBuffer(value)
+			field.Source = snapshotText(value)
 		} else {
 			field.Buffer = nil
 		}
@@ -68,7 +70,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		if s.diffPaneTab != tab {
 			field.Caret, field.Anchor, field.Composition, field.Selecting = 0, 0, "", false
 		}
-		if s.diffEditors[side].caretContent != value {
+		if s.diffEditors[side].caretContent != snapshotText(value) {
 			count := utf8.RuneCountInString(value)
 			field.Caret, field.Anchor = min(field.Caret, count), min(field.Anchor, count)
 		}
@@ -91,7 +93,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		s.diffEditors[side].syncPaint(text, *field, spans, paint)
 		s.inlinePaint[side].sync(world, m, tab, side, text)
 		// The outer viewport owns scrolling, including automatic caret reveal.
-		if field.Focused && (s.diffEditors[side].caretContent != value || s.diffEditors[side].caretIndex != field.Caret) {
+		if field.Focused && (s.diffEditors[side].caretContent != snapshotText(value) || s.diffEditors[side].caretIndex != field.Caret) {
 			if node, ok := world.HTMLNode(m.surface, [...]string{"sc-code-left", "sc-code-right"}[side]); ok {
 				if area, ok := node.ScrollContainer(); ok {
 					if scroll := world.Mut[scene.UIScroll](area); scroll != nil {
@@ -114,7 +116,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 				}
 			}
 		}
-		s.diffEditors[side].caretContent, s.diffEditors[side].caretIndex = value, field.Caret
+		s.diffEditors[side].caretContent, s.diffEditors[side].caretIndex = snapshotText(value), field.Caret
 	}
 	s.diffPaneTab = tab
 }

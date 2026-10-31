@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/diiyw/onix/text/piecetree"
 )
 
 type URI string
@@ -154,55 +156,48 @@ func units(r rune, size int, encoding PositionEncoding) int {
 	}
 	return 1
 }
-func PositionAt(text string, offset int, encoding PositionEncoding) (Position, error) {
-	if offset < 0 || offset > len(text) || offset < len(text) && !utf8.RuneStart(text[offset]) {
+func PositionAt[V piecetree.Value](value V, offset int, encoding PositionEncoding) (Position, error) {
+	text := piecetree.Text(value)
+	if offset < 0 || offset > text.Len() || offset < text.Len() && !utf8.RuneStart(text.ByteAt(offset)) {
 		return Position{}, fmt.Errorf("lsp: invalid byte offset %d", offset)
 	}
-	if offset > 0 && offset < len(text) && text[offset-1] == '\r' && text[offset] == '\n' {
+	if offset > 0 && offset < text.Len() && text.ByteAt(offset-1) == '\r' && text.ByteAt(offset) == '\n' {
 		return Position{}, fmt.Errorf("lsp: byte offset splits CRLF: %d", offset)
 	}
-	prefix := text[:offset]
-	p := Position{Line: strings.Count(prefix, "\n")}
-	start := strings.LastIndexByte(prefix, '\n') + 1
-	for i := start; i < offset; {
-		r, size := utf8.DecodeRuneInString(text[i:])
-		if r == '\n' {
-			p.Line++
-			p.Character = 0
-		} else if r != '\r' || i+1 >= len(text) || text[i+1] != '\n' {
+	line, _ := text.Position(offset)
+	p := Position{Line: line}
+	for i := text.LineStart(line); i < offset; {
+		r, size := text.DecodeRune(i)
+		if r != '\r' || i+1 >= text.Len() || text.ByteAt(i+1) != '\n' {
 			p.Character += units(r, size, encoding)
 		}
 		i += size
 	}
 	return p, nil
 }
-func OffsetAt(text string, p Position, encoding PositionEncoding) (int, error) {
+func OffsetAt[V piecetree.Value](value V, p Position, encoding PositionEncoding) (int, error) {
+	text := piecetree.Text(value)
 	if p.Line < 0 || p.Character < 0 {
 		return 0, fmt.Errorf("lsp: negative position")
 	}
-	line, column := 0, 0
-	for i := 0; ; {
-		if line == p.Line && column == p.Character {
+	if p.Line >= text.Lines() {
+		return 0, fmt.Errorf("lsp: position beyond document: %+v", p)
+	}
+	column := 0
+	for i := text.LineStart(p.Line); ; {
+		if column == p.Character {
 			return i, nil
 		}
-		if i == len(text) {
+		if i == text.Len() {
 			return 0, fmt.Errorf("lsp: position beyond document: %+v", p)
 		}
-		r, size := utf8.DecodeRuneInString(text[i:])
-		if r == '\n' {
-			if line == p.Line {
-				return 0, fmt.Errorf("lsp: position beyond line: %+v", p)
-			}
-			line++
-			column = 0
-		} else if line == p.Line {
-			if r == '\r' && i+1 < len(text) && text[i+1] == '\n' {
-				return 0, fmt.Errorf("lsp: position beyond line: %+v", p)
-			}
-			column += units(r, size, encoding)
-			if column > p.Character {
-				return 0, fmt.Errorf("lsp: position splits a character: %+v", p)
-			}
+		r, size := text.DecodeRune(i)
+		if r == '\n' || r == '\r' && i+1 < text.Len() && text.ByteAt(i+1) == '\n' {
+			return 0, fmt.Errorf("lsp: position beyond line: %+v", p)
+		}
+		column += units(r, size, encoding)
+		if column > p.Character {
+			return 0, fmt.Errorf("lsp: position splits a character: %+v", p)
 		}
 		i += size
 	}

@@ -90,7 +90,7 @@ func TestSourceDiffNativeEditingCopyRevertAndSave(t *testing.T) {
 	}
 	valueEntity, _ := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](rightControl)
 	value := m.fontResources.Ref[scene.Text2D](valueEntity)
-	if value.Value != right || len(value.Spans) == 0 || value.LineLayout == nil {
+	if value.Text().String() != right || len(value.Spans) == 0 || value.LineLayout == nil {
 		t.Fatal("native editor lost source text/highlighting/alignment")
 	}
 	leftTextEntity, _ := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](leftControl)
@@ -107,7 +107,7 @@ func TestSourceDiffNativeEditingCopyRevertAndSave(t *testing.T) {
 	field.Anchor, field.Caret = 0, 0
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "forbidden"})
 	languageInteractionStep(t, app)
-	if m.fontResources.Ref[engineui.TextField](leftControl).Value != left {
+	if m.fontResources.Ref[engineui.TextField](leftControl).Text().String() != left {
 		t.Fatal("readonly side accepted input")
 	}
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftControl})

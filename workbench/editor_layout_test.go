@@ -40,7 +40,7 @@ func TestPencodeEditorCentersFontMetricsInRows(t *testing.T) {
 						for line := range count {
 							start, end, row, ok := scene.TextLineRange2D(text, line)
 							if !ok {
-								t.Fatalf("entity %d line %d missing from %q", entity, line, text.Value)
+								t.Fatalf("entity %d line %d missing from %q", entity, line, text.Text().String())
 							}
 							_, underline, ok := scene.AppendTextUnderlineRects2D(segments[:0], text, line, start, end, 1)
 							if !ok {

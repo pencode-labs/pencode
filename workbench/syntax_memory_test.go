@@ -10,7 +10,7 @@ import (
 )
 
 func TestPencodeIdleParserReleaseAndReparse(t *testing.T) {
-	file := &openFile{Path: "main.go", Content: "package demo\nvar Before = 1\n"}
+	file := &openFile{Path: "main.go", contentSnapshot: snapshotText("package demo\nvar Before = 1\n")}
 	model := workspaceModel{files: map[string]*openFile{file.Path: file}, tabs: []string{file.Path}, activePath: file.Path}
 	defer model.closeHighlightWorker()
 	settlePencodeHighlight(t, &model)
@@ -31,7 +31,7 @@ func TestPencodeIdleParserReleaseAndReparse(t *testing.T) {
 	settlePencodeHighlight(t, &model)
 	var document syntax.Document
 	defer document.Close()
-	if err := document.Update(file.Path, file.Content); err != nil {
+	if err := document.Update(file.Path, file.content()); err != nil {
 		t.Fatal(err)
 	}
 	var expected []scene.TextSpan2D
@@ -46,7 +46,7 @@ func TestPencodeIdleParserReleaseAndReparse(t *testing.T) {
 func TestPencodeIdleParserKeepsUncachedOrPendingDocument(t *testing.T) {
 	for _, pending := range []bool{false, true} {
 		t.Run(map[bool]string{false: "uncached", true: "pending"}[pending], func(t *testing.T) {
-			file := &openFile{Path: "main.go", Content: "package demo\nvar Value = 1\n"}
+			file := &openFile{Path: "main.go", contentSnapshot: snapshotText("package demo\nvar Value = 1\n")}
 			model := workspaceModel{files: map[string]*openFile{file.Path: file}, tabs: []string{file.Path}, activePath: file.Path}
 			defer model.closeHighlightWorker()
 			settlePencodeHighlight(t, &model)

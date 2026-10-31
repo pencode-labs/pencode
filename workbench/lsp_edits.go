@@ -89,10 +89,10 @@ func (model *workspaceModel) applyLanguageWorkspaceEdit(session *pencodeLanguage
 				return fmt.Errorf("未打开文档不能使用指定版本：%s", relative)
 			}
 		} else {
-			t.before = t.file.Content
+			t.before = t.file.content()
 			if version != nil {
 				doc := model.languages.documents[t.file]
-				if doc == nil || doc.version != *version || doc.content != t.before {
+				if doc == nil || doc.version != *version || !doc.content.Equal(snapshotText(t.before)) {
 					return fmt.Errorf("文档版本已改变：%s", relative)
 				}
 			}
@@ -176,13 +176,13 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 	if err == nil {
 		for _, t := range plan.targets {
 			f := files[t.relative]
-			if f != t.file || f != nil && f.Content != t.before {
+			if f != t.file || f != nil && f.content() != t.before {
 				err = fmt.Errorf("文档已改变，编辑未应用：%s", t.relative)
 				break
 			}
 			if t.version != nil {
 				doc := m.languages.documents[f]
-				if doc == nil || doc.version != *t.version || doc.content != t.before {
+				if doc == nil || doc.version != *t.version || !doc.content.Equal(snapshotText(t.before)) {
 					err = fmt.Errorf("文档版本已改变：%s", t.relative)
 					break
 				}
@@ -194,7 +194,7 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 			t := &plan.targets[i]
 			f := t.file
 			if f == nil {
-				f = &openFile{document: t.document, Path: t.relative, Name: filepath.Base(t.relative), Content: t.before, savedContent: t.before}
+				f = &openFile{document: t.document, Path: t.relative, Name: filepath.Base(t.relative), contentSnapshot: snapshotText(t.before), savedContent: snapshotText(t.before)}
 				t.document = nil
 				files[t.relative] = f
 				if j.project != nil {

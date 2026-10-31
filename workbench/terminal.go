@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pencode-labs/pencode/terminal"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/terminal"
 )
 
 type terminalTabBinding struct {

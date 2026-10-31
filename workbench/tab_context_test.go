@@ -100,7 +100,7 @@ func TestPencodeTabContextCloseActions(t *testing.T) {
 		t.Run(fmt.Sprint(tc.action), func(t *testing.T) {
 			project := &pencodeProject{Path: t.TempDir(), Files: make(map[string]*openFile), Tabs: []string{"a.go", "b.go", "c.go", "d.go"}, ActivePath: "c.go"}
 			for _, path := range project.Tabs {
-				project.Files[path] = &openFile{Path: path, Name: path, Content: "unsaved", Dirty: path == "a.go" || path == "d.go"}
+				project.Files[path] = &openFile{Path: path, Name: path, contentSnapshot: snapshotText("unsaved"), Dirty: path == "a.go" || path == "d.go"}
 			}
 			model := &workspaceModel{projects: []*pencodeProject{project}}
 			model.syncActiveProjectFields()

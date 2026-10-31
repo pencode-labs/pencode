@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/pencode-labs/pencode/internal/buffer"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/server/workspace"
 )
@@ -83,7 +84,8 @@ func Serve(parent context.Context, conn io.ReadWriteCloser, options Options) err
 		if frame.Kind >= protocol.Reply {
 			return protocol.ErrProtocol
 		}
-		if partial, ok := partials[frame.ID]; ok {
+		partial, owned := partials[frame.ID]
+		if owned {
 			if len(partial)+len(frame.Payload) > protocol.MaxMessage {
 				return protocol.ErrProtocol
 			}
@@ -100,28 +102,44 @@ func Serve(parent context.Context, conn io.ReadWriteCloser, options Options) err
 			e = output.encoder()
 			initialized = true
 		} else if frame.Kind == protocol.Service {
+			// Completed fragmented uploads already own their storage. Other frames
+			// borrow the reader and must be copied before another Read.
+			var payload *buffer.Buffer
+			if owned {
+				payload = &buffer.Buffer{Bytes: frame.Payload}
+			} else {
+				payload = buffer.Get(len(frame.Payload))
+				copy(payload.Bytes, frame.Payload)
+			}
 			activeMu.Lock()
-			if len(active) >= 48 || activeBytes+len(frame.Payload) > 128<<20 {
+			if len(active) >= 48 || activeBytes+cap(payload.Bytes) > 128<<20 {
 				activeMu.Unlock()
+				buffer.Put(payload)
 				output.reply(frame.ID, output.encoder(), &protocol.Error{Code: protocol.Busy, Message: "service queue is full"})
 				continue
 			}
 			if active[frame.ID] != nil {
 				activeMu.Unlock()
+				buffer.Put(payload)
 				return protocol.ErrProtocol
 			}
 			jobCtx, stop := context.WithCancel(ctx)
 			active[frame.ID] = stop
-			activeBytes += len(frame.Payload)
+			activeBytes += cap(payload.Bytes)
 			activeMu.Unlock()
-			payload := append([]byte(nil), frame.Payload...)
 			workers.Add(1)
 			go func(id uint64) {
 				defer workers.Done()
 				defer stop()
-				defer func() { activeMu.Lock(); delete(active, id); activeBytes -= len(payload); activeMu.Unlock() }()
+				defer func() {
+					activeMu.Lock()
+					delete(active, id)
+					activeBytes -= cap(payload.Bytes)
+					activeMu.Unlock()
+					buffer.Put(payload)
+				}()
 				result := output.encoder()
-				err := services.dispatch(jobCtx, payload, result)
+				err := services.dispatch(jobCtx, payload.Bytes, result)
 				output.reply(id, result, err)
 			}(frame.ID)
 			continue

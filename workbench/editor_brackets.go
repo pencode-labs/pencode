@@ -6,6 +6,7 @@ import (
 
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 )
 
@@ -15,7 +16,7 @@ type pencodeBracket struct {
 }
 
 type pencodeBracketIndex struct {
-	source string
+	source piecetree.Snapshot
 	items  []pencodeBracket
 	spans  []scene.TextSpan2D
 	paint  pencodeOverlayKey
@@ -23,7 +24,7 @@ type pencodeBracketIndex struct {
 
 // A paint revision is required as reusable span buffers can change in place.
 type pencodeOverlayKey struct {
-	source             string
+	source             piecetree.Snapshot
 	base               *scene.TextSpan2D
 	count              int
 	paint, semantic    uint64
@@ -33,7 +34,8 @@ type pencodeOverlayKey struct {
 	linked             bool
 }
 
-func pencodeOverlayPaintKey(model *workspaceModel, source string, base []scene.TextSpan2D, start, end int) pencodeOverlayKey {
+func pencodeOverlayPaintKey[V piecetree.Value](model *workspaceModel, inputSource V, base []scene.TextSpan2D, start, end int) pencodeOverlayKey {
+	source := piecetree.Text(inputSource)
 	key := pencodeOverlayKey{source: source, count: len(base), paint: model.highlightPaintRevision, semantic: model.semanticPaintRevision, theme: model.workbenchTheme, start: start, end: end}
 	hover := &model.languageUI.hover
 	if hover.link && hover.file == model.activeFile() && hover.content == source {
@@ -45,8 +47,8 @@ func pencodeOverlayPaintKey(model *workspaceModel, source string, base []scene.T
 	return key
 }
 
-func (index *pencodeBracketIndex) set(source string, items []pencodeBracket) {
-	index.source = source
+func (index *pencodeBracketIndex) set[V piecetree.Value](source V, items []pencodeBracket) {
+	index.source = piecetree.Text(source)
 	index.items = append(index.items[:0], items...)
 	index.paint = pencodeOverlayKey{}
 }
@@ -108,10 +110,10 @@ func (builder *pencodeBracketBuilder) add(source string, tokens []syntax.Token, 
 }
 
 func (index *pencodeBracketIndex) highlight(field engineui.TextField, model *workspaceModel, base []scene.TextSpan2D) []scene.TextSpan2D {
-	if !field.Focused || field.Caret != field.Anchor || field.Composition != "" || index.source != field.Value || len(index.items) == 0 || model.workbenchTheme == nil {
+	if !field.Focused || field.Caret != field.Anchor || field.Composition != "" || index.source != field.Text() || len(index.items) == 0 || model.workbenchTheme == nil {
 		return base
 	}
-	offset := model.activeFile().textBuffer(field.Value).ByteOffset(field.Caret)
+	offset := model.activeFile().snapshotBuffer().ByteOffset(field.Caret)
 	item, found := slices.BinarySearchFunc(index.items, offset, func(bracket pencodeBracket, offset int) int {
 		return bracket.Offset - offset
 	})
@@ -130,7 +132,7 @@ func (index *pencodeBracketIndex) highlight(field engineui.TextField, model *wor
 		start, end = end, start
 	}
 	color := model.workbenchTheme.bracket
-	key := pencodeOverlayPaintKey(model, field.Value, base, start, end)
+	key := pencodeOverlayPaintKey(model, field.Text(), base, start, end)
 	if key == index.paint {
 		return index.spans
 	}

@@ -61,9 +61,9 @@ func (model *workspaceModel) openFind(replace bool) {
 			if !model.findSelection {
 				model.captureFindScope(world)
 			}
-			buffer := model.activeFile().textBuffer(model.activeContent())
+			buffer := model.activeFile().snapshotBuffer()
 			start, end := buffer.ByteOffset(min(field.Caret, field.Anchor)), buffer.ByteOffset(max(field.Caret, field.Anchor))
-			if selected := model.activeContent()[start:end]; !strings.ContainsAny(selected, "\r\n") {
+			if selected := model.activeSnapshot().Slice(start, end); !strings.ContainsAny(selected, "\r\n") {
 				model.findQuery = selected
 			}
 		}
@@ -75,7 +75,7 @@ func (model *workspaceModel) openFind(replace bool) {
 func (model *workspaceModel) findFromCaret(world *module.Content) {
 	if world != nil && len(model.findMatches) > 0 {
 		if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
-			offset := model.activeFile().textBuffer(model.activeContent()).ByteOffset(min(field.Anchor, field.Caret))
+			offset := model.activeFile().snapshotBuffer().ByteOffset(min(field.Anchor, field.Caret))
 			model.findIndex = sort.Search(len(model.findMatches), func(i int) bool { return model.findMatches[i].Start >= offset })
 			if model.findIndex == len(model.findMatches) {
 				model.findIndex = 0
@@ -96,7 +96,7 @@ func (model *workspaceModel) closeFind(world *module.Content) {
 }
 
 func (model *workspaceModel) refreshFindMatches() {
-	content := model.activeContent()
+	content := model.activeSnapshot()
 	if model.findSelection && model.findScope.file != model.activeFile() {
 		model.findSelection = false
 	}
@@ -117,7 +117,12 @@ func (model *workspaceModel) refreshFindMatches() {
 	}
 	model.findContent, model.findCachedQuery, model.findCachedOptions = content, model.findQuery, model.findOptions
 	model.findCachedScope = scope
-	model.findMatches = model.scopedFindMatches(content, model.findMatches, pencodeFindMatchLimit)
+	if model.findQuery == "" || model.findError != "" {
+		clear(model.findMatches)
+		model.findMatches = model.findMatches[:0]
+	} else {
+		model.findMatches = model.scopedFindMatches(content.String(), model.findMatches, pencodeFindMatchLimit)
+	}
 	model.findRevision++
 	if len(model.findMatches) == 0 {
 		model.findIndex = 0
@@ -144,11 +149,10 @@ func (model *workspaceModel) selectFindMatch(world *module.Content) {
 	if len(model.findMatches) == 0 || world == nil || !world.IsAlive(model.editor.control) {
 		return
 	}
-	content := model.activeContent()
+	content := model.activeSnapshot()
 	match := model.findMatches[model.findIndex]
 	start, end := match.Start, match.End
-	anchor := utf8.RuneCountInString(content[:start])
-	caret := anchor + utf8.RuneCountInString(content[start:end])
+	anchor, caret := content.RuneOffset(start), content.RuneOffset(end)
 	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
 		field.Anchor, field.Caret = anchor, caret
 	}
@@ -156,7 +160,7 @@ func (model *workspaceModel) selectFindMatch(world *module.Content) {
 }
 
 func (model *workspaceModel) revealEditorCaret(world *module.Content, caret int) {
-	content := model.activeContent()
+	content := model.activeSnapshot()
 	text := world.Mut[scene.Text2D](model.editor.text)
 	textarea := world.Mut[engineui.Textarea](model.editor.control)
 	if text == nil || textarea == nil {

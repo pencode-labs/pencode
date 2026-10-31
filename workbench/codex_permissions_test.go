@@ -14,7 +14,7 @@ import (
 
 func TestPencodeCodexPermissionTextLayout(t *testing.T) {
 	app, model, _, _ := languageInteractionFixture(t)
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,9 +47,9 @@ func TestPencodeCodexPermissionTextLayout(t *testing.T) {
 				transform, _ := app.World.Get[scene.UITransform](entity)
 				rect := scene.TextRangeRect2D{Y: transform.Translation.Y.Value, Height: text.LineHeight}
 				switch {
-				case strings.HasPrefix(text.Value, "请"):
+				case strings.HasPrefix(text.Text().String(), "请"):
 					label = rect
-				case strings.HasPrefix(text.Value, "编"):
+				case strings.HasPrefix(text.Text().String(), "编"):
 					description = rect
 				}
 			}

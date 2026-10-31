@@ -130,7 +130,7 @@ func sourceInlineID(side, row, change int) string {
 func (paint *sourceInlinePaint) sync(world *module.Content, model *workspaceModel, tab *sourceTab, side int, text *scene.Text2D) {
 	key := sourceInlinePaintKey{
 		tab: tab, revision: tab.DiffRevision, firstRow: tab.FirstRow,
-		layout:  pencodeGutterLayoutKey{text.Value, text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
+		layout:  pencodeGutterLayoutKey{text.Text(), text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
 		spacing: text.LetterSpacing,
 	}
 	if paint.key == key {
@@ -142,7 +142,7 @@ func (paint *sourceInlinePaint) sync(world *module.Content, model *workspaceMode
 		if side == 1 {
 			value = line.Right
 		}
-		ready := side == 0 || text.Value == tab.DiffContent
+		ready := side == 0 || text.Text().Equal(snapshotText(tab.DiffContent))
 		if ready && len(line.Changes) > 0 {
 			paint.offsets = paint.offsets[:0]
 			for _, change := range line.Changes {

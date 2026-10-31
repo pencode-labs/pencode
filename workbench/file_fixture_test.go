@@ -76,7 +76,7 @@ func savePencodeFile(backend *client.Client, projectPath string, file *openFile)
 		if err != nil {
 			return err
 		}
-		if saved != file.savedContent {
+		if saved != file.savedContent.String() {
 			document.Close()
 			return &protocol.Error{Code: protocol.Conflict, Message: "文件已被其他程序修改，请先比较或重新加载"}
 		}
@@ -84,13 +84,13 @@ func savePencodeFile(backend *client.Client, projectPath string, file *openFile)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	err := file.document.Save(ctx, file.Content)
+	err := file.document.Save(ctx, file.content())
 	if err != nil {
 		return fmt.Errorf("保存 %s 失败：%w", file.Name, err)
 	}
 	file.Dirty = false
 	file.saveRevision++
-	file.savedContent = file.Content
+	file.savedContent = file.snapshot()
 	return nil
 }
 

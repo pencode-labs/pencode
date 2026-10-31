@@ -7,6 +7,7 @@ import (
 
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/client"
 )
@@ -27,6 +28,7 @@ type pencodeHighlightJob struct {
 	diff              bool
 	path              string
 	source            string
+	documentText      piecetree.Snapshot
 	lines, characters int
 	counted           bool
 	theme             *syntax.Theme
@@ -78,6 +80,9 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		// Idle maintenance also drops reusable buffers for oversized documents.
 		*result = pencodeHighlightResult{}
 		return false
+	}
+	if job.file != nil {
+		job.source = job.documentText.String()
 	}
 	result.job = job
 	if job.snapshot {
@@ -146,8 +151,8 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 }
 
 func (model *workspaceModel) submitHighlight(file *openFile) {
-	job := pencodeHighlightJob{file: file, path: file.Path, source: file.Content}
-	if file.buffer.Matches(file.Content) {
+	job := pencodeHighlightJob{file: file, path: file.Path, documentText: file.snapshot()}
+	if file.buffer.MatchesSnapshot(file.snapshot()) {
 		job.counted, job.lines, job.characters = true, file.buffer.Lines(), file.buffer.Runes()
 	}
 	model.submitHighlightJob(job)
@@ -192,14 +197,14 @@ func (model *workspaceModel) pollHighlight() bool {
 		}
 		file := model.activeFile()
 		if job.revision != model.highlightRevision || file == nil || file != job.file ||
-			file.Path != job.path || file.Content != job.source || model.syntaxTheme != job.theme ||
+			file.Path != job.path || file.snapshot() != job.documentText || model.syntaxTheme != job.theme ||
 			model.syntaxDefinitions != job.definitions || !model.textEditorActive() || model.highlightPending {
 			return
 		}
-		model.highlightedPath, model.highlightedContent, model.highlighted = job.path, job.source, true
+		model.highlightedPath, model.highlightedContent, model.highlighted = job.path, job.documentText, true
 		model.highlightScratch, result.spans = result.spans, model.highlightScratch
 		index := &model.editor.brackets
-		index.source, index.paint = job.source, pencodeOverlayKey{}
+		index.source, index.paint = job.documentText, pencodeOverlayKey{}
 		index.items, result.brackets.items = result.brackets.items, index.items
 		model.highlightPaintRevision++
 		model.lineCount, model.characterCount, model.lineInfo = result.lines, result.characters, result.lineInfo
@@ -210,7 +215,7 @@ func (model *workspaceModel) pollHighlight() bool {
 				model.highlightCache = &pencodeHighlightCache{}
 			}
 			model.highlightCache.put(pencodeHighlightCacheEntry{
-				file: file, source: job.source, theme: job.theme, definitions: job.definitions,
+				file: file, source: job.documentText, theme: job.theme, definitions: job.definitions,
 				spans: model.highlightScratch, brackets: model.editor.brackets.items, lines: result.lines, characters: result.characters, lineInfo: result.lineInfo,
 			})
 		}

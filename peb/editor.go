@@ -34,7 +34,12 @@ type EditorReply struct {
 
 // Extension UI fragments can use img with data-ref and data-pencode-icon="name"
 // to reuse a built-in IDE icon with its theme color, raster scale and texture
-// cache; omit src.
+// cache; omit src. Icons inside anchors or role="link" use textLink.foreground.
+// UI surface anchors with data-ref and href open workspace files in permanent editor tabs
+// or HTTP(S)/mailto links in the system browser. Relative paths in UI surfaces
+// resolve against ActionContext.ProjectPath. File links accept :line[:column]
+// and #Lline locations. An explicit click binding takes ownership of the link.
+// Native buttons can use role="link" and data-pencode-href for the same navigation.
 // EditorTab fragments can use data-pencode-layout="fill" to fill the editor
 // without host padding or scrolling. An element with data-ref and
 // data-pencode-scroll="end" follows new output until the user scrolls up;
@@ -50,6 +55,11 @@ type EditorReply struct {
 // layout. Use border-box sizing and CSS min/max-height to bound its height.
 // data-pencode-submit-on-enter="form" submits the named form binding on Enter;
 // Shift+Enter inserts a newline, and IME confirmation keeps its native behavior.
+// data-pencode-completion="true" routes unmodified Up/Down, Enter/Tab and Escape
+// to EditorEvent{Kind:"completion", Ref:inputRef, Data:action}, with action
+// "previous", "next", "accept" or "dismiss", and the current text/selection.
+// data-pencode-caret="runeOffset:revision" restores focus and a collapsed caret
+// when this attribute changes. Use a new revision for each programmatic edit.
 type EditorView struct {
 	HTML, CSS string
 	Events    []EditorBinding

@@ -17,7 +17,7 @@ func TestCodexComposerGrowsUpwardBeforeScrolling(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
 	w := m.fontResources
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestCodexComposerPointerFocusAcceptsText(t *testing.T) {
 	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1024, 768)
 	}
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestCodexComposerPointerFocusAcceptsText(t *testing.T) {
 		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "输入"})
 		languageInteractionStep(t, app)
 		field = w.Mut[engineui.TextField](control)
-		if field.Value != "输入" {
+		if field.Text().String() != "输入" {
 			t.Fatalf("pointer %v focused the prompt without accepting text: %+v", point, field)
 		}
 		w.SetControlValue(control, "")

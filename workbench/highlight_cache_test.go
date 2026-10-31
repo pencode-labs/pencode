@@ -37,7 +37,7 @@ func TestPencodePreviewSwitchReusesHighlightAfterReadingFile(t *testing.T) {
 		if model.highlightRevision != revision || !slices.Equal(model.highlightScratch, expected[i%2]) {
 			t.Fatal("replacing a preview reparsed unchanged content or changed its highlighting")
 		}
-		if len(project.Files) != 1 || len(project.Tabs) != 1 || previous.document != nil || previous.Content != "" {
+		if len(project.Files) != 1 || len(project.Tabs) != 1 || previous.document != nil || previous.content() != "" {
 			t.Fatal("replaced preview retained its document or editor state")
 		}
 	}
@@ -52,8 +52,8 @@ func TestPencodePreviewSwitchReusesHighlightAfterReadingFile(t *testing.T) {
 
 func TestPencodePreviewHighlightCacheRetention(t *testing.T) {
 	var cache pencodeHighlightCache
-	file := openFile{Path: "preview.go", Preview: true, Content: "package demo\n"}
-	cache.put(pencodeHighlightCacheEntry{file: &file, source: file.Content})
+	file := openFile{Path: "preview.go", Preview: true, contentSnapshot: snapshotText("package demo\n")}
+	cache.put(pencodeHighlightCacheEntry{file: &file, source: file.snapshot()})
 	if allocs := testing.AllocsPerRun(100, func() {
 		cache.retainPreview(&file)
 		cache.restorePreview(&file)
@@ -73,23 +73,23 @@ func TestPencodePreviewHighlightCacheRetention(t *testing.T) {
 	}
 	cache.remove(&file)
 	for i := range 70 {
-		file = openFile{Path: "preview.go", Preview: true, Content: strings.Repeat("x", pencodeHighlightPreviewByteLimit/3+i)}
-		cache.put(pencodeHighlightCacheEntry{file: &file, source: file.Content, spans: []scene.TextSpan2D{{End: 1}}})
+		file = openFile{Path: "preview.go", Preview: true, contentSnapshot: snapshotText(strings.Repeat("x", pencodeHighlightPreviewByteLimit/3+i))}
+		cache.put(pencodeHighlightCacheEntry{file: &file, source: file.snapshot(), spans: []scene.TextSpan2D{{End: 1}}})
 		cache.retainPreview(&file)
 		bytes, spans := 0, 0
 		for _, entry := range cache.entries {
 			if entry.file != nil {
 				t.Fatal("preview cache retained the closed file")
 			}
-			bytes += len(entry.source)
+			bytes += entry.source.Len()
 			spans += cap(entry.spans) + cap(entry.brackets)
 		}
 		if bytes > pencodeHighlightPreviewByteLimit || spans != cache.spans {
 			t.Fatalf("preview retention: bytes=%d spans=%d charged=%d", bytes, spans, cache.spans)
 		}
 	}
-	file = openFile{Path: "large.go", Preview: true, Content: strings.Repeat("x", pencodeHighlightPreviewByteLimit+1)}
-	cache.put(pencodeHighlightCacheEntry{file: &file, source: file.Content})
+	file = openFile{Path: "large.go", Preview: true, contentSnapshot: snapshotText(strings.Repeat("x", pencodeHighlightPreviewByteLimit+1))}
+	cache.put(pencodeHighlightCacheEntry{file: &file, source: file.snapshot()})
 	cache.retainPreview(&file)
 	cache.restorePreview(&file)
 	if _, ok := cache.get(&file, nil, nil); ok {
@@ -98,8 +98,8 @@ func TestPencodePreviewHighlightCacheRetention(t *testing.T) {
 }
 
 func TestPencodeHighlightCachedSwitchDoesNotParseOrAllocate(t *testing.T) {
-	a := &openFile{Path: "a/main.go", Content: "package first\n// 中文\nvar First = 1\n"}
-	b := &openFile{Path: "b/main.go", Content: "package second\nfunc Second() {}\n"}
+	a := &openFile{Path: "a/main.go", contentSnapshot: snapshotText("package first\n// 中文\nvar First = 1\n")}
+	b := &openFile{Path: "b/main.go", contentSnapshot: snapshotText("package second\nfunc Second() {}\n")}
 	model := workspaceModel{files: map[string]*openFile{a.Path: a, b.Path: b}, tabs: []string{a.Path, b.Path}}
 	defer model.closeHighlightWorker()
 	var expected [2][]scene.TextSpan2D
@@ -146,7 +146,7 @@ func TestPencodeHighlightCacheBudgetAndInvalidation(t *testing.T) {
 	theme, _ := syntax.BuiltinTheme("dark-plus")
 	definitions := syntax.DefaultDefinitions()
 	put := func(file *openFile, spans []scene.TextSpan2D) {
-		cache.put(pencodeHighlightCacheEntry{file: file, source: file.Content, theme: theme, definitions: definitions, spans: spans})
+		cache.put(pencodeHighlightCacheEntry{file: file, source: file.snapshot(), theme: theme, definitions: definitions, spans: spans})
 	}
 	large := make([]scene.TextSpan2D, pencodeHighlightCacheSpanLimit/2+1)
 	put(&files[0], large)
@@ -178,7 +178,7 @@ func TestPencodeHighlightCacheBudgetAndInvalidation(t *testing.T) {
 	if _, ok := cache.get(last, theme, &syntax.Definitions{}); ok {
 		t.Fatal("definition change reused stale colors")
 	}
-	last.Content = "changed"
+	last.contentSnapshot = snapshotText("changed")
 	if _, ok := cache.get(last, theme, definitions); ok {
 		t.Fatal("source change reused stale colors")
 	}
@@ -189,7 +189,7 @@ func TestPencodeHighlightCacheBudgetAndInvalidation(t *testing.T) {
 		t.Fatal("removal retained span storage")
 	}
 	for _, entry := range cache.entries {
-		if entry.file != nil || entry.source != "" || entry.spans != nil {
+		if entry.file != nil || entry.source.Len() != 0 || entry.spans != nil {
 			t.Fatal("removal retained file data")
 		}
 	}
@@ -197,19 +197,19 @@ func TestPencodeHighlightCacheBudgetAndInvalidation(t *testing.T) {
 
 func TestPencodeHighlightCacheReusesEditBuffer(t *testing.T) {
 	var cache pencodeHighlightCache
-	file := &openFile{Content: "before"}
+	file := &openFile{contentSnapshot: snapshotText("before")}
 	theme, _ := syntax.BuiltinTheme("monokai")
 	spans := make([]scene.TextSpan2D, 128)
 	put := func() {
-		cache.put(pencodeHighlightCacheEntry{file: file, source: file.Content, theme: theme, spans: spans})
+		cache.put(pencodeHighlightCacheEntry{file: file, source: file.snapshot(), theme: theme, spans: spans})
 	}
 	put()
 	buffer := &cache.entries[file.highlightSlot].spans[0]
 	cache.invalidate(file)
-	if entry, ok := cache.get(file, theme, nil); ok || entry.source != "" {
+	if entry, ok := cache.get(file, theme, nil); ok || entry.source.Len() != 0 {
 		t.Fatal("invalidated entry retained source or remained valid")
 	}
-	file.Content = "after"
+	file.contentSnapshot = snapshotText("after")
 	if allocs := testing.AllocsPerRun(100, func() {
 		cache.invalidate(file)
 		put()
@@ -234,9 +234,9 @@ func TestPencodeHighlightCacheReusesEditBuffer(t *testing.T) {
 
 func BenchmarkPencodeHighlightCacheUpdate(b *testing.B) {
 	var cache pencodeHighlightCache
-	file := &openFile{Content: "source"}
+	file := &openFile{contentSnapshot: snapshotText("source")}
 	spans := make([]scene.TextSpan2D, 2048)
-	value := pencodeHighlightCacheEntry{file: file, source: file.Content, spans: spans}
+	value := pencodeHighlightCacheEntry{file: file, source: file.snapshot(), spans: spans}
 	cache.put(value)
 	b.ReportAllocs()
 	for b.Loop() {
@@ -278,8 +278,8 @@ func TestPencodeHighlightCacheRecyclesClosedFileBuffer(t *testing.T) {
 	var file openFile
 	spans := make([]scene.TextSpan2D, 2048)
 	cycle := func() {
-		file = openFile{Content: "preview"}
-		cache.put(pencodeHighlightCacheEntry{file: &file, source: file.Content, spans: spans})
+		file = openFile{contentSnapshot: snapshotText("preview")}
+		cache.put(pencodeHighlightCacheEntry{file: &file, source: file.snapshot(), spans: spans})
 		cache.remove(&file)
 	}
 	cycle()
@@ -287,7 +287,7 @@ func TestPencodeHighlightCacheRecyclesClosedFileBuffer(t *testing.T) {
 		t.Fatalf("reopening small previews allocated %g paint buffers", allocs)
 	}
 	for _, entry := range cache.entries {
-		if entry.file != nil || entry.source != "" {
+		if entry.file != nil || entry.source.Len() != 0 {
 			t.Fatal("recycled buffer retained closed file data")
 		}
 	}

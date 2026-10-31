@@ -40,7 +40,7 @@ func TestSourceControlFilePaintAfterScrolling(t *testing.T) {
 		found := false
 		for entity, access := range app.World.Query2[scene.Text2D, htmlui.ControlText]().All {
 			control := app.World.GetRef[htmlui.Control](access.B.Ref().Control)
-			if control == nil || control.ID != id || access.A.Ref().Value != path.Base(name) {
+			if control == nil || control.ID != id || access.A.Ref().Text().String() != path.Base(name) {
 				continue
 			}
 			found = true

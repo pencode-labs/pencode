@@ -79,7 +79,7 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyLeftControl})
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "-"})
 	languageInteractionStep(t, app)
-	if field, _ := world.Get[engineui.TextField](model.editor.control); field.Value != strings.Replace(value, " + ", " - ", 1) {
+	if field, _ := world.Get[engineui.TextField](model.editor.control); field.Text().String() != strings.Replace(value, " + ", " - ", 1) {
 		t.Fatal("typing did not replace the selected token")
 	}
 }

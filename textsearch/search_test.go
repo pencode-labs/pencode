@@ -68,6 +68,10 @@ func checkRegexpRange(t testing.TB, content, query string, wholeWord bool, start
 		count = 0
 	}
 	got, total := p.FindRange(content, nil, start, end, limit, countAll)
+	byteMatches, byteTotal := p.FindRange([]byte(content), nil, start, end, limit, countAll)
+	if byteTotal != total || !reflect.DeepEqual(byteMatches, got) {
+		t.Fatalf("byte and string search differ for %q / %q: %v/%d != %v/%d", content, query, byteMatches, byteTotal, got, total)
+	}
 	if total != count || !slices.EqualFunc(got, want, func(a, b Match) bool {
 		const replacement = `$0|$1|${word}`
 		groups := a.groups
@@ -77,6 +81,26 @@ func checkRegexpRange(t testing.TB, content, query string, wholeWord bool, start
 		return a.Start == b.Start && a.End == b.End && slices.Equal(groups, b.groups) && p.Replacement(content, a, replacement) == string(p.re.ExpandString(nil, replacement, content, b.groups))
 	}) {
 		t.Fatalf("%q / %q, whole=%t range=%d:%d limit=%d countAll=%t: got %v/%d want %v/%d", content, query, wholeWord, start, end, limit, countAll, got, total, want, count)
+	}
+}
+
+func TestWarmByteSearchDoesNotAllocate(t *testing.T) {
+	content := []byte(strings.Repeat("K k K S s ſ Σ σ ς\n", 1000))
+	for _, options := range []Options{{CaseSensitive: true}, {}, {WholeWord: true}, {Regex: true}} {
+		p, err := Compile("k", options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dst, want := p.FindRange(content, nil, 0, len(content), 20, true)
+		if n := testing.AllocsPerRun(20, func() {
+			var count int
+			dst, count = p.FindRange(content, dst, 0, len(content), 20, true)
+			if count != want || len(dst) != 20 {
+				panic("byte search lost matches")
+			}
+		}); n != 0 {
+			t.Fatalf("options=%+v: byte search allocated %g times", options, n)
+		}
 	}
 }
 

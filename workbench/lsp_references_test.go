@@ -241,7 +241,7 @@ func TestLanguageReferenceGroupControlsAndNavigation(t *testing.T) {
 	}
 	languageInteractionStep(t, app)
 	field := world.Ref[engineui.TextField](model.editor.control)
-	if !field.Focused || field.Value[field.Caret:field.Anchor] != "symbol" {
+	if !field.Focused || field.Text().String()[field.Caret:field.Anchor] != "symbol" {
 		t.Fatalf("reference navigation did not highlight its target: caret=%d anchor=%d focused=%v", field.Caret, field.Anchor, field.Focused)
 	}
 }

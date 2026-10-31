@@ -1,10 +1,10 @@
-# peb v14 — Pencode Extension Binary
+# peb v15 — Pencode Extension Binary
 
 peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）和 `ExtensionSettings`（扩展配置）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **14**，为调试适配器增加启动器 JSON 模板；已有 Go 扩展需用当前 SDK 重新构建，不提供旧协议兼容分支。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **15**，为通知增加严重级别；宿主与扩展需用当前 SDK 重新构建。
 
 ## 扩展配置
 
@@ -441,6 +441,8 @@ err = publisher.Show(peb.UI{
 })
 ```
 
+`Severity` 选择通知风格：`peb.NotificationInfo`（默认普通通知）、`peb.NotificationWarning`（警告）、`peb.NotificationError`（错误）。工作台使用当前主题的通知配色、左侧色条及对应图标区分；错误使用 alert 语义。该字段仅适用于 Notification，每次更新需传入当前级别，省略恢复普通通知。
+
 通知使用相同的 `View` 和 `UIEvent`，支持自定义 HTML/CSS、表单与多个操作按钮。`AutoCloseMS` 仅适用于 Notification：0（默认）持续显示，正数指定自动关闭的毫秒数，关闭时发送 `Reason="timeout"`。更新同一 ID 会重置计时；传 0 取消自动关闭。通知始终可以点击关闭按钮或调用 `CloseUI` 关闭；焦点在通知控件内时支持 Esc，编辑器中的 Esc 不会关闭通知。自动关闭和关闭按钮不会移走其他控件的焦点。
 
 在扩展 UI 中添加 `<button data-ref="logs" data-pencode-action="show-output" type="button">查看日志</button>`，工作台会直接打开 Output 并选中当前扩展的 `Extension: <id>` 通道，清空日志过滤条件。此按钮无需声明 `Events`，点击由工作台处理，不发送 `UIEvent`；禁用和隐藏按钮不触发操作。
@@ -448,6 +450,7 @@ err = publisher.Show(peb.UI{
 ```go
 err := publisher.Show(peb.UI{
     ID: "build-result", Title: "构建完成", Kind: peb.Notification,
+    Severity: peb.NotificationInfo, // 警告和错误分别使用 NotificationWarning / NotificationError。
     AutoCloseMS: 5000, // 省略则一直显示，等待手动关闭或扩展调用 CloseUI。
     View: &peb.EditorView{
         HTML: `<p>构建成功，可以查看结果。</p><button data-ref="open" type="button">查看结果</button>`,
@@ -494,6 +497,8 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 
 `View` 使用与自定义编辑器相同的 `EditorView`、作用域 CSS、主题变量和图片资源规则。通过 `Events` 订阅 `click`、`input`、`change`、`focus`、`blur`、`submit`、`reset`，Ref 对应 `data-ref`。HTML 控件和表单缺少 ID 时由宿主生成独立 ID；未命名控件也能参与键盘焦点导航。`@peb-focus-` 为宿主生成的 ref 前缀，请勿用于自定义 ref。自定义 ID 仍需以 `pencode-extension-` 开头，且应在所有视图间保持唯一。菜单项由扩展使用标准 `role="menuitem"` 等语义描述，表单可直接使用 `form` 和 `button type="submit"`。
 
+输入控件的 `input` 事件携带以 Unicode 字符计数的 `Anchor` 和 `Focus`。设置 `data-pencode-completion="true"` 后，宿主优先将无修饰键的 ↑/↓、Enter/Tab 和 Esc 转为 `completion` 事件，`Ref` 为输入控件的 ref，`Data` 分别为 `previous`、`next`、`accept` 和 `dismiss`，并携带最新文本和选区；无需额外订阅此事件。Shift+Enter 和输入法确认保持原生行为。扩展负责候选的筛选、绘制和应用；插入或替换文本后，可用 `data-pencode-caret="字符位置:修订号"` 恢复光标，每次编辑使用新的修订号。动态增加候选或附件时，应为输入控件及表单指定固定 ID，以保留焦点。
+
 生命周期事件无需显式订阅：
 
 | `e.Event.Kind`     | 内容                                                                             |
@@ -524,6 +529,7 @@ UIUpdate {
   x, y, width, height: f32      // IEEE 754，小端
   closeOnOutsideClick: bool    // Popup 点击外部是否关闭，默认 false
   autoCloseMS: u32             // Notification 自动关闭毫秒数，0 持续显示
+  severity: u32               // Notification: Info=0, Warning=1, Error=2
   busy: bool                  // EditorTab 关闭图标切换为处理动画
   context: ActionContext
   hasView: bool
@@ -541,6 +547,8 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 ```
 
 可构建的完整示例见 [UI Demo](../extensions/ui-demo/main.go)，包含 action 菜单、表单弹窗、自由定位浮窗、点击外部关闭选项、输入与提交事件、Panel 更新、通知自定义操作、自动关闭和关闭事件。
+
+协议版本 15 为 UIUpdate 增加 `severity:u32`；宿主与扩展需要使用相同版本的 PEB 重新构建。运行 `make install-extensions` 会通过临时 Go workspace 使用当前仓库的 SDK 构建所有扩展，扩展源目录的模块文件保持不变。
 
 ## 调试工具
 

@@ -64,7 +64,7 @@ func TestPencodeBracketIndex(t *testing.T) {
 
 func TestPencodeBracketHighlight(t *testing.T) {
 	const source = "中文🙂(a[0]) + {}"
-	file := &openFile{Path: "main.txt", Content: source}
+	file := &openFile{Path: "main.txt", contentSnapshot: snapshotText(source)}
 	color := graphics.ColorFromRGBA(255, 200, 40, 255)
 	model := workspaceModel{activePath: file.Path, files: map[string]*openFile{file.Path: file}, workbenchTheme: &pencodeTheme{bracket: color}}
 	defer model.closeHighlightWorker()
@@ -114,15 +114,15 @@ func TestPencodeBracketHighlight(t *testing.T) {
 }
 
 func TestPencodeBracketCache(t *testing.T) {
-	a := &openFile{Path: "a.txt", Content: "()"}
-	b := &openFile{Path: "b.txt", Content: "[]"}
+	a := &openFile{Path: "a.txt", contentSnapshot: snapshotText("()")}
+	b := &openFile{Path: "b.txt", contentSnapshot: snapshotText("[]")}
 	model := workspaceModel{files: map[string]*openFile{a.Path: a, b.Path: b}, tabs: []string{a.Path, b.Path}}
 	defer model.closeHighlightWorker()
 	for _, file := range []*openFile{a, b, a, b} {
 		model.selectTab(file.Path)
 		settlePencodeHighlight(t, &model)
 		index := &model.editor.brackets
-		if index.source != file.Content || len(index.items) != 2 || index.items[0].Pair != 1 || index.items[1].Pair != 0 {
+		if !index.source.Equal(file.snapshot()) || len(index.items) != 2 || index.items[0].Pair != 1 || index.items[1].Pair != 0 {
 			t.Fatalf("switch did not restore bracket index: %+v", index)
 		}
 	}
@@ -141,7 +141,7 @@ func TestPencodeBracketCache(t *testing.T) {
 		t.Fatal("edit retained stale bracket offsets")
 	}
 	model.resetHighlight()
-	if model.editor.brackets.source != "" || model.editor.brackets.items != nil {
+	if model.editor.brackets.source.Len() != 0 || model.editor.brackets.items != nil {
 		t.Fatal("closing editor retained bracket source or index")
 	}
 }

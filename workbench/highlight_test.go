@@ -33,7 +33,7 @@ func TestPencodeRetypedMethodRestoresHighlight(t *testing.T) {
 	const prefix = "package demo\nfunc (app *App) Frame() error {\n\t_, err := app"
 	const suffix = "\n\treturn err\n}\n"
 	for _, parseEachEdit := range []bool{false, true} {
-		file := &openFile{Path: "main.go", Name: "main.go", Content: prefix + ".Step()" + suffix}
+		file := &openFile{Path: "main.go", Name: "main.go", contentSnapshot: snapshotText(prefix + ".Step()" + suffix)}
 		model := workspaceModel{activePath: file.Path, files: map[string]*openFile{file.Path: file}}
 		t.Cleanup(model.closeHighlightWorker)
 		settlePencodeHighlight(t, &model)
@@ -56,7 +56,7 @@ func TestPencodeRetypedMethodRestoresHighlight(t *testing.T) {
 func TestPencodeRetypedMethodRefreshesSemanticHighlight(t *testing.T) {
 	const prefix = "package demo\nfunc (app *App) Frame() error {\n\t_, err := app"
 	const suffix = "\n\treturn err\n}\n"
-	file := &openFile{Path: "main.go", Name: "main.go", Content: prefix + ".Step()" + suffix}
+	file := &openFile{Path: "main.go", Name: "main.go", contentSnapshot: snapshotText(prefix + ".Step()" + suffix)}
 	model := workspaceModel{activePath: file.Path, files: map[string]*openFile{file.Path: file}}
 	defer model.closeHighlightWorker()
 	model.syntaxTheme, _ = syntax.BuiltinTheme("dark-plus")
@@ -68,14 +68,14 @@ func TestPencodeRetypedMethodRefreshesSemanticHighlight(t *testing.T) {
 		version: 1,
 		tokens:  []lsp.SemanticToken{{Start: len(prefix) - len("app"), End: len(prefix), Type: 0}},
 	}
-	doc := &pencodeLanguageDocument{file: file, content: file.Content, version: 1, semantic: semantic}
+	doc := &pencodeLanguageDocument{file: file, content: file.snapshot(), version: 1, semantic: semantic}
 	model.languages = &pencodeLanguageState{documents: map[*openFile]*pencodeLanguageDocument{file: doc}}
 	expected := slices.Clone(model.languageHighlight(model.highlightScratch))
 	model.updateActiveContent(prefix + suffix)
 	model.updateActiveContent(prefix + ".Step()" + suffix)
 	doc.version++
 	semantic.version = doc.version
-	semantic.theme, semantic.baseSource = nil, ""
+	semantic.theme, semantic.baseSource = nil, snapshotText("")
 	// Semantic tokens can arrive while syntax still has the temporary colors
 	// inherited from app. The parser must replace that merged paint afterward.
 	if slices.Equal(model.languageHighlight(model.highlightScratch), expected) {
@@ -104,7 +104,7 @@ func TestPencodeEditKeepsHighlightUntilParsed(t *testing.T) {
 		{"delete", "// ab\nvar n = 1\n", "// a\nvar n = 1\n"},
 	} {
 		t.Run(edit.name, func(t *testing.T) {
-			file := &openFile{Path: "main.go", Name: "main.go", Content: edit.before}
+			file := &openFile{Path: "main.go", Name: "main.go", contentSnapshot: snapshotText(edit.before)}
 			model := workspaceModel{activePath: file.Path, files: map[string]*openFile{file.Path: file}}
 			defer model.closeHighlightWorker()
 			settlePencodeHighlight(t, &model)
@@ -125,7 +125,7 @@ func TestPencodeEditKeepsHighlightUntilParsed(t *testing.T) {
 					t.Fatalf("edited comment lost its colour at byte %d: %v", offset, model.highlightScratch)
 				}
 			}
-			if model.highlightedContent != edit.after || model.lineCount != strings.Count(edit.after, "\n")+1 || model.characterCount != utf8.RuneCountInString(edit.after) {
+			if model.highlightedContent.String() != edit.after || model.lineCount != strings.Count(edit.after, "\n")+1 || model.characterCount != utf8.RuneCountInString(edit.after) {
 				t.Fatal("rebased source or document counts are stale")
 			}
 			model.highlighted = false
@@ -214,7 +214,7 @@ func TestPencodeLoadsCustomThemeAndCaptureDefinitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer model.closeHighlightWorker()
-	file := &openFile{Path: "main.go", Name: "main.go", Content: "// comment\n"}
+	file := &openFile{Path: "main.go", Name: "main.go", contentSnapshot: snapshotText("// comment\n")}
 	model.files, model.activePath = map[string]*openFile{file.Path: file}, file.Path
 	settlePencodeHighlight(t, &model)
 	if model.syntaxTheme.Name != "Custom" || len(model.themeOptions) != 4 || pencodeTestColour(model.highlightScratch, 3) != graphics.ColorFromRGBA(0x12, 0x34, 0x56, 255) {
@@ -239,8 +239,8 @@ func TestPencodeInputFramePreservesHighlight(t *testing.T) {
 	step()
 	prefix := strings.Index(model.activeContent(), "text") + 2
 	field := content.Mut[ui.TextField](editor.control)
-	source := field.Value
-	field.Caret = utf8.RuneCountInString(field.Value[:prefix])
+	source := field.Text().String()
+	field.Caret = utf8.RuneCountInString(field.Text().String()[:prefix])
 	field.Anchor = field.Caret
 	colour := pencodeTestColour(model.highlightScratch, prefix)
 	keywordColour := pencodeTestColour(model.highlightScratch, 0)
@@ -258,9 +258,9 @@ func TestPencodeInputFramePreservesHighlight(t *testing.T) {
 	assertColour(prefix + len("中文"))
 	assertColour(prefix - 1)
 	value, _ := content.Get[scene.Text2D](editor.text)
-	if value.Value != source[:prefix]+"中文"+source[prefix:] || pencodeTestColour(value.Spans, 0) != keywordColour || model.activeContent() != source {
+	if value.Text().String() != source[:prefix]+"中文"+source[prefix:] || pencodeTestColour(value.Spans, 0) != keywordColour || model.activeContent() != source {
 		field, _ := content.Get[ui.TextField](editor.control)
-		t.Fatalf("composition changed the source or cleared unrelated syntax colours: value=%q caret=%d composition=%q colour=%v want=%v sourceChanged=%v", value.Value[:min(80, len(value.Value))], field.Caret, field.Composition, pencodeTestColour(value.Spans, 0), keywordColour, model.activeContent() != source)
+		t.Fatalf("composition changed the source or cleared unrelated syntax colours: value=%q caret=%d composition=%q colour=%v want=%v sourceChanged=%v", value.Text().String()[:min(80, len(value.Text().String()))], field.Caret, field.Composition, pencodeTestColour(value.Spans, 0), keywordColour, model.activeContent() != source)
 	}
 	if allocs := testing.AllocsPerRun(100, func() {
 		field, _ := content.Get[ui.TextField](editor.control)
@@ -277,7 +277,7 @@ func TestPencodeInputFramePreservesHighlight(t *testing.T) {
 	step()
 	assertColour(prefix + len("中文"))
 	committed, _ := content.Get[ui.TextField](editor.control)
-	if committed.Composition != "" || committed.Value != source[:prefix]+"中文x"+source[prefix:] || model.activeContent() != committed.Value {
+	if committed.Composition != "" || committed.Text().String() != source[:prefix]+"中文x"+source[prefix:] || model.activeContent() != committed.Text().String() {
 		t.Fatal("committed composition did not reach the editor and source in the same frame")
 	}
 	model.highlightDue = time.Time{}

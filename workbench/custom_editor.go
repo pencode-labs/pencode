@@ -185,7 +185,7 @@ func (model *workspaceModel) customDocument() *pencodeCustomDocument {
 	if model.customDocuments == nil {
 		model.customDocuments = make(map[*openFile]*pencodeCustomDocument)
 	}
-	document := &pencodeCustomDocument{file: file, project: model.activeProjectState(), provider: provider, model: model, content: file.Content, message: "正在加载编辑工具…"}
+	document := &pencodeCustomDocument{file: file, project: model.activeProjectState(), provider: provider, model: model, content: file.content(), message: "正在加载编辑工具…"}
 	root := model.projectPath
 	if document.project != nil {
 		root = document.project.Path
@@ -215,7 +215,7 @@ func (document *pencodeCustomDocument) dispatch() {
 		return
 	}
 	if document.count == 0 {
-		if document.content == document.file.Content {
+		if document.content == document.file.content() {
 			return
 		}
 		document.enqueue(peb.EditorEvent{Kind: "documentchange"})
@@ -224,7 +224,7 @@ func (document *pencodeCustomDocument) dispatch() {
 	if document.project != nil {
 		root = document.project.Path
 	}
-	message := peb.EditorMessage{Editor: document.provider.LocalID, Path: path.Join(strings.ReplaceAll(root, "\\", "/"), document.file.Path), Content: document.file.Content, Binary: !isTextFile(document.file.Name), Event: document.queue[document.head]}
+	message := peb.EditorMessage{Editor: document.provider.LocalID, Path: path.Join(strings.ReplaceAll(root, "\\", "/"), document.file.Path), Content: document.file.content(), Binary: !isTextFile(document.file.Name), Event: document.queue[document.head]}
 	if !document.process.Submit(message) {
 		document.fail(fmt.Errorf("编辑工具已停止"))
 		return
@@ -248,7 +248,7 @@ func (document *pencodeCustomDocument) fail(err error) {
 }
 
 func (document *pencodeCustomDocument) busy() bool {
-	return document.inflight || document.count != 0 || document.process != nil && document.content != document.file.Content
+	return document.inflight || document.count != 0 || document.process != nil && document.content != document.file.content()
 }
 
 func (model *workspaceModel) pollCustomEditors() bool {
@@ -281,7 +281,7 @@ func (model *workspaceModel) pollCustomEditors() bool {
 			}
 			// Undo/reload may have replaced the snapshot during this exchange.
 			// Discard stale changes and send the current host document next.
-			if result.Message.Content != file.Content {
+			if result.Message.Content != file.content() {
 				document.dispatch()
 				continue
 			}
@@ -291,7 +291,7 @@ func (model *workspaceModel) pollCustomEditors() bool {
 					continue
 				}
 				model.applyFileContent(file, document.project, *result.Reply.Content, true)
-				document.content = file.Content
+				document.content = file.content()
 			}
 			if result.Reply.View != nil {
 				if len(result.Assets) != 0 {
@@ -355,10 +355,8 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		ref, _ := node.Attr("data-ref")
 		href, _ := node.Attr("href")
 		if ref != "" && href != "" {
-			for _, event := range view.Events {
-				if event.Ref == ref && event.Kind == "click" {
-					return
-				}
+			if extensionOwnsClick(view.Events, ref) {
+				return
 			}
 			if links == nil {
 				links = make(map[string]string)
@@ -594,8 +592,13 @@ func validateExtensionView(view *peb.EditorView, visit func(*dom.Node, bool)) er
 // Validate retained region trees in their original parent context, including
 // inherited visibility and uniqueness across both template and region nodes.
 func validateExtensionTree(view *peb.EditorView, root *dom.Node, regions map[string]*dom.Node, visit func(*dom.Node, bool)) error {
-	refs := make(map[string]bool)
-	ids := make(map[string]bool)
+	scratch := pencodeExtensionScratches.Get().(*pencodeExtensionScratch)
+	defer scratch.release()
+	return scratch.validate(view, root, regions, visit)
+}
+
+func (s *pencodeExtensionScratch) validate(view *peb.EditorView, root *dom.Node, regions map[string]*dom.Node, visit func(*dom.Node, bool)) error {
+	refs, ids := s.refs, s.ids
 	var validate func(*dom.Node, bool) error
 	validate = func(node *dom.Node, hidden bool) error {
 		if id, _ := node.Attr("id"); id != "" && !strings.HasPrefix(id, "pencode-extension-") {

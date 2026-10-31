@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pencode-labs/pencode/debugger"
+	"github.com/pencode-labs/pencode/internal/extensionbuild"
 	"github.com/pencode-labs/pencode/peb"
 )
 
@@ -53,6 +54,11 @@ func TestGoLanguageExtensionRegistration(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "build", "-p", "1", "-o", entry, ".")
 	cmd.Dir = "go"
+	var err error
+	cmd.Env, err = extensionbuild.Environment(t.TempDir(), "..", cmd.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, output)
 	}

@@ -60,6 +60,8 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"lsp-close-icon", "icons/close.svg", "icon.foreground"},
 	{"lsp-previous-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"lsp-next-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"lsp-completion-previous-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"lsp-completion-next-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"debug-add-icon", "icons/add.svg", "icon.foreground"},
 	{"debug-reload-icon", "icons/refresh-cw.svg", "debugIcon.restartForeground"},
 	{"debug-start-icon", "icons/debug-start.svg", "debugIcon.startForeground"},
@@ -73,29 +75,40 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 // Missing component colors inherit their parent surface before using the
 // built-in light/dark palette. Explicit transparent colors remain transparent.
 var pencodeColorParents = map[string]string{
-	"titleBar.activeForeground":       "foreground",
-	"sideBar.foreground":              "foreground",
-	"sideBarSectionHeader.foreground": "sideBar.foreground",
-	"sideBarSectionHeader.background": "sideBar.background",
-	"tab.activeBackground":            "editor.background",
-	"tab.activeForeground":            "editor.foreground",
-	"tab.hoverForeground":             "tab.activeForeground",
-	"editorWidget.foreground":         "foreground",
-	"editorWidget.border":             "widget.border",
-	"quickInput.background":           "editorWidget.background",
-	"quickInput.foreground":           "foreground",
-	"settings.headerForeground":       "foreground",
-	"settings.dropdownBackground":     "dropdown.background",
-	"settings.dropdownForeground":     "dropdown.foreground",
-	"settings.dropdownBorder":         "dropdown.border",
-	"icon.foreground":                 "foreground",
-	"problemsErrorIcon.foreground":    "editorError.foreground",
-	"problemsWarningIcon.foreground":  "editorWarning.foreground",
-	"problemsInfoIcon.foreground":     "editorInfo.foreground",
-	"badge.background":                "list.hoverBackground",
-	"badge.foreground":                "foreground",
-	"input.placeholderForeground":     "descriptionForeground",
-	"editor.findMatchBorder":          "focusBorder",
+	"notifications.background":            "editorWidget.background",
+	"notifications.foreground":            "editorWidget.foreground",
+	"notifications.border":                "widget.border",
+	"notificationsInfoIcon.foreground":    "editorInfo.foreground",
+	"notificationsWarningIcon.foreground": "editorWarning.foreground",
+	"notificationsErrorIcon.foreground":   "editorError.foreground",
+	"titleBar.activeForeground":           "foreground",
+	"sideBar.foreground":                  "foreground",
+	"sideBarSectionHeader.foreground":     "sideBar.foreground",
+	"sideBarSectionHeader.background":     "sideBar.background",
+	"tab.activeBackground":                "editor.background",
+	"tab.activeForeground":                "editor.foreground",
+	"tab.hoverForeground":                 "tab.activeForeground",
+	"editorWidget.foreground":             "foreground",
+	"editorWidget.border":                 "widget.border",
+	"quickInput.background":               "editorWidget.background",
+	"quickInput.foreground":               "foreground",
+	"settings.headerForeground":           "foreground",
+	"settings.dropdownBackground":         "dropdown.background",
+	"settings.dropdownForeground":         "dropdown.foreground",
+	"settings.dropdownBorder":             "dropdown.border",
+	"icon.foreground":                     "foreground",
+	"symbolIcon.textForeground":           "icon.foreground",
+	"symbolIcon.snippetForeground":        "icon.foreground",
+	"symbolIcon.colorForeground":          "icon.foreground",
+	"symbolIcon.fileForeground":           "icon.foreground",
+	"symbolIcon.referenceForeground":      "icon.foreground",
+	"problemsErrorIcon.foreground":        "editorError.foreground",
+	"problemsWarningIcon.foreground":      "editorWarning.foreground",
+	"problemsInfoIcon.foreground":         "editorInfo.foreground",
+	"badge.background":                    "list.hoverBackground",
+	"badge.foreground":                    "foreground",
+	"input.placeholderForeground":         "descriptionForeground",
+	"editor.findMatchBorder":              "focusBorder",
 }
 
 func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencodeTheme, error) {
@@ -129,6 +142,18 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return dark
 		}
 		switch key {
+		case "symbolIcon.methodForeground", "symbolIcon.functionForeground", "symbolIcon.constructorForeground":
+			return decoration(syntax.Color{R: 177, G: 128, B: 215, A: 255}, syntax.Color{R: 101, G: 45, B: 144, A: 255}), nil
+		case "symbolIcon.fieldForeground", "symbolIcon.variableForeground", "symbolIcon.constantForeground", "symbolIcon.enumeratorMemberForeground":
+			return decoration(syntax.Color{R: 117, G: 190, B: 255, A: 255}, syntax.Color{R: 0, G: 112, B: 193, A: 255}), nil
+		case "symbolIcon.classForeground", "symbolIcon.enumeratorForeground", "symbolIcon.eventForeground", "symbolIcon.folderForeground":
+			return decoration(syntax.Color{R: 238, G: 157, B: 40, A: 255}, syntax.Color{R: 158, G: 106, B: 3, A: 255}), nil
+		case "symbolIcon.interfaceForeground", "symbolIcon.structForeground", "symbolIcon.typeParameterForeground":
+			return decoration(syntax.Color{R: 78, G: 201, B: 176, A: 255}, syntax.Color{R: 0, G: 128, B: 112, A: 255}), nil
+		case "symbolIcon.moduleForeground", "symbolIcon.propertyForeground", "symbolIcon.unitForeground", "symbolIcon.numberForeground":
+			return decoration(syntax.Color{R: 220, G: 180, B: 92, A: 255}, syntax.Color{R: 160, G: 108, B: 0, A: 255}), nil
+		case "symbolIcon.keywordForeground", "symbolIcon.operatorForeground":
+			return decoration(syntax.Color{R: 197, G: 134, B: 192, A: 255}, syntax.Color{R: 175, G: 0, B: 219, A: 255}), nil
 		case "debugIcon.startForeground":
 			return decoration(syntax.Color{R: 137, G: 209, B: 133, A: 255}, syntax.Color{R: 56, G: 142, B: 60, A: 255}), nil
 		case "debugIcon.continueForeground", "debugIcon.stepOverForeground":
@@ -141,11 +166,11 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return decoration(syntax.Color{R: 220, G: 180, B: 92, A: 255}, syntax.Color{R: 160, G: 108, B: 0, A: 255}), nil
 		case "debugIcon.stopForeground", "debugIcon.breakpointForeground":
 			return decoration(syntax.Color{R: 244, G: 112, B: 112, A: 255}, syntax.Color{R: 196, G: 43, B: 43, A: 255}), nil
-		case "editorError.foreground", "problemsErrorIcon.foreground":
+		case "editorError.foreground", "problemsErrorIcon.foreground", "notificationsErrorIcon.foreground":
 			return decoration(syntax.Color{R: 244, G: 135, B: 113, A: 255}, syntax.Color{R: 232, G: 17, B: 35, A: 255}), nil
-		case "editorWarning.foreground", "problemsWarningIcon.foreground":
+		case "editorWarning.foreground", "problemsWarningIcon.foreground", "notificationsWarningIcon.foreground":
 			return decoration(syntax.Color{R: 204, G: 167, B: 0, A: 255}, syntax.Color{R: 191, G: 136, B: 3, A: 255}), nil
-		case "editorInfo.foreground", "problemsInfoIcon.foreground":
+		case "editorInfo.foreground", "problemsInfoIcon.foreground", "notificationsInfoIcon.foreground":
 			return decoration(syntax.Color{R: 117, G: 190, B: 255, A: 255}, syntax.Color{R: 26, G: 133, B: 255, A: 255}), nil
 		case "editorHint.foreground":
 			return decoration(syntax.Color{R: 178, G: 178, B: 178, A: 255}, syntax.Color{R: 108, G: 108, B: 108, A: 255}), nil
@@ -248,18 +273,22 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 	}
-	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "refresh-cw", "close", "discard"} {
+	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "globe", "code", "refresh-cw", "close", "discard"} {
 		if err := addIcon(pencodeIconKey{"icons/" + name + ".svg", "icon.foreground"}); err != nil {
 			return pencodeTheme{}, err
 		}
 	}
 	// Retained rows and tabs select their foreground without rebuilding SVGs.
 	for _, key := range [...]pencodeIconKey{
+		{"icons/info.svg", "notificationsInfoIcon.foreground"},
+		{"icons/warning.svg", "notificationsWarningIcon.foreground"},
+		{"icons/error.svg", "notificationsErrorIcon.foreground"},
 		{"icons/debug-pause.svg", "debugIcon.pauseForeground"},
 		{"icons/git-commit.svg", "button.foreground"},
 		{"icons/refresh-cw.svg", "button.foreground"},
 		{"icons/arrow-right.svg", "button.foreground"},
 		{"icons/file-text.svg", "icon.foreground"},
+		{"icons/file-text.svg", "textLink.foreground"},
 		{"icons/file-text.svg", "list.activeSelectionForeground"},
 		{"icons/file-text.svg", "tab.activeForeground"},
 		{"icons/file-text.svg", "tab.inactiveForeground"},
@@ -334,7 +363,9 @@ func (model *workspaceModel) themedIcon(source, foreground string) string {
 		if value, ok := theme.icons[key]; ok {
 			return value
 		}
-		if _, exists := model.extensionIcons[source]; exists {
+		_, builtin := theme.icons[pencodeIconKey{source, "icon.foreground"}]
+		_, extension := model.extensionIcons[source]
+		if builtin || extension {
 			if base, ok := theme.icons[pencodeIconKey{"icons/file-text.svg", foreground}]; ok {
 				value := source + strings.TrimPrefix(base, "icons/file-text.svg")
 				theme.icons[key] = value

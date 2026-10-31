@@ -38,7 +38,7 @@ func editorContextOpen(t *testing.T, app *onix.App, model *workspaceModel, caret
 	model.setEditorValueAndCaret(model.fontResources, model.activeContent(), caret)
 	model.fontResources.Mut[engineui.TextField](model.editor.control).Anchor = anchor
 	model.languageUI = pencodeLanguageInteraction{
-		contextOpen: true, contextFile: model.activeFile(), contextContent: model.activeContent(),
+		contextOpen: true, contextFile: model.activeFile(), contextContent: model.activeSnapshot(),
 		contextCaret: caret, contextAnchor: anchor, contextX: x, contextY: y,
 	}
 	markPencodeRootDirtyByModel(model.fontResources, model)

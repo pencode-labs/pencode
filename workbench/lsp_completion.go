@@ -4,31 +4,31 @@ package workbench
 // Static keys let both theme preparation and row rendering reuse cached sources.
 var pencodeCompletionIcons = [...]pencodeIconKey{
 	{"icons/symbol-misc.svg", "icon.foreground"},
-	{"icons/symbol-string.svg", "icon.foreground"},      // Text
-	{"icons/symbol-method.svg", "icon.foreground"},      // Method
-	{"icons/square-function.svg", "icon.foreground"},    // Function
-	{"icons/symbol-method.svg", "icon.foreground"},      // Constructor
-	{"icons/symbol-field.svg", "icon.foreground"},       // Field
-	{"icons/symbol-variable.svg", "icon.foreground"},    // Variable
-	{"icons/symbol-class.svg", "icon.foreground"},       // Class
-	{"icons/symbol-interface.svg", "icon.foreground"},   // Interface
-	{"icons/symbol-namespace.svg", "icon.foreground"},   // Module
-	{"icons/symbol-property.svg", "icon.foreground"},    // Property
-	{"icons/symbol-ruler.svg", "icon.foreground"},       // Unit
-	{"icons/symbol-numeric.svg", "icon.foreground"},     // Value
-	{"icons/symbol-enum.svg", "icon.foreground"},        // Enum
-	{"icons/symbol-keyword.svg", "icon.foreground"},     // Keyword
-	{"icons/symbol-snippet.svg", "icon.foreground"},     // Snippet
-	{"icons/symbol-color.svg", "icon.foreground"},       // Color
-	{"icons/file-text.svg", "icon.foreground"},          // File
-	{"icons/symbol-misc.svg", "icon.foreground"},        // Reference
-	{"icons/folder.svg", "icon.foreground"},             // Folder
-	{"icons/symbol-enum-member.svg", "icon.foreground"}, // EnumMember
-	{"icons/symbol-constant.svg", "icon.foreground"},    // Constant
-	{"icons/symbol-structure.svg", "icon.foreground"},   // Struct
-	{"icons/symbol-event.svg", "icon.foreground"},       // Event
-	{"icons/symbol-operator.svg", "icon.foreground"},    // Operator
-	{"icons/symbol-class.svg", "icon.foreground"},       // TypeParameter
+	{"icons/symbol-string.svg", "symbolIcon.textForeground"},                  // Text
+	{"icons/symbol-method.svg", "symbolIcon.methodForeground"},                // Method
+	{"icons/square-function.svg", "symbolIcon.functionForeground"},            // Function
+	{"icons/symbol-method.svg", "symbolIcon.constructorForeground"},           // Constructor
+	{"icons/symbol-field.svg", "symbolIcon.fieldForeground"},                  // Field
+	{"icons/symbol-variable.svg", "symbolIcon.variableForeground"},            // Variable
+	{"icons/symbol-class.svg", "symbolIcon.classForeground"},                  // Class
+	{"icons/symbol-interface.svg", "symbolIcon.interfaceForeground"},          // Interface
+	{"icons/symbol-namespace.svg", "symbolIcon.moduleForeground"},             // Module
+	{"icons/symbol-property.svg", "symbolIcon.propertyForeground"},            // Property
+	{"icons/symbol-ruler.svg", "symbolIcon.unitForeground"},                   // Unit
+	{"icons/symbol-numeric.svg", "symbolIcon.numberForeground"},               // Value
+	{"icons/symbol-enum.svg", "symbolIcon.enumeratorForeground"},              // Enum
+	{"icons/symbol-keyword.svg", "symbolIcon.keywordForeground"},              // Keyword
+	{"icons/symbol-snippet.svg", "symbolIcon.snippetForeground"},              // Snippet
+	{"icons/symbol-color.svg", "symbolIcon.colorForeground"},                  // Color
+	{"icons/file-text.svg", "symbolIcon.fileForeground"},                      // File
+	{"icons/symbol-misc.svg", "symbolIcon.referenceForeground"},               // Reference
+	{"icons/folder.svg", "symbolIcon.folderForeground"},                       // Folder
+	{"icons/symbol-enum-member.svg", "symbolIcon.enumeratorMemberForeground"}, // EnumMember
+	{"icons/symbol-constant.svg", "symbolIcon.constantForeground"},            // Constant
+	{"icons/symbol-structure.svg", "symbolIcon.structForeground"},             // Struct
+	{"icons/symbol-event.svg", "symbolIcon.eventForeground"},                  // Event
+	{"icons/symbol-operator.svg", "symbolIcon.operatorForeground"},            // Operator
+	{"icons/symbol-class.svg", "symbolIcon.typeParameterForeground"},          // TypeParameter
 }
 
 func languageCompletionIcon(kind int) pencodeIconKey {

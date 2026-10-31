@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/diiyw/onix/graphics"
-	"github.com/pencode-labs/pencode/configuration"
 	"github.com/diiyw/onix/syntax"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/configuration"
 )
 
 func pencodeSyntaxColor(color syntax.Color) graphics.ColorRGBA {

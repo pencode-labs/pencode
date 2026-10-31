@@ -16,27 +16,27 @@ func TestNativeTailSnapshotsPreserveUndoAndSave(t *testing.T) {
 	openProjectFile(p, "main.txt")
 	m.syncActiveProjectFields()
 	file := m.activeFile()
-	buffer := file.textBuffer(file.Content)
+	buffer := file.snapshotBuffer()
 	appendText := func(text string) {
 		t.Helper()
-		next, _, _ := buffer.ApplyTextEditsInRange(file.Content, buffer.Runes(), buffer.Runes(), 0, true, []input.TextEdit{{Text: text}})
-		if !m.updateActiveContent(next) {
+		next, _, _ := buffer.ApplyEdits(file.snapshot(), buffer.Runes(), buffer.Runes(), 0, true, []input.TextEdit{{Text: text}})
+		if !m.applyFileSnapshot(file, m.activeProjectState(), next, true) {
 			t.Fatal("edit was not committed")
 		}
 	}
 	appendText("first")
-	saved := file.Content
+	saved := file.content()
 	g.pause.Store(true)
 	if _, err := m.requestFileSave(p, file); err != nil {
 		t.Fatal(err)
 	}
 	awaitFileGate(t, g)
 	appendText("second")
-	latest := file.Content
-	if !m.undoActiveContent(nil) || file.Content != saved {
+	latest := file.content()
+	if !m.undoActiveContent(nil) || file.content() != saved {
 		t.Fatal("tail undo failed")
 	}
-	if !m.redoActiveContent(nil) || file.Content != latest {
+	if !m.redoActiveContent(nil) || file.content() != latest {
 		t.Fatal("tail redo failed")
 	}
 	unblock()
@@ -63,7 +63,7 @@ func BenchmarkNativeTailEditFrame(b *testing.B) {
 			app, session := newPencodeTestApp(b)
 			m := session.active.model
 			file := m.activeFile()
-			buffer := file.textBuffer(file.Content)
+			buffer := file.snapshotBuffer()
 			edits := [1]input.TextEdit{{Text: "x"}}
 			if mode == "delete" {
 				edits[0] = input.TextEdit{Command: input.TextCommandBackspace}
@@ -73,9 +73,9 @@ func BenchmarkNativeTailEditFrame(b *testing.B) {
 				if end == 0 {
 					b.Fatal("benchmark exhausted document")
 				}
-				value, caret, _ := buffer.ApplyTextEditsInRange(file.Content, end, end, 0, true, edits[:])
-				m.updateActiveContent(value)
-				m.setEditorValueAndCaret(m.fontResources, value, caret)
+				value, caret, _ := buffer.ApplyEdits(file.snapshot(), end, end, 0, true, edits[:])
+				m.applyFileSnapshot(file, m.activeProjectState(), value, true)
+				m.setEditorSnapshotAndCaret(m.fontResources, value, caret)
 				m.refreshRegion(m.fontResources, pencodeRefreshEditor)
 				app.RequestRender()
 				if _, err := app.Step(); err != nil {

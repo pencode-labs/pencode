@@ -111,41 +111,42 @@ func validPath(name string) bool {
 	return fs.ValidPath(name) && name != "." && !strings.ContainsAny(name, "\\\x00")
 }
 
-func read(root *os.Root, name string, text bool) (string, error) {
+func openFile(root *os.Root, name string, text bool) (*os.File, fs.FileInfo, error) {
 	f, err := root.Open(filepath.FromSlash(name))
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
-	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return "", err
+		f.Close()
+		return nil, nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return "", failure(protocol.Invalid, "不是普通文件")
+		f.Close()
+		return nil, nil, failure(protocol.Invalid, "不是普通文件")
 	}
+	if text && info.Size() > protocol.MaxMessage-1024 {
+		f.Close()
+		return nil, nil, failure(protocol.Invalid, "文件超过 64 MiB 文档预算")
+	}
+	return f, info, nil
+}
+
+func read(root *os.Root, name string, text bool) (string, [sha256.Size]byte, error) {
+	f, info, err := openFile(root, name, text)
+	if err != nil {
+		return "", [sha256.Size]byte{}, err
+	}
+	defer f.Close()
 	if !text {
-		return "", nil
+		return "", [sha256.Size]byte{}, nil
 	}
-	if info.Size() > protocol.MaxMessage-1024 {
-		return "", failure(protocol.Invalid, "文件超过 64 MiB 文档预算")
-	}
+	buffer := fileBuffers.Get().(*fileBuffer)
+	defer fileBuffers.Put(buffer)
 	var b strings.Builder
 	b.Grow(int(info.Size()))
-	var buffer [32 << 10]byte
-	for {
-		n, err := f.Read(buffer[:])
-		b.Write(buffer[:n])
-		if b.Len() > protocol.MaxMessage-1024 {
-			return "", failure(protocol.Invalid, "文件超过文档预算")
-		}
-		if err == io.EOF {
-			return b.String(), nil
-		}
-		if err != nil {
-			return "", err
-		}
-	}
+	digest, err := buffer.read(f, &b)
+	return b.String(), digest, err
 }
 
 func (s *Store) OpenDocument(projectID uint64, name string, text bool) (protocol.Document, error) {
@@ -159,7 +160,7 @@ func (s *Store) OpenDocument(projectID uint64, name string, text bool) (protocol
 	if text && len(s.documents) >= 128 {
 		return protocol.Document{}, failure(protocol.Busy, "打开文档数量超过连接预算")
 	}
-	content, err := read(p.root, name, text)
+	content, digest, err := read(p.root, name, text)
 	if err != nil {
 		return protocol.Document{}, err
 	}
@@ -169,7 +170,7 @@ func (s *Store) OpenDocument(projectID uint64, name string, text bool) (protocol
 	if s.bytes+len(content) > 128<<20 {
 		return protocol.Document{}, failure(protocol.Busy, "打开文档超过 128 MiB 连接预算")
 	}
-	d := &document{project: p, path: name, version: 1, disk: sha256.Sum256([]byte(content))}
+	d := &document{project: p, path: name, version: 1, disk: digest}
 	d.tree.Reset(content)
 	id := s.id()
 	s.documents[id] = d
@@ -215,11 +216,18 @@ func (s *Store) Save(id, version uint64) error {
 	if version != d.version {
 		return failure(protocol.VersionMismatch, "保存版本已改变")
 	}
-	current, err := read(d.project.root, d.path, true)
+	current, _, err := openFile(d.project.root, d.path, true)
 	if err != nil {
 		return err
 	}
-	if sha256.Sum256([]byte(current)) != d.disk {
+	buffer := fileBuffers.Get().(*fileBuffer)
+	defer fileBuffers.Put(buffer)
+	digest, err := buffer.read(current, nil)
+	current.Close()
+	if err != nil {
+		return err
+	}
+	if digest != d.disk {
 		return failure(protocol.Conflict, "文件已被其他程序修改，请先比较或重新加载")
 	}
 	// Resolve within the opened root so saving an internal symlink updates its
@@ -242,8 +250,19 @@ func (s *Store) Save(id, version uint64) error {
 		return err
 	}
 	defer d.project.root.Remove(name)
-	content := d.tree.String()
-	_, err = io.WriteString(f, content)
+	buffer.hash.Reset()
+	for offset := 0; offset < d.tree.Len(); {
+		n := min(len(buffer.data), d.tree.Len()-offset)
+		_, err = d.tree.ReadAt(buffer.data[:n], int64(offset))
+		if err != nil {
+			break
+		}
+		if _, err = f.Write(buffer.data[:n]); err != nil {
+			break
+		}
+		buffer.hash.Write(buffer.data[:n])
+		offset += n
+	}
 	if err == nil {
 		err = f.Chmod(info.Mode().Perm())
 	}
@@ -259,7 +278,8 @@ func (s *Store) Save(id, version uint64) error {
 	if err := d.project.root.Rename(name, relative); err != nil {
 		return err
 	}
-	d.disk = sha256.Sum256([]byte(content))
+	buffer.hash.Sum(buffer.sum[:0])
+	d.disk = buffer.sum
 	return nil
 }
 
@@ -271,7 +291,7 @@ func (s *Store) Move(id, projectID uint64, name string) error {
 	if !validPath(name) {
 		return failure(protocol.Invalid, "无效的工作区资源路径")
 	}
-	_, err := read(p.root, name, false)
+	_, _, err := read(p.root, name, false)
 	if err != nil {
 		return err
 	}

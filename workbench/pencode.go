@@ -26,6 +26,8 @@ import (
 	sceneapi "github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
 	"github.com/diiyw/onix/text"
+	"github.com/diiyw/onix/text/piecetree"
+	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/diiyw/onix/window"
 	"github.com/pencode-labs/pencode/client"
@@ -67,9 +69,9 @@ type openFile struct {
 	customEditor     *extensions.Editor
 	Path             string
 	Name             string
-	Content          string
+	contentSnapshot  piecetree.Snapshot
 	saveRevision     uint64
-	savedContent     string
+	savedContent     piecetree.Snapshot
 	pencodeEditHistory
 	Dirty         bool
 	Preview       bool
@@ -213,7 +215,7 @@ type workspaceModel struct {
 	findQuery                           string
 	findCachedQuery                     string
 	replaceQuery                        string
-	findContent                         string
+	findContent                         piecetree.Snapshot
 	findMatches                         []textsearch.Match
 	findOptions                         textsearch.Options
 	findCachedOptions                   textsearch.Options
@@ -249,7 +251,7 @@ type workspaceModel struct {
 	viewportWidth                       float32
 	viewportHeight                      float32
 	highlightedPath                     string
-	highlightedContent                  string
+	highlightedContent                  piecetree.Snapshot
 	highlighted                         bool
 	highlightPaintRevision              uint64
 	highlightPending                    bool
@@ -543,7 +545,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.market, err = content.Define[pencodeMarketProps, struct{}](
-		htmlui.NewTemplate(`<button data-ref="item" class="pencode-market-item" type="button" aria-pressed="false"><span data-ref="name" class="pencode-market-item-name"></span><span data-ref="publisher" class="pencode-market-item-id"></span></button>`), "",
+		htmlui.NewTemplate(`<button data-ref="item" class="pencode-market-item" type="button" aria-pressed="false"><span data-ref="name" class="pencode-market-item-name"></span><span data-ref="description" class="pencode-market-item-description"></span></button>`), "",
 		module.ContentBehavior[pencodeMarketProps, struct{}]{Render: renderPencodeMarketItem, HandleEvent: handlePencodeMarketItem})
 	if err != nil {
 		return nil, err
@@ -926,16 +928,16 @@ func renderPencodeHighlight(model *workspaceModel) {
 		}
 		return
 	}
-	sourceChanged := model.highlightedPath != file.Path || model.highlightedContent != file.Content
+	sourceChanged := model.highlightedPath != file.Path || model.highlightedContent != file.snapshot()
 	if model.highlighted && !sourceChanged {
 		return
 	}
 	if model.highlightedPath != file.Path {
-		model.editor.brackets.source = ""
+		model.editor.brackets.source = piecetree.Snapshot{}
 		model.editor.brackets.items = model.editor.brackets.items[:0]
 		model.highlightPending = false
 		model.highlightDue = time.Time{}
-		model.highlightedPath, model.highlightedContent, model.highlighted = file.Path, "", false
+		model.highlightedPath, model.highlightedContent, model.highlighted = file.Path, piecetree.Snapshot{}, false
 		model.highlightScratch = model.highlightScratch[:0]
 		model.highlightPaintRevision++
 		model.lineCount, model.characterCount, model.lineInfo = 0, 0, ""
@@ -943,9 +945,9 @@ func renderPencodeHighlight(model *workspaceModel) {
 	model.ensureSyntaxTheme()
 	if cached, ok := model.highlightCache.get(file, model.syntaxTheme, model.syntaxDefinitions); ok {
 		model.highlightScratch = append(model.highlightScratch[:0], cached.spans...)
-		model.editor.brackets.set(file.Content, cached.brackets)
+		model.editor.brackets.set(file.snapshot(), cached.brackets)
 		model.highlightPaintRevision++
-		model.highlightedPath, model.highlightedContent, model.highlighted = file.Path, file.Content, true
+		model.highlightedPath, model.highlightedContent, model.highlighted = file.Path, file.snapshot(), true
 		model.lineCount, model.characterCount, model.lineInfo = cached.lines, cached.characters, cached.lineInfo
 		return
 	}
@@ -953,7 +955,7 @@ func renderPencodeHighlight(model *workspaceModel) {
 		return
 	}
 	job := model.highlightRequest
-	if job.file == file && job.path == file.Path && job.source == file.Content && job.theme == model.syntaxTheme && job.definitions == model.syntaxDefinitions {
+	if job.file == file && job.path == file.Path && job.documentText == file.snapshot() && job.theme == model.syntaxTheme && job.definitions == model.syntaxDefinitions {
 		return
 	}
 	model.submitHighlight(file)
@@ -1062,8 +1064,12 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		markPencodeRootDirty(context, model)
 	case "editor":
 		popup := model.languageUI.hover.open || model.languageUI.contextOpen || model.languages != nil && model.languages.panel.open
-		previous := model.activeContent()
-		if model.updateActiveContent(context.Event.Value) {
+		previous := model.activeSnapshot()
+		next := snapshotText(context.Event.Value)
+		if context.Event.Document {
+			next = context.Event.Snapshot
+		}
+		if model.applyFileSnapshot(model.activeFile(), model.activeProjectState(), next, true) {
 			model.scheduleLanguageCompletion(context.World, context.Event, previous)
 			model.cancelLanguageHover()
 			model.dismissLanguageContext()
@@ -1261,6 +1267,10 @@ func setPencodeEditorValue(world *module.Content, page ecs.Entity, value string)
 		return
 	}
 	if entity, ok := world.HTMLControl(page, "editor"); ok {
+		if field := world.Mut[engineui.TextField](entity); field != nil {
+			field.Buffer = nil
+			field.Source = piecetree.Snapshot{}
+		}
 		world.SetControlValue(entity, value)
 	}
 }
@@ -1413,10 +1423,10 @@ func (model *workspaceModel) resetHighlight() {
 	model.characterCount = 0
 	model.lineInfo = ""
 	model.highlightedPath = ""
-	model.highlightedContent = ""
+	model.highlightedContent = piecetree.Snapshot{}
 	model.editor.brackets = pencodeBracketIndex{}
 	model.editor.linkPaint, model.editor.compositionPaint = pencodeOverlayKey{}, pencodeOverlayKey{}
-	model.editor.compositionSource, model.editor.compositionText, model.editor.compositionValue = "", "", ""
+	model.editor.compositionSource, model.editor.compositionText, model.editor.compositionValue = piecetree.Snapshot{}, "", piecetree.Snapshot{}
 	model.highlighted = false
 	model.highlightPending = false
 	model.highlightDue = time.Time{}
@@ -1829,8 +1839,8 @@ func acceptProjectFile(project *pencodeProject, relative string, preview bool, d
 	}
 	project.sourceControl.Active = ""
 	project.sourceControl.Selection++
-	file := &openFile{document: document, Path: relative, Name: path.Base(relative), Content: content, Preview: preview}
-	file.savedContent = file.Content
+	file := &openFile{document: document, Path: relative, Name: path.Base(relative), contentSnapshot: snapshotText(content), Preview: preview}
+	file.savedContent = file.snapshot()
 	project.Files[relative] = file
 	replaced := false
 	if preview && project.PreviewPath != "" {
@@ -2028,35 +2038,43 @@ func (model *workspaceModel) applyActiveContent(value string, recordHistory bool
 }
 
 func (model *workspaceModel) applyFileContent(file *openFile, project *pencodeProject, value string, recordHistory bool) bool {
-	if file == nil || !isTextFile(file.Name) || file.Content == value {
+	return model.applyFileSnapshot(file, project, snapshotText(value), recordHistory)
+}
+func (model *workspaceModel) applyFileSnapshot(file *openFile, project *pencodeProject, value piecetree.Snapshot, recordHistory bool) bool {
+	if file == nil || !isTextFile(file.Name) || file.snapshot().Equal(value) {
 		return false
 	}
-	start, oldSuffix, newSuffix, prefixRunes, changed := file.buffer.ChangedRange(file.Content, value)
+	start, oldSuffix, newSuffix, prefixRunes, changed := file.buffer.SnapshotChangedRange(file.snapshot(), value)
 	if !changed {
-		start, oldSuffix, newSuffix, prefixRunes = pencodeChangedRange(file.Content, value)
+		start, oldSuffix, newSuffix = file.snapshot().ChangedRange(value)
+		prefixRunes = value.RuneOffset(start)
+	}
+	if !file.buffer.MatchesSnapshot(value) {
+		file.snapshotBuffer()
+		file.buffer.ReplaceBytes(start, oldSuffix, value.Slice(start, newSuffix))
+		value = file.buffer.Snapshot()
 	}
 	if recordHistory {
-		if !file.Dirty && file.savedContent == "" {
-			file.savedContent = file.Content
+		if !file.Dirty && file.savedContent.Len() == 0 {
+			file.savedContent = file.snapshot()
 		}
 		file.recordEdit(pencodeEdit{
-			start: start, removed: file.Content[start:oldSuffix], inserted: value[start:newSuffix],
-			oldCaret: prefixRunes + utf8.RuneCountInString(file.Content[start:oldSuffix]),
-			newCaret: prefixRunes + utf8.RuneCountInString(value[start:newSuffix]),
+			start: start, removed: file.snapshot().Slice(start, oldSuffix), inserted: value.Slice(start, newSuffix),
+			oldCaret: prefixRunes + utf8.RuneCountInString(file.snapshot().Slice(start, oldSuffix)),
+			newCaret: prefixRunes + utf8.RuneCountInString(value.Slice(start, newSuffix)),
 		})
 	}
-	if file == model.activeFile() && model.lineCount > 0 && model.highlightedPath == file.Path && model.highlightedContent == file.Content {
-		model.rebaseHighlight(file.Content, value, start, oldSuffix, newSuffix)
+	if file == model.activeFile() && model.lineCount > 0 && model.highlightedPath == file.Path && model.highlightedContent == file.snapshot() {
+		model.rebaseHighlight(file.snapshot(), value, start, oldSuffix, newSuffix)
 	}
 	model.highlightCache.invalidate(file)
-	file.replaceContent(file.Content, value, start, oldSuffix, newSuffix)
 	if file.document != nil {
-		file.document.Update(file.Content, value, start, oldSuffix, newSuffix)
+		file.document.Update(file.snapshot(), value, start, oldSuffix, newSuffix)
 	}
-	file.Content = value
+	file.contentSnapshot = value
 	model.rebaseDebugBreakpoints(project, file, value, start, oldSuffix, newSuffix)
 	model.rebaseFindScope(file, start, oldSuffix, newSuffix)
-	file.Dirty = file.Content != file.savedContent
+	file.Dirty = !file.snapshot().Equal(file.savedContent)
 	if project != nil {
 		pinProjectFile(project, file.Path)
 	}
@@ -2075,14 +2093,14 @@ func (model *workspaceModel) applyFileContent(file *openFile, project *pencodePr
 	return true
 }
 
-func (model *workspaceModel) rebaseHighlight(oldContent, content string, prefix, oldSuffix, newSuffix int) {
-	for _, character := range oldContent[prefix:oldSuffix] {
+func (model *workspaceModel) rebaseHighlight(oldContent, content piecetree.Snapshot, prefix, oldSuffix, newSuffix int) {
+	for _, character := range oldContent.Slice(prefix, oldSuffix) {
 		model.characterCount--
 		if character == '\n' {
 			model.lineCount--
 		}
 	}
-	for _, character := range content[prefix:newSuffix] {
+	for _, character := range content.Slice(prefix, newSuffix) {
 		model.characterCount++
 		if character == '\n' {
 			model.lineCount++
@@ -2353,7 +2371,7 @@ func (model *workspaceModel) activeFile() *openFile {
 
 func (model *workspaceModel) activeContent() string {
 	if file := model.activeFile(); file != nil {
-		return file.Content
+		return file.content()
 	}
 	return ""
 }

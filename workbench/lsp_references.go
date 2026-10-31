@@ -110,7 +110,7 @@ func (model *workspaceModel) prepareReferencePreviews(groups map[lsp.URI]int) {
 		for _, file := range files {
 			uri := lsp.FileURI(filepath.Join(root, filepath.FromSlash(file.Path)))
 			if index, exists := groups[uri]; exists && !loaded[index] {
-				lineStarts = panel.referenceGroups[index].setPreviews(file.Content, lineStarts, encoding)
+				lineStarts = panel.referenceGroups[index].setPreviews(file.content(), lineStarts, encoding)
 				loaded[index] = true
 			}
 		}

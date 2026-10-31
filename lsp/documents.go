@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"unicode/utf8"
+
+	"github.com/diiyw/onix/text/piecetree"
 )
 
 // SyncDocument sends didOpen once, then full or incremental changes according
 // to the negotiated sync kind. Calls are ordered by the session worker.
-func (c *Client) SyncDocument(ctx context.Context, uri URI, language, text string, version int) error {
-	if !utf8.ValidString(text) {
+func (c *Client) SyncDocument[V piecetree.Value](ctx context.Context, uri URI, language string, value V, version int) error {
+	text := piecetree.Text(value)
+	if !validDocumentText(text) {
 		return fmt.Errorf("lsp: document is not valid UTF-8")
 	}
 	c.documentsMu.Lock()
@@ -26,21 +29,26 @@ func (c *Client) SyncDocument(ctx context.Context, uri URI, language, text strin
 	}
 	if !exists {
 		if c.openClose {
-			params := map[string]any{"textDocument": map[string]any{"uri": uri, "languageId": language, "version": version, "text": text}}
-			if err := c.Notify(ctx, "textDocument/didOpen", params); err != nil {
+			if err := c.notifyDocumentText(ctx, "textDocument/didOpen", uri, language, version, text, 0, text.Len(), nil); err != nil {
 				return err
 			}
 		}
 	} else if c.syncKind != 0 {
-		change := map[string]any{"text": text}
+		start, end := 0, text.Len()
+		var changed *Range
+		var r Range
 		if c.syncKind == 2 {
-			r, replacement := IncrementalChange(old.text, text, c.Encoding)
-			change = map[string]any{"range": r, "text": replacement}
+			prefix, a, b := old.text.ChangedRange(text)
+			start, end = prefix, b
+			r.Start, _ = PositionAt(old.text, prefix, c.Encoding)
+			r.End, _ = PositionAt(old.text, a, c.Encoding)
+			changed = &r
 		}
-		if err := c.Notify(ctx, "textDocument/didChange", map[string]any{"textDocument": map[string]any{"uri": uri, "version": version}, "contentChanges": []any{change}}); err != nil {
+		if err := c.notifyDocumentText(ctx, "textDocument/didChange", uri, "", version, text, start, end, changed); err != nil {
 			return err
 		}
 	}
+
 	c.documents[uri] = document{text, language, version}
 	return nil
 }
@@ -51,7 +59,10 @@ func (c *Client) CloseDocument(ctx context.Context, uri URI) error {
 		return nil
 	}
 	if c.openClose {
-		if err := c.Notify(ctx, "textDocument/didClose", map[string]any{"textDocument": TextDocumentIdentifier{uri}}); err != nil {
+		params := struct {
+			TextDocument TextDocumentIdentifier `json:"textDocument"`
+		}{TextDocumentIdentifier{uri}}
+		if err := c.notify(ctx, "textDocument/didClose", params); err != nil {
 			return err
 		}
 	}
@@ -62,7 +73,10 @@ func (c *Client) WillSave(ctx context.Context, uri URI) error {
 	if !c.willSave {
 		return nil
 	}
-	return c.Notify(ctx, "textDocument/willSave", map[string]any{"textDocument": TextDocumentIdentifier{uri}, "reason": 1})
+	return c.notify(ctx, "textDocument/willSave", struct {
+		TextDocument TextDocumentIdentifier `json:"textDocument"`
+		Reason       int                    `json:"reason"`
+	}{TextDocumentIdentifier{uri}, 1})
 }
 func (c *Client) DidSave(ctx context.Context, uri URI) error {
 	if !c.save {
@@ -77,15 +91,17 @@ func (c *Client) DidSave(ctx context.Context, uri URI) error {
 	return c.DidSaveText(ctx, uri, doc.text)
 }
 
-func (c *Client) DidSaveText(ctx context.Context, uri URI, text string) error {
+func (c *Client) DidSaveText[V piecetree.Value](ctx context.Context, uri URI, value V) error {
 	if !c.save {
 		return nil
 	}
-	params := map[string]any{"textDocument": TextDocumentIdentifier{uri}}
 	if c.saveText {
-		params["text"] = text
+		text := piecetree.Text(value)
+		return c.notifyDocumentText(ctx, "textDocument/didSave", uri, "", 0, text, 0, text.Len(), nil)
 	}
-	return c.Notify(ctx, "textDocument/didSave", params)
+	return c.notify(ctx, "textDocument/didSave", struct {
+		TextDocument TextDocumentIdentifier `json:"textDocument"`
+	}{TextDocumentIdentifier{uri}})
 }
 
 func (c *Client) DocumentVersion(uri URI) (int, bool) {
@@ -93,4 +109,13 @@ func (c *Client) DocumentVersion(uri URI) (int, bool) {
 	defer c.documentsMu.Unlock()
 	doc, exists := c.documents[uri]
 	return doc.version, exists
+}
+
+func validDocumentText(text piecetree.Snapshot) bool {
+	for part := range text.Chunks(0, text.Len()) {
+		if !utf8.ValidString(part) {
+			return false
+		}
+	}
+	return true
 }

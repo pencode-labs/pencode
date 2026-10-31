@@ -351,8 +351,8 @@ func TestLanguageSymbolActionUsesDeclarationModifiers(t *testing.T) {
 	model.syncLanguageDocuments()
 	doc := model.languages.documents[model.activeFile()]
 	provider.client.Capabilities["semanticTokensProvider"] = json.RawMessage(`{"legend":{"tokenTypes":["variable"],"tokenModifiers":["declaration","definition"]},"full":true}`)
-	declaration := strings.Index(doc.content, "func main") + len("func ")
-	usage := strings.LastIndex(doc.content, "main()")
+	declaration := strings.Index(doc.content.String(), "func main") + len("func ")
+	usage := strings.LastIndex(doc.content.String(), "main()")
 	doc.semantic = &pencodeSemanticTokens{
 		session: provider,
 		version: doc.version,
@@ -457,9 +457,9 @@ func TestLanguageContextPreservesSelectionAndStaleHoverIsRejected(t *testing.T) 
 		t.Fatalf("wrong format selection: %+v", params["range"])
 	}
 	model.dismissLanguagePanel()
-	model.languageUI.hover = pencodeLanguageHover{file: model.activeFile(), content: value, offset: caret, token: 42}
+	model.languageUI.hover = pencodeLanguageHover{file: model.activeFile(), content: model.activeSnapshot(), offset: caret, token: 42}
 	doc := model.languages.documents[model.activeFile()]
-	job := pencodeLanguageJob{document: doc, content: value, version: doc.version, offset: caret, token: 42, hover: true}
+	job := pencodeLanguageJob{document: doc, content: model.activeSnapshot(), version: doc.version, offset: caret, token: 42, hover: true}
 	model.cancelLanguageHover()
 	model.acceptLanguageResult(world, pencodeLanguageEvent{job: job, result: json.RawMessage(`{"contents":"stale"}`)})
 	if model.languageUI.hover.open {
@@ -502,10 +502,10 @@ func TestLanguageEditorActionsSuspendHoverOutsidePopup(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model.languages.panel = pencodeLanguagePanel{open: test.panel, completion: test.completion, pending: test.pending}
 			ui := &model.languageUI
-			ui.contextOpen, ui.contextFile, ui.contextContent = test.context, initial.file, value
+			ui.contextOpen, ui.contextFile, ui.contextContent = test.context, initial.file, model.activeSnapshot()
 			model.cancelLanguageAutomatic()
 			if test.delayed {
-				ui.completionFile, ui.completionContent = initial.file, value
+				ui.completionFile, ui.completionContent = initial.file, model.activeSnapshot()
 				ui.completionCaret = 0
 				ui.completionDue = time.Now().Add(time.Hour)
 			}
@@ -526,7 +526,7 @@ func TestLanguageEditorActionsSuspendHoverOutsidePopup(t *testing.T) {
 					t.Fatal("active action allowed a hover request")
 				}
 			}
-			job := pencodeLanguageJob{document: doc, content: value, version: doc.version, offset: initial.offset, token: initial.token, hover: true}
+			job := pencodeLanguageJob{document: doc, content: model.activeSnapshot(), version: doc.version, offset: initial.offset, token: initial.token, hover: true}
 			model.acceptLanguageResult(world, pencodeLanguageEvent{job: job, result: json.RawMessage(`{"contents":"hover"}`)})
 			if ui.hover.open {
 				t.Fatal("active action accepted a hover response")
@@ -619,7 +619,7 @@ func TestLanguageCompletionResolvesAdditionalEditsAndRejectsChangedContent(t *te
 	model.syncLanguageDocuments()
 	model.runLanguageAction(world, "textDocument/completion", false)
 	job = languageInteractionJob(t, provider, "textDocument/completion")
-	model.activeFile().Content = "package changed\n"
+	model.activeFile().contentSnapshot = snapshotText("package changed\n")
 	model.acceptLanguageResult(world, pencodeLanguageEvent{session: provider, job: job, result: json.RawMessage(`[{"label":"outdated"}]`)})
 	if model.languages.panel.completion {
 		t.Fatal("completion accepted a stale document snapshot")

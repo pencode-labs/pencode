@@ -91,7 +91,7 @@ func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 			fileDragRelease(t, app, state)
 			checkFileDragPreview(t, model, "")
 			waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
-			if model.activePath != "target/main.go" || model.activeContent() != before.Content || !model.activeFile().Dirty || len(model.activeFile().undo) != len(before.undo) {
+			if model.activePath != "target/main.go" || model.activeContent() != before.content() || !model.activeFile().Dirty || len(model.activeFile().undo) != len(before.undo) {
 				t.Fatal("drag lost the active document or its edit history")
 			}
 			if model.fileClipboard.path != "target/keep.txt" {
@@ -219,7 +219,7 @@ func TestFileDragPreviewFollowsPointerAndFitsViewport(t *testing.T) {
 			textX := func() float32 {
 				t.Helper()
 				for entity, value := range app.World.Query[scene.Text2D]().All {
-					if strings.HasPrefix(value.Get().Value, "dragged-file-") {
+					if strings.HasPrefix(value.Get().Text().String(), "dragged-file-") {
 						transform := app.World.GetRef[scene.UIGlobalTransform](entity)
 						if transform != nil && transform.Matrix[12] > 300 {
 							return transform.Matrix[12]
@@ -316,7 +316,7 @@ func TestProjectResourceDragRejectsCollisionAndDescendant(t *testing.T) {
 	if err := moveResourceAndWait(t, model, project, "src", other, ""); err != nil {
 		t.Fatal(err)
 	}
-	if file := other.Files["src/nested/note.txt"]; file == nil || !file.Dirty || file.Content != "unsaved cross-project text" || len(file.undo) == 0 {
+	if file := other.Files["src/nested/note.txt"]; file == nil || !file.Dirty || file.content() != "unsaved cross-project text" || len(file.undo) == 0 {
 		t.Fatal("cross-project drag lost the edited buffer")
 	}
 	if model.fileClipboard.project != other || model.fileClipboard.path != "src/nested/note.txt" {

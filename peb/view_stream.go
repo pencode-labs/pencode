@@ -46,10 +46,10 @@ func newViewState(ui UI) (*viewState, error) {
 }
 
 // Patches cannot grow a reconstructed UI beyond the limits for a full frame.
-// 100 bytes covers UI's fixed fields, string lengths and the view/event counts.
+// 104 bytes covers UI's fixed fields, string lengths and the view/event counts.
 func validFullView(ui UI) bool {
 	v := ui.View
-	size := 100 + len(ui.ID) + len(ui.Title) + len(ui.Anchor) + len(ui.Context.ID) + len(ui.Context.ProjectPath) + len(ui.Context.Path) + len(v.HTML) + len(v.CSS)
+	size := 104 + len(ui.ID) + len(ui.Title) + len(ui.Anchor) + len(ui.Context.ID) + len(ui.Context.ProjectPath) + len(ui.Context.Path) + len(v.HTML) + len(v.CSS)
 	if len(v.HTML) > MaxDocument || len(v.CSS) > MaxDocument || len(v.Events) > MaxItems || !utf8.ValidString(v.HTML) || !utf8.ValidString(v.CSS) {
 		return false
 	}

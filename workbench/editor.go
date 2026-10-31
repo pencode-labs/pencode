@@ -3,45 +3,45 @@ package workbench
 import (
 	"math"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/diiyw/onix/ecs"
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/text"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/diiyw/onix/ui/html"
 )
 
 type pencodeEditor struct {
-	control, text, gutter, numbers                       ecs.Entity
-	file                                                 *openFile
-	needsFocus                                           bool
-	guide                                                ecs.Entity
-	firstLine, lastLine                                  int
-	numberBuffer                                         []byte
-	sourceLines                                          []int
-	compositionSource, compositionText, compositionValue string
-	compositionCaret                                     int
-	compositionRuneCaret                                 int
-	compositionSpans                                     []scene.TextSpan2D
-	compositionPaint                                     pencodeOverlayKey
-	linkSpans                                            []scene.TextSpan2D
-	linkPaint                                            pencodeOverlayKey
-	brackets                                             pencodeBracketIndex
-	diagnostics                                          pencodeDiagnosticPaint
-	debugPaint                                           pencodeDebugPaint
-	findPaint                                            pencodeFindPaint
-	layoutKey                                            pencodeGutterLayoutKey
-	caretContent                                         string
-	caretInfo                                            string
-	caretIndex, caretLine                                int
+	control, text, gutter, numbers      ecs.Entity
+	file                                *openFile
+	needsFocus                          bool
+	guide                               ecs.Entity
+	firstLine, lastLine                 int
+	numberBuffer                        []byte
+	sourceLines                         []int
+	compositionSource, compositionValue piecetree.Snapshot
+	compositionText                     string
+	compositionCaret                    int
+	compositionRuneCaret                int
+	compositionSpans                    []scene.TextSpan2D
+	compositionPaint                    pencodeOverlayKey
+	linkSpans                           []scene.TextSpan2D
+	linkPaint                           pencodeOverlayKey
+	brackets                            pencodeBracketIndex
+	diagnostics                         pencodeDiagnosticPaint
+	debugPaint                          pencodeDebugPaint
+	findPaint                           pencodeFindPaint
+	layoutKey                           pencodeGutterLayoutKey
+	caretContent                        piecetree.Snapshot
+	caretInfo                           string
+	caretIndex, caretLine               int
 }
 
 type pencodeGutterLayoutKey struct {
-	value               string
+	value               piecetree.Snapshot
 	font                *text.Font
 	fontSize, dpi       float64
 	wrapWidth, tabWidth float32
@@ -136,7 +136,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 	if !ok {
 		return
 	}
-	valueText.Index = file.textBuffer(file.Content)
+	valueText.Index = file.snapshotBuffer()
 	if font != nil {
 		valueText.Font = font
 	}
@@ -160,8 +160,8 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 	}
 	editor.syncWidthGuide(world, model.settings.EditorWidth, guideColor)
 	field, _ := world.Get[engineui.TextField](editor.control)
-	if content := model.activeContent(); content != field.Value {
-		world.SetControlValue(editor.control, content)
+	if content := model.activeSnapshot(); field.Buffer != &file.buffer || content != field.Text() {
+		model.bindEditorSnapshot(world, content)
 	}
 	model.focusFindInput(world, surface)
 	if editor.file != file || editor.needsFocus {
@@ -176,7 +176,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 		}
 		// Focus can move the caret to the end; restore the document after it.
 		if field := world.Mut[engineui.TextField](editor.control); field != nil {
-			length := file.textBuffer(file.Content).Runes()
+			length := file.snapshotBuffer().Runes()
 			field.Caret, field.Anchor = min(file.editorView.caret, length), min(file.editorView.anchor, length)
 			field.ScrollX = 0
 			field.Composition = ""
@@ -192,7 +192,9 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 		editor.file = file
 	}
 	if field := world.Mut[engineui.TextField](editor.control); field != nil {
-		field.Buffer = file.textBuffer(file.Content)
+		field.Buffer = file.snapshotBuffer()
+		field.Source = file.snapshot()
+		field.Value = ""
 	}
 	field, _ = world.Get[engineui.TextField](editor.control)
 	editor.syncHighlight(valueText, field, model)
@@ -202,7 +204,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 func (editor *pencodeEditor) syncCaretStatus(world *module.Content, surface ecs.Entity, model *workspaceModel) {
 	field, ok := world.Get[engineui.TextField](editor.control)
 	visible := ok && model.screen == pencodeWorkspace && model.textEditorActive()
-	if visible && editor.caretLine != 0 && editor.caretContent == field.Value && editor.caretIndex == field.Caret {
+	if visible && editor.caretLine != 0 && editor.caretContent == field.Text() && editor.caretIndex == field.Caret {
 		return
 	}
 	if !visible && editor.caretLine == 0 {
@@ -213,9 +215,9 @@ func (editor *pencodeEditor) syncCaretStatus(world *module.Content, surface ecs.
 		return
 	}
 	label := ""
-	editor.caretContent, editor.caretIndex, editor.caretLine = "", 0, 0
+	editor.caretContent, editor.caretIndex, editor.caretLine = piecetree.Snapshot{}, 0, 0
 	if visible {
-		document := model.activeFile().textBuffer(field.Value)
+		document := model.activeFile().snapshotBuffer()
 		line, column := document.Position(document.ByteOffset(field.Caret))
 		line, column = line+1, column+1
 		var buffer [64]byte
@@ -224,7 +226,7 @@ func (editor *pencodeEditor) syncCaretStatus(world *module.Content, surface ecs.
 		value = append(value, ", Col "...)
 		value = strconv.AppendInt(value, int64(column), 10)
 		label = string(value)
-		editor.caretContent, editor.caretIndex, editor.caretLine = field.Value, field.Caret, line
+		editor.caretContent, editor.caretIndex, editor.caretLine = field.Text(), field.Caret, line
 	}
 	// Update only the status text; caret movement must not rebuild the file tree.
 	editor.caretInfo = label
@@ -236,14 +238,14 @@ func (editor *pencodeEditor) syncCaretStatus(world *module.Content, surface ecs.
 
 func (editor *pencodeEditor) syncHighlight(valueText *scene.Text2D, field engineui.TextField, model *workspaceModel) {
 	var spans []scene.TextSpan2D
-	if model.highlightedContent == field.Value {
+	if model.highlightedContent == field.Text() {
 		spans = model.languageHighlight(model.highlightScratch)
 	}
 	if field.Composition == "" {
 		hover := &model.languageUI.hover
-		if hover.link && hover.file == model.activeFile() && hover.content == field.Value && hover.start >= 0 && hover.start < hover.end && hover.end <= len(field.Value) && model.workbenchTheme != nil {
+		if hover.link && hover.file == model.activeFile() && hover.content == field.Text() && hover.start >= 0 && hover.start < hover.end && hover.end <= field.Text().Len() && model.workbenchTheme != nil {
 			link := [...]scene.TextSpan2D{{Start: hover.start, End: hover.end, Color: model.workbenchTheme.link}}
-			key := pencodeOverlayPaintKey(model, field.Value, spans, hover.start, hover.end)
+			key := pencodeOverlayPaintKey(model, field.Text(), spans, hover.start, hover.end)
 			if key != editor.linkPaint {
 				editor.linkSpans = overlayLanguageSpans(editor.linkSpans[:0], spans, link[:])
 				editor.linkPaint = key
@@ -252,38 +254,33 @@ func (editor *pencodeEditor) syncHighlight(valueText *scene.Text2D, field engine
 		}
 	}
 	spans = editor.brackets.highlight(field, model, spans)
-	editor.syncPaint(valueText, field, spans, pencodeOverlayPaintKey(model, field.Value, spans, editor.brackets.paint.start, editor.brackets.paint.end))
+	editor.syncPaint(valueText, field, spans, pencodeOverlayPaintKey(model, field.Text(), spans, editor.brackets.paint.start, editor.brackets.paint.end))
 }
 
 func (editor *pencodeEditor) syncPaint(valueText *scene.Text2D, field engineui.TextField, spans []scene.TextSpan2D, paint pencodeOverlayKey) {
+	valueText.Value = ""
+	source := field.Text()
 	if field.Composition == "" {
-		valueText.Value, valueText.Spans = field.Value, spans
-		editor.compositionSource, editor.compositionText, editor.compositionValue = "", "", ""
+		valueText.Source, valueText.Spans = source, spans
+		editor.compositionSource, editor.compositionValue = piecetree.Snapshot{}, piecetree.Snapshot{}
+		editor.compositionText = ""
 		editor.compositionPaint = pencodeOverlayKey{}
 		return
 	}
-	// Native UI inserts preedit at a rune caret; colour ranges use byte offsets.
-	prefix := editor.compositionCaret
-	if editor.compositionSource != field.Value || editor.compositionRuneCaret != field.Caret {
-		if field.Buffer != nil && field.Buffer.Matches(field.Value) {
-			prefix = field.Buffer.ByteOffset(field.Caret)
-		} else {
-			prefix = 0
-			for caret := max(0, field.Caret); caret > 0 && prefix < len(field.Value); caret-- {
-				_, size := utf8.DecodeRuneInString(field.Value[prefix:])
-				prefix += size
-			}
-		}
+	start, end := field.Caret, field.Anchor
+	if start > end {
+		start, end = end, start
 	}
-	changed := editor.compositionSource != field.Value || editor.compositionText != field.Composition || editor.compositionCaret != prefix
+	prefix, oldEnd := source.ByteOffset(start), source.ByteOffset(end)
+	changed := editor.compositionSource != source || editor.compositionText != field.Composition || editor.compositionCaret != prefix || editor.compositionRuneCaret != end
 	if changed {
-		editor.compositionValue = field.Value[:prefix] + field.Composition + field.Value[prefix:]
-		editor.compositionSource, editor.compositionText, editor.compositionCaret = field.Value, field.Composition, prefix
+		editor.compositionValue = source.Replace(prefix, oldEnd, field.Composition)
+		editor.compositionSource, editor.compositionText, editor.compositionCaret = source, field.Composition, prefix
+		editor.compositionRuneCaret = end
 	}
-	editor.compositionRuneCaret = field.Caret
-	valueText.Value = editor.compositionValue
+	valueText.Source = editor.compositionValue
 	if changed || editor.compositionPaint != paint {
-		editor.compositionSpans = rebasePencodeSpans(editor.compositionSpans[:0], spans, prefix, prefix, prefix+len(field.Composition))
+		editor.compositionSpans = rebasePencodeSpans(editor.compositionSpans[:0], spans, prefix, oldEnd, prefix+len(field.Composition))
 		editor.compositionPaint = paint
 	}
 	valueText.Spans = editor.compositionSpans
@@ -350,21 +347,21 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	originY := valueTransform.Translation.Y.Value
 	first := max(0, int(math.Floor(float64(-originY/lineHeight))))
 	count := scene.TextLineCount2D(valueText)
-	key := pencodeGutterLayoutKey{valueText.Value, valueText.Font, valueText.FontSize, valueText.DPI, valueText.WrapWidth, valueText.TabWidth, valueText.WrapMode}
+	key := pencodeGutterLayoutKey{valueText.Text(), valueText.Font, valueText.FontSize, valueText.DPI, valueText.WrapWidth, valueText.TabWidth, valueText.WrapMode}
 	first = min(first, count)
 	last := min(count, max(first, int(math.Ceil(float64(bounds.Height-originY)/float64(lineHeight)))))
 	if key != editor.layoutKey || first != editor.firstLine || last != editor.lastLine {
 		editor.sourceLines = editor.sourceLines[:0]
-		document := model.activeFile().textBuffer(model.activeContent())
+		document := model.activeFile().snapshotBuffer()
 		for index := first; index < last; index++ {
 			start, _, _, _ := scene.TextLineRange2D(valueText, index)
 			number := 0
-			if index == 0 || start > 0 && valueText.Value[start-1] == '\n' {
+			if index == 0 || start > 0 && valueText.Text().ByteAt(start-1) == '\n' {
 				line := 0
-				if document.Matches(valueText.Value) {
+				if document.MatchesSnapshot(valueText.Text()) {
 					line, _ = document.Position(start)
 				} else {
-					line = strings.Count(valueText.Value[:start], "\n")
+					line, _ = valueText.Text().Position(start)
 				}
 				number = line + 1
 			}

@@ -69,7 +69,7 @@ func TestPencodeBackendOwnsEditedAndMovedDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(project.Path, "moved.go"))
-	if err != nil || string(data) != file.Content || file.Dirty {
+	if err != nil || string(data) != file.content() || file.Dirty {
 		t.Fatal("moved document was not saved through server", err)
 	}
 	model.updateActiveContent("package retained\n")
@@ -78,7 +78,7 @@ func TestPencodeBackendOwnsEditedAndMovedDocuments(t *testing.T) {
 		t.Fatal("disconnected GUI saved directly to disk")
 	}
 	data, _ = os.ReadFile(filepath.Join(project.Path, "moved.go"))
-	if string(data) == file.Content || !file.Dirty {
+	if string(data) == file.content() || !file.Dirty {
 		t.Fatal("connection loss overwrote disk or cleared dirty state")
 	}
 }
@@ -86,7 +86,7 @@ func TestPencodeBackendOwnsEditedAndMovedDocuments(t *testing.T) {
 func TestPencodeBackendLazyDocumentPreservesDiskConflict(t *testing.T) {
 	model, project := resourceTestModel(t)
 	resourceTestWrite(t, project, "main.go", "package external\n")
-	file := &openFile{Path: "main.go", Name: "main.go", Content: "package edited\n", savedContent: "package original\n", Dirty: true}
+	file := &openFile{Path: "main.go", Name: "main.go", contentSnapshot: snapshotText("package edited\n"), savedContent: snapshotText("package original\n"), Dirty: true}
 	if err := saveFileAndWait(t, model, project.Path, file); err == nil {
 		t.Fatal("late document activation overwrote an external change")
 	}

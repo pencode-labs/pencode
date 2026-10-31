@@ -89,7 +89,7 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	file := model.activeFile()
-	source := file.Content
+	source := file.content()
 	model.importEditors(installPencodeEditorFixture(t, session.backend).Editors)
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	wait := func(ready func() bool) {
@@ -140,14 +140,14 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 	value := source + "// edited through extension\n"
 	model.fontResources.SetControlValue(control, value)
 	app.World.WriteMessage(htmlui.Event{Entity: model.surface, Target: control, Kind: htmlui.EventInput, Value: value, Bubbles: true})
-	wait(func() bool { return file.Content == value && !model.customDocuments[file].busy() })
+	wait(func() bool { return file.content() == value && !model.customDocuments[file].busy() })
 	if !file.Dirty || len(file.undo) != 1 || model.customDocuments[file].definition != definition {
 		t.Fatal("input lost history or replaced the retained DOM")
 	}
 	if current, _ := model.fontResources.HTMLControl(model.surface, "pencode-extension-source"); current != control {
 		t.Fatal("input replaced the textarea")
 	}
-	if field, ok := model.fontResources.Get[engineui.TextField](control); !ok || field.Value != value {
+	if field, ok := model.fontResources.Get[engineui.TextField](control); !ok || field.Text().String() != value {
 		t.Fatal("custom textarea content drifted")
 	}
 	model.saveActiveFile()
@@ -158,11 +158,11 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 	if err != nil || string(data) != value || file.Dirty {
 		t.Fatal("extension edit did not save through the host")
 	}
-	if !model.undoActiveContent(model.fontResources) || file.Content != source {
+	if !model.undoActiveContent(model.fontResources) || file.content() != source {
 		t.Fatal("extension edits did not use host undo")
 	}
 	wait(func() bool {
-		return !model.customDocuments[file].busy() && model.customDocuments[file].content == file.Content
+		return !model.customDocuments[file].busy() && model.customDocuments[file].content == file.content()
 	})
 	if !model.selectEditor(pencodeTextEditor) {
 		t.Fatal("could not reopen with native editor")
@@ -246,7 +246,7 @@ func TestPencodeCustomEditorPendingEditSurvivesTabSwitchAndClose(t *testing.T) {
 		return document != nil && document.definition != nil && !document.busy()
 	})
 	document := model.customDocuments[file]
-	value := file.Content + "// final edit\n"
+	value := file.content() + "// final edit\n"
 	props := document
 	document.definition.Behavior.HandleEvent(&htmlui.ComponentEventContext[*pencodeCustomDocument, struct{}]{Props: &props, Ref: "source", Event: htmlui.Event{Kind: htmlui.EventInput, Value: value}})
 	model.closeProjectTab(project, file.Path)
@@ -259,16 +259,16 @@ func TestPencodeCustomEditorPendingEditSurvivesTabSwitchAndClose(t *testing.T) {
 	openFileAndWait(t, model, "other.txt")
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	wait(func() bool { return model.closing.action == pencodeCloseTab })
-	if file.Content != value || !file.Dirty || model.activeContent() != "other" || model.closing.targets[0].file != file {
+	if file.content() != value || !file.Dirty || model.activeContent() != "other" || model.closing.targets[0].file != file {
 		t.Fatal("reply changed the active file or skipped the unsaved prompt")
 	}
 	model.clearCloseRequest()
 	// A reload/undo during an outstanding request must win over its old reply.
 	document.enqueue(peb.EditorEvent{Kind: "input", Ref: "source", Value: "stale"})
 	document.dispatch()
-	file.Content = "newer host content"
+	file.contentSnapshot = snapshotText("newer host content")
 	wait(func() bool { return !document.busy() })
-	if file.Content != "newer host content" {
+	if file.content() != "newer host content" {
 		t.Fatal("stale reply overwrote the host document")
 	}
 }
@@ -395,7 +395,7 @@ func TestPencodeOpenWithActionsReplaceAndSplit(t *testing.T) {
 		t.Fatal("appearance update replaced a document session")
 	}
 	// Native edits still reach the extension snapshot while both panes are visible.
-	content := file.Content + "// split edit\n"
+	content := file.content() + "// split edit\n"
 	model.updateActiveContent(content)
 	wait(func() bool { d := model.customDocuments[file]; return !d.busy() && d.content == content })
 	if !file.Dirty {
@@ -408,7 +408,7 @@ func TestPencodeOpenWithActionsReplaceAndSplit(t *testing.T) {
 	}
 	editorContextClick(t, app, model, state, "editor-text")
 	wait(func() bool { return model.customDocuments[file] == nil })
-	if !model.textEditorActive() || file.editorSplit || file.Content != content {
+	if !model.textEditorActive() || file.editorSplit || file.content() != content {
 		t.Fatal("returning to source lost content or layout")
 	}
 	// The layout button can also open a preview directly from source.

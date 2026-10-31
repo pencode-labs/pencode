@@ -43,7 +43,7 @@ func TestProjectResourcesRenameDirectoryPreservesBuffersAndHistory(t *testing.T)
 		t.Fatal(err)
 	}
 	file := project.Files["lib/nested/main.go"]
-	if file == nil || file == before || !file.Dirty || file.Content != before.Content || len(file.undo) != len(before.undo) || project.ActivePath != file.Path || project.Files["src/nested/main.go"] != nil {
+	if file == nil || file == before || !file.Dirty || file.content() != before.content() || len(file.undo) != len(before.undo) || project.ActivePath != file.Path || project.Files["src/nested/main.go"] != nil {
 		t.Fatal("directory rename lost open document state")
 	}
 	if !project.ExpandedDirs["lib/nested"] || len(project.Tabs) != 2 || project.Tabs[1] != "lib/nested/main.go" {
@@ -107,7 +107,7 @@ func TestProjectResourcesCopyMoveAndCrossProjectBuffers(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := other.Files["a.txt"]
-	if file == nil || !file.Dirty || file.Content != "unsaved text" || len(file.undo) == 0 || len(project.Tabs) != 0 || other.ActivePath != "a.txt" {
+	if file == nil || !file.Dirty || file.content() != "unsaved text" || len(file.undo) == 0 || len(project.Tabs) != 0 || other.ActivePath != "a.txt" {
 		t.Fatal("cross-project move lost the unsaved document")
 	}
 	if content, err := os.ReadFile(filepath.Join(other.Path, "a.txt")); err != nil || string(content) != "disk text" {

@@ -5,9 +5,10 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/graphics"
-	"github.com/pencode-labs/pencode/lsp"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	"github.com/diiyw/onix/text/piecetree"
+	"github.com/pencode-labs/pencode/lsp"
 )
 
 type pencodeSemanticTokens struct {
@@ -18,7 +19,7 @@ type pencodeSemanticTokens struct {
 	tokens             []lsp.SemanticToken
 	spans, merged      []scene.TextSpan2D
 	theme              *syntax.Theme
-	baseSource         string
+	baseSource         piecetree.Snapshot
 	baseRevision       uint64
 }
 type pencodeSemanticProvider struct {
@@ -31,7 +32,7 @@ type pencodeSemanticProvider struct {
 }
 
 func languageSymbolAction(doc *pencodeLanguageDocument, offset int) string {
-	if doc == nil || doc.file == nil || doc.semantic == nil || doc.semantic.session == nil || doc.semantic.session.client == nil || doc.semantic.version != doc.version || doc.content != doc.file.Content {
+	if doc == nil || doc.file == nil || doc.semantic == nil || doc.semantic.session == nil || doc.semantic.session.client == nil || doc.semantic.version != doc.version || doc.content != doc.file.snapshot() {
 		return "textDocument/definition"
 	}
 	var provider pencodeSemanticProvider
@@ -128,7 +129,7 @@ func (model *workspaceModel) scheduleLanguageSemantic() {
 				return
 			}
 			method = "textDocument/semanticTokens/range"
-			end, _ := lsp.PositionAt(doc.content, len(doc.content), session.client.Encoding)
+			end, _ := lsp.PositionAt(doc.content, doc.content.Len(), session.client.Encoding)
 			params["range"] = lsp.Range{End: end}
 		} else if semantic.resultID != "" {
 			var full struct {
@@ -152,7 +153,7 @@ func (model *workspaceModel) scheduleLanguageSemantic() {
 func (model *workspaceModel) acceptLanguageSemantic(event pencodeLanguageEvent) {
 	job := event.job
 	doc := job.document
-	if doc == nil || doc.semantic == nil || doc.semantic.session != event.session || doc.version != job.version || doc.file.Content != job.content || !doc.seen || event.err != nil {
+	if doc == nil || doc.semantic == nil || doc.semantic.session != event.session || doc.version != job.version || doc.file.snapshot() != job.content || !doc.seen || event.err != nil {
 		return
 	}
 	var result struct {
@@ -186,7 +187,7 @@ func (model *workspaceModel) acceptLanguageSemantic(event pencodeLanguageEvent) 
 	semantic.version = doc.version
 	model.semanticPaintRevision++
 	semantic.theme = nil
-	semantic.baseSource = ""
+	semantic.baseSource = piecetree.Snapshot{}
 }
 func semanticScope(name string) string {
 	switch name {
@@ -229,7 +230,7 @@ func (model *workspaceModel) languageHighlight(base []scene.TextSpan2D) []scene.
 		return base
 	}
 	doc := state.documents[model.activeFile()]
-	if doc == nil || doc.semantic == nil || doc.content != doc.file.Content || doc.semantic.version != doc.version {
+	if doc == nil || doc.semantic == nil || doc.content != doc.file.snapshot() || doc.semantic.version != doc.version {
 		return base
 	}
 	semantic := doc.semantic

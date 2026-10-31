@@ -31,12 +31,12 @@ func TestPencodeHistoryByteBudgetAndBranch(t *testing.T) {
 		model.updateActiveContent(strings.Repeat(string(rune('a'+i)), len(chunk)))
 		checkPencodeHistory(t, file)
 	}
-	last := file.Content
+	last := file.content()
 	if !model.undoActiveContent(nil) {
 		t.Fatal("budgeted latest edit could not be undone")
 	}
 	checkPencodeHistory(t, file)
-	if !model.redoActiveContent(nil) || file.Content != last {
+	if !model.redoActiveContent(nil) || file.content() != last {
 		t.Fatal("redo did not restore the latest value")
 	}
 	checkPencodeHistory(t, file)
@@ -51,8 +51,8 @@ func TestPencodeHistoryByteBudgetAndBranch(t *testing.T) {
 	if len(file.undo) != 0 || model.undoActiveContent(nil) {
 		t.Fatal("oversized edit left an undo gap")
 	}
-	model.updateActiveContent(file.Content + "!")
-	if !model.undoActiveContent(nil) || strings.HasSuffix(file.Content, "!") {
+	model.updateActiveContent(file.content() + "!")
+	if !model.undoActiveContent(nil) || strings.HasSuffix(file.content(), "!") {
 		t.Fatal("history did not resume after an oversized edit")
 	}
 	checkPencodeHistory(t, file)

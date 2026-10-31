@@ -14,6 +14,7 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
@@ -353,10 +354,10 @@ func (m *workspaceModel) pollDebugger(world *module.Content) bool {
 			// A file may have been opened while the worker was writing. Retain
 			// edits made in the meantime, otherwise update its saved snapshot.
 			if event.written != "" && event.project == m.activeProjectState() {
-				if f := event.project.Files[pencodeDebugConfigPath]; f != nil && !f.Dirty && f.Content == event.baseline {
+				if f := event.project.Files[pencodeDebugConfigPath]; f != nil && !f.Dirty && f.content() == event.baseline {
 					f.closeDocument()
 					m.applyFileContent(f, event.project, event.written, true)
-					f.savedContent, f.Dirty = event.written, false
+					f.savedContent, f.Dirty = snapshotText(event.written), false
 					f.saveRevision++
 				}
 			}
@@ -595,14 +596,14 @@ func (m *workspaceModel) toggleDebugBreakpoint(world *module.Content, line int) 
 		caret := 0
 		if world != nil {
 			if field, ok := world.Get[engineui.TextField](m.editor.control); ok {
-				caret = f.textBuffer(f.Content).ByteOffset(field.Caret)
+				caret = f.snapshotBuffer().ByteOffset(field.Caret)
 			}
 		}
-		line = 1 + strings.Count(f.Content[:min(caret, len(f.Content))], "\n")
+		line = 1 + strings.Count(f.content()[:min(caret, len(f.content()))], "\n")
 	}
 	offset := 0
 	for n := 1; n < line; n++ {
-		end := strings.IndexByte(f.Content[offset:], '\n')
+		end := strings.IndexByte(f.content()[offset:], '\n')
 		if end < 0 {
 			return
 		}
@@ -623,7 +624,7 @@ func (m *workspaceModel) toggleDebugBreakpoint(world *module.Content, line int) 
 	m.syncDebugBreakpoints(p, f)
 }
 
-func (m *workspaceModel) rebaseDebugBreakpoints(p *pencodeProject, f *openFile, value string, start, oldEnd, newEnd int) {
+func (m *workspaceModel) rebaseDebugBreakpoints(p *pencodeProject, f *openFile, value piecetree.Snapshot, start, oldEnd, newEnd int) {
 	if p == nil {
 		return
 	}
@@ -638,10 +639,11 @@ func (m *workspaceModel) rebaseDebugBreakpoints(p *pencodeProject, f *openFile, 
 		} else if offset >= start {
 			offset = start
 		}
-		offset = min(max(offset, 0), len(value))
-		offset = strings.LastIndexByte(value[:offset], '\n') + 1
+		offset = min(max(offset, 0), value.Len())
+		line, _ := value.Position(offset)
+		offset = value.LineStart(line)
 		list[i].offset = offset
-		list[i].line = 1 + strings.Count(value[:offset], "\n")
+		list[i].line = line + 1
 	}
 	if len(list) > 1 {
 		list = slices.Compact(list)

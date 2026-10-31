@@ -12,7 +12,7 @@ import (
 )
 
 func TestCodexActivitySweepRetainsTextWithoutAllocations(t *testing.T) {
-	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	css, err := os.ReadFile("testdata/codex/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestCodexActivitySweepRetainsTextWithoutAllocations(t *testing.T) {
 	}
 	var letters [4]ecs.Entity
 	for entity, access := range world.Query[scene.Text2D]().All {
-		switch access.Ref().Value {
+		switch access.Ref().Text().String() {
 		case "正":
 			letters[0] = entity
 		case "在":

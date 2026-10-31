@@ -57,7 +57,7 @@ func (m *workspaceModel) renderSourceHighlight() {
 		// Copy only paint data; the cache and comparison retain separate buffers.
 		if tab.Kind != "merge" && (side == 0 || tab.DiffContent == source) {
 			if file := m.files[tab.Path]; file != nil {
-				if cached, ok := m.highlightCache.get(file, m.syntaxTheme, m.syntaxDefinitions); ok && cached.source == source {
+				if cached, ok := m.highlightCache.get(file, m.syntaxTheme, m.syntaxDefinitions); ok && cached.source.Equal(snapshotText(source)) {
 					h.spans = append(h.spans[:0], cached.spans...)
 					h.source, h.theme, h.definitions, h.ready = source, m.syntaxTheme, m.syntaxDefinitions, true
 					h.revision++

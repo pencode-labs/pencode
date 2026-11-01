@@ -18,16 +18,27 @@ func TestPencodePlatformFontPreference(t *testing.T) {
 	for _, goos := range []string{"darwin", "ios", "windows", "linux", "android"} {
 		t.Run(goos, func(t *testing.T) {
 			model := workspaceModel{fonts: make(map[string]pencodeFont)}
-			for _, id := range []string{"Menlo", "Monaco", "Courier New"} {
+			for _, id := range []string{"Menlo", "Monaco", "Courier New", "Consolas"} {
 				model.fonts[id] = pencodeFont{regular: &text.Font{}}
 			}
 			want := "Courier New"
+			if goos == "windows" {
+				want = "Consolas"
+			}
 			if goos == "darwin" || goos == "ios" {
 				want = "Menlo"
 			}
 			if got := model.resolveDefaultFont(goos); got != want || defaultPencodeFont(goos) != want {
 				t.Fatalf("default = %q, want %q", got, want)
 			}
+			wantUI := want
+			if goos == "windows" {
+				wantUI = "Microsoft YaHei"
+			}
+			if got := defaultPencodeUIFont(goos); got != wantUI {
+				t.Fatalf("UI default = %q, want %q", got, wantUI)
+			}
+			delete(model.fonts, "Consolas")
 			delete(model.fonts, "Menlo")
 			delete(model.fonts, "Courier New")
 			if got := model.resolveDefaultFont(goos); got != "Monaco" {
@@ -123,8 +134,12 @@ func TestPencodeSystemFontSelectionAndPersistence(t *testing.T) {
 			loaded++
 		}
 	}
-	if loaded != 1 {
-		t.Fatalf("startup loaded %d families, want only the default", loaded)
+	wantLoaded := 1
+	if model.defaultUIFontID != model.defaultFontID {
+		wantLoaded++
+	}
+	if loaded != wantLoaded {
+		t.Fatalf("startup loaded %d families, want %d defaults", loaded, wantLoaded)
 	}
 	selected := ""
 	for _, option := range model.uiFontOptions {
@@ -167,8 +182,8 @@ func TestPencodeDefaultCodeFontAlignsColumns(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model, world := session.active.model, session.active.model.fontResources
 	uiFont, _ := model.uiFont()
-	if model.codeFont() != model.defaultFont || uiFont != model.defaultFont {
-		t.Fatal("code editor and UI do not share the system default font")
+	if model.codeFont() != model.defaultFont || uiFont != model.fonts[model.defaultUIFontID].regular {
+		t.Fatal("code editor or UI does not use its system default font")
 	}
 	model.settings.CodeFont, model.settings.UIFont = "missing-font", "missing-font"
 	model.saveSettings()
@@ -176,8 +191,8 @@ func TestPencodeDefaultCodeFontAlignsColumns(t *testing.T) {
 	if err := model.initializeFonts(); err != nil {
 		t.Fatal(err)
 	}
-	if model.settings.CodeFont != model.defaultFontID || model.settings.UIFont != model.defaultFontID {
-		t.Fatal("invalid saved fonts did not reset to the shared monospace default")
+	if model.settings.CodeFont != model.defaultFontID || model.settings.UIFont != model.defaultUIFontID {
+		t.Fatal("invalid saved fonts did not reset to their platform defaults")
 	}
 	face := model.codeFont().FontFace(13, 72)
 	defer face.Close()
@@ -295,7 +310,7 @@ func TestPencodeFontExtensionRestoresSelectionAndUnloads(t *testing.T) {
 		t.Fatal("selected an unregistered font")
 	}
 	model.removeExtension("fonts")
-	if model.settings.CodeFont != model.defaultFontID || model.settings.UIFont != model.defaultFontID || len(model.fonts) != systemFontCount || face.Data != nil {
+	if model.settings.CodeFont != model.defaultFontID || model.settings.UIFont != model.defaultUIFontID || len(model.fonts) != systemFontCount || face.Data != nil {
 		t.Fatal("unload did not reset selection and dispose font")
 	}
 	if binding, _ := model.fontResources.Get[htmlui.ControlTextFont](model.editor.control); binding.Font != model.defaultFont {
@@ -307,7 +322,7 @@ func TestPencodeFontExtensionRestoresSelectionAndUnloads(t *testing.T) {
 		}
 	}
 	surface, _ = model.fontResources.Get[htmlui.Surface](model.surface)
-	if surface.Font != model.defaultFont || surface.BoldFont != nil {
+	if surface.Font != model.fonts[model.defaultUIFontID].regular || surface.BoldFont != model.fonts[model.defaultUIFontID].bold {
 		t.Fatal("surface still references disposed font")
 	}
 	for view := range session.views {
@@ -317,7 +332,7 @@ func TestPencodeFontExtensionRestoresSelectionAndUnloads(t *testing.T) {
 		}
 	}
 	saved, _ = loadPencodeSettings()
-	if saved.CodeFont != model.defaultFontID || saved.UIFont != model.defaultFontID {
+	if saved.CodeFont != model.defaultFontID || saved.UIFont != model.defaultUIFontID {
 		t.Fatal("fallback selection was not saved")
 	}
 	markPencodeRootDirtyByModel(model.fontResources, model)

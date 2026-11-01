@@ -107,7 +107,7 @@ func defaultPencodeSettings() pencodeSettings {
 	settings := pencodeSettings{
 		FontSize: pencodeDefaultFontSize, UIFontSize: pencodeDefaultUIFontSize,
 		EditorWidth: pencodeDefaultEditorWidth,
-		CodeFont:    defaultPencodeFont(runtime.GOOS), UIFont: defaultPencodeFont(runtime.GOOS), Zoom: pencodeDefaultZoom,
+		CodeFont:    defaultPencodeFont(runtime.GOOS), UIFont: defaultPencodeUIFont(runtime.GOOS), Zoom: pencodeDefaultZoom,
 		Theme: "monokai", Keymap: "default",
 	}
 	settings.Bindings = make(map[string]pencodeKeybinding, len(pencodeShortcutDefinitions))

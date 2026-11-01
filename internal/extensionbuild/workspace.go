@@ -22,7 +22,7 @@ func Environment(directory, sdk, extension string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	data := "go 1.27.0\n\nuse (\n" + strconv.Quote(filepath.ToSlash(sdk)) + "\n" + strconv.Quote(filepath.ToSlash(extension)) + "\n)\n"
+	data := "go 1.27.0\n\nuse (\n" + strconv.Quote(sdk) + "\n" + strconv.Quote(extension) + "\n)\n"
 	if err := os.WriteFile(workspace, []byte(data), 0o600); err != nil {
 		return nil, err
 	}

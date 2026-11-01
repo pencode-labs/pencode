@@ -14,7 +14,12 @@ import (
 	"github.com/pencode-labs/pencode/protocol"
 )
 
-const workspaceWatchInterval = time.Second
+const (
+	workspaceWatchInterval = time.Second
+	// Windows reserves this buffer for every watched directory. Keep bursts
+	// bounded; overflow rebuilds the watches and requests a full refresh.
+	workspaceWatchBufferSize = 16 << 10
+)
 
 type workspaceWatch struct {
 	cancel      context.CancelFunc
@@ -125,7 +130,7 @@ func (w *workspaceWatch) add(ctx context.Context, root string, metadata bool) er
 		if len(w.directories) >= 262144 {
 			return errors.New("filesystem watch exceeds directory budget")
 		}
-		if err := w.watcher.Add(name); err != nil {
+		if err := w.watcher.AddWith(name, fsnotify.WithBufferSize(workspaceWatchBufferSize)); err != nil {
 			return err
 		}
 		w.directories[name] = metadata
@@ -134,8 +139,13 @@ func (w *workspaceWatch) add(ctx context.Context, root string, metadata bool) er
 }
 
 func (w *workspaceWatch) event(ctx context.Context, event fsnotify.Event) error {
-	metadata := w.directories[filepath.Dir(event.Name)]
-	name := filepath.Base(event.Name)
+	// Native event paths are already clean. Split without Dir's Windows
+	// volume concatenation, preserving drive, UNC and Unix roots.
+	parent, name := filepath.Split(event.Name)
+	if len(parent) > len(filepath.VolumeName(parent))+1 {
+		parent = parent[:len(parent)-1]
+	}
+	metadata := w.directories[parent]
 	if skipWatchDirectory(name, metadata) || metadata && strings.HasSuffix(name, ".lock") {
 		return nil
 	}
@@ -219,24 +229,34 @@ func (w *workspaceWatch) run(ctx context.Context, root string) {
 				return
 			}
 			if errors.Is(err, fsnotify.ErrEventOverflow) {
-				// Reconcile newly created directories after the native queue overflowed.
-				_ = w.watcher.Close()
-				w.watcher, w.err = fsnotify.NewWatcher()
+				w.err = w.rebuild(ctx, root)
 				if w.err != nil {
 					return
 				}
-				clear(w.directories)
-				w.err = w.setup(ctx, root)
-				if w.err != nil {
-					return
-				}
-				w.publish(protocol.WorkspaceTreeChanged|protocol.WorkspaceGitChanged, time.Now())
 			} else {
 				w.err = err
 				return
 			}
 		}
 	}
+}
+
+func (w *workspaceWatch) rebuild(ctx context.Context, root string) error {
+	// Reconcile directories created or removed while native events were lost.
+	_ = w.watcher.Close()
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	w.watcher = watcher
+	clear(w.directories)
+	if err := w.setup(ctx, root); err != nil {
+		return err
+	}
+	// An overflow must invalidate both snapshots even within the burst limit.
+	w.lastTree, w.lastGit = time.Time{}, time.Time{}
+	w.publish(protocol.WorkspaceTreeChanged|protocol.WorkspaceGitChanged, time.Now())
+	return nil
 }
 
 func (s *services) watchWorkspace(ctx context.Context, root string, e *protocol.Encoder) error {

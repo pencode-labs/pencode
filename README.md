@@ -25,6 +25,8 @@ Pencode brings editing, language tools, a terminal, Git, and native process exte
 
 The extension manager currently installs from local directories; there is no online catalog. Pencode does not run VS Code extensions. Theme compatibility is limited to the fields implemented by Pencode.
 
+At startup, the editor, standalone server, and extension installer import manual HTTP/HTTPS system proxies from Windows Internet settings (including machine policy), macOS network settings, or Linux GNOME settings. Extensions and tools inherit them through environment variables. Existing `HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` variables (including lowercase forms) take precedence, and explicit `NO_PROXY` settings are preserved. Restart the relevant process after changing system proxies. PAC/WPAD scripts are not evaluated; child processes interpret bypass rules according to their own `NO_PROXY` support.
+
 ## Development setup
 
 ### Requirements and current limitations

@@ -206,6 +206,7 @@ type workspaceModel struct {
 	settingsFeedback                    string
 	defaultFont                         *text.Font
 	defaultFontID                       string
+	defaultUIFontID                     string
 	fonts                               map[string]pencodeFont
 	codeFontOptions                     []htmlui.VNode
 	uiFontOptions                       []htmlui.VNode

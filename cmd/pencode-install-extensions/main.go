@@ -12,10 +12,12 @@ import (
 	"strings"
 
 	"github.com/pencode-labs/pencode/internal/extensionbuild"
+	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/server/extensionhost"
 )
 
 func main() {
+	systemproxy.Configure()
 	goCommand := flag.String("go", "go", "Go executable")
 	directory := flag.String("directory", "", "Installation directory (default: ~/.pencode/extensions)")
 	flag.Parse()

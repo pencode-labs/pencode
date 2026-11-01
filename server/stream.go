@@ -36,9 +36,6 @@ type serviceStream struct {
 func newServiceStream(ctx context.Context, p io.ReadWriteCloser, related *serviceStream) *serviceStream {
 	const chunks = protocol.StreamWindow / protocol.ChunkSize
 	s := &serviceStream{process: p, related: related, ready: make(chan *serviceChunk, chunks), free: make(chan *serviceChunk, chunks), done: make(chan struct{}), readerDone: make(chan struct{}), waitDone: make(chan struct{})}
-	for range chunks {
-		s.free <- new(serviceChunk)
-	}
 	if p, ok := p.(interface{ Wait() error }); ok {
 		go func() { defer close(s.waitDone); s.waitErr = p.Wait() }()
 	} else {
@@ -48,6 +45,7 @@ func newServiceStream(ctx context.Context, p io.ReadWriteCloser, related *servic
 		defer close(s.readerDone)
 		stop := context.AfterFunc(ctx, s.close)
 		defer stop()
+		allocated := 0
 		for {
 			var chunk *serviceChunk
 			select {
@@ -55,6 +53,20 @@ func newServiceStream(ctx context.Context, p io.ReadWriteCloser, related *servic
 				_, _ = io.Copy(io.Discard, p)
 				return
 			case chunk = <-s.free:
+			default:
+				// Idle streams need only the block used by the pending read.
+				// Grow on backlog, keeping the same bounded transfer window.
+				if allocated < chunks {
+					chunk = new(serviceChunk)
+					allocated++
+				} else {
+					select {
+					case <-s.done:
+						_, _ = io.Copy(io.Discard, p)
+						return
+					case chunk = <-s.free:
+					}
+				}
 			}
 			chunk.n, chunk.err = p.Read(chunk.data[:])
 			if chunk.n == 0 && chunk.err == nil {

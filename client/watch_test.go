@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,38 @@ import (
 
 	"github.com/pencode-labs/pencode/protocol"
 )
+
+func TestWorkspaceWatchNativeBurst(t *testing.T) {
+	c, workspace := peer(t, nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	if _, err := c.WatchWorkspace(ctx, workspace.Path); err != nil {
+		t.Fatal(err)
+	}
+	settleWorkspaceWatch(t, c, workspace.Path)
+	for i := range 512 {
+		name := filepath.Join(workspace.Path, fmt.Sprintf("generated-source-file-with-a-long-name-%04d.go", i))
+		if err := os.WriteFile(name, []byte("package generated"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(name, name+".renamed"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(name + ".renamed"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if changes, err := c.WatchWorkspace(ctx, workspace.Path); err != nil || changes&protocol.WorkspaceTreeChanged == 0 {
+		t.Fatalf("burst refresh=%b, err=%v", changes, err)
+	}
+	settleWorkspaceWatch(t, c, workspace.Path)
+	if err := os.WriteFile(filepath.Join(workspace.Path, "after-burst.go"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if changes, err := c.WatchWorkspace(ctx, workspace.Path); err != nil || changes != protocol.WorkspaceTreeChanged|protocol.WorkspaceGitChanged {
+		t.Fatalf("watch did not recover after burst: changes=%b, err=%v", changes, err)
+	}
+}
 
 func TestWorkspaceWatchNativeEvents(t *testing.T) {
 	all := protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged
@@ -40,6 +73,7 @@ func TestWorkspaceWatchNativeEvents(t *testing.T) {
 			if changes, err := c.WatchWorkspace(ctx, workspace.Path); err != nil || changes != all {
 				t.Fatalf("initialize watch: %b, %v", changes, err)
 			}
+			settleWorkspaceWatch(t, c, workspace.Path)
 			var err error
 			switch test.name {
 			case "write":
@@ -162,6 +196,7 @@ func TestWorkspaceWatchExternalGitMetadata(t *testing.T) {
 			if _, err := c.WatchWorkspace(ctx, root); err != nil {
 				t.Fatal(err)
 			}
+			settleWorkspaceWatch(t, c, root)
 			if err := os.WriteFile(filepath.Join(metadata, "refs/heads/main"), []byte("reference\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -170,4 +205,21 @@ func TestWorkspaceWatchExternalGitMetadata(t *testing.T) {
 			}
 		})
 	}
+}
+
+func settleWorkspaceWatch(t *testing.T, c *Client, root string) {
+	t.Helper()
+	// Windows may still deliver setup writes after watches are registered.
+	// Drain those notifications before testing a separate filesystem change.
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	for {
+		if _, err := c.WatchWorkspace(ctx, root); err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	time.Sleep(1100 * time.Millisecond)
 }

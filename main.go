@@ -11,6 +11,7 @@ import (
 	"github.com/diiyw/onix/project"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
 	"github.com/pencode-labs/pencode/transport"
@@ -24,6 +25,7 @@ func main() {
 		}
 		return
 	}
+	systemproxy.Configure()
 	if len(os.Args) == 2 && os.Args[1] == "--pencode-server" {
 		if err := server.Serve(context.Background(), transport.Stdio{}, server.Options{}); err != nil {
 			panic(err)

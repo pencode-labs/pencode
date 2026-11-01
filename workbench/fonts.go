@@ -21,10 +21,20 @@ type pencodeFont struct {
 }
 
 func defaultPencodeFont(goos string) string {
+	if goos == "windows" {
+		return "Consolas"
+	}
 	if goos == "darwin" || goos == "ios" {
 		return "Menlo"
 	}
 	return "Courier New"
+}
+
+func defaultPencodeUIFont(goos string) string {
+	if goos == "windows" {
+		return "Microsoft YaHei"
+	}
+	return defaultPencodeFont(goos)
 }
 
 func (model *workspaceModel) loadFont(id string) bool {
@@ -63,6 +73,9 @@ func fontStyleDistance(source font.SystemFont, target int) int {
 }
 
 func (model *workspaceModel) resolveDefaultFont(goos string) string {
+	if goos == "windows" && model.loadFont("Consolas") {
+		return "Consolas"
+	}
 	preferred := [...]string{"Menlo", "Monaco", "Courier New"}
 	if goos != "darwin" && goos != "ios" {
 		preferred = [...]string{"Courier New", "Menlo", "Monaco"}
@@ -117,9 +130,19 @@ func (model *workspaceModel) initializeFonts() error {
 		return errors.New("no usable system font")
 	}
 	model.defaultFont = model.fonts[model.defaultFontID].regular
-	for _, selection := range []*string{&model.settings.CodeFont, &model.settings.UIFont} {
-		if !model.loadFont(*selection) && !strings.HasPrefix(*selection, "extensions/") {
-			*selection = model.defaultFontID
+	model.defaultUIFontID = model.defaultFontID
+	if id := defaultPencodeUIFont(runtime.GOOS); model.loadFont(id) {
+		model.defaultUIFontID = id
+	}
+	for _, selection := range [...]struct {
+		id       *string
+		fallback string
+	}{
+		{&model.settings.CodeFont, model.defaultFontID},
+		{&model.settings.UIFont, model.defaultUIFontID},
+	} {
+		if !model.loadFont(*selection.id) && !strings.HasPrefix(*selection.id, "extensions/") {
+			*selection.id = selection.fallback
 		}
 	}
 	return nil
@@ -136,7 +159,8 @@ func (model *workspaceModel) uiFont() (*text.Font, *text.Font) {
 	if f, ok := model.fonts[model.settings.UIFont]; ok && f.regular != nil {
 		return f.regular, f.bold
 	}
-	return model.defaultFont, nil
+	f := model.fonts[model.defaultUIFontID]
+	return f.regular, f.bold
 }
 
 func (model *workspaceModel) applyUIFont() {
@@ -172,7 +196,7 @@ func (model *workspaceModel) syncFontOptions() {
 		codeID = model.defaultFontID
 	}
 	if _, ok := model.fonts[uiID]; !ok {
-		uiID = model.defaultFontID
+		uiID = model.defaultUIFontID
 	}
 	for i := range model.codeFontOptions {
 		for _, selection := range [...]struct {
@@ -248,7 +272,7 @@ func (model *workspaceModel) removeFonts(prefix string) bool {
 		model.settings.CodeFont, changed = model.defaultFontID, true
 	}
 	if strings.HasPrefix(model.settings.UIFont, prefix) {
-		model.settings.UIFont, changed = model.defaultFontID, true
+		model.settings.UIFont, changed = model.defaultUIFontID, true
 	}
 	if len(removed) != 0 {
 		rebind := func(view *workspaceModel) {
@@ -260,7 +284,7 @@ func (model *workspaceModel) removeFonts(prefix string) bool {
 			// directly so Enter rebuilds HTML with a live face before rendering.
 			if s := world.Mut[htmlui.Surface](view.surface); s != nil {
 				if removed[s.Font] {
-					s.Font = model.defaultFont
+					s.Font, s.BoldFont = model.uiFont()
 				}
 				if removed[s.BoldFont] {
 					s.BoldFont = nil
@@ -277,7 +301,7 @@ func (model *workspaceModel) removeFonts(prefix string) bool {
 			for _, access := range world.Query[htmlui.Surface]() {
 				s := access.Ref()
 				if removed[s.Font] {
-					s.Font = model.defaultFont
+					s.Font, s.BoldFont = model.uiFont()
 				}
 				if removed[s.BoldFont] {
 					s.BoldFont = nil

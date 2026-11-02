@@ -19,6 +19,15 @@ func TestSourceInlineChanges(t *testing.T) {
 		{"equal", "same", "same", nil},
 		{"replace", "call(old)", "call(new)", [][2]string{{"old", "new"}}},
 		{"multiple", "call(1, 2)", "call(3, 4)", [][2]string{{"1", "3"}, {"2", "4"}}},
+		{"single space gap", "old new", "OLD NEW", [][2]string{{"old new", "OLD NEW"}}},
+		{"single letter gap", "axb", "cxd", [][2]string{{"axb", "cxd"}}},
+		{"chained gaps", "a b c d", "A B C D", [][2]string{{"a b c d", "A B C D"}}},
+		{"mixed gaps", "a b  c d", "A B  C D", [][2]string{{"a b", "A B"}, {"c d", "C D"}}},
+		{"unicode gap", "旧你旧", "新你新", [][2]string{{"旧你旧", "新你新"}}},
+		{"emoji gap", "a😀b", "c😀d", [][2]string{{"a😀b", "c😀d"}}},
+		{"tab gap", "a\tb", "c\td", [][2]string{{"a\tb", "c\td"}}},
+		{"insertions with gap", "ab", "xayb", [][2]string{{"a", "xay"}}},
+		{"deletions with gap", "xayb", "ab", [][2]string{{"xay", "a"}}},
 		{"insert", "value = 1", "value = 10", [][2]string{{"", "0"}}},
 		{"delete", "value = 10", "value = 1", [][2]string{{"0", ""}}},
 		{"unicode", "\t值 = 你好 + 旧值", "\t值 = 你们 + 新值", [][2]string{{"好", "们"}, {"旧", "新"}}},
@@ -39,6 +48,26 @@ func TestSourceInlineChanges(t *testing.T) {
 			}
 			assertSourceInlineRanges(t, test.left, test.right, changes)
 		})
+	}
+}
+
+func TestSourceInlineChangesReuse(t *testing.T) {
+	const left, right = "a b c d", "A B C D"
+	var differ sourceInlineDiffer
+	for range 2 {
+		changes := differ.compare(left, right)
+		if len(changes) != 1 || changes[0].Start != [2]int{} || changes[0].End != [2]int{len(left), len(right)} {
+			t.Fatalf("merged changes = %+v", changes)
+		}
+	}
+	if len(differ.changes) != 2 {
+		t.Fatalf("changes from separate comparisons merged: %+v", differ.changes)
+	}
+	if allocations := testing.AllocsPerRun(100, func() {
+		differ.changes = differ.changes[:0]
+		differ.compare(left, right)
+	}); allocations != 0 {
+		t.Fatalf("warm inline comparison allocated %g times", allocations)
 	}
 }
 

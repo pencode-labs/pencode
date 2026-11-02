@@ -1,4 +1,4 @@
-# Pencode CS v7
+# Pencode CS v8
 
 GUI 和无头服务通过有序双向字节流通信。本地传输是子进程管道，远端传输是 OpenSSH 加密的 stdin/stdout；不监听或转发服务端端口，协议与具体传输无关。所有整数采用小端编码；不传递 Go 指针或渲染对象。旧版本不兼容。
 
@@ -7,7 +7,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 7 |
+| 4 | 2 | 协议版本，当前 8 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -15,7 +15,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 
 payload 中的字符串为 `u32 长度 + 原始字节`，数组为 `u32 元素数 + 元素`，字段按序排列，不允许尾随字节。Reader 返回的 payload 借用其缓冲区，仅在下一次 Read 之前有效。大请求由同一 request ID 的若干 Data 帧和最终请求帧组成，大响应由 Data 帧和最终 Reply 帧组成，组装总量上限 64 MiB。客户端最多保留 64 个未完成请求，上传及未完成响应分别限制为 128 MiB 逻辑 payload；已取消但仍由写协程持有的上传继续计费，上传超限返回 Busy，响应超限关闭连接。不同请求的分块可以交错；客户端在大上传块之间轮转调度普通请求，取消优先。服务端未完成的上传合计上限 128 MiB。
 
-v7 使用 peb v8 注册格式，增加扩展调试适配器和文档语言覆盖；保留调试适配器与调试终端服务，GUI、server 与扩展需同时更新。文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
+v8 将语法高亮改为 TextMate 逐行词法状态，名称表同时传输类别和完整 scope 栈，并删除 SyntaxRelease 的 trim 字段。GUI 与 server 必须同时更新。扩展协议继续使用 peb v13，扩展注册格式保持不变。文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
 
 首个请求必须是空 Hello，服务端返回空 Reply。之后支持：
 
@@ -74,7 +74,7 @@ WorkspaceWatch 首次调用安装根目录的递归文件事件监听，并返�
 | IndexClose | index:u64 | 空 |
 | PathSearch | index:u64, query:string, preferred:string[], rules:{pattern:string, suffix:u32}[] | paths:string[] |
 | SyntaxAnalyze | parser:u64, baseVersion:u64, filename:string, start:u32, end:u32, insert:string | version:u64, language:string, captures（见下） |
-| SyntaxRelease | parser:u64, trim:u32 | 空 |
+| SyntaxRelease | parser:u64 | 空 |
 | ExtensionList | 空 | directory:string, count:u32, ExtensionInfo[] |
 | ExtensionLoad | id:string | handle:u64, ExtensionInfo, contributions:bytes, diagnostics:string |
 | ExtensionBegin | 空 | upload:u64 |
@@ -103,9 +103,9 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 
 索引每页最多 256 项，每工作区最多 262144 项，目录深度最多 256；不递归符号链接，跳过 `.git`、`dist`、`node_modules`。同根的新索引替换旧扫描。PathSearch 按历史顺序优先、随后按树顺序返回最多 128 个可打开文件，支持不区分大小写的子串和自定义编辑器规则；扫描期间可以查询已索引部分。
 
-解析会话由客户端分配 ID，每连接最多 8 个，初始 baseVersion 为 0。增量范围采用 UTF-8 字节边界；结果只包含语言和 capture，不含颜色、字体、HTML、ECS 或 GPU 数据。captures 编码为 `prefix:u32, removed:u32, inserted:u32 + {start:u32, end:u32, captureID:u32, [name:string]}[inserted]`。保留上次结果的前 prefix 项，将之后的 removed 项替换为传回的 inserted 项，并将剩余后缀的起止位置加上本次源码字节长度变化。服务端比较解析后的真实 capture，允许多行注释等语法变化扩大替换范围；初次返回完整列表。名称表在解析会话内保留，captureID 从零递增；ID 首次出现时紧跟名称，后续复用 ID。释放会话后清空 capture 和名称表。本地按主题和 capture 映射着色，主题切换不发送解析请求。
+解析会话由客户端分配 ID，每连接最多 8 个，初始 baseVersion 为 0。增量范围采用 UTF-8 字节边界；结果只包含语言和 capture，不含颜色、字体、HTML、ECS 或 GPU 数据。captures 编码为 `prefix:u32, removed:u32, inserted:u32 + {start:u32, end:u32, captureID:u32, [name:string, scopes:string]}[inserted]`。保留上次结果的前 prefix 项，将之后的 removed 项替换为传回的 inserted 项，并将剩余后缀的起止位置加上本次源码字节长度变化。服务端比较解析后的真实 capture，允许多行注释等语法变化扩大替换范围；初次返回完整列表。名称表在解析会话内保留，captureID 从零递增；ID 首次出现时紧跟类别名称和空格分隔的完整 TextMate scope 栈，后续复用 ID。释放会话后清空 capture 和名称表。本地按主题和 capture 映射着色，主题切换不发送解析请求。
 
-`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v8 编码，CS 与 peb 的帧版本独立。
+`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v13 编码，CS 与 peb 的帧版本独立。
 
 扩展安装是单连接事务：同时最多两个暂存包；文件路径必须是有效相对路径，拒绝符号链接和特殊文件，单包最多 256 MiB / 4096 项。Prepare 在暂存目录执行 peb 注册；GUI 完成字体、主题和图标验证后调用 Commit 发布，失败调用 Abort 清理。禁用、卸载和连接关闭撤销资源句柄并回收扩展进程，未提交的暂存包随连接释放。禁用扩展的 Load 返回零句柄，不执行扩展或占用注册预算。
 

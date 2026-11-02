@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
+	"github.com/diiyw/onix/syntax"
 	"github.com/pencode-labs/pencode/protocol"
-	"github.com/odvcencio/gotreesitter"
 	"strings"
 	"testing"
 )
@@ -47,19 +47,27 @@ func TestSyntaxCaptureDeltaTransfer(t *testing.T) {
 }
 
 func TestSyntaxCaptureDeltaMatchesShiftedSuffix(t *testing.T) {
-	before := []gotreesitter.HighlightRange{{StartByte: 0, EndByte: 2, Capture: "keyword"}, {StartByte: 3, EndByte: 4, Capture: "variable"}, {StartByte: 5, EndByte: 8, Capture: "string"}}
+	before := []syntax.Capture{{StartByte: 0, EndByte: 2, Capture: "keyword"}, {StartByte: 3, EndByte: 4, Capture: "variable"}, {StartByte: 5, EndByte: 8, Capture: "string"}}
 	for _, test := range []struct {
-		after                 []gotreesitter.HighlightRange
+		after                 []syntax.Capture
 		shift, prefix, suffix int
 	}{
 		{before, 0, 3, 0},
-		{[]gotreesitter.HighlightRange{{StartByte: 0, EndByte: 2, Capture: "keyword"}, {StartByte: 3, EndByte: 5, Capture: "variable"}, {StartByte: 6, EndByte: 9, Capture: "string"}}, 1, 1, 1},
-		{[]gotreesitter.HighlightRange{{StartByte: 0, EndByte: 9, Capture: "comment"}}, 1, 0, 0},
+		{[]syntax.Capture{{StartByte: 0, EndByte: 2, Capture: "keyword"}, {StartByte: 3, EndByte: 5, Capture: "variable"}, {StartByte: 6, EndByte: 9, Capture: "string"}}, 1, 1, 1},
+		{[]syntax.Capture{{StartByte: 0, EndByte: 9, Capture: "comment"}}, 1, 0, 0},
 		{nil, -8, 0, 0},
 	} {
 		prefix, suffix := syntaxCaptureDelta(before, test.after, test.shift)
 		if prefix != test.prefix || suffix != test.suffix {
 			t.Fatalf("delta=(%d,%d) want=(%d,%d)", prefix, suffix, test.prefix, test.suffix)
 		}
+	}
+}
+
+func TestSyntaxCaptureDeltaIncludesScopeChanges(t *testing.T) {
+	before := []syntax.Capture{{StartByte: 0, EndByte: 2, Capture: "variable", Scopes: "source.go variable.other.go"}}
+	after := []syntax.Capture{{StartByte: 0, EndByte: 2, Capture: "variable", Scopes: "source.go variable.parameter.go"}}
+	if prefix, suffix := syntaxCaptureDelta(before, after, 0); prefix != 0 || suffix != 0 {
+		t.Fatal("scope-only change was omitted from delta")
 	}
 }

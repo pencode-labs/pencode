@@ -69,7 +69,11 @@ This builds and installs `pencode-server` into `~/.pencode/pencode-server` (`%US
 
 Use `make install-extensions` to install without launching the app, or `make install-extensions EXTENSIONS_DIR="/path/to/extensions"` to stage packages in another directory. Remote workspaces need their extensions installed on the remote host.
 
-Use `make install-server` to compile and install only the local server. For offline SSH bootstrap, run `go run ./cmd/pencode-build-servers` from the repository root to build Linux/macOS amd64 and arm64 servers into `resources/servers/<os>-<arch>/pencode-server`. This repository is currently a source checkout for development, rather than a ready-to-install desktop release.
+Use `make install-server` to compile and install only the local server. For offline SSH bootstrap, run `go run ./cmd/pencode-build-servers` from the repository root to build Linux/macOS amd64 and arm64 servers into `resources/servers/<os>-<arch>/pencode-server`.
+
+Build a desktop distribution for the current host with `make release VERSION=v0.1.0` (default version: `dev`; override the output directory with `DIST_DIR`). This uses Onix's release pipeline to compile the module plans and resources into `catalog.bin` and `.dat` packages, then builds with `onix_release`. Windows produces `dist/pencode-<version>-windows-<arch>.zip`; Linux and macOS produce `dist/pencode-<version>-<os>-<arch>.tar.gz`, with `darwin` identifying macOS. Each archive has a `.sha256` sidecar and includes the license, icon notices and both READMEs. Extract the entire archive: run `pencode/pencode` on Linux, `pencode/pencode.exe` on Windows, or open `pencode/pencode.app` on macOS. Resources are resolved relative to the executable, so the working directory is unrestricted. Extensions are installed separately using the extension manager; offline SSH server binaries are not included.
+
+Pushing a `v*` tag triggers [the desktop release workflow](.github/workflows/release.yml), which builds Linux, Windows and macOS for both amd64 and arm64, verifies checksums, and uploads six distributions plus `SHA256SUMS` to the GitHub Release. Set the repository Actions variable `ONIX_REF` to the compatible Onix commit or tag before releasing; it defaults to `main`. Manual workflow runs build downloadable artifacts without publishing a release. Builds need the native libraries described by Onix; Windows uses MinGW-w64 (LLVM MinGW also supports arm64). macOS bundles receive ad-hoc signatures; Developer ID signing and notarization are not configured.
 
 For a direct WebSocket connection, start the server on the remote host:
 
@@ -108,7 +112,7 @@ go test -p 1 -tags codex_integration ./workbench
 ```text
 Desktop workbench (Onix)
         │
-        │ CS v7: local process pipes, SSH stdin/stdout, or WebSocket
+        │ CS v8: local process pipes, SSH stdin/stdout, or WebSocket
         ▼
 Pencode server
         ├── Files, documents, indexing, and syntax parsing
@@ -153,7 +157,7 @@ For an existing checkout, initialize the submodules with `git submodule update -
 (cd extensions/go && go build -o bin/go .)
 ```
 
-The current extension protocol is peb v13 (CS v7). Older extensions must be rebuilt with the current SDK.
+The current extension protocol is peb v13 (CS v8). Older extensions must be rebuilt with the current SDK.
 
 ## Documentation
 
@@ -179,4 +183,4 @@ Keep changes focused, run checks for the packages you touch, and describe what y
 
 Pencode is licensed under the [MIT License](LICENSE).
 
-Pencode builds on Onix, gotreesitter, and other Go libraries. Bundled third-party assets retain their own licenses, including [Codicons](resources/icons/CODICONS-LICENSE.txt), [Lucide](resources/icons/LUCIDE-LICENSE.txt), and [Material file icons](extensions/material-icons/resources/LICENSE.txt). Preserve the corresponding notices when redistributing those assets.
+Pencode builds on Onix, [textmate-go](https://github.com/eugenioenko/textmate-go), and other Go libraries. TextMate grammar notices are embedded in Onix’s syntax resources. Bundled third-party assets retain their own licenses, including [Codicons](resources/icons/CODICONS-LICENSE.txt), [Lucide](resources/icons/LUCIDE-LICENSE.txt), and [Material file icons](extensions/material-icons/resources/LICENSE.txt). Preserve the corresponding notices when redistributing those assets.

@@ -679,6 +679,10 @@ func (m *workspaceModel) finishFileClose() {
 		return
 	}
 	m.fileClose = pencodeCloseRequest{}
+	if r.editorTabs != nil {
+		m.beginEditorClose(r)
+		return
+	}
 	switch r.action {
 	case pencodeCloseTab:
 		if r.project != nil {

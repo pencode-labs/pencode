@@ -100,7 +100,7 @@ func (model *workspaceModel) selectTheme(id string) bool {
 		model.syntaxTheme = theme.theme
 		model.workbenchTheme = theme
 		model.settings.Theme = id
-		// Retain the tree and captures; only the palette and text spans change.
+		// Retain lexical states and captures; only the palette and text spans change.
 		model.highlighted = false
 		for i := range model.themeOptions {
 			option := &model.themeOptions[i]

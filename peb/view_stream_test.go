@@ -129,7 +129,7 @@ func TestViewPublisherWriteFailureResyncAndClose(t *testing.T) {
 	if err := p.Show(streamView("next")); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Show(UI{ID: "chat", Title: "Renamed", Kind: EditorTab, Busy: true}); err != nil {
+	if err := p.Show(UI{ID: "chat", Title: "Renamed", Kind: EditorTab, Busy: true, InterceptClose: true}); err != nil {
 		t.Fatal(err)
 	}
 	w.Reset()
@@ -142,12 +142,16 @@ func TestViewPublisherWriteFailureResyncAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	ui, err := DecodeUI(f.Payload)
-	if err != nil || ui.View == nil || ui.Patch != nil || ui.ViewVersion != 2 || ui.Title != "Renamed" || !ui.Busy || ui.View.HTML != streamView("next").View.HTML {
+	if err != nil || ui.View == nil || ui.Patch != nil || ui.ViewVersion != 2 || ui.Title != "Renamed" || !ui.Busy || !ui.InterceptClose || ui.View.HTML != streamView("next").View.HTML {
 		t.Fatal("resync did not replay latest full view", err)
 	}
 	var receiver ViewReceiver
 	if _, err := receiver.Apply(ui); err != nil {
 		t.Fatal(err)
+	}
+	p.handleViewEvent(UIEvent{ID: "chat", Event: EditorEvent{Kind: "closerequest"}})
+	if len(p.views) != 1 {
+		t.Fatal("close request discarded the retained view before confirmation")
 	}
 	p.handleViewEvent(UIEvent{ID: "chat", Event: EditorEvent{Kind: "close"}})
 	if len(p.views) != 0 {

@@ -15,7 +15,7 @@ import (
 type highlightDocument interface {
 	Update(string, string) error
 	Tokens(*syntax.Theme, *syntax.Definitions) []syntax.Token
-	Release(bool)
+	Close()
 }
 
 type pencodeHighlightJob struct {
@@ -35,7 +35,6 @@ type pencodeHighlightJob struct {
 	definitions       *syntax.Definitions
 	revision          uint64
 	release           bool
-	trim              bool
 }
 
 type pencodeHighlightResult struct {
@@ -76,7 +75,7 @@ func resetPencodeHighlightResult(result *pencodeHighlightResult) {
 
 func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob, result *pencodeHighlightResult) bool {
 	if job.release {
-		document.Release(job.trim)
+		document.Close()
 		// Idle maintenance also drops reusable buffers for oversized documents.
 		*result = pencodeHighlightResult{}
 		return false
@@ -86,10 +85,10 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 	}
 	result.job = job
 	if job.snapshot {
-		// Immutable panes are separate documents, not edits to the previous
-		// pane. Do not borrow its AST arenas through incremental parsing.
-		document.Release(true)
-		defer document.Release(true)
+		// Immutable panes have their own lexical state; discard the preceding
+		// document before processing them and release state after painting.
+		document.Close()
+		defer document.Close()
 	}
 	result.err = document.Update(job.path, job.source)
 	var tokens []syntax.Token
@@ -169,7 +168,7 @@ func (model *workspaceModel) submitHighlightJob(job pencodeHighlightJob) {
 		model.highlightWorker = newLatestWorker(func(job pencodeHighlightJob, result *pencodeHighlightResult) bool {
 			return processPencodeHighlight(document, job, result)
 		}, resetPencodeHighlightResult, func() {
-			document.Release(true)
+			document.Close()
 		}, model.backgroundWake())
 	}
 	model.highlightRevision++
@@ -220,7 +219,7 @@ func (model *workspaceModel) pollHighlight() bool {
 			})
 		}
 		// Retire references from the live field before returning the previous
-		// paint buffer to the worker, which may start another parse immediately.
+		// paint buffer to the worker, which may start another tokenization immediately.
 		if model.fontResources != nil {
 			if value := model.fontResources.Mut[scene.Text2D](model.editor.text); value != nil {
 				field, _ := model.fontResources.Get[engineui.TextField](model.editor.control)
@@ -233,11 +232,11 @@ func (model *workspaceModel) pollHighlight() bool {
 	return changed
 }
 
-func (model *workspaceModel) releaseSyntaxWorker(trim bool) {
+func (model *workspaceModel) releaseSyntaxWorker() {
 	model.highlightRevision++
 	model.highlightRequest = pencodeHighlightJob{}
 	if model.highlightWorker != nil {
-		model.highlightWorker.submit(pencodeHighlightJob{release: true, trim: trim})
+		model.highlightWorker.submit(pencodeHighlightJob{release: true})
 	}
 }
 

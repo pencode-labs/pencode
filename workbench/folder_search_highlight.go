@@ -71,7 +71,7 @@ func (m *workspaceModel) highlightFolderSearch() {
 				}
 			}
 			// Only bounded paint data survives between pages; release the parser.
-			document.Release(false)
+			document.Close()
 			return true
 		}, func(result *folderPreviewResult) {
 			result.job = folderPreviewJob{}

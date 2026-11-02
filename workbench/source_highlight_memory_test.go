@@ -10,17 +10,17 @@ import (
 type snapshotHighlightDocument struct {
 	syntax.Document
 	releases int
-	hadTree  bool
+	hadState bool
 }
 
 func (d *snapshotHighlightDocument) Update(path, source string) error {
-	d.hadTree = d.Tree() != nil
+	d.hadState = len(d.Captures()) != 0
 	return d.Document.Update(path, source)
 }
 
-func (d *snapshotHighlightDocument) Release(trim bool) {
+func (d *snapshotHighlightDocument) Close() {
 	d.releases++
-	d.Document.Release(trim)
+	d.Document.Close()
 }
 
 func TestSourceSnapshotHighlightReleasesParser(t *testing.T) {
@@ -30,15 +30,15 @@ func TestSourceSnapshotHighlightReleasesParser(t *testing.T) {
 	defer document.Close()
 	var result pencodeHighlightResult
 	processPencodeHighlight(&document, job, &result)
-	if document.Tree() == nil {
-		t.Fatal("editable document lost its incremental tree")
+	if len(document.Captures()) == 0 {
+		t.Fatal("editable document lost its incremental state")
 	}
 	expected := slices.Clone(result.spans)
 	resetPencodeHighlightResult(&result)
 	job.snapshot, job.sourceDoc = true, &sourceHighlight{}
 	processPencodeHighlight(&document, job, &result)
-	if document.hadTree || document.Tree() != nil || document.releases != 2 {
-		t.Fatal("snapshot borrowed or retained a parser tree")
+	if document.hadState || len(document.Captures()) != 0 || document.releases != 2 {
+		t.Fatal("snapshot borrowed or retained a lexical state")
 	}
 	if len(expected) == 0 || !slices.Equal(expected, result.spans) || len(result.sourceStyles) != 0 || len(result.lineStarts) != 0 {
 		t.Fatal("snapshot lost paint or built unused HTML line styles")
@@ -46,7 +46,7 @@ func TestSourceSnapshotHighlightReleasesParser(t *testing.T) {
 	resetPencodeHighlightResult(&result)
 	job.snapshot, job.lineStyles = false, true
 	processPencodeHighlight(&document, job, &result)
-	if document.Tree() == nil || len(result.spans) != len(result.sourceStyles) || len(result.lineStarts) != 3 {
+	if len(document.Captures()) == 0 || len(result.spans) != len(result.sourceStyles) || len(result.lineStarts) != 3 {
 		t.Fatal("merge/editor did not restore incremental parsing and HTML paint")
 	}
 }

@@ -91,7 +91,7 @@ func (m *Mod) Enter(c *module.Context, _ module.SceneStartup) error {
 		// Domain data follows the foreground. Entities and rendering caches stay
 		// with their owning view, including the retained workspace editor.
 		previous.model.closeCustomEditors()
-		previous.model.releaseSyntaxWorker(true)
+		previous.model.releaseSyntaxWorker()
 		local := *m.model
 		*m.model = *previous.model
 		// Surface callbacks must mutate the foreground list, not a stale copy

@@ -733,6 +733,10 @@ func (model *workspaceModel) runShortcut(world *module.Content, action pencodeSh
 	case pencodeShortcutQuickOpen:
 		model.openQuickOpen()
 	case pencodeShortcutClose:
+		if surface := model.actions.ui.editor; surface != nil {
+			model.closeExtensionSurface(surface, "button", true)
+			return
+		}
 		file := model.activeFile()
 		if file == nil {
 			return

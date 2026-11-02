@@ -3,6 +3,8 @@
 package workbench
 
 import (
+	"bufio"
+	"fmt"
 	"math"
 	"net"
 	"os"
@@ -94,6 +96,32 @@ func codexFixtureExecutable(t *testing.T) string {
 
 func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 	t.Helper()
+	if os.Getenv("PENCODE_CODEX_FIXTURE") == "1" {
+		fixture := exec.CommandContext(t.Context(), os.Getenv("PENCODE_CODEX_PATH"), "app-server", "fixture-listen")
+		input, err := fixture.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixture.Cancel = input.Close
+		fixture.WaitDelay = 2 * time.Second
+		output, err := fixture.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixture.Stderr = os.Stderr
+		if err := fixture.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_ = input.Close()
+			_ = fixture.Wait()
+		})
+		endpoint, err := bufio.NewReader(output).ReadString('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PENCODE_CODEX_SERVER_URL", strings.TrimSpace(endpoint))
+	}
 	installed := t.TempDir()
 	directory := filepath.Join(installed, "codex")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
@@ -330,12 +358,14 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		return
 	}
 	if os.Getenv("PENCODE_CODEX_HISTORY_SWITCH") == "1" {
-		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
-		for range 3 {
+		for iteration := range 3 {
+			phase = fmt.Sprintf("history tab %d: select history", iteration)
+			wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
 			editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
 			wait(func() bool {
 				return strings.Contains(surface.view.HTML, "Stored conversation") && strings.Contains(surface.view.HTML, `data-ref="history/saved" aria-current="true"`)
 			})
+			phase = fmt.Sprintf("history tab %d: find history prompt", iteration)
 			waitControl(surface, "prompt")
 			if model.actions.ui.editor != surface {
 				t.Fatal("history selection replaced the Codex editor tab")
@@ -343,11 +373,13 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			previous, count := surface, len(model.actions.ui.surfaces)
 			surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "keep this conversation draft"}, "")
 			editorContextClick(t, app, model, state, waitControl(surface, "new"))
-			wait(func() bool { return model.actions.ui.editor != previous })
+			phase = fmt.Sprintf("history tab %d: select new tab", iteration)
+			wait(func() bool { return model.actions.ui.editor != nil && model.actions.ui.editor != previous })
 			surface = model.actions.ui.editor
 			if surface == nil || surface.ui.ID == previous.ui.ID || len(model.actions.ui.surfaces) != count+1 {
 				t.Fatal("new conversation did not create a separate editor tab")
 			}
+			phase = fmt.Sprintf("history tab %d: render new tab", iteration)
 			wait(func() bool { return strings.Contains(surface.view.HTML, "给 Codex 的任务") })
 			if strings.Contains(surface.view.HTML, "Stored conversation") || strings.Contains(surface.view.HTML, "keep this conversation draft") {
 				t.Fatal("new conversation inherited the previous transcript or draft")
@@ -355,6 +387,7 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			if !strings.Contains(previous.view.HTML, "Stored conversation") {
 				t.Fatal("new conversation overwrote the original tab")
 			}
+			phase = fmt.Sprintf("history tab %d: find new prompt", iteration)
 			waitControl(surface, "prompt")
 		}
 		return

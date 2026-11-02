@@ -30,7 +30,6 @@ type services struct {
 }
 
 func newServices(ctx context.Context, options Options) *services {
-	configureSyntaxMemory()
 	s := &services{ctx: ctx, roots: make(map[string]bool), projects: make(map[uint64]string), derived: make(map[string]string), streams: make(map[uint64]*serviceStream), indexes: make(map[uint64]*serviceIndex), syntax: make(map[uint64]*syntaxSession)}
 	s.extensions = &extensionService{owner: s, directory: options.ExtensionDirectory, entries: make(map[uint64]*extensionEntry)}
 	s.watches = make(map[string]*workspaceWatch)
@@ -56,7 +55,7 @@ func (s *services) close() {
 		p.document.Close()
 	}
 	clear(s.syntax)
-	syntax.ReleaseParserMemory()
+	syntax.ReleaseGrammarCache()
 	s.syntaxMu.Unlock()
 }
 func (s *services) root(name string) error {

@@ -1,5 +1,6 @@
 GO ?= go
 DIST_DIR ?= dist
+VERSION ?= dev
 ARGS ?=
 EXTENSIONS_DIR ?=
 
@@ -25,14 +26,6 @@ install-server:
 install-extensions:
 	$(GO) run ./cmd/pencode-install-extensions -go "$(GO)" -directory "$(EXTENSIONS_DIR)"
 
-# Run the resulting executable from DIST_DIR so it can find resources/.
-# Keep authoring resource support; onix_release requires binary resource packages.
+# Build with Onix's release resource pipeline, then compress the distribution.
 release:
-	$(GO) build -trimpath -ldflags="-s -w" -o "$(DIST_DIR)/pencode$(EXE)" .
-ifeq ($(OS),Windows_NT)
-	powershell -NoProfile -Command "$$ErrorActionPreference = 'Stop'; New-Item -ItemType Directory -Force -Path '$(DIST_DIR)/resources' | Out-Null; Copy-Item -Path 'resources/*' -Destination '$(DIST_DIR)/resources' -Recurse -Force; Copy-Item -LiteralPath 'LICENSE' -Destination '$(DIST_DIR)/LICENSE' -Force"
-else
-	mkdir -p "$(DIST_DIR)/resources"
-	cp -R resources/. "$(DIST_DIR)/resources/"
-	cp LICENSE "$(DIST_DIR)/LICENSE"
-endif
+	$(GO) run ./cmd/pencode-release -output "$(DIST_DIR)" -version "$(VERSION)"

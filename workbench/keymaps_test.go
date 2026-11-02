@@ -132,7 +132,9 @@ func TestKeymapContextConflictsAndNavigation(t *testing.T) {
 		t.Fatal("list navigation not remapped")
 	}
 	m.settings.Bindings["ui-focus-previous"] = pencodeBindingChord("Alt+K")
-	m.tabContext = pencodeTabContext{open: true, index: 1, path: "main.go", project: &pencodeProject{Files: map[string]*openFile{"main.go": {}}}}
+	project := &pencodeProject{Tabs: []string{"main.go"}, Files: map[string]*openFile{"main.go": {}}}
+	m.projects = []*pencodeProject{project}
+	m.tabContext = pencodeTabContext{open: true, index: 1, path: "main.go", project: project}
 	m.handleTabContextKeys(nil, keymapState(pencodeBindingChord("Alt+K"), runtime.GOOS))
 	if m.tabContext.index != 0 {
 		t.Fatal("remapped previous-focus moved in wrong direction")

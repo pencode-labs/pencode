@@ -5,11 +5,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/pencode-labs/pencode/protocol"
 	"github.com/diiyw/onix/syntax"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
-// Syntax owns a server parser session. Updates transmit only the changed range.
+// Syntax owns a server lexical session. Updates transmit only the changed range.
 // Like syntax.Document it belongs to one worker, never the render thread.
 type Syntax struct {
 	context          context.Context
@@ -19,7 +19,7 @@ type Syntax struct {
 	id, version      uint64
 	source, language string
 	captures         []syntax.Token
-	names            []string
+	names            []syntax.Capture
 	painter          syntax.Painter
 }
 
@@ -64,17 +64,11 @@ func (s *Syntax) Update(path, source string) error {
 func (s *Syntax) Tokens(theme *syntax.Theme, definitions *syntax.Definitions) []syntax.Token {
 	return s.painter.Tokens(s.language, s.captures, theme, definitions)
 }
-func (s *Syntax) Close() { s.Release(false) }
-func (s *Syntax) Release(trim bool) {
+func (s *Syntax) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	e := service(protocol.SyntaxRelease, "")
 	e.U64(s.id)
-	if trim {
-		e.U32(1)
-	} else {
-		e.U32(0)
-	}
 	_, _ = s.client.execute(ctx, &e)
 	s.version = 0
 	s.source = ""
@@ -116,9 +110,9 @@ func (s *Syntax) applyCaptureDelta(d *protocol.Decoder, source string) error {
 			return protocol.ErrProtocol
 		}
 		if id == len(s.names) {
-			s.names = append(s.names, d.String())
+			s.names = append(s.names, syntax.Capture{Capture: d.String(), Scopes: d.String()})
 		}
-		token.Capture = s.names[id]
+		token.Capture, token.Scopes = s.names[id].Capture, s.names[id].Scopes
 		if token.Start < last || token.Start >= token.End || token.End > len(source) {
 			return protocol.ErrProtocol
 		}

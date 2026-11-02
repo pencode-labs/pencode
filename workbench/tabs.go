@@ -145,6 +145,7 @@ type pencodeCloseTarget struct {
 }
 
 type pencodeCloseRequest struct {
+	editorTabs []pencodeEditorTab
 	action     pencodeCloseAction
 	project    *pencodeProject
 	path       string
@@ -280,7 +281,12 @@ func (model *workspaceModel) resolveClose(save bool) {
 		return
 	}
 	action, project, relative := request.action, request.project, request.path
+	editorTabs := request.editorTabs
 	model.clearCloseRequest()
+	if editorTabs != nil {
+		model.finishEditorClose(editorTabs)
+		return
+	}
 	switch action {
 	case pencodeCloseTab:
 		if project != nil {

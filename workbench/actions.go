@@ -339,7 +339,7 @@ func (model *workspaceModel) pollActions() bool {
 					ui := result.UI
 					if ui.Kind == peb.EditorTab && ui.View != nil && !ui.Close {
 						for _, surface := range model.actions.ui.surfaces {
-							if surface.owner == id && surface.ui.ID == ui.ID && surface.ui.Title == ui.Title && surface.ui.Busy == ui.Busy {
+							if surface.owner == id && surface.ui.ID == ui.ID && surface.ui.Title == ui.Title && surface.ui.Busy == ui.Busy && surface.ui.InterceptClose == ui.InterceptClose {
 								retained = surface
 								break
 							}

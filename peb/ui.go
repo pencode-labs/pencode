@@ -84,9 +84,12 @@ type UI struct {
 	Severity NotificationSeverity
 	// Busy replaces an EditorTab's close icon with a processing animation.
 	Busy bool
+	// InterceptClose keeps an EditorTab open on user close and emits
+	// "closerequest" instead. Call CloseUI after any confirmation succeeds.
+	InterceptClose bool
 }
 
-// UIEvent carries DOM events and "open", "close", "visibilitychange", "projectchange".
+// UIEvent carries DOM events and "open", "closerequest", "close", "visibilitychange", "projectchange".
 // visibilitychange uses Event.Value="visible" or "hidden".
 // projectchange notifies EditorTab surfaces when the active project changes.
 // Its Context contains the new ProjectPath and clears file-specific fields.
@@ -117,6 +120,7 @@ func EncodeUI(dst []byte, v UI) ([]byte, error) {
 	e.number(v.AutoCloseMS)
 	e.number(uint32(v.Severity))
 	e.number(boolNumber(v.Busy))
+	e.number(boolNumber(v.InterceptClose))
 	encodeActionContext(&e, v.Context)
 	encodeView(&e, v.View)
 	e.number(v.ViewVersion)
@@ -143,6 +147,7 @@ func DecodeUI(data []byte) (UI, error) {
 	v.AutoCloseMS = d.number()
 	v.Severity = NotificationSeverity(d.number())
 	v.Busy = d.boolean()
+	v.InterceptClose = d.boolean()
 	v.Context, v.View = decodeActionContext(&d), decodeView(&d)
 	v.ViewVersion = d.number()
 	if d.boolean() {
@@ -158,7 +163,7 @@ func DecodeUI(data []byte) (UI, error) {
 }
 
 func (v UI) valid() bool {
-	return v.Kind <= EditorTab && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (v.AutoCloseMS == 0 || v.Kind == Notification) &&
+	return v.Kind <= EditorTab && v.Placement.valid(v.Kind) && v.ID != "" && (v.Close || v.Title != "") && (!v.InterceptClose || v.Kind == EditorTab) && (v.AutoCloseMS == 0 || v.Kind == Notification) &&
 		v.Severity <= NotificationError && (v.Severity == NotificationInfo || v.Kind == Notification) &&
 		(v.Patch == nil || v.View == nil && !v.Close && v.Patch.Base != 0 && v.Patch.Base < ^uint32(0) && v.ViewVersion == v.Patch.Base+1)
 }

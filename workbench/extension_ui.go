@@ -743,6 +743,10 @@ func (model *workspaceModel) renderExtensionUI(view *htmlui.View) {
 }
 
 func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, reason string, restore bool) {
+	if s.ui.Kind == peb.EditorTab && s.ui.InterceptClose && (reason == "button" || reason == "escape") {
+		s.send(peb.EditorEvent{Kind: "closerequest"}, reason)
+		return
+	}
 	state := &model.actions.ui
 	wasLive := s.live()
 	if restore && (s.ui.Kind == peb.Popup || s.ui.Kind == peb.Notification) && model.fontResources != nil {

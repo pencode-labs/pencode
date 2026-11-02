@@ -4,18 +4,16 @@ import (
 	"context"
 	"unicode/utf8"
 
-	"github.com/pencode-labs/pencode/protocol"
 	"github.com/diiyw/onix/syntax"
-	"github.com/odvcencio/gotreesitter"
-	grammarruntime "github.com/odvcencio/gotreesitter/grammars/runtime"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 type syntaxSession struct {
 	document syntax.Document
 	source   string
 	version  uint64
-	captures map[string]uint32
-	previous []gotreesitter.HighlightRange
+	captures map[syntax.Capture]uint32
+	previous []syntax.Capture
 }
 
 func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protocol.Decoder, e *protocol.Encoder) error {
@@ -23,19 +21,12 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 	s.syntaxMu.Lock()
 	defer s.syntaxMu.Unlock()
 	if op == protocol.SyntaxRelease {
-		trim := d.U32()
-		if trim > 1 {
-			return protocol.ErrProtocol
-		}
 		if err := d.Done(); err != nil {
 			return err
 		}
 		if p := s.syntax[id]; p != nil {
 			p.document.Close()
 			delete(s.syntax, id)
-		}
-		if trim != 0 {
-			syntax.ReleaseParserMemory()
 		}
 		return nil
 	}
@@ -54,7 +45,7 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 		if len(s.syntax) >= 8 {
 			return &protocol.Error{Code: protocol.Busy, Message: "syntax session budget exceeded"}
 		}
-		p = &syntaxSession{captures: make(map[string]uint32)}
+		p = &syntaxSession{captures: make(map[syntax.Capture]uint32)}
 		s.syntax[id] = p
 	}
 	if version != p.version {
@@ -85,33 +76,32 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 	for _, token := range captures[prefix : len(captures)-suffix] {
 		e.U32(uint32(token.StartByte))
 		e.U32(uint32(token.EndByte))
-		captureID, exists := p.captures[token.Capture]
+		name := syntax.Capture{Capture: token.Capture, Scopes: token.Scopes}
+		captureID, exists := p.captures[name]
 		if !exists {
 			captureID = uint32(len(p.captures))
-			p.captures[token.Capture] = captureID
+			p.captures[name] = captureID
 		}
 		e.U32(captureID)
 		if !exists {
 			e.String(token.Capture)
+			e.String(token.Scopes)
 		}
 	}
 	p.previous = append(p.previous[:0], captures...)
 	return nil
 }
 
-// Active parsers retain their language independently of the decoded cache.
-func configureSyntaxMemory() { grammarruntime.SetEmbeddedLanguageCacheLimit(4) }
-
 // Compare actual captures after parsing: edits such as multiline comments may
 // invalidate highlighting far beyond the textual edit. A suffix can be kept
 // only when both its ranges and capture names match after the byte shift.
-func syntaxCaptureDelta(before, after []gotreesitter.HighlightRange, shift int) (prefix, suffix int) {
+func syntaxCaptureDelta(before, after []syntax.Capture, shift int) (prefix, suffix int) {
 	for prefix < min(len(before), len(after)) && before[prefix] == after[prefix] {
 		prefix++
 	}
 	for suffix < min(len(before), len(after))-prefix {
 		old, next := before[len(before)-suffix-1], after[len(after)-suffix-1]
-		if int(old.StartByte)+shift != int(next.StartByte) || int(old.EndByte)+shift != int(next.EndByte) || old.Capture != next.Capture {
+		if int(old.StartByte)+shift != int(next.StartByte) || int(old.EndByte)+shift != int(next.EndByte) || old.Capture != next.Capture || old.Scopes != next.Scopes {
 			break
 		}
 		suffix++

@@ -1,10 +1,10 @@
-# peb v15 — Pencode Extension Binary
+# peb v16 — Pencode Extension Binary
 
 peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）和 `ExtensionSettings`（扩展配置）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **15**，为通知增加严重级别；宿主与扩展需用当前 SDK 重新构建。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **16**，为扩展标签页增加可拦截的关闭请求；宿主与扩展需用当前 SDK 重新构建。
 
 ## 扩展配置
 
@@ -531,6 +531,7 @@ UIUpdate {
   autoCloseMS: u32             // Notification 自动关闭毫秒数，0 持续显示
   severity: u32               // Notification: Info=0, Warning=1, Error=2
   busy: bool                  // EditorTab 关闭图标切换为处理动画
+  interceptClose: bool        // EditorTab 用户关闭时先发送 closerequest，保留标签页
   context: ActionContext
   hasView: bool
   // hasView=true: html: text, css: text, events: array<{ref: string, kind: string}>
@@ -548,7 +549,7 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 
 可构建的完整示例见 [UI Demo](../extensions/ui-demo/main.go)，包含 action 菜单、表单弹窗、自由定位浮窗、点击外部关闭选项、输入与提交事件、Panel 更新、通知自定义操作、自动关闭和关闭事件。
 
-协议版本 15 为 UIUpdate 增加 `severity:u32`；宿主与扩展需要使用相同版本的 PEB 重新构建。运行 `make install-extensions` 会通过临时 Go workspace 使用当前仓库的 SDK 构建所有扩展，扩展源目录的模块文件保持不变。
+协议版本 16 为 UIUpdate 增加 `interceptClose:bool`；宿主与扩展需要使用相同版本的 PEB 重新构建。运行 `make install-extensions` 会通过临时 Go workspace 使用当前仓库的 SDK 构建所有扩展，扩展源目录的模块文件保持不变。
 
 ## 调试工具
 
@@ -562,7 +563,9 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 
 `peb.EditorTab` 为会话、工具结果等不对应文件的视图创建编辑器标签页，`Title` 同时作为标签标题。同一扩展内的 `ID` 标识独立标签，`Placement` 必须为零值。事件继续通过 `UIEvent` 发送。
 
-设置 `Busy:true` 时，关闭图标替换为主题色的点阵动画，后台标签同样显示动画，点击仍发送关闭事件。任务结束后更新为 `Busy:false` 恢复关闭图标。每次更新需传入当前忙碌状态；扩展可在关闭事件中中断任务并退出会话。
+设置 `Busy:true` 时，关闭图标替换为主题色的点阵动画，后台标签同样显示动画，点击仍发送关闭事件。任务结束后更新为 `Busy:false` 恢复关闭图标。每次更新需传入当前忙碌状态；扩展可在最终关闭事件中中断任务并退出会话。
+
+需要确认关闭的扩展应设置 `InterceptClose:true`（仅适用于 EditorTab）。用户点击关闭、使用关闭快捷键或右键菜单批量关闭时，宿主保留标签页并发送 `Event.Kind="closerequest"`、`Reason="button"`。扩展可在任务进行中显示 `Dialog`，取消时保留标签页和任务，确认后调用 `CloseUI(id)`；空闲时可直接调用 `CloseUI(id)`。只有实际移除后才发送 `Event.Kind="close"`、`Reason="extension"`。每次更新均需传入当前 `InterceptClose` 值。
 
 ```go
 publisher.Show(peb.UI{

@@ -1,8 +1,8 @@
 package client
 
 import (
-	"github.com/pencode-labs/pencode/protocol"
 	"github.com/diiyw/onix/syntax"
+	"github.com/pencode-labs/pencode/protocol"
 	"reflect"
 	"strings"
 	"testing"
@@ -45,7 +45,7 @@ func TestRemoteSyntaxCaptureEditsMatchFullParse(t *testing.T) {
 func TestSyntaxRejectsMalformedCaptureDelta(t *testing.T) {
 	for _, kind := range []string{"prefix", "removed", "count", "capture-id", "reversed", "outside", "overlap", "suffix-shift", "truncated", "trailing"} {
 		t.Run(kind, func(t *testing.T) {
-			session := Syntax{source: "abcd", captures: []syntax.Token{{Start: 0, End: 1, Capture: "a"}, {Start: 2, End: 3, Capture: "a"}}, names: []string{"a"}}
+			session := Syntax{source: "abcd", captures: []syntax.Token{{Start: 0, End: 1, Capture: "a"}, {Start: 2, End: 3, Capture: "a"}}, names: []syntax.Capture{{Capture: "a"}}}
 			prefix, removed, count := uint32(0), uint32(2), uint32(1)
 			start, end, id := uint32(0), uint32(1), uint32(0)
 			source := "abcd"
@@ -93,7 +93,7 @@ func TestSyntaxRejectsMalformedCaptureDelta(t *testing.T) {
 
 func BenchmarkSyntaxCaptureDeltaApply(b *testing.B) {
 	source := strings.Repeat("word ", 10000)
-	session := Syntax{source: source, captures: make([]syntax.Token, 10000), names: []string{"variable"}}
+	session := Syntax{source: source, captures: make([]syntax.Token, 10000), names: []syntax.Capture{{Capture: "variable"}}}
 	for i := range session.captures {
 		session.captures[i] = syntax.Token{Start: i * 5, End: i*5 + 4, Capture: "variable"}
 	}

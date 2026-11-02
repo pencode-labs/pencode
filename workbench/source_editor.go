@@ -239,6 +239,8 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 					message = "从远程仓库删除分支 “" + branch.Name + "”？此操作会影响其他协作者，本地分支将保留。"
 				}
 			}
+		case "discard-tabs":
+			message = "丢弃所选标签页尚未保存的比较或合并编辑内容并关闭？"
 		case "discard-tab":
 			message = "丢弃此标签页尚未保存的编辑内容？"
 		case "discard-file":

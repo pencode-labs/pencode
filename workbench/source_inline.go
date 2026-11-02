@@ -104,6 +104,14 @@ func (d *sourceInlineDiffer) compare(left, right string) []sourceInlineChange {
 			}
 		}
 		change.End = [2]int{d.runes[0][i].offset, d.runes[1][j].offset}
+		if len(d.changes) > first {
+			previous := &d.changes[len(d.changes)-1]
+			// Both sides share the same unchanged gap; absorb a single rune.
+			if utf8.RuneCountInString(left[previous.End[0]:change.Start[0]]) == 1 {
+				previous.End = change.End
+				continue
+			}
+		}
 		d.changes = append(d.changes, change)
 	}
 	return d.changes[first:]

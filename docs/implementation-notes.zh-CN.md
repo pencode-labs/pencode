@@ -304,15 +304,17 @@ python3 tools/build_material_icons.py
 
 ## 代码高亮与主题
 
-Pencode 和引擎的 Markdown 代码块共用 `syntax` 包，使用 [gotreesitter](https://github.com/odvcencio/gotreesitter) 的语言注册表、语法树和高亮查询。语言按文件名识别，Markdown 围栏也接受注册表中的语言名称和别名。未知语言保持纯文本；不完整的代码仍使用语法树中可解析的部分。
+Pencode 和引擎的 Markdown 代码块共用 Onix 的 `syntax` 包，使用固定版本的 [textmate-go](https://github.com/eugenioenko/textmate-go/tree/v0.2.2) 读取 TextMate grammar。按文件名、语言 ID 或 Markdown 围栏别名识别语言；未知语言保持纯文本。高亮不构建语法树，词法 token 保留完整 scope 栈，并沿用现有 VS Code 主题与自定义高亮类别覆盖。
 
-编辑器保留当前文件的语法树，在 50 ms 编辑防抖后增量解析。输入和中文预编辑期间沿用并移动已有颜色区间，坐标使用 UTF-8 字节偏移。切换主题只给缓存的查询结果重新着色。未变化文件的解析、着色和编辑器同步高亮路径复用缓存；解析修改后的文本仍有 gotreesitter 自身的分配，不能视为整条编辑链路零分配。单次解析设置了 50 ms 时间限制，超限时保留部分语法树。
+每行缓存结束状态和 token。编辑后从首个受影响行重新着色，进入未改后缀且词法状态一致时复用其余行。活动文档在空闲时保留状态；只读差异快照完成绘制后释放会话。单行超过 20,000 字节时跳过该行的词法规则，保留输入状态。UTF-8 字节偏移、CRLF 和中文预编辑的颜色移动规则保持一致。主题切换只重新着色，不执行词法规则；未变化文本与主题的缓存路径零分配，实际编辑仍有词法引擎及协议缓冲区的分配。
+
+服务端返回类别与完整 scope 栈，GUI 在本地匹配主题；增量协议升级为 CS v8，需要同步重建 GUI 和服务端。详见 [逐行词法高亮实施报告](/home/zhuoh/workspace/pencode/docs/textmate-line-highlighting.zh-CN.md)。
 
 ## 选择主题
 
 在设置的「外观 → 颜色主题」中选择 Monokai、Dark+ 或 Light+。选择保存在用户配置目录的 `pencode/resources/settings.json` 的 `theme` 字段。主题统一控制启动页、标题栏、目录树、标签栏、状态栏、查找/替换、快速打开、设置和关闭确认面板，以及代码颜色、背景、光标、选区、行号和宽度参考线。按钮和文件图标也随主题着色。
 
-切换即时生效，保留打开的文件、选区和语法树；启动页和工作区共享当前主题。工作台样式和图标地址在加载主题时生成并缓存，未变化主题的同步路径零分配。
+切换即时生效，保留打开的文件、选区和词法缓存；启动页和工作区共享当前主题。工作台样式和图标地址在加载主题时生成并缓存，未变化主题的同步路径零分配。
 
 普通操作与文件图标使用 `icon.foreground`；主按钮图标使用 `button.foreground`；选中文件图标使用 `list.activeSelectionForeground`；标签关闭图标和未保存圆点使用 `tab.activeForeground` / `tab.inactiveForeground`。同一个 SVG 按颜色缓存纹理，切换主题或选中状态时更新已有图标，不需要分别维护深浅色 SVG。
 

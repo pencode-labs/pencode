@@ -9,7 +9,7 @@ import (
 	"github.com/diiyw/onix/syntax"
 )
 
-func TestPencodeIdleParserReleaseAndReparse(t *testing.T) {
+func TestPencodeIdleKeepsActiveLexicalState(t *testing.T) {
 	file := &openFile{Path: "main.go", contentSnapshot: snapshotText("package demo\nvar Before = 1\n")}
 	model := workspaceModel{files: map[string]*openFile{file.Path: file}, tabs: []string{file.Path}, activePath: file.Path}
 	defer model.closeHighlightWorker()
@@ -17,8 +17,8 @@ func TestPencodeIdleParserReleaseAndReparse(t *testing.T) {
 	spans := slices.Clone(model.highlightScratch)
 	revision := model.highlightRevision
 	model.releaseIdleSyntaxMemory(model.syntaxMemoryDue)
-	if model.highlightRevision <= revision || !slices.Equal(model.highlightScratch, spans) {
-		t.Fatal("idle maintenance did not release the worker or lost paint spans")
+	if model.highlightRevision != revision || !slices.Equal(model.highlightScratch, spans) {
+		t.Fatal("idle maintenance discarded active lexical state or lost paint spans")
 	}
 	if allocs := testing.AllocsPerRun(50, func() {
 		model.highlighted = false
@@ -64,23 +64,23 @@ func TestPencodeIdleParserKeepsUncachedOrPendingDocument(t *testing.T) {
 	}
 }
 
-func TestPencodeSyntaxWorkerRecolorsWithoutReparseAndReleasesTree(t *testing.T) {
+func TestPencodeSyntaxWorkerRecolorsWithoutReparseAndReleasesState(t *testing.T) {
 	var document syntax.Document
 	defer document.Close()
 	theme, _ := syntax.BuiltinTheme("monokai")
 	job := pencodeHighlightJob{path: "main.go", source: "package demo\n// comment\n", theme: theme}
 	var result pencodeHighlightResult
 	processPencodeHighlight(&document, job, &result)
-	tree := document.Tree()
+	captures := &document.Captures()[0]
 	spans := slices.Clone(result.spans)
 	resetPencodeHighlightResult(&result)
 	job.theme, _ = syntax.BuiltinTheme("light-plus")
 	processPencodeHighlight(&document, job, &result)
-	if tree == nil || document.Tree() != tree || slices.Equal(spans, result.spans) {
-		t.Fatal("worker reparsed the AST or failed to recolor")
+	if &document.Captures()[0] != captures || slices.Equal(spans, result.spans) {
+		t.Fatal("worker retokenized the document or failed to recolor")
 	}
 	resetPencodeHighlightResult(&result)
-	if processPencodeHighlight(&document, pencodeHighlightJob{release: true}, &result) || document.Tree() != nil || result.spans != nil {
-		t.Fatal("idle job retained its tree/buffer or published a render result")
+	if processPencodeHighlight(&document, pencodeHighlightJob{release: true}, &result) || len(document.Captures()) != 0 || result.spans != nil {
+		t.Fatal("idle job retained its lexical state/buffer or published a render result")
 	}
 }

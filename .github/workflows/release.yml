@@ -1,0 +1,122 @@
+name: Release desktop distributions
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GOWORK: 'off'
+  CGO_ENABLED: '1'
+  # Hosted Windows images may define VCPKG_ROOT. Pencode needs no codec libraries.
+  VCPKG_ROOT: ''
+  RELEASE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: linux, arch: amd64, runner: ubuntu-24.04}
+          - {os: linux, arch: arm64, runner: ubuntu-24.04-arm}
+          - {os: darwin, arch: amd64, runner: macos-15-intel}
+          - {os: darwin, arch: arm64, runner: macos-15}
+          - {os: windows, arch: amd64, runner: windows-2025, mingw: x86_64}
+          - {os: windows, arch: arm64, runner: windows-11-arm, mingw: aarch64}
+    defaults:
+      run:
+        working-directory: pencode
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pencode
+          persist-credentials: false
+      # Match the ../onix replacement in go.mod. Pin ONIX_REF to a compatible
+      # engine commit/tag in repository variables for reproducible releases.
+      - uses: actions/checkout@v4
+        with:
+          repository: onix-engine/onix
+          ref: ${{ vars.ONIX_REF || 'main' }}
+          path: onix
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pencode/go.mod
+          cache-dependency-path: pencode/go.sum
+      - name: Install Linux desktop development libraries
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxext-dev libxrender-dev libxi-dev libwayland-dev libxkbcommon-dev libgl1-mesa-dev
+      - name: Install Windows LLVM MinGW toolchain
+        if: matrix.os == 'windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MINGW_ARCH: ${{ matrix.mingw }}
+        run: |
+          $version = '20260616'
+          $archive = "llvm-mingw-$version-ucrt-$env:MINGW_ARCH.zip"
+          gh release download $version --repo mstorsjo/llvm-mingw --pattern $archive --dir $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive -Path "$env:RUNNER_TEMP/$archive" -DestinationPath $env:RUNNER_TEMP
+          $bin = "$env:RUNNER_TEMP/llvm-mingw-$version-ucrt-$env:MINGW_ARCH/bin"
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "CC=$bin/gcc.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CXX=$bin/g++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Test distribution packaging
+        run: go test -mod=readonly ./cmd/pencode-release
+      - name: Build release distribution
+        # The same entry point as make release; no GNU make dependency on Windows.
+        run: go run ./cmd/pencode-release -output dist -version "$RELEASE_VERSION"
+        shell: bash
+      - name: Upload distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: pencode-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            pencode/dist/pencode-*.tar.gz
+            pencode/dist/pencode-*.zip
+            pencode/dist/pencode-*.sha256
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pencode-*
+          merge-multiple: true
+          path: dist
+      - name: Verify and publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          cd dist
+          cat ./*.sha256 > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_VERSION" ./*.tar.gz ./*.zip SHA256SUMS --clobber
+          else
+            flags=(--verify-tag --generate-notes)
+            if [[ "${RELEASE_VERSION#v}" == *-* ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$RELEASE_VERSION" ./*.tar.gz ./*.zip SHA256SUMS "${flags[@]}"
+          fi

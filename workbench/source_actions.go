@@ -36,6 +36,7 @@ func (a *workspaceModel) sourceAction(id string) {
 		return
 	}
 	if id == "sc-prompt-cancel" {
+		s.TabClose = nil
 		s.Prompt = ""
 		s.FocusedModal, s.FocusedTab = "", ""
 		a.sourceChanged()
@@ -388,6 +389,17 @@ func (a *workspaceModel) closeSourceTab(key string) {
 	s := a.sourceState()
 	for i, tab := range s.Tabs {
 		if tab.Key == key {
+			if s.gutterTab == tab {
+				s.gutterTab = nil
+			}
+			if s.diffPaneTab == tab {
+				s.diffPaneTab = nil
+				s.diffEditors = [2]pencodeEditor{}
+				s.inlinePaint = [2]sourceInlinePaint{}
+			}
+			if s.Active == key && tab.Kind == "merge" {
+				s.mergeEditor = pencodeEditor{}
+			}
 			s.Tabs = slices.Delete(s.Tabs, i, i+1)
 			if s.Active == key {
 				s.Active = ""
@@ -410,6 +422,12 @@ func (a *workspaceModel) confirmSourceOperation() {
 	}
 	s.Prompt = ""
 	s.FocusedModal, s.FocusedTab = "", ""
+	if op == "discard-tabs" {
+		tabs := s.TabClose
+		s.TabClose = nil
+		a.discardEditorTabs(tabs)
+		return
+	}
 	if op == "discard-tab" {
 		a.closeSourceTab(hash)
 		return

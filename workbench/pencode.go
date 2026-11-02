@@ -920,7 +920,7 @@ func renderPencodeHighlight(model *workspaceModel) {
 		return
 	}
 	if model.highlightRequest.sourceDoc != nil {
-		model.releaseSyntaxWorker(false)
+		model.releaseSyntaxWorker()
 	}
 	file := model.activeFile()
 	if file == nil || !model.textEditorActive() {
@@ -1415,7 +1415,7 @@ func (model *workspaceModel) resetHighlight() {
 	if model == nil {
 		return
 	}
-	model.releaseSyntaxWorker(false)
+	model.releaseSyntaxWorker()
 	model.scheduleSyntaxMemoryRelease()
 	model.highlightScratch = model.highlightScratch[:0]
 	model.highlightPaintRevision++
@@ -1453,24 +1453,12 @@ func (model *workspaceModel) releaseIdleSyntaxMemory(now time.Time) {
 		return
 	}
 	model.syntaxMemoryDue = time.Time{}
-	if model.sourceState().visible() {
-		if model.highlightRequest.sourceDoc == nil {
-			model.releaseSyntaxWorker(true)
-		}
+	// Keep lightweight line states for the active document across pauses in
+	// typing. Releasing them here would turn the next edit into a full scan.
+	if model.sourceState().visible() || model.activeFile() != nil && model.textEditorActive() {
 		return
 	}
-	file := model.activeFile()
-	if file == nil {
-		model.releaseSyntaxWorker(true)
-		return
-	}
-	if !model.highlightPending && model.highlightRequest.file == nil && model.highlightRequest.sourceDoc == nil {
-		// Paint spans outlive the parser. Keep incremental parsing hot during
-		// editing, but release its tree and scratch after a cached idle boundary.
-		if _, ok := model.highlightCache.get(file, model.syntaxTheme, model.syntaxDefinitions); ok {
-			model.releaseSyntaxWorker(true)
-		}
-	}
+	model.releaseSyntaxWorker()
 }
 
 func (model *workspaceModel) activateProject(project *pencodeProject) {

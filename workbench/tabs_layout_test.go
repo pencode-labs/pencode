@@ -44,6 +44,7 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 					document, err := dom.Parse(`<html style="font-size:` + strconv.Itoa(size) + `px"><body><div class="pencode-root">
 <button id="project" class="pencode-project-toggle"><img class="pencode-project-arrow"><span id="project-name" class="pencode-project-name">Pencode 项目</span></button>
 <div id="tabs" class="pencode-tabs"><div class="pencode-tab active"><button class="pencode-tab-select"><img class="pencode-tab-icon"><span id="tab-name" class="pencode-tab-name">app_ecs.go</span></button><button class="pencode-tab-close"></button></div></div>
+<button class="pencode-lsp-result pencode-lsp-reference-location"><span id="reference-label" class="pencode-lsp-result-label"><span>func (b *Bundle) </span><mark id="reference-match">ValidateSceneFeatures</mark><span>(id SceneID)</span></span></button>
 </div></body></html>`)
 					if err != nil {
 						t.Fatal(err)
@@ -87,6 +88,40 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 								t.Errorf("%s cap/baseline center = %v, want %v", pair[0], got, wantCenter)
 							}
 						}
+					}
+					label, match := boxes["reference-label"], boxes["reference-match"]
+					if label == nil || match == nil {
+						t.Fatal("missing reference preview")
+					}
+					baseline, fragments := 0.0, 0
+					var checkReference func(*layout.Box, bool)
+					checkReference = func(box *layout.Box, highlighted bool) {
+						highlighted = highlighted || box == match
+						for _, fragment := range box.TextFragments {
+							if len(fragment.Glyphs) == 0 {
+								continue
+							}
+							y := fragment.Glyphs[0].Y
+							if fragments > 0 && math.Abs(y-baseline) > .01 {
+								t.Errorf("reference text baselines differ: %g and %g", baseline, y)
+							}
+							baseline, fragments = y, fragments+1
+							if highlighted {
+								bounds := match.BorderBox()
+								top := fragment.Rect.Y - bounds.Y
+								bottom := bounds.Y + bounds.Height - fragment.Rect.Y - fragment.Rect.Height
+								if top < 1.99 || bottom < 1.99 || math.Abs(top-bottom) > .01 {
+									t.Errorf("reference highlight padding: top=%g bottom=%g", top, bottom)
+								}
+							}
+						}
+						for _, child := range box.Children {
+							checkReference(child, highlighted)
+						}
+					}
+					checkReference(label, false)
+					if fragments < 3 {
+						t.Fatal("missing reference text fragments")
 					}
 				})
 			}

@@ -3,7 +3,6 @@ package workbench
 import (
 	"path/filepath"
 	"runtime"
-	"slices"
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
@@ -14,6 +13,8 @@ import (
 type pencodeTabContext struct {
 	project *pencodeProject
 	path    string
+	surface *pencodeExtensionSurface
+	source  *sourceTab
 	x, y    float32
 	index   int
 	open    bool
@@ -32,27 +33,37 @@ var pencodeTabContextActions = [...]struct {
 	{"tab-context-copy-relative", pencodeCloseNone},
 }
 
-func (m *workspaceModel) tabContextEnabled(index int) bool {
-	c := &m.tabContext
-	if c.project == nil || c.project.Files[c.path] == nil {
-		return false
-	}
-	if index == 1 {
-		return len(c.project.Tabs) > 1
-	}
-	if index == 2 {
-		i := slices.Index(c.project.Tabs, c.path)
-		return i >= 0 && i+1 < len(c.project.Tabs)
-	}
-	if index == 3 {
-		for _, path := range c.project.Tabs {
-			if file := c.project.Files[path]; file != nil && !file.Dirty {
-				return true
-			}
+func (c *pencodeTabContext) target() pencodeEditorTab {
+	return pencodeEditorTab{project: c.project, path: c.path, surface: c.surface, source: c.source}
+}
+
+func (m *workspaceModel) tabContextValid() bool {
+	for tab := range m.editorTabs() {
+		if tab == m.tabContext.target() {
+			return true
 		}
-		return false
 	}
-	return true
+	return false
+}
+
+func (m *workspaceModel) tabContextEnabled(index int) bool {
+	anchor := m.tabContext.target()
+	if index >= 5 {
+		return anchor.surface == nil && (anchor.source != nil || anchor.project != nil && anchor.path != "")
+	}
+	right := false
+	enabled := false
+	for tab := range m.editorTabs() {
+		selected := editorTabCloseIncludes(pencodeTabContextActions[index].action, tab, anchor, right)
+		if selected {
+			if m.sourceState().busy() && tab.source != nil {
+				return false
+			}
+			enabled = true
+		}
+		right = right || tab == anchor
+	}
+	return enabled
 }
 
 func (m *workspaceModel) renderTabContext(view *htmlui.View) {
@@ -75,7 +86,7 @@ func (m *workspaceModel) renderTabContext(view *htmlui.View) {
 
 func (m *workspaceModel) updateTabContext(world *module.Content, state *input.State) bool {
 	c := &m.tabContext
-	if m.screen != pencodeWorkspace || m.settingsOpen || m.quickOpen || m.folderSearch.open || m.closing.action != pencodeCloseNone || m.fileContext.dialog != "" || m.market != nil && m.market.open || c.open && (m.activeProjectState() != c.project || c.project.Files[c.path] == nil) {
+	if m.screen != pencodeWorkspace || m.settingsOpen || m.quickOpen || m.folderSearch.open || m.closing.action != pencodeCloseNone || m.fileContext.dialog != "" || m.market != nil && m.market.open || m.sourceState().modal() || c.open && !m.tabContextValid() {
 		changed := c.open
 		*c = pencodeTabContext{}
 		return changed
@@ -105,14 +116,19 @@ func (m *workspaceModel) updateTabContext(world *module.Content, state *input.St
 	if scroll, ok := world.Get[scene.UIScroll](m.tabScroll.area); ok {
 		offset = scroll.Position.X()
 	}
-	for _, access := range world.Query[htmlui.Component[tabProps, struct{}]]() {
-		props := access.Get().Props
-		if props.Model != m || props.Project != m.activeProjectState() {
-			continue
-		}
+	for tab := range m.editorTabs() {
 		id := "active-tab"
-		if !props.Active {
-			id = "file-tab:" + props.Path
+		switch {
+		case tab.source != nil:
+			id = "sc-tab-group:" + tab.source.Key
+		case tab.surface != nil:
+			if m.actions.ui.editor != tab.surface {
+				id = "file-tab:" + tab.surface.rootID
+			}
+		default:
+			if m.actions.ui.editor != nil || m.sourceState().visible() || tab.path != tab.project.ActivePath {
+				id = "file-tab:" + tab.path
+			}
 		}
 		node, ok := world.HTMLNode(m.surface, id)
 		if !ok {
@@ -129,8 +145,10 @@ func (m *workspaceModel) updateTabContext(world *module.Content, state *input.St
 		}
 		bounds, _ := root.Bounds()
 		cx, cy := clampLanguagePopup(x-bounds.X, y-bounds.Y, bounds, 240, 212)
-		*c = pencodeTabContext{project: props.Project, path: props.Path, x: cx, y: cy, open: true}
+		*c = pencodeTabContext{project: tab.project, path: tab.path, surface: tab.surface, source: tab.source, x: cx, y: cy, open: true}
 		m.fileContext.open, m.terminalView.context.open = false, false
+		s := m.sourceState()
+		s.MenuOpen, s.BranchMenuOpen, s.RepositoryMenuOpen = false, false, false
 		m.dismissLanguageContext()
 		m.lastFileClick = 0
 		return true
@@ -149,12 +167,14 @@ func (m *workspaceModel) handleTabContextEvent(world *module.Content, ref string
 		}
 		c.open = false
 		if item.action != pencodeCloseNone {
-			m.closeProjectTabs(item.action, c.project, c.path)
+			m.closeEditorTabs(item.action, c.target())
 			setPencodeEditorValue(world, m.surface, m.activeContent())
 		} else if state, ok := world.Resource[*input.State](); ok {
-			value := c.path
-			if i == 5 {
-				value = filepath.Join(c.project.Path, filepath.FromSlash(value))
+			value := m.editorTabPath(c.target())
+			if i == 6 {
+				if relative, err := filepath.Rel(m.projectPath, value); err == nil {
+					value = filepath.ToSlash(relative)
+				}
 			}
 			if !state.SetClipboardText(value) {
 				m.setProjectStatus(c.project, "无法写入剪贴板")

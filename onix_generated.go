@@ -2,8 +2,6 @@
 package main
 
 import (
-	iofs "io/fs"
-
 	onix "github.com/diiyw/onix"
 	graphics "github.com/diiyw/onix/graphics"
 	ontex "github.com/diiyw/onix/graphics/codec/ontex"
@@ -12,6 +10,7 @@ import (
 	project "github.com/diiyw/onix/project"
 	windowsvg "github.com/diiyw/onix/window/codec/svg"
 	filedialog "github.com/diiyw/onix/window/filedialog"
+	iofs "io/fs"
 )
 
 func OnixRegistry() (module.Registry, error) {
@@ -60,7 +59,7 @@ func OnixInstallSystems(app *onix.App) error {
 	return nil
 }
 
-type OnixContentProfile = module.FullContent
+type OnixContentProfile = module.WithContent[module.WithContent[module.Render2D, module.LayoutContent], module.HTMLContent]
 
 type OnixRasterImageDecoder = graphics.ImageDecoderSet[graphics.NoImageDecoder, graphics.NoImageDecoder, graphics.NoImageDecoder, graphics.NoImageDecoder, ontex.Decoder]
 type OnixImageDecoder = graphics.ImageDecoderWith[OnixRasterImageDecoder, graphicssvg.Decoder]

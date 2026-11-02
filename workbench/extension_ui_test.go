@@ -49,6 +49,21 @@ func TestPencodeExtensionUIProcess(t *testing.T) {
 		UIEvent: func(event peb.UIEvent) error {
 			fmt.Fprintf(os.Stderr, "UI %s %s %s %s %s\n", event.ID, event.Event.Kind, event.Reason, event.Context.ID, event.Event.Value)
 			switch {
+			case event.ID == "task" && event.Event.Kind == "fixture-open":
+				return publisher.Show(peb.UI{ID: "task", Title: "Running task", Kind: peb.EditorTab, Busy: true, InterceptClose: true, View: &peb.EditorView{HTML: `<p>Running task</p>`}})
+			case event.ID == "task" && event.Event.Kind == "closerequest":
+				return publisher.Show(peb.UI{ID: "task-confirm", Title: "Close task?", Kind: peb.Dialog, View: &peb.EditorView{
+					HTML:   `<button data-ref="cancel" type="button">Continue</button><button data-ref="confirm" type="button">Stop and close</button>`,
+					Events: []peb.EditorBinding{{Ref: "cancel", Kind: "click"}, {Ref: "confirm", Kind: "click"}},
+				}})
+			case event.ID == "task-confirm" && event.Event.Kind == "click":
+				if err := publisher.CloseUI("task-confirm"); err != nil {
+					return err
+				}
+				if event.Event.Ref == "confirm" {
+					return publisher.CloseUI("task")
+				}
+				return nil
 			case event.ID == "notice" && event.Event.Kind == "click":
 				return publisher.Show(peb.UI{ID: "notice", Title: "Notification action: " + event.Event.Ref, Kind: peb.Notification})
 			case event.ID == "tools" && event.Event.Kind == "click" && event.Event.Ref == "popup":
@@ -765,6 +780,44 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	model.closeExtensionSurface(model.actions.ui.surfaces[0], "extension", false)
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	settle()
+	// Close requests reach the extension before removal; cancellation retains
+	// the busy tab, while confirmation produces the final close lifecycle event.
+	for _, s := range slices.Backward(model.actions.ui.surfaces) {
+		if s.ui.Kind == peb.Notification {
+			model.closeExtensionSurface(s, "extension", false)
+		}
+	}
+	if !model.actions.sessions["ui-fixture"].SubmitUI(peb.UIEvent{ID: "task", Event: peb.EditorEvent{Kind: "fixture-open"}}) {
+		t.Fatal("could not open intercepted tab")
+	}
+	wait(func() bool { return model.actions.ui.editor != nil && model.actions.ui.editor.ui.ID == "task" })
+	task := model.actions.ui.editor
+	for _, confirm := range []bool{false, true} {
+		editorContextClick(t, app, model, state, "file-tab-close:"+task.rootID)
+		wait(func() bool {
+			return model.actions.ui.overlay != nil && model.actions.ui.overlay.ui.ID == "task-confirm"
+		})
+		if !slices.Contains(model.actions.ui.surfaces, task) || !task.ui.Busy {
+			t.Fatal("extension tab was removed before confirmation")
+		}
+		dialog := model.actions.ui.overlay
+		index := 0
+		if confirm {
+			index = 1
+		}
+		editorContextClick(t, app, model, state, dialog.focus[index].id)
+		wait(func() bool { return model.actions.ui.overlay == nil })
+		if !confirm && !slices.Contains(model.actions.ui.surfaces, task) {
+			t.Fatal("cancelled confirmation removed the task tab")
+		}
+	}
+	wait(func() bool {
+		logs, _ := bundle.Actions.Output.Snapshot()
+		return strings.Contains(logs, "UI task close extension")
+	})
+	if slices.Contains(model.actions.ui.surfaces, task) {
+		t.Fatal("confirmed task tab was retained")
+	}
 	// Unloading an extension removes all retained surfaces and controls.
 	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/tools")
 	wait(func() bool { return model.actions.ui.overlay != nil })

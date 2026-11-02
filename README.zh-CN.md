@@ -69,7 +69,11 @@ make run
 
 可运行 `make install-extensions` 只安装扩展而不启动应用，或使用 `make install-extensions EXTENSIONS_DIR="/path/to/extensions"` 将扩展打包到其他目录。远程工作区的扩展需要在远端安装。
 
-可运行 `make install-server` 仅编译安装本机服务端。离线 SSH 引导所需的服务端可在仓库根目录运行 `go run ./cmd/pencode-build-servers` 构建，默认生成 Linux/macOS 的 amd64、arm64 程序，位于 `resources/servers/<os>-<arch>/pencode-server`。当前仓库适合源码开发，尚不是可直接安装的桌面发行版。
+可运行 `make install-server` 仅编译安装本机服务端。离线 SSH 引导所需的服务端可在仓库根目录运行 `go run ./cmd/pencode-build-servers` 构建，默认生成 Linux/macOS 的 amd64、arm64 程序，位于 `resources/servers/<os>-<arch>/pencode-server`。
+
+运行 `make release VERSION=v0.1.0` 构建当前主机平台的桌面分发包（版本默认 `dev`，可用 `DIST_DIR` 指定输出目录）。构建复用 Onix 的 release 流程，将模块执行计划和资源编译为 `catalog.bin` 与 `.dat` 包，再使用 `onix_release` 编译程序。Windows 输出 `dist/pencode-<版本>-windows-<架构>.zip`；Linux 和 macOS 输出 `dist/pencode-<版本>-<系统>-<架构>.tar.gz`，其中 macOS 的系统名为 `darwin`。每个压缩包附带 `.sha256` 校验文件，包含许可证、图标声明及中英文 README。完整解压后，Linux 运行 `pencode/pencode`，Windows 运行 `pencode/pencode.exe`，macOS 打开 `pencode/pencode.app`。资源相对可执行文件定位，启动时不限制工作目录。扩展需通过扩展管理器另行安装；分发包不包含离线 SSH 服务端程序。
+
+推送 `v*` tag 会触发[桌面发布工作流](.github/workflows/release.yml)，分别构建 Linux、Windows、macOS 的 amd64 和 arm64 版本，校验后将六个分发包及 `SHA256SUMS` 上传到 GitHub Release。发布前请将仓库的 Actions 变量 `ONIX_REF` 设置为兼容的 Onix commit 或 tag，默认使用 `main`。手动运行工作流只生成可下载的构建产物，不创建 Release。构建依赖 Onix 文档列出的原生开发库；Windows 使用 MinGW-w64（LLVM MinGW 支持 arm64）。macOS 应用使用临时签名，尚未配置 Developer ID 签名和公证。
 
 WebSocket 直连时，先在远端启动服务：
 
@@ -100,7 +104,7 @@ git submodule foreach 'go test ./...'
 ```text
 桌面工作台（Onix）
         │
-        │ CS v7：本地子进程管道、SSH stdin/stdout 或 WebSocket
+        │ CS v8：本地子进程管道、SSH stdin/stdout 或 WebSocket
         ▼
 Pencode 服务端
         ├── 文件、文档、索引与语法解析
@@ -144,7 +148,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 (cd extensions/go && go build -o bin/go .)
 ```
 
-当前扩展协议为 peb v13（CS v7），旧扩展需要使用当前 SDK 重新构建。
+当前扩展协议为 peb v13（CS v8），旧扩展需要使用当前 SDK 重新构建。
 
 ## 文档
 
@@ -170,4 +174,4 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 Pencode 使用 [MIT 许可证](LICENSE)。
 
-项目基于 Onix、gotreesitter 等 Go 库构建。随仓库分发的第三方资源保留各自许可证，包括 [Codicons](resources/icons/CODICONS-LICENSE.txt)、[Lucide](resources/icons/LUCIDE-LICENSE.txt) 和 [Material 文件图标](extensions/material-icons/resources/LICENSE.txt)。再分发这些资源时，请保留对应声明。
+项目基于 Onix、[textmate-go](https://github.com/eugenioenko/textmate-go) 等 Go 库构建。TextMate grammar 的第三方声明随 Onix 语法资源一起嵌入。随仓库分发的第三方资源保留各自许可证，包括 [Codicons](resources/icons/CODICONS-LICENSE.txt)、[Lucide](resources/icons/LUCIDE-LICENSE.txt) 和 [Material 文件图标](extensions/material-icons/resources/LICENSE.txt)。再分发这些资源时，请保留对应声明。

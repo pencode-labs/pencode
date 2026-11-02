@@ -109,6 +109,7 @@ type pencodeSourceControl struct {
 	commitTreeCount                         int
 	commitTreeRevision                      uint64
 	Tabs                                    []*sourceTab
+	TabClose                                []pencodeEditorTab
 	Active                                  string
 	MenuHash                                string
 	BranchMenuOpen                          bool
@@ -373,7 +374,11 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			found := false
 			for i, old := range s.Tabs {
 				if old.Key == tab.Key {
-					if old.Result != old.Saved {
+					// Revalidate both sides on every list click, but keep paint and
+					// native editor state when the comparison has not changed.
+					if old.Result != old.Saved || !old.Binary && !tab.Binary &&
+						old.Local == tab.Local && old.Incoming == tab.Incoming &&
+						old.Saved == tab.Saved && old.Disk == tab.Disk {
 						tab = old
 					} else {
 						tab.ScrollX, tab.ScrollY, tab.FirstRow = old.ScrollX, old.ScrollY, old.FirstRow
@@ -858,6 +863,7 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	s := m.sourceState()
 	if s.modal() {
 		if m.uiKey(state, input.KeyEscape) {
+			s.TabClose = nil
 			s.Prompt, s.Notice = "", ""
 			s.FocusedModal, s.FocusedTab = "", ""
 			return true, true

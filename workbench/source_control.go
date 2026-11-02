@@ -90,6 +90,7 @@ type sourceTab struct {
 	Rows                           []sourceDiffRow
 	Local, Incoming, Result, Saved string
 	Binary                         bool
+	SubmoduleSummary               string
 	FirstRow                       int
 	ScrollX, ScrollY               float32
 	CodeColumns                    int
@@ -105,7 +106,9 @@ type sourceTab struct {
 	pencodeEditHistory
 }
 
-func (t *sourceTab) editable() bool { return t.Kind == "changes" && !t.Binary }
+func (t *sourceTab) editable() bool {
+	return t.Kind == "changes" && !t.Binary && t.SubmoduleSummary == ""
+}
 
 func (r sourceRepository) baseContext() context.Context {
 	if r.Context != nil {
@@ -587,6 +590,12 @@ func (r sourceRepository) commit(message string) error {
 
 func (r sourceRepository) openDiff(file sourceFile, kind, revision string) (*sourceTab, error) {
 	t := &sourceTab{Key: kind + ":" + revision + ":" + file.Path, Path: file.Path, Kind: kind, Revision: revision}
+	if summary, err := r.submoduleSummary(file, kind, revision); err != nil {
+		return nil, err
+	} else if summary != "" {
+		t.SubmoduleSummary = summary
+		return t, nil
+	}
 	var left, right []byte
 	var err error
 	oldPath := file.Path

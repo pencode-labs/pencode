@@ -33,6 +33,8 @@ func TestSourceControlRepositoryPathOwnership(t *testing.T) {
 	m.bottom.active = pencodePanelSourceControl
 	s := m.sourceState()
 	s.Repositories, s.Snapshot.Repository.Root = roots, roots[0]
+	s.RepositoryRefs = []string{"main", "feature/one", "12345678", "topic"}
+	s.Snapshot.Branch = "main"
 	render := func() {
 		m.renderSourceToolbar(&s.toolsView)
 		s.overlayView.reset()
@@ -42,6 +44,52 @@ func TestSourceControlRepositoryPathOwnership(t *testing.T) {
 	if n := testing.AllocsPerRun(100, render); n != 0 {
 		t.Fatalf("unchanged repository menus allocated %g times", n)
 	}
+}
+
+func TestSourceControlRepositoryHeadLabels(t *testing.T) {
+	r := sourceTestRepository(t)
+	if got := r.headLabel(); got != "main" {
+		t.Fatalf("unborn branch label = %q", got)
+	}
+	sourceTestGit(t, r, "commit", "--allow-empty", "-m", "base")
+	sourceTestGit(t, r, "switch", "-c", "feature/nested")
+	if got := r.headLabel(); got != "feature/nested" {
+		t.Fatalf("branch label = %q", got)
+	}
+	hash := sourceTestGit(t, r, "rev-parse", "--short=8", "HEAD")
+	sourceTestGit(t, r, "switch", "--detach", "HEAD")
+	if got := r.headLabel(); got != hash {
+		t.Fatalf("detached label = %q, want %q", got, hash)
+	}
+}
+
+func TestSourceControlRepositoryRefCache(t *testing.T) {
+	m := &workspaceModel{projectPath: "/project"}
+	s := m.sourceState()
+	s.Repositories = []string{"/project", "/project/libs/child"}
+	s.RepositoryRefs = []string{"main", "12345678"}
+	s.Snapshot.Repository.Root, s.Snapshot.Branch = s.Repositories[0], "main"
+	check := func(want ...string) {
+		t.Helper()
+		s.overlayView.reset()
+		m.renderSourceRepositories(&s.overlayView)
+		for i, root := range s.Repositories {
+			found := false
+			for _, group := range s.repositoryView.groups {
+				if group.node.Key == sourceVNodeKey("button", root) {
+					found = len(group.children) > 1 && group.children[1].Text == want[i]
+				}
+			}
+			if !found {
+				t.Fatalf("repository %s did not render ref %q", root, want[i])
+			}
+		}
+	}
+	check("main", "12345678")
+	s.RepositoryRefs = []string{"main", "feature/child"}
+	check("main", "feature/child")
+	s.Snapshot.Branch = "abcdef01 (detached)"
+	check("abcdef01", "feature/child")
 }
 
 func TestSourceControlRepositoryFailureRetainsDrafts(t *testing.T) {
@@ -79,6 +127,12 @@ func TestSourceControlRepositoryMenuAndAutomaticSelection(t *testing.T) {
 	sourceTestGit(t, r, "-c", "protocol.file.allow=always", "submodule", "add", child.Root, "libs/child")
 	nestedRoot := filepath.ToSlash(filepath.Join(r.Root, "libs", "child"))
 	parentRoot := filepath.ToSlash(r.Root)
+	nested := sourceRepository{Root: nestedRoot, Backend: r.Backend}
+	if _, err := r.Backend.GitRepositories(t.Context(), r.Root); err != nil {
+		t.Fatal(err)
+	}
+	hash := sourceTestGit(t, nested, "rev-parse", "--short=8", "HEAD")
+	sourceTestGit(t, nested, "switch", "--detach", "HEAD")
 	t.Setenv("ONIX_PENCODE_PROFILE_PROJECT", r.Root)
 	t.Setenv("ONIX_PENCODE_PROFILE_FILE", "libs/child/main.go")
 	app, m, _, state := languageInteractionFixture(t)
@@ -88,6 +142,9 @@ func TestSourceControlRepositoryMenuAndAutomaticSelection(t *testing.T) {
 	s := m.sourceState()
 	if len(s.Repositories) != 2 || s.Snapshot.Repository.Root != nestedRoot || s.Snapshot.Commits[0].Subject != "child" {
 		t.Fatalf("submodule selection: roots=%q, snapshot=%+v", s.Repositories, s.Snapshot)
+	}
+	if !slices.Equal(s.RepositoryRefs, []string{"main", hash}) {
+		t.Fatalf("repository HEAD labels = %q", s.RepositoryRefs)
 	}
 	// Check menu positioning, native click bindings, and keyboard selection.
 	editorContextClick(t, app, m, state, "sc-repositories")

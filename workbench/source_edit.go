@@ -29,7 +29,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 			}
 		}
 	}
-	if tab == nil || tab.Binary || tab.Kind == "merge" {
+	if tab == nil || tab.Binary || tab.SubmoduleSummary != "" || tab.Kind == "merge" {
 		s.diffPaneTab = nil
 		s.inlinePaint = [2]sourceInlinePaint{}
 		s.diffEditors = [2]pencodeEditor{}

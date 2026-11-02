@@ -48,6 +48,31 @@ func sourceRepositoryLabel(project, root string) string {
 	return path.Base(root)
 }
 
+func (r sourceRepository) headLabel() string {
+	if data, err := r.command("symbolic-ref", "--quiet", "--short", "HEAD"); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	data, err := r.command("rev-parse", "--short=8", "--verify", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (r sourceRepository) repositoryRefs(roots []string, current string) []string {
+	refs := make([]string, len(roots))
+	for i, root := range roots {
+		if root == r.Root {
+			refs[i] = strings.TrimSuffix(current, " (detached)")
+		} else {
+			repository := r
+			repository.Root = root
+			refs[i] = repository.headLabel()
+		}
+	}
+	return refs
+}
+
 func (s *pencodeSourceControl) selectRepository(repository sourceRepository) {
 	if s.RepositoryViews == nil {
 		s.RepositoryViews = make(map[string]sourceRepositoryView)
@@ -111,8 +136,10 @@ func (m *workspaceModel) followSourceRepository() bool {
 type sourceRepositoryMenuKey struct {
 	Theme               *pencodeTheme
 	Roots               *string
+	Refs                *string
 	Count, Index        int
 	Current, Project    string
+	CurrentRef          string
 	X, Y, Width, Height float32
 }
 
@@ -155,8 +182,8 @@ func (m *workspaceModel) positionSourceRepositories(world *module.Content) {
 
 func (m *workspaceModel) renderSourceRepositories(overlay *sourceVNodeView) {
 	s := m.sourceState()
-	key := sourceRepositoryMenuKey{Theme: m.workbenchTheme, Roots: sourceFirst(s.Repositories), Count: len(s.Repositories), Index: s.RepositoryIndex,
-		Current: s.Snapshot.Repository.Root, Project: m.projectPath, X: s.RepositoryX, Y: s.RepositoryY, Width: s.RepositoryWidth, Height: s.RepositoryHeight}
+	key := sourceRepositoryMenuKey{Theme: m.workbenchTheme, Roots: sourceFirst(s.Repositories), Refs: sourceFirst(s.RepositoryRefs), Count: len(s.Repositories), Index: s.RepositoryIndex,
+		Current: s.Snapshot.Repository.Root, CurrentRef: s.Snapshot.Branch, Project: m.projectPath, X: s.RepositoryX, Y: s.RepositoryY, Width: s.RepositoryWidth, Height: s.RepositoryHeight}
 	b := &s.repositoryView
 	if b.used == 0 || s.repositoryKey != key {
 		s.repositoryKey = key
@@ -169,6 +196,16 @@ func (m *workspaceModel) renderSourceRepositories(overlay *sourceVNodeView) {
 			}
 			b.open("button", root, "id", "sc-repository:"+root, "type", "button", "class", class, "role", "menuitemradio", "aria-checked", strconv.FormatBool(root == key.Current), "tabindex", tabindex, "title", root)
 			b.text("span", "name", sourceRepositoryLabel(m.projectPath, root), "class", "sc-branch-name")
+			ref := ""
+			if i < len(s.RepositoryRefs) {
+				ref = s.RepositoryRefs[i]
+			}
+			if root == key.Current && key.CurrentRef != "" {
+				ref = strings.TrimSuffix(key.CurrentRef, " (detached)")
+			}
+			if ref != "" {
+				b.text("span", "ref", ref, "class", "sc-repository-ref", "title", ref)
+			}
 			if root == key.Current {
 				m.sourceIcon(b, "current", "check", "")
 			}

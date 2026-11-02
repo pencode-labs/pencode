@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,6 +29,12 @@ import (
 
 func TestCodexStatusBarOpensWorkspaceWhenCLIUnavailable(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", filepath.Join(t.TempDir(), "missing-codex"))
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexNewSessionKeepsActionConnection(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", filepath.Join(t.TempDir(), "missing-codex"))
+	t.Setenv("PENCODE_CODEX_NEW_SESSION", "1")
 	testCodexStatusBarWorkspace(t, "")
 }
 
@@ -226,6 +233,32 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			return ok
 		})
 		return id
+	}
+	if os.Getenv("PENCODE_CODEX_NEW_SESSION") == "1" {
+		original := surface
+		for index := 1; index <= 2; index++ {
+			phase = "create session " + strconv.Itoa(index)
+			editorContextClick(t, app, model, state, waitControl(surface, "new"))
+			wait(func() bool {
+				next := model.actions.ui.editor
+				return next != nil && next != surface && next.ui.ID == strconv.Itoa(index)+".composer"
+			})
+			surface = model.actions.ui.editor
+			phase = "open new session permissions"
+			editorContextClick(t, app, model, state, waitControl(surface, "permission-settings"))
+			wait(func() bool {
+				menu := model.actions.ui.overlay
+				return menu != nil && menu.ui.ID == strconv.Itoa(index)+".permissions" && menu.ui.Anchor == "ui:"+surface.ui.ID+"#permission-settings"
+			})
+			editorContextClick(t, app, model, state, waitControl(model.actions.ui.overlay, "permission/full"))
+			wait(func() bool {
+				return model.actions.ui.overlay == nil && strings.Contains(surface.view.HTML, "完全访问</span>")
+			})
+		}
+		if !slices.Contains(model.actions.ui.surfaces, original) {
+			t.Fatal("new session closed the original tab")
+		}
+		return
 	}
 	if os.Getenv("PENCODE_CODEX_COMPLETION") == "1" {
 		name := "codex-context.txt"

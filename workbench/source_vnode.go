@@ -35,6 +35,9 @@ func (b *sourceVNodeView) reset() {
 	b.open("", "root")
 }
 func (b *sourceVNodeView) open(tag, key string, attrs ...string) {
+	b.openKey(tag, sourceVNodeKey(tag, key), attrs...)
+}
+func (b *sourceVNodeView) openKey(tag string, key uint64, attrs ...string) {
 	if tag == "button" {
 		for i := 0; i < len(attrs); i += 2 {
 			if attrs[i] == "id" {
@@ -53,7 +56,7 @@ func (b *sourceVNodeView) open(tag, key string, attrs ...string) {
 	group.children = group.children[:0]
 	clear(group.attrs)
 	group.attrs = group.attrs[:0]
-	group.node = html.VNode{Key: sourceVNodeKey(tag, key), Tag: tag}
+	group.node = html.VNode{Key: key, Tag: tag}
 	for i := 0; i < len(attrs); i += 2 {
 		group.attrs = append(group.attrs, html.VNodeAttribute{Name: attrs[i], Value: attrs[i+1]})
 	}

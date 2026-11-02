@@ -15,6 +15,14 @@ func (a *workspaceModel) renderSourceTabs(b *sourceVNodeView) {
 		return
 	}
 	b.open("div", "code", "id", "sc-code-panel", "class", "sc-code-panel", "role", "tabpanel", "aria-label", tab.Path)
+	if tab.SubmoduleSummary != "" {
+		b.open("pre", "submodule", "class", "sc-submodule-summary", "tabindex", "0", "aria-label", "Submodule changes")
+		sourceDiffText(b, tab.SubmoduleSummary)
+		b.close()
+		b.close()
+		b.close()
+		return
+	}
 	if tab.Kind == "merge" && !tab.Binary {
 		b.open("div", "toolbar", "class", "sc-toolbar")
 		sourceButton(b, "sc-save-merge", "Complete Merge · Save & Stage", s.busy())

@@ -39,7 +39,7 @@ func (t *sourceTab) sourceText(side int) string {
 
 func (m *workspaceModel) renderSourceHighlight() {
 	tab := m.sourceState().activeTab()
-	if tab == nil || tab.Binary {
+	if tab == nil || tab.Binary || tab.SubmoduleSummary != "" {
 		return
 	}
 	m.ensureSyntaxTheme()

@@ -2535,6 +2535,12 @@ textarea:focus {
 .sc-group-toggle:hover { background: var(--vscode-list-hoverBackground); }
 .sc-panel .muted, .sc-editor .muted { padding: 6px; color: var(--vscode-descriptionForeground); }
 .sc-code-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+.sc-submodule-summary { flex: 1; min-height: 0; margin: 0; padding: 16px; overflow: auto; color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); font-family: monospace; font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sc-diff-added { color: var(--vscode-gitDecoration-addedResourceForeground); }
+.sc-diff-deleted { color: var(--vscode-gitDecoration-deletedResourceForeground); }
+.sc-diff-file { color: var(--vscode-gitDecoration-modifiedResourceForeground); }
+.sc-diff-hunk { color: var(--vscode-textLink-foreground); }
+.sc-diff-meta { color: var(--vscode-descriptionForeground); }
 .sc-diff-headings { display: flex; flex: 0 0 auto; background: var(--vscode-editorGroupHeader-tabsBackground); }
 .sc-diff-headings > h3 { flex: 1; min-width: 0; }
 .sc-diff-gutter-heading, .sc-diff-gutter { width: 28px; flex: 0 0 28px; border-left: 1px solid var(--vscode-editorGroup-border); border-right: 1px solid var(--vscode-editorGroup-border); }
@@ -2664,6 +2670,7 @@ textarea:focus {
 .sc-branch-heading { height: 28px; margin: 0; padding: 5px 8px; line-height: 18px; color: var(--vscode-descriptionForeground); font-size: 12px; }
 .sc-branch-menu .sc-branch-item { width: 100%; height: 28px; }
 .sc-branch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sc-repository-ref { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); }
 .sc-branch-submenu { z-index: 43; width: 200px; padding: 5px; }
 .sc-branch-submenu button { height: 28px; }
 

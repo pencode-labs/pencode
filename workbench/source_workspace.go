@@ -26,6 +26,7 @@ const (
 
 type sourceResult struct {
 	Repositories      []string
+	RepositoryRefs    []string
 	Selection         uint64
 	Page              *sourceHistoryPage
 	PageRefs          string
@@ -83,6 +84,7 @@ func sourceFirst[T any](values []T) *T {
 // its bounded result is applied by the foreground, including for inactive projects.
 type pencodeSourceControl struct {
 	Repositories                            []string
+	RepositoryRefs                          []string
 	RepositoriesLoaded                      bool
 	RepositoryViews                         map[string]sourceRepositoryView
 	FollowPath                              string
@@ -271,6 +273,7 @@ func (m *workspaceModel) refreshSourceControl() {
 		activePath = ""
 	}
 	backend := m.backend
+	roots := s.Repositories
 	statusOnly := !s.visible() && m.bottom.active != pencodePanelSourceControl && !s.modal()
 	ctx, cancel := context.WithCancel(s.Context)
 	s.RefreshCancel = cancel
@@ -296,12 +299,16 @@ func (m *workspaceModel) refreshSourceControl() {
 			}
 			r.Root = directory
 		}
+		if repositories != nil {
+			roots = repositories
+		}
 		if statusOnly {
 			snapshot, err := r.statusSnapshot()
-			return sourceResult{Repositories: repositories, Snapshot: &snapshot, Err: err, StatusOnly: true}
+			snapshot.Branch = r.headLabel()
+			return sourceResult{Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err, StatusOnly: true}
 		}
 		snapshot, err := r.snapshot(sourceHistoryPageSize)
-		return sourceResult{Repositories: repositories, Snapshot: &snapshot, Err: err}
+		return sourceResult{Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err}
 	})
 }
 func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *pencodeProject) bool {
@@ -318,6 +325,9 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 				s.FollowPath = ""
 			}
 			s.RepositoriesLoaded = true
+		}
+		if result.RepositoryRefs != nil && !slices.Equal(result.RepositoryRefs, s.RepositoryRefs) {
+			s.RepositoryRefs = result.RepositoryRefs
 		}
 		if result.RepositoryError != "" {
 			if s.Snapshot.Repository.Root != "" {
@@ -342,6 +352,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			if result.StatusOnly {
 				next = s.Snapshot
 				next.Repository, next.Files, next.Groups = result.Snapshot.Repository, result.Snapshot.Files, result.Snapshot.Groups
+				next.Branch = result.Snapshot.Branch
 			}
 			next.Repository.Context = s.Context
 			if slices.Equal(next.Branches, s.Snapshot.Branches) {
@@ -377,6 +388,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 					// Revalidate both sides on every list click, but keep paint and
 					// native editor state when the comparison has not changed.
 					if old.Result != old.Saved || !old.Binary && !tab.Binary &&
+						old.SubmoduleSummary == tab.SubmoduleSummary &&
 						old.Local == tab.Local && old.Incoming == tab.Incoming &&
 						old.Saved == tab.Saved && old.Disk == tab.Disk {
 						tab = old
@@ -912,7 +924,7 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 		if !m.settings.Bindings[pencodeShortcutDefinitions[action].id].matches(state, goos) {
 			continue
 		}
-		if tab := s.activeTab(); tab != nil && (tab.Kind == "merge" || tab.editable()) && !s.busy() && (action == pencodeShortcutUndo || action == pencodeShortcutRedo) {
+		if tab := s.activeTab(); tab != nil && tab.SubmoduleSummary == "" && (tab.Kind == "merge" || tab.editable()) && !s.busy() && (action == pencodeShortcutUndo || action == pencodeShortcutRedo) {
 			if entity, ok := world.HTMLControl(m.surface, "sc-code-left-input"); ok {
 				if field, ok := world.Get[engineui.TextField](entity); ok && field.Focused {
 					return true, false

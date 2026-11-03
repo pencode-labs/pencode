@@ -55,6 +55,11 @@ func release(output, version string) error {
 	if err != nil {
 		return err
 	}
+	if runtime.GOOS == "darwin" {
+		if err := configureMacOSBundle(artifact); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(output, 0o755); err != nil {
 		return err
 	}

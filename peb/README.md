@@ -1,10 +1,10 @@
-# peb v16 — Pencode Extension Binary
+# peb v18 — Pencode Extension Binary
 
 peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）和 `ExtensionSettings`（扩展配置）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **16**，为扩展标签页增加可拦截的关闭请求；宿主与扩展需用当前 SDK 重新构建。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **17**，增加统一文件服务通知，保留扩展标签页的可拦截关闭请求；宿主与扩展需用当前 SDK 重新构建。
 
 ## 扩展配置
 
@@ -71,6 +71,22 @@ SettingsResponse {}                         // 空 payload
 
 同一快照不能重复 ID，且必须恰好覆盖声明的配置项。所有字符串、数组和 payload 仍受 PEB 的通用大小上限约束。此变更将 PEB 升级为 v10，现有扩展需要用当前 SDK 重新构建。
 
+## 文件变化通知
+
+扩展在 `peb.Handlers.FileChanges` 注册回调，由宿主统一文件服务提供变化，不需要自行递归监听文件系统。只有该回调的扩展也会获得持久 action 会话。已打开的自定义编辑器进程同样接收通知，处理函数与该进程其他请求串行执行。
+
+```go
+handlers := peb.Handlers{
+    FileChanges: func(changes peb.FileChanges) error {
+        // changes.Root 是工作区绝对路径，Files[i].Path 是使用 / 的相对路径。
+        // Reset=true 时应重新读取所需状态，不能只应用当前 Files。
+        return nil
+    },
+}
+```
+
+通知按 `root:string, reset:u32, files:array<{path:string, op:u32, directory:u32}>` 编码。op 位依次为创建、写入、删除、重命名和元数据变化，重命名可能拆成两个路径事件。每个进程按工作区合并最多 128 个路径；队列溢出设置 Reset，消费后释放路径引用。回调收到的批次可保留，返回错误使用 Failure 响应。静态注册探测不调用此回调。
+
 ## 帧
 
 所有整数都是无符号小端整数。每帧由固定 16 字节头部和 payload 组成；流允许任意拆包、粘包。读取方必须精确读取指定长度。
@@ -78,7 +94,7 @@ SettingsResponse {}                         // 空 payload
 | 偏移 | 长度 | 字段                                 |
 | ---- | ---- | ------------------------------------ |
 | 0    | 4    | magic：`70 65 62 00`（`peb\0`）      |
-| 4    | 2    | version：`14`                         |
+| 4    | 2    | version：`18`                         |
 | 6    | 2    | kind：见下表                         |
 | 8    | 4    | request ID                           |
 | 12   | 4    | payload 字节数，不含头部，最大 4 MiB |
@@ -100,6 +116,10 @@ SettingsResponse {}                         // 空 payload
 | 13   | UIResponse     | 扩展 → 宿主 | 原样返回 UIRequest 的 ID，payload 为空              |
 | 14   | SettingsRequest | 宿主 → 扩展 | 非零，完整配置快照，与所在会话的请求共用 ID 序列 |
 | 15   | SettingsResponse | 扩展 → 宿主 | 原样返回 SettingsRequest 的 ID，payload 为空 |
+| 16 | FileChangesRequest | 宿主 → 扩展 | 非零，与所在会话共用 ID 序列 |
+| 17 | FileChangesResponse | 扩展 → 宿主 | 原样返回 FileChangesRequest 的 ID，payload 为空 |
+| 18 | LifecycleRequest | 宿主 → 扩展 | 非零，与 action 请求共用 ID 序列 |
+| 19 | LifecycleResponse | 扩展 → 宿主 | 原样返回 LifecycleRequest 的 ID |
 
 版本不符、未知 kind、非法 ID、超大帧、截断数据和非法 payload 均终止本次注册。扩展进程启动、握手与退出总计最多 5 秒；失败或关闭会话会关闭管道、终止并回收子进程。GUI 使用最多 4 个资源加载 worker，server 当前串行执行扩展注册与安装控制操作；最多发现 64 个已安装扩展。stderr 持续读取，最多保留 4096 字节诊断。
 
@@ -183,7 +203,7 @@ Failure {
 | 3     | DefaultFolder | 空字符串                      | 默认目录      |
 | 4     | FolderName    | 完整目录名，例如 `src`        | 目录 basename |
 
-匹配区分大小写。文件名精确匹配优先，再匹配最长后缀，再使用默认文件图标；目录名精确匹配优先于默认目录图标。同一类型和 pattern 重复时，最后一条规则生效。未命中且未声明默认规则时，使用 Pencode 内置图标。pattern 不能包含路径分隔符。
+图标匹配不区分大小写，与 VS Code 一致。完整文件名匹配优先（包括 `Dockerfile` 等无后缀文件），再匹配最长后缀，再使用默认文件图标；目录名完整匹配优先于默认目录图标。同一类型和 pattern（忽略大小写）重复时，最后一条规则生效。未命中且未声明默认规则时，使用 Pencode 内置图标。pattern 不能包含路径分隔符。
 
 资源必须位于扩展包的 `resources/` 中。路径使用 `/`，禁止绝对路径、`..`、查询字符串及跳出扩展根目录的符号链接。主题和图标每份资源最多 1 MiB，字体每份最多 32 MiB，一个扩展累计最多读取 64 MiB；相同路径只读取一次。主题使用 Pencode 现有的 JSON/JSONC `colors` / `tokenColors` 格式，支持的 include 同样受资源路径与大小限制。
 
@@ -531,6 +551,7 @@ UIUpdate {
   autoCloseMS: u32             // Notification 自动关闭毫秒数，0 持续显示
   severity: u32               // Notification: Info=0, Warning=1, Error=2
   busy: bool                  // EditorTab 关闭图标切换为处理动画
+  unread: bool                // EditorTab 显示绿色未读完成圆点，busy 优先
   interceptClose: bool        // EditorTab 用户关闭时先发送 closerequest，保留标签页
   context: ActionContext
   hasView: bool
@@ -577,3 +598,26 @@ publisher.Show(peb.UI{
 首次创建自动选中。带 `View` 的更新替换记录并更新标题，保留当前标签选择；更新后台会话不会抢走正在编辑的文件。发送相同 ID、`View:nil` 则主动选中已有标签。切换时发送 `visibilitychange`，关闭标签时发送 `close`；扩展卸载会清理其标签。标签页关闭不要求扩展终止后台任务，扩展可自行管理会话持久化和任务生命周期。
 
 扩展 UI 的 CSS 支持与自定义编辑器相同的 `var(--vscode-...)` 主题变量，随 IDE 主题变更重新解析。
+
+
+## 窗口与项目关闭事件
+
+PEB v18 增加 `Handlers.Lifecycle`，在 action 进程中接收 `WindowClosing`、`ProjectClosing`、`ProjectClosed`；所有扩展界面关闭后仍会收到。事件按 `kind:u32, projectPath:string` 编码，kind 分别为 0、1、2；窗口事件的项目路径为空，项目事件使用绝对路径。返回 `LifecycleReply{Message: "…"}`，编码为 `message:string`。关闭前事件返回非空消息时，宿主汇总所有扩展的消息并要求用户确认；空消息允许继续。用户取消后保留窗口、项目和扩展任务，下次关闭重新检查。
+
+宿主在确认扩展任务之后继续处理未保存文件。`ProjectClosed` 只在项目实际关闭后发送，其回复不能阻止关闭；扩展可在此释放对应项目的状态。窗口关闭前使用 `WindowClosing` 检查，进程退出由激活上下文取消负责清理。回调与其他 action 请求串行执行，必须及时返回，不应等待用户交互。
+
+```go
+Lifecycle: func(event peb.LifecycleEvent) (peb.LifecycleReply, error) {
+    switch event.Kind {
+    case peb.WindowClosing, peb.ProjectClosing:
+        if hasRunningWork(event.ProjectPath) {
+            return peb.LifecycleReply{Message: "仍有任务正在运行。"}, nil
+        }
+    case peb.ProjectClosed:
+        releaseProject(event.ProjectPath)
+    }
+    return peb.LifecycleReply{}, nil
+},
+```
+
+UIUpdate 增加 `unread:bool`，放在 `busy` 与 `interceptClose` 之间。宿主将其显示为主题绿色圆点；扩展在收到会话选择或界面可见事件后清除。宿主、server 和扩展需使用当前 SDK 一起重新构建，不提供旧版本兼容路径。

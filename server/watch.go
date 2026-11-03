@@ -7,56 +7,127 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
+	"github.com/pencode-labs/pencode/internal/filewatch"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
 const (
-	workspaceWatchInterval = time.Second
-	// Windows reserves this buffer for every watched directory. Keep bursts
-	// bounded; overflow rebuilds the watches and requests a full refresh.
-	workspaceWatchBufferSize = 16 << 10
+	workspaceWatchInterval = 200 * time.Millisecond
 )
 
 type workspaceWatch struct {
 	cancel      context.CancelFunc
 	done        chan struct{}
-	signal      chan struct{}
-	pending     atomic.Uint32
-	err         error // Published by closing done.
-	watcher     *fsnotify.Watcher
-	directories map[string]bool // Value identifies Git metadata directories.
-	lastTree    time.Time
-	lastGit     time.Time
+	journal     fileEventJournal
+	index       uint64 // Most recently started snapshot; guarded by services.mu.
+	err         error  // Published by closing done.
+	watcher     *filewatch.Watcher
+	directories map[string]bool          // Value identifies Git metadata directories.
+	changes     protocol.WorkspaceChange // Owned by the native event loop.
+	files       [128]protocol.FileEvent
+	fileCount   int
+	reset       bool
+	tree        workspaceTreeChanges
 }
 
-// Native events are coalesced into two bits. Excess events are dropped using
-// event timestamps; there is no timer, polling loop, or unbounded event queue.
-func (w *workspaceWatch) publish(changes protocol.WorkspaceChange, now time.Time) {
-	if changes&protocol.WorkspaceTreeChanged != 0 {
-		if !w.lastTree.IsZero() && now.Sub(w.lastTree) < workspaceWatchInterval {
-			changes &^= protocol.WorkspaceTreeChanged
-		} else {
-			w.lastTree = now
+// Keep bounded directory hints separately from notifications: consuming a watch
+// notification must not discard changes before the next index snapshot starts.
+type workspaceTreeChanges struct {
+	mu sync.Mutex
+	workspaceTreeDelta
+}
+
+type workspaceTreeDelta struct {
+	directories [128]string
+	count       int
+	full        bool
+}
+
+func (d *workspaceTreeDelta) contains(directory string) bool {
+	for _, name := range d.directories[:d.count] {
+		if name == directory {
+			return true
 		}
 	}
-	if changes&protocol.WorkspaceGitChanged != 0 {
-		if !w.lastGit.IsZero() && now.Sub(w.lastGit) < workspaceWatchInterval {
-			changes &^= protocol.WorkspaceGitChanged
-		} else {
-			w.lastGit = now
+	return false
+}
+
+func (t *workspaceTreeChanges) add(directory string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.full || t.contains(directory) {
+		return
+	}
+	if t.count == len(t.directories) {
+		t.workspaceTreeDelta = workspaceTreeDelta{full: true}
+		return
+	}
+	t.directories[t.count] = directory
+	t.count++
+}
+
+func (t *workspaceTreeChanges) invalidate() {
+	t.mu.Lock()
+	t.workspaceTreeDelta = workspaceTreeDelta{full: true}
+	t.mu.Unlock()
+}
+
+func (t *workspaceTreeChanges) take() workspaceTreeDelta {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delta := t.workspaceTreeDelta
+	t.workspaceTreeDelta = workspaceTreeDelta{}
+	return delta
+}
+
+func (w *workspaceWatch) publish(changes protocol.WorkspaceChange) {
+	if changes == 0 && w.fileCount == 0 && !w.reset {
+		return
+	}
+	w.journal.publish(changes, w.files[:w.fileCount], w.reset)
+	clear(w.files[:w.fileCount])
+	w.fileCount = 0
+	w.reset = false
+}
+
+func watchRelativePath(root, name string) (string, bool) {
+	if root == "" {
+		return "", false
+	}
+	if name == root {
+		return ".", true
+	}
+	if strings.HasPrefix(name, root) && len(name) > len(root) && (os.IsPathSeparator(root[len(root)-1]) || os.IsPathSeparator(name[len(root)])) {
+		offset := len(root)
+		if os.IsPathSeparator(name[offset]) {
+			offset++
+		}
+		return name[offset:], true
+	}
+	return "", false
+}
+func (w *workspaceWatch) record(event filewatch.Event) {
+	relative, ok := watchRelativePath(w.journal.root, event.Name)
+	if !ok {
+		return
+	}
+	name := filepath.ToSlash(relative)
+	for i := range w.fileCount {
+		if w.files[i].Path == name {
+			w.files[i].Op |= protocol.FileOperation(event.Op)
+			w.files[i].Directory = w.files[i].Directory || event.Directory
+			return
 		}
 	}
-	if changes != 0 {
-		w.pending.Or(uint32(changes))
-		select {
-		case w.signal <- struct{}{}:
-		default:
-		}
+	if w.fileCount == len(w.files) {
+		w.reset = true
+		return
 	}
+	w.files[w.fileCount] = protocol.FileEvent{Path: name, Op: protocol.FileOperation(event.Op), Directory: event.Directory}
+	w.fileCount++
 }
 
 func skipWatchDirectory(name string, metadata bool) bool {
@@ -100,6 +171,11 @@ func (w *workspaceWatch) addGit(ctx context.Context, name string) error {
 }
 
 func (w *workspaceWatch) add(ctx context.Context, root string, metadata bool) error {
+	if filewatch.Recursive {
+		if err := w.watcher.Add(root); err != nil {
+			return err
+		}
+	}
 	return filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -130,15 +206,20 @@ func (w *workspaceWatch) add(ctx context.Context, root string, metadata bool) er
 		if len(w.directories) >= 262144 {
 			return errors.New("filesystem watch exceeds directory budget")
 		}
-		if err := w.watcher.AddWith(name, fsnotify.WithBufferSize(workspaceWatchBufferSize)); err != nil {
-			return err
+		if !filewatch.Recursive {
+			if err := w.watcher.Add(name); err != nil {
+				return err
+			}
+		}
+		if !metadata {
+			w.tree.add(name)
 		}
 		w.directories[name] = metadata
 		return nil
 	})
 }
 
-func (w *workspaceWatch) event(ctx context.Context, event fsnotify.Event) error {
+func (w *workspaceWatch) event(ctx context.Context, event filewatch.Event) error {
 	// Native event paths are already clean. Split without Dir's Windows
 	// volume concatenation, preserving drive, UNC and Unix roots.
 	parent, name := filepath.Split(event.Name)
@@ -146,26 +227,74 @@ func (w *workspaceWatch) event(ctx context.Context, event fsnotify.Event) error 
 		parent = parent[:len(parent)-1]
 	}
 	metadata := w.directories[parent]
+	base := w.journal.root
+	for directory := parent; directory != ""; directory = filepath.Dir(directory) {
+		if value, exists := w.directories[directory]; exists {
+			metadata = value
+			if metadata {
+				base = directory
+			}
+			break
+		}
+		if directory == filepath.Dir(directory) {
+			break
+		}
+	}
+	if relative, ok := watchRelativePath(base, event.Name); ok {
+		for part := range strings.SplitSeq(relative, string(filepath.Separator)) {
+			if part == "node_modules" || part == "dist" || metadata && (part == "objects" || part == "logs" || part == "hooks") {
+				return nil
+			}
+			if part == ".git" && name != ".git" {
+				metadata = true
+			}
+		}
+	}
 	if skipWatchDirectory(name, metadata) || metadata && strings.HasSuffix(name, ".lock") {
 		return nil
 	}
-	changes := protocol.WorkspaceGitChanged
-	if !metadata && event.Has(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) {
-		changes |= protocol.WorkspaceTreeChanged
+	if !metadata {
+		_, watchedDirectory := w.directories[event.Name]
+		event.Directory = event.Directory || watchedDirectory
+		if !event.Directory && event.Has(filewatch.Create) {
+			if info, err := os.Lstat(event.Name); err == nil {
+				event.Directory = info.IsDir()
+			}
+		}
+		w.record(event)
 	}
-	if event.Has(fsnotify.Create) {
+	changes := protocol.WorkspaceGitChanged
+	gitPointer := name == ".git"
+	if gitPointer {
+		metadata = false
+	}
+	if !metadata && event.Has(filewatch.Create|filewatch.Remove|filewatch.Rename) {
+		changes |= protocol.WorkspaceTreeChanged
+		w.tree.add(parent)
+		if gitPointer {
+			changes |= protocol.WorkspaceRepositoriesChanged
+		}
+	}
+	if event.Has(filewatch.Create) || gitPointer && event.Has(filewatch.Write) {
 		var err error
-		if name == ".git" && !metadata {
+		if gitPointer {
+			changes |= protocol.WorkspaceRepositoriesChanged
 			err = w.addGit(ctx, event.Name)
 		} else if info, statErr := os.Lstat(event.Name); statErr == nil && info.IsDir() {
+			if !metadata {
+				changes |= protocol.WorkspaceRepositoriesChanged
+			}
 			err = w.add(ctx, event.Name, metadata)
 		}
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
-	if event.Has(fsnotify.Remove | fsnotify.Rename) {
+	if event.Has(filewatch.Remove | filewatch.Rename) {
 		if _, watched := w.directories[event.Name]; watched {
+			if !metadata {
+				changes |= protocol.WorkspaceRepositoriesChanged
+			}
 			for directory := range w.directories {
 				if directory == event.Name || strings.HasPrefix(directory, event.Name+string(filepath.Separator)) {
 					_ = w.watcher.Remove(directory)
@@ -174,11 +303,13 @@ func (w *workspaceWatch) event(ctx context.Context, event fsnotify.Event) error 
 			}
 		}
 	}
-	w.publish(changes, time.Now())
+	w.changes |= changes
 	return nil
 }
 
 func (w *workspaceWatch) setup(ctx context.Context, root string) error {
+	w.tree.invalidate()
+	w.reset = true
 	if err := w.add(ctx, root, false); err != nil {
 		return err
 	}
@@ -207,29 +338,46 @@ func (w *workspaceWatch) run(ctx context.Context, root string) {
 		return
 	}
 	// Establish the watch before requesting snapshots, closing the startup gap.
-	w.pending.Store(uint32(protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged))
-	w.signal <- struct{}{}
+	w.publish(protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged | protocol.WorkspaceRepositoriesChanged)
+	timer := time.NewTimer(workspaceWatchInterval)
+	timer.Stop()
+	defer timer.Stop()
+	var batch <-chan time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			w.err = ctx.Err()
 			return
+		case <-batch:
+			w.publish(w.changes)
+			w.changes = 0
+			batch = nil
 		case event, ok := <-w.watcher.Events:
 			if !ok {
 				return
 			}
-			if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Remove|fsnotify.Rename|fsnotify.Chmod) != 0 {
+			if event.Name == root && event.Has(filewatch.Remove|filewatch.Rename) {
+				w.err = &fs.PathError{Op: "watch", Path: root, Err: fs.ErrNotExist}
+				return
+			}
+			if event.Op&(filewatch.Create|filewatch.Write|filewatch.Remove|filewatch.Rename|filewatch.Chmod) != 0 {
 				w.err = w.event(ctx, event)
 				if w.err != nil {
 					return
+				}
+				if w.changes != 0 && batch == nil {
+					timer.Reset(workspaceWatchInterval)
+					batch = timer.C
 				}
 			}
 		case err, ok := <-w.watcher.Errors:
 			if !ok {
 				return
 			}
-			if errors.Is(err, fsnotify.ErrEventOverflow) {
+			if errors.Is(err, filewatch.ErrOverflow) {
 				w.err = w.rebuild(ctx, root)
+				timer.Stop()
+				batch = nil
 				if w.err != nil {
 					return
 				}
@@ -244,7 +392,7 @@ func (w *workspaceWatch) run(ctx context.Context, root string) {
 func (w *workspaceWatch) rebuild(ctx context.Context, root string) error {
 	// Reconcile directories created or removed while native events were lost.
 	_ = w.watcher.Close()
-	watcher, err := fsnotify.NewWatcher()
+	watcher, err := filewatch.New()
 	if err != nil {
 		return err
 	}
@@ -253,13 +401,12 @@ func (w *workspaceWatch) rebuild(ctx context.Context, root string) error {
 	if err := w.setup(ctx, root); err != nil {
 		return err
 	}
-	// An overflow must invalidate both snapshots even within the burst limit.
-	w.lastTree, w.lastGit = time.Time{}, time.Time{}
-	w.publish(protocol.WorkspaceTreeChanged|protocol.WorkspaceGitChanged, time.Now())
+	w.changes = 0
+	w.publish(protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged | protocol.WorkspaceRepositoriesChanged)
 	return nil
 }
 
-func (s *services) watchWorkspace(ctx context.Context, root string, e *protocol.Encoder) error {
+func (s *services) watchWorkspace(ctx context.Context, root string, after uint64, e *protocol.Encoder) error {
 	s.mu.Lock()
 	if !s.roots[root] {
 		s.mu.Unlock()
@@ -271,32 +418,43 @@ func (s *services) watchWorkspace(ctx context.Context, root string, e *protocol.
 			s.mu.Unlock()
 			return &protocol.Error{Code: protocol.Busy, Message: "filesystem watch budget exceeded"}
 		}
-		watcher, err := fsnotify.NewWatcher()
+		watcher, err := filewatch.New()
 		if err != nil {
 			s.mu.Unlock()
 			return err
 		}
 		watchCtx, cancel := context.WithCancel(s.ctx)
-		w = &workspaceWatch{cancel: cancel, watcher: watcher, signal: make(chan struct{}, 1), done: make(chan struct{}), directories: make(map[string]bool)}
+		w = &workspaceWatch{cancel: cancel, watcher: watcher, done: make(chan struct{}), directories: make(map[string]bool)}
+		s.next++
+		w.journal = fileEventJournal{root: filepath.FromSlash(root), version: s.next << 32, base: s.next << 32, changed: make(chan struct{})}
 		s.watches[root] = w
 		s.background.Add(1)
 		go func() { defer s.background.Done(); w.run(watchCtx, filepath.FromSlash(root)) }()
 	}
 	s.mu.Unlock()
 	for {
+		w.journal.mu.Lock()
+		if w.journal.encode(after, e) {
+			w.journal.mu.Unlock()
+			return nil
+		}
+		changed := w.journal.changed
+		w.journal.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-w.done:
+			s.mu.Lock()
+			if s.watches[root] == w {
+				delete(s.watches, root)
+				w.cancel()
+			}
+			s.mu.Unlock()
 			if w.err != nil {
 				return w.err
 			}
 			return fs.ErrClosed
-		case <-w.signal:
-			if changes := w.pending.Swap(0); changes != 0 {
-				e.U32(changes)
-				return nil
-			}
+		case <-changed:
 		}
 	}
 }

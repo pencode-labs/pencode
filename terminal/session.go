@@ -294,7 +294,8 @@ func shellCommand(directory string) *exec.Cmd {
 			shell = "/system/bin/sh"
 		}
 	}
-	cmd := exec.Command(shell, "-i")
+	// Desktop launches may lack PATH entries supplied by login profiles.
+	cmd := exec.Command(shell, "-l", "-i")
 	cmd.Dir = directory
 	env := os.Environ()
 	cmd.Env = make([]string, 0, len(env)+3)

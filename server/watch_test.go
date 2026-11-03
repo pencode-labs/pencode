@@ -2,55 +2,62 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
+	"github.com/pencode-labs/pencode/internal/filewatch"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
-func TestWorkspaceWatchOverflowForcesRefresh(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	watcher, err := fsnotify.NewWatcher()
+func testWorkspaceWatcher(t *testing.T, root string) *workspaceWatch {
+	t.Helper()
+	watcher, err := filewatch.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := &workspaceWatch{watcher: watcher, directories: make(map[string]bool), signal: make(chan struct{}, 1), done: make(chan struct{})}
-	go w.run(ctx, t.TempDir())
+	return &workspaceWatch{watcher: watcher, directories: make(map[string]bool), done: make(chan struct{}), journal: fileEventJournal{root: root, changed: make(chan struct{})}}
+}
+func TestWorkspaceWatchOverflowForcesRefresh(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	root := t.TempDir()
+	w := testWorkspaceWatcher(t, root)
+	go w.run(ctx, root)
 	t.Cleanup(func() { cancel(); <-w.done })
-	wait := func() {
+	after := uint64(0)
+	wait := func() protocol.FileChanges {
 		t.Helper()
-		select {
-		case <-w.signal:
-		case <-w.done:
-			t.Fatalf("watch ended: %v", w.err)
-		case <-time.After(5 * time.Second):
-			t.Fatal("watch did not signal")
+		timeout := time.After(5 * time.Second)
+		for {
+			var e protocol.Encoder
+			w.journal.mu.Lock()
+			ready := w.journal.encode(after, &e)
+			changed := w.journal.changed
+			w.journal.mu.Unlock()
+			if ready {
+				d := protocol.Decoder{Buffer: e.Buffer}
+				result := protocol.FileChanges{Version: d.U64(), Changes: protocol.WorkspaceChange(d.U32()), Reset: d.U32() != 0}
+				after = result.Version
+				return result
+			}
+			select {
+			case <-changed:
+			case <-w.done:
+				t.Fatalf("watch ended: %v", w.err)
+			case <-timeout:
+				t.Fatal("watch did not signal")
+			}
 		}
 	}
 	wait()
-	w.pending.Store(0)
-	// Populate both gates immediately before overflow on the watch goroutine.
-	// A native event first exercises the ordinary publish path.
-	select {
-	case watcher.Events <- fsnotify.Event{Name: filepath.Join(t.TempDir(), "file"), Op: fsnotify.Remove}:
-	case <-time.After(5 * time.Second):
-		t.Fatal("watch did not accept event")
-	}
+	w.watcher.Events <- filewatch.Event{Name: filepath.Join(root, "file"), Op: filewatch.Remove}
 	wait()
-	w.pending.Store(0)
-	select {
-	case watcher.Errors <- fsnotify.ErrEventOverflow:
-	case <-time.After(5 * time.Second):
-		t.Fatal("watch did not accept overflow")
-	}
-	wait()
-	all := protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged
-	if got := protocol.WorkspaceChange(w.pending.Load()); got != all {
-		t.Fatalf("overflow refresh=%b, want %b", got, all)
+	w.watcher.Errors <- filewatch.ErrOverflow
+	if got := wait(); got.Changes != allWorkspaceChanges || !got.Reset {
+		t.Fatalf("overflow did not invalidate subscribers: %+v", got)
 	}
 }
 
@@ -60,11 +67,11 @@ func TestWorkspaceWatchRebuildReconcilesDirectories(t *testing.T) {
 	if err := os.Mkdir(removed, 0700); err != nil {
 		t.Fatal(err)
 	}
-	watcher, err := fsnotify.NewWatcher()
+	watcher, err := filewatch.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := &workspaceWatch{watcher: watcher, directories: make(map[string]bool), signal: make(chan struct{}, 1)}
+	w := &workspaceWatch{watcher: watcher, directories: make(map[string]bool), journal: fileEventJournal{root: root, changed: make(chan struct{})}}
 	t.Cleanup(func() { w.watcher.Close() })
 	if err := w.setup(t.Context(), root); err != nil {
 		t.Fatal(err)
@@ -86,7 +93,7 @@ func TestWorkspaceWatchRebuildReconcilesDirectories(t *testing.T) {
 		t.Fatal("removed directory retained after rebuild")
 	}
 	for _, directory := range []string{added, git} {
-		if !slices.Contains(w.watcher.WatchList(), directory) {
+		if _, ok := w.directories[directory]; !ok {
 			t.Fatalf("directory not watched after rebuild: %s", directory)
 		}
 		name := filepath.Join(directory, "file")
@@ -110,27 +117,35 @@ func TestWorkspaceWatchRebuildReconcilesDirectories(t *testing.T) {
 	}
 }
 
-func TestWorkspaceWatchCoalescesAndDropsBursts(t *testing.T) {
-	w := &workspaceWatch{signal: make(chan struct{}, 1)}
-	now := time.Now()
-	all := protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged
-	w.publish(protocol.WorkspaceGitChanged, now)
-	w.publish(all, now)
-	if got := protocol.WorkspaceChange(w.pending.Swap(0)); got != all || len(w.signal) != 1 {
-		t.Fatalf("coalesced changes=%b, signals=%d", got, len(w.signal))
+func TestFileJournalFanoutAndOverflow(t *testing.T) {
+	j := fileEventJournal{root: "/project", changed: make(chan struct{})}
+	j.publish(allWorkspaceChanges, nil, true)
+	after := j.version
+	file := protocol.FileEvent{Path: "main.go", Op: protocol.FileWritten}
+	j.publish(protocol.WorkspaceGitChanged, []protocol.FileEvent{file}, false)
+	for range 2 {
+		var e protocol.Encoder
+		if !j.encode(after, &e) {
+			t.Fatal("subscriber stole another reader's event")
+		}
+		d := protocol.Decoder{Buffer: e.Buffer}
+		d.U64()
+		if d.U32() != uint32(protocol.WorkspaceGitChanged) || d.U32() != 0 || d.U32() != 1 || d.String() != file.Path || d.U32() != uint32(file.Op) {
+			t.Fatal("incorrect event journal")
+		}
 	}
-	<-w.signal
-	if allocations := testing.AllocsPerRun(1000, func() {
-		w.publish(all, now.Add(workspaceWatchInterval-1))
-	}); allocations != 0 {
-		t.Fatalf("dropped events allocated %g times", allocations)
+	for range fileEventHistory {
+		j.publish(protocol.WorkspaceGitChanged, nil, false)
 	}
-	if w.pending.Load() != 0 || len(w.signal) != 0 {
-		t.Fatal("burst triggered another refresh")
+	var e protocol.Encoder
+	if !j.encode(after, &e) {
+		t.Fatal("slow subscriber did not wake")
 	}
-	w.publish(all, now.Add(workspaceWatchInterval))
-	if got := protocol.WorkspaceChange(w.pending.Load()); got != all || len(w.signal) != 1 {
-		t.Fatal("first event after the rate limit was dropped")
+	d := protocol.Decoder{Buffer: e.Buffer}
+	d.U64()
+	d.U32()
+	if d.U32() != 1 {
+		t.Fatal("history overflow did not force reconciliation")
 	}
 }
 
@@ -139,22 +154,22 @@ func TestWorkspaceWatchClassifiesEventsWithoutAllocating(t *testing.T) {
 	git := filepath.Join(root, ".git")
 	for _, test := range []struct {
 		name string
-		op   fsnotify.Op
+		op   filewatch.Op
 		want protocol.WorkspaceChange
 	}{
-		{"source.go", fsnotify.Write, protocol.WorkspaceGitChanged},
-		{"source.go", fsnotify.Chmod, protocol.WorkspaceGitChanged},
-		{"source.go", fsnotify.Remove, protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged},
-		{filepath.Join(".git", "HEAD"), fsnotify.Write, protocol.WorkspaceGitChanged},
-		{filepath.Join(".git", "index"), fsnotify.Rename, protocol.WorkspaceGitChanged},
-		{filepath.Join(".git", "index.lock"), fsnotify.Write, 0},
-		{filepath.Join(".git", "objects"), fsnotify.Create, 0},
-		{"node_modules", fsnotify.Create, 0},
-		{"dist", fsnotify.Create, 0},
+		{"source.go", filewatch.Write, protocol.WorkspaceGitChanged},
+		{"source.go", filewatch.Chmod, protocol.WorkspaceGitChanged},
+		{"source.go", filewatch.Remove, protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged},
+		{filepath.Join(".git", "HEAD"), filewatch.Write, protocol.WorkspaceGitChanged},
+		{filepath.Join(".git", "index"), filewatch.Rename, protocol.WorkspaceGitChanged},
+		{filepath.Join(".git", "index.lock"), filewatch.Write, 0},
+		{filepath.Join(".git", "objects"), filewatch.Create, 0},
+		{"node_modules", filewatch.Create, 0},
+		{"dist", filewatch.Create, 0},
 	} {
-		t.Run(test.name+test.op.String(), func(t *testing.T) {
-			w := &workspaceWatch{signal: make(chan struct{}, 1), directories: map[string]bool{root: false, git: true}}
-			event := fsnotify.Event{Name: filepath.Join(root, test.name), Op: test.op}
+		t.Run(fmt.Sprint(test.name, test.op), func(t *testing.T) {
+			w := &workspaceWatch{directories: map[string]bool{root: false, git: true}}
+			event := filewatch.Event{Name: filepath.Join(root, test.name), Op: test.op}
 			ctx := t.Context()
 			if allocations := testing.AllocsPerRun(100, func() {
 				if err := w.event(ctx, event); err != nil {
@@ -163,9 +178,56 @@ func TestWorkspaceWatchClassifiesEventsWithoutAllocating(t *testing.T) {
 			}); allocations != 0 {
 				t.Fatalf("warm event allocated %g times", allocations)
 			}
-			if got := protocol.WorkspaceChange(w.pending.Load()); got != test.want {
+			if got := w.changes; got != test.want {
 				t.Fatalf("changes=%b, want %b", got, test.want)
 			}
 		})
+	}
+}
+
+func TestWorkspaceTreeChangesBoundedAndRetainedUntilSnapshot(t *testing.T) {
+	var tree workspaceTreeChanges
+	if allocations := testing.AllocsPerRun(1000, func() { tree.add("src") }); allocations != 0 {
+		t.Fatalf("directory hint allocated %g times", allocations)
+	}
+	if delta := tree.take(); delta.full || delta.count != 1 || !delta.contains("src") {
+		t.Fatalf("directory hints were not deduplicated: %+v", delta)
+	}
+	for i := range 129 {
+		tree.add(fmt.Sprint(i))
+	}
+	if delta := tree.take(); !delta.full || delta.count != 0 {
+		t.Fatal("directory budget did not request a full reconciliation")
+	}
+	if delta := tree.take(); delta.full || delta.count != 0 {
+		t.Fatal("snapshot did not consume directory hints")
+	}
+}
+
+func TestWorkspaceWatchFailureCanBeReinstalled(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	s := newServices(ctx, Options{})
+	defer s.close()
+	defer cancel()
+	root := filepath.ToSlash(t.TempDir())
+	s.roots[root] = true
+	var encoder protocol.Encoder
+	if err := s.watchWorkspace(ctx, root, 0, &encoder); err != nil {
+		t.Fatal(err)
+	}
+	old := s.watches[root]
+	failure := errors.New("injected native watcher failure")
+	old.watcher.Errors <- failure
+	old.journal.mu.Lock()
+	after := old.journal.version
+	old.journal.mu.Unlock()
+	if err := s.watchWorkspace(ctx, root, after, &encoder); !errors.Is(err, failure) {
+		t.Fatalf("watcher error = %v", err)
+	}
+	if err := s.watchWorkspace(ctx, root, after, &encoder); err != nil {
+		t.Fatal(err)
+	}
+	if s.watches[root] == old {
+		t.Fatal("failed native watcher remained cached")
 	}
 }

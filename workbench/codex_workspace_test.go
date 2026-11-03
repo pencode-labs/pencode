@@ -71,6 +71,21 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 	}
 	show("first task", 100)
 	atEnd()
+	surface := m.actions.ui.editor
+	selection := &m.actions.ui.selection
+	node, _ := w.HTMLNode(m.surface, surface.scrollTarget())
+	selection.area, _ = node.ScrollContainer()
+	selection.surface, selection.region = surface, surface.scrollTarget()
+	selection.collect(w, surface, "transcript")
+	selection.selectAll()
+	if !selection.valid(w) {
+		t.Fatal("could not select the transcript")
+	}
+	selectedPosition := scroll().Position
+	show("first task", 110)
+	if scroll().Position != selectedPosition {
+		t.Fatal("new output scrolled the transcript while text was selected")
+	}
 	promptID := m.actions.ui.editor.prefix + "control-prompt"
 	control, ok := w.HTMLControl(m.surface, promptID)
 	if !ok || !w.Focus(control) {

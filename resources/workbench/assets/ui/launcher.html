@@ -54,13 +54,18 @@
       <div data-ref="connection-ssh-fields" class="pencode-connection-fields">
       <label for="connection-host">主机名</label><input id="connection-host" data-ref="connection-host" type="text" placeholder="host.com 或 user@host.com" autocomplete="off" spellcheck="false">
       <label for="connection-port">SSH 端口（可选）</label><input id="connection-port" data-ref="connection-port" type="text" inputmode="numeric" placeholder="使用 SSH config">
-      <label for="connection-identity">身份文件（可选）</label><input id="connection-identity" data-ref="connection-identity" type="text" placeholder="留空使用 SSH config 或 agent" autocomplete="off" spellcheck="false">
       </div>
       <div data-ref="connection-websocket-fields" class="pencode-connection-fields" hidden>
         <label for="connection-address">服务地址</label><input id="connection-address" data-ref="connection-address" type="text" placeholder="ws://host.com:8080/ws" autocomplete="off" spellcheck="false">
         <label for="connection-token">Token</label><input id="connection-token" data-ref="connection-token" type="password" autocomplete="off" spellcheck="false">
       </div>
-      <label for="connection-directory">起始目录（可选，用于项目选择）</label><input id="connection-directory" data-ref="connection-directory" type="text" placeholder="~ 或 ~/workspace/app" autocomplete="off" spellcheck="false">
+      <button id="connection-toggle-options" data-ref="connection-toggle-options" class="pencode-connection-options-toggle" type="button" aria-expanded="false" aria-controls="connection-options"><img data-ref="connection-options-icon" src="icons/chevron-right.svg" alt="">更多配置</button>
+      <div id="connection-options" data-ref="connection-options" class="pencode-connection-fields" hidden>
+        <div data-ref="connection-identity-fields" class="pencode-connection-fields">
+          <label for="connection-identity">身份文件（可选）</label><input id="connection-identity" data-ref="connection-identity" type="text" placeholder="留空使用 SSH config 或 agent" autocomplete="off" spellcheck="false">
+        </div>
+        <label for="connection-directory">起始目录（可选，用于项目选择）</label><input id="connection-directory" data-ref="connection-directory" type="text" placeholder="~ 或 ~/workspace/app" autocomplete="off" spellcheck="false">
+      </div>
       <footer class="pencode-connection-form-actions"><button data-ref="connection-form-cancel" type="button">取消</button><button id="connection-save" data-ref="connection-save" class="primary" type="button">保存</button></footer>
     </section>
   </section>
@@ -252,7 +257,7 @@
   </div>
   <div data-ref="close-dialog" class="pencode-close-overlay" hidden>
     <section class="pencode-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="close-title" aria-describedby="close-message">
-      <h2 id="close-title">未保存的更改</h2>
+      <h2 id="close-title" data-ref="close-title">未保存的更改</h2>
       <p id="close-message" data-ref="close-message" class="pencode-close-message"></p>
       <p data-ref="close-error" class="pencode-close-error" role="alert" hidden></p>
       <div class="pencode-close-actions">

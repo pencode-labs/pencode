@@ -1,4 +1,4 @@
-# Pencode CS v8
+# Pencode CS v9
 
 GUI 和无头服务通过有序双向字节流通信。本地传输是子进程管道，远端传输是 OpenSSH 加密的 stdin/stdout；不监听或转发服务端端口，协议与具体传输无关。所有整数采用小端编码；不传递 Go 指针或渲染对象。旧版本不兼容。
 
@@ -7,7 +7,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 8 |
+| 4 | 2 | 协议版本，当前 10 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -15,7 +15,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 
 payload 中的字符串为 `u32 长度 + 原始字节`，数组为 `u32 元素数 + 元素`，字段按序排列，不允许尾随字节。Reader 返回的 payload 借用其缓冲区，仅在下一次 Read 之前有效。大请求由同一 request ID 的若干 Data 帧和最终请求帧组成，大响应由 Data 帧和最终 Reply 帧组成，组装总量上限 64 MiB。客户端最多保留 64 个未完成请求，上传及未完成响应分别限制为 128 MiB 逻辑 payload；已取消但仍由写协程持有的上传继续计费，上传超限返回 Busy，响应超限关闭连接。不同请求的分块可以交错；客户端在大上传块之间轮转调度普通请求，取消优先。服务端未完成的上传合计上限 128 MiB。
 
-v8 将语法高亮改为 TextMate 逐行词法状态，名称表同时传输类别和完整 scope 栈，并删除 SyntaxRelease 的 trim 字段。GUI 与 server 必须同时更新。扩展协议继续使用 peb v13，扩展注册格式保持不变。文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
+v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整校准标记；IndexOpen 保留 previous 字段。语法高亮使用 TextMate 逐行词法状态，名称表同时传输类别和完整 scope 栈，SyntaxRelease 没有 trim 字段。GUI 与 server 必须同时更新。扩展协议使用 peb v18，扩展注册格式保持不变。文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
 
 首个请求必须是空 Hello，服务端返回空 Reply。之后支持：
 
@@ -46,7 +46,9 @@ text/directory 只接受 0/1；ResourceTransfer flags 的 bit 0 表示移动，b
 
 ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存服务端用户配置目录下的 `pencode/resources`。读取返回目录路径及相对文件名和字节内容，包含 `settings.json`、`highlights.json` 与 `themes/` 下的 JSON/JSONC 文件；总量限制 16 MiB、4096 个文件。保存只接受 JSON 对象并替换 `settings.json`，不接受文件名或目录参数。GUI 在打开远程项目时使用这份配置，系统字体仍由 GUI 主机提供。
 
-WorkspaceWatch 首次调用安装根目录的递归文件事件监听，并返回两个变化位用于初始快照；后续调用阻塞到有事件或请求被取消。目录树与 Git 变化分别按事件时间限频，每秒最多通知一次，窗口内的密集事件允许丢弃，不使用定时器补发。跳过 `node_modules`、`dist` 以及 Git 的对象、日志、hooks 目录和锁文件；工作区关闭或连接断开时释放监听。客户端仅在事件到来后刷新，已有扫描与 Git 任务期间的变化合并成一次待刷新状态。
+WorkspaceWatch 首次调用安装根目录的原生监听：macOS 使用 FSEvents，Windows 使用递归 ReadDirectoryChangesW，Linux 使用 inotify；不依赖 fsnotify。事件统一进入文件服务的有界日志，由编辑器和扩展分别消费。每个订阅以 after 游标读取，首次或游标过期返回 reset=1，要求重新校准；慢订阅者不会抢走其他订阅者的事件。首次返回目录树、Git 状态和仓库集合三个变化位用于初始快照；后续调用阻塞到有事件或请求被取消。事件按 200 ms 固定窗口合并，不丢弃窗口内的尾部变化；持续写入也会定期交付，空闲时没有轮询或定时唤醒。跳过 `node_modules`、`dist` 以及 Git 的对象、日志、hooks 目录和锁文件。普通文件增删只使目录树与 Git 状态失效，目录或 `.git` 结构变化才重新发现仓库。工作区关闭或连接断开时释放监听。原生事件溢出时重建监听并强制完整校准；其他监听失败会释放失效实例，GUI 在首次失败时请求校准，以 100 ms 起步、上限 5 s 的指数退避重试，恢复后再校准一次。已有扫描与 Git 任务期间的变化合并成一次待刷新状态。日志最多 512 条记录，单批最多 128 个不同路径，溢出返回 reset。files 编码为 `count:u32 + {path:string, op:u32, directory:u32}[count]`；path 为工作区相对路径，使用 `/` 分隔。op 位依次为创建、写入、删除、重命名、元数据变化；重命名可拆成旧路径和新路径事件。changes 位依次为目录树、Git 状态、仓库集合。
+
+IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功快照与同一原生监听器积累的脏目录提示，只重读变化目录的直接子项，复用未变化子树，新目录才递归扫描。旧索引在新快照提交前继续支持文件搜索，GUI 提交后通过 IndexClose 释放旧句柄；每个工作区最多保留可见和在建两份索引，每连接索引预算为 64 个。提示独立于通知保留，直到创建下一份索引，并绑定最近启动的索引 ID；从更旧快照更新时完整扫描，避免取消的中间快照吞掉变化。最多保存 128 个目录，超限、事件溢出、监听器更换、缺少成功快照或上次扫描失败时退回完整扫描。自动更新在后台构建新树，成功后整体替换 GUI 快照，失败时保留已有树，不覆盖打开文档与未保存编辑。显式重新加载始终完整扫描，可用于校准未收到系统通知的变化。索引分页仍传输完整快照；此优化主要减少磁盘遍历与路径分配，不是增量传输协议。
 
 | operation | 参数 | Reply |
 | --- | --- | --- |
@@ -55,7 +57,7 @@ WorkspaceWatch 首次调用安装根目录的递归文件事件监听，并返�
 | SettingsSave | data:bytes（JSON object） | 空 |
 | GitCommand | args:string[] | output:bytes |
 | GitRepositories | 空 | count:u32, {root:string}[]（项目及其子目录内的仓库） |
-| WorkspaceWatch | 空（root 为工作区目录） | changes:u32（位 0：目录树；位 1：Git 状态） |
+| WorkspaceWatch | after:u64（首次为 0；root 为工作区目录） | version:u64, changes:u32, reset:u32, files[] |
 | FileRead | path:string, links:u32, limit:u32 | content:bytes |
 | FileSave | path:string, diskBaseline:string, result:string | 空 |
 | DiffPatch | left:bytes, right:bytes | unifiedPatch:bytes |
@@ -69,7 +71,7 @@ WorkspaceWatch 首次调用安装根目录的递归文件事件监听，并返�
 | StreamCloseWrite | stream:u64（TCP 流） | 空；关闭写方向，保留读取响应 |
 | StreamResize | stream:u64, cols:u32, rows:u32 | 空 |
 | StreamClose / StreamWait | stream:u64 | 空；Wait 非零退出码为 Failure |
-| IndexOpen | 空 | index:u64 |
+| IndexOpen | previous:u64（0：完整扫描；非零：基于该索引校准，保留其查询句柄直到 IndexClose） | index:u64 |
 | IndexNext | index:u64, offset:u32 | done:u32, warning:string, count:u32, {path:string, name:string, depth:u32, directory:u32}[] |
 | IndexClose | index:u64 | 空 |
 | PathSearch | index:u64, query:string, preferred:string[], rules:{pattern:string, suffix:u32}[] | paths:string[] |
@@ -105,7 +107,7 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 
 解析会话由客户端分配 ID，每连接最多 8 个，初始 baseVersion 为 0。增量范围采用 UTF-8 字节边界；结果只包含语言和 capture，不含颜色、字体、HTML、ECS 或 GPU 数据。captures 编码为 `prefix:u32, removed:u32, inserted:u32 + {start:u32, end:u32, captureID:u32, [name:string, scopes:string]}[inserted]`。保留上次结果的前 prefix 项，将之后的 removed 项替换为传回的 inserted 项，并将剩余后缀的起止位置加上本次源码字节长度变化。服务端比较解析后的真实 capture，允许多行注释等语法变化扩大替换范围；初次返回完整列表。名称表在解析会话内保留，captureID 从零递增；ID 首次出现时紧跟类别名称和空格分隔的完整 TextMate scope 栈，后续复用 ID。释放会话后清空 capture 和名称表。本地按主题和 capture 映射着色，主题切换不发送解析请求。
 
-`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v13 编码，CS 与 peb 的帧版本独立。
+`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v18 编码，CS 与 peb 的帧版本独立。
 
 扩展安装是单连接事务：同时最多两个暂存包；文件路径必须是有效相对路径，拒绝符号链接和特殊文件，单包最多 256 MiB / 4096 项。Prepare 在暂存目录执行 peb 注册；GUI 完成字体、主题和图标验证后调用 Commit 发布，失败调用 Abort 清理。禁用、卸载和连接关闭撤销资源句柄并回收扩展进程，未提交的暂存包随连接释放。禁用扩展的 Load 返回零句柄，不执行扩展或占用注册预算。
 

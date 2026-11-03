@@ -297,7 +297,7 @@ func TestPencodeWorkbenchThemeSyncReusesCache(t *testing.T) {
 func TestPencodeIconOnlyThemeChangeUpdatesTexture(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model, provider := session.active.model, session.active.icons
-	original, ok := provider.ResolveHTMLImage(model.themedIcon("icons/settings.svg", "icon.foreground"))
+	original, ok := provider.ResolveHTMLImage(model.themedIcon("icons/settings.svg", "icon.foreground"), 0, 0)
 	if !ok {
 		t.Fatal("settings icon was not decoded")
 	}
@@ -323,7 +323,7 @@ func TestPencodeIconOnlyThemeChangeUpdatesTexture(t *testing.T) {
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
 	}
-	changed, ok := provider.ResolveHTMLImage(model.themedIcon("icons/settings.svg", "icon.foreground"))
+	changed, ok := provider.ResolveHTMLImage(model.themedIcon("icons/settings.svg", "icon.foreground"), 0, 0)
 	if !ok || changed == original {
 		t.Fatal("icon color reused the previous texture")
 	}

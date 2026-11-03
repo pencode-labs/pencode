@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"github.com/diiyw/onix/graphics/codec/png"
 	graphicssvg "github.com/diiyw/onix/graphics/codec/svg"
 	"github.com/diiyw/onix/graphics/codec/webp"
+	onixsvg "github.com/diiyw/onix/images/svg"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
 	"github.com/diiyw/onix/resource"
@@ -73,9 +75,10 @@ type openFile struct {
 	saveRevision     uint64
 	savedContent     piecetree.Snapshot
 	pencodeEditHistory
-	Dirty         bool
-	Preview       bool
-	highlightSlot uint8 // Valid only while the bounded cache slot still owns this file.
+	externalChanged bool
+	Dirty           bool
+	Preview         bool
+	highlightSlot   uint8 // Valid only while the bounded cache slot still owns this file.
 }
 
 type pencodeEdit struct {
@@ -230,6 +233,7 @@ type workspaceModel struct {
 	findCountLabel                      string
 	quickWorker                         *latestWorker[pencodeQuickJob, pencodeQuickResult]
 	quickRevision                       uint64
+	quickSnapshot                       uint64
 	quickApplied                        uint64
 	quickOpen                           bool
 	quickNeedsFocus                     bool
@@ -307,6 +311,7 @@ type tabProps struct {
 	Preview   bool
 	Dirty     bool
 	Busy      bool
+	Unread    bool
 	HasErrors bool
 }
 
@@ -478,7 +483,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.tab, err = content.Define[tabProps, struct{}](
-		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""><span data-ref="busy-icon" class="pencode-tab-busy-icon" aria-hidden="true" hidden><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></button></div>`),
+		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""><span data-ref="unread-icon" class="pencode-tab-unread-icon" aria-hidden="true" hidden></span><span data-ref="busy-icon" class="pencode-tab-busy-icon" aria-hidden="true" hidden><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></button></div>`),
 		"",
 		module.ContentBehavior[tabProps, struct{}]{
 			Render: func(context module.ContentRenderContext[tabProps, struct{}], view *htmlui.View) {
@@ -521,10 +526,14 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					icon = "icons/file-text.svg"
 				}
 				view.Attr("icon", "src", props.Model.themedIcon(icon, iconForeground))
-				if props.Busy {
-					view.Attr("close", "title", "退出会话并关闭标签页")
+				if props.Unread {
+					view.Attr("select", "aria-label", props.Name+"（已完成，尚未查看）")
 				}
-				setPanelVisible(view, "close-icon", !props.Busy)
+				if props.Busy {
+					view.Attr("close", "title", "关闭标签页并在后台运行")
+				}
+				setPanelVisible(view, "close-icon", !props.Busy && !props.Unread)
+				setPanelVisible(view, "unread-icon", props.Unread && !props.Busy)
 				setPanelVisible(view, "busy-icon", props.Busy)
 				view.Attr("tab", "aria-busy", boolAttribute(props.Busy))
 				view.Attr("close-icon", "src", props.Model.themedIcon("icons/close.svg", iconForeground))
@@ -1505,6 +1514,7 @@ func (model *workspaceModel) discardProject(project *pencodeProject) {
 	if index < 0 {
 		return
 	}
+	model.notifyProjectClosed(project.Path)
 	model.cancelProjectFileIO(project)
 	if model.debug.project == project || model.debug.configProject == project {
 		model.closeDebugger()
@@ -1699,7 +1709,8 @@ func (model *workspaceModel) queueProjectFileReveal(project *pencodeProject) {
 }
 
 // centerRevealedTreeRow centres the pending reveal row in its tree viewport.
-// Wait for scans to finish so the content extent used for clamping is final.
+// Progressive scans must finish before clamping; staged refreshes keep a stable
+// visible snapshot that can still be navigated while the next one is built.
 func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 	if model == nil || model.revealProject == nil {
 		return
@@ -1709,10 +1720,9 @@ func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 		model.revealProject, model.revealPath = nil, ""
 		return
 	}
-	if model.sidebarHidden || project.scan != nil {
+	if model.sidebarHidden || project.scan != nil && !project.scan.staged {
 		return
 	}
-	model.revealProject, model.revealPath = nil, ""
 	viewportID := treeRowID(project.Path)
 	viewportNode, ok := world.HTMLNode(model.surface, viewportID)
 	if !ok {
@@ -1730,8 +1740,12 @@ func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 		}
 	}
 	if rowIndex < 0 {
+		if project.scan == nil {
+			model.revealProject, model.revealPath = nil, ""
+		}
 		return
 	}
+	model.revealProject, model.revealPath = nil, ""
 	area, ok := viewportNode.ScrollContainer()
 	if !ok {
 		return
@@ -2258,6 +2272,9 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	} else if changed {
 		markPencodeRootDirtyByModel(context.World, model)
 	}
+	if model.updateExtensionSelection(context.World, state) {
+		return nil
+	}
 	handled, uiChanged := model.updateExtensionUI(context.World, state)
 	if uiChanged {
 		markPencodeRootDirtyByModel(context.World, model)
@@ -2539,23 +2556,32 @@ func handlePencodeWindowControl(app *module.Host, id string) {
 	}
 }
 
-type pencodeIconRasterScale struct{}
-
-func (pencodeIconRasterScale) SVGTextureRasterScale(_, _ int) int { return 4 }
-
 type pencodeIconProvider struct {
-	content  *module.Content
-	model    *workspaceModel
-	root     string
-	textures map[string]*graphics.Texture
+	content        *module.Content
+	model          *workspaceModel
+	root           string
+	textures       map[string]*pencodeCachedImage
+	images         map[*graphics.Texture]*pencodeCachedImage
+	oldest, newest *pencodeCachedImage
+	bytes          int
+	theme          *pencodeTheme
+	touched        bool
 }
 
-func (provider *pencodeIconProvider) ResolveHTMLImage(source string) (*graphics.Texture, bool) {
+func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, height float32) (*graphics.Texture, bool) {
 	if provider == nil || source == "" {
 		return nil, false
 	}
-	if texture, ok := provider.textures[source]; ok {
-		return texture, texture != nil
+	if entry, ok := provider.textures[source]; ok {
+		texture := entry.texture
+		if texture == nil {
+			return nil, false
+		}
+		current, _ := texture.RasterScale()
+		if provider.iconScale(texture.LogicalWidth(), texture.LogicalHeight(), width, height) <= int(current) || !entry.icon {
+			provider.touch(entry)
+			return texture, true
+		}
 	}
 	asset, foreground, themed := strings.Cut(source, "?foreground=")
 	if themed {
@@ -2612,13 +2638,22 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string) (*graphics.
 		name := "asset" + extension
 		decoder := graphics.ImageDecoderSet[
 			ontex.Decoder,
-			graphicssvg.ScaledDecoder[pencodeIconRasterScale],
+			graphicssvg.Decoder,
 			png.Decoder,
 			jpeg.Decoder,
 			webp.Decoder,
 		]{}
 		options := graphics.TextureOptions{Usage: graphics.ResourceUsageGPU}
-		if preview && extension == ".svg" {
+		icon := extension == ".svg" && !preview
+		if icon {
+			config, configErr := onixsvg.DecodeConfig(bytes.NewReader(data))
+			if configErr != nil {
+				err = configErr
+			} else {
+				options.Mipmap = true
+				texture, err = graphicssvg.DecodeAtScale(data, provider.iconScale(config.Width, config.Height, width, height), options)
+			}
+		} else if preview && extension == ".svg" {
 			// Editor images retain the worker-validated pixel budget. The icon
 			// supersampling factor would multiply their texture memory by 16.
 			texture, err = graphicssvg.DecodeAtScale(data, 1, options)
@@ -2627,11 +2662,15 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string) (*graphics.
 		}
 	}
 	if err != nil {
+		if entry := provider.textures[source]; entry != nil && entry.texture != nil {
+			provider.touch(entry)
+			return entry.texture, true
+		}
 		texture = nil
 	}
 	if provider.textures == nil {
-		provider.textures = make(map[string]*graphics.Texture)
+		provider.textures = make(map[string]*pencodeCachedImage)
 	}
-	provider.textures[source] = texture
+	provider.cacheImage(source, texture, strings.EqualFold(filepath.Ext(asset), ".svg") && !preview)
 	return texture, texture != nil
 }

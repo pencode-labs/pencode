@@ -25,6 +25,7 @@ type pencodeActionState struct {
 	owner         *workspaceModel
 	file          *openFile
 	fileName      string
+	closeToken    uint64
 	openWithCount int
 	// Context references include the existing built-in items and visible actions.
 	leftRefs, rightRefs []string
@@ -296,6 +297,7 @@ func (model *workspaceModel) removeActions(id string) {
 		delete(model.actions.sessions, id)
 	}
 	model.actionRegistry().RemovePrefix("extensions/" + id + "/")
+	model.resolveExtensionClose(id, model.closing.lifecycleToken, peb.LifecycleReply{Message: "扩展 " + id + " 已断开，无法确认后台任务状态。"})
 }
 func (model *workspaceModel) closeActions() {
 	model.clearExtensionUI("")
@@ -318,6 +320,11 @@ func (model *workspaceModel) pollActions() bool {
 					changed = true
 					goto nextSession
 				}
+				if result.Lifecycle != nil {
+					model.resolveExtensionClose(id, result.Token, *result.Lifecycle)
+					changed = true
+					continue
+				}
 				if result.Err != nil {
 					changed = true
 					model.extensionFeedback = fmt.Sprintf("扩展 %s action：%v", id, result.Err)
@@ -339,7 +346,7 @@ func (model *workspaceModel) pollActions() bool {
 					ui := result.UI
 					if ui.Kind == peb.EditorTab && ui.View != nil && !ui.Close {
 						for _, surface := range model.actions.ui.surfaces {
-							if surface.owner == id && surface.ui.ID == ui.ID && surface.ui.Title == ui.Title && surface.ui.Busy == ui.Busy && surface.ui.InterceptClose == ui.InterceptClose {
+							if surface.owner == id && surface.ui.ID == ui.ID && surface.ui.Title == ui.Title && surface.ui.Busy == ui.Busy && surface.ui.Unread == ui.Unread && surface.ui.InterceptClose == ui.InterceptClose {
 								retained = surface
 								break
 							}

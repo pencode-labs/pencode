@@ -169,6 +169,8 @@ type Handlers struct {
 	// Settings runs before activation/first document request and on each change.
 	// The snapshot owns its data and may be retained by the extension.
 	Settings        func(SettingValues) error
+	Lifecycle       func(LifecycleEvent) (LifecycleReply, error)
+	FileChanges     func(FileChanges) error
 	Editor          func(EditorMessage) (EditorReply, error)
 	Action          func(ActionContext) error
 	UIEvent         func(UIEvent) error

@@ -27,6 +27,8 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 
 编辑器、独立服务端和扩展安装工具在启动时自动读取系统手动 HTTP/HTTPS 代理：Windows 使用系统 Internet 设置（含机器级策略），macOS 使用当前网络代理，Linux 支持 GNOME 代理设置。代理通过环境变量传给扩展和工具进程；已有的 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`（含小写形式）优先，`NO_PROXY` 的显式设置也会保留。修改系统代理后需重启对应进程。暂不解析 PAC/WPAD 自动代理脚本；子进程的绕过规则以其自身对 `NO_PROXY` 的支持为准。
 
+文件变化使用系统原生接口：macOS 为 FSEvents，Windows 为递归 `ReadDirectoryChangesW`，Linux 为 inotify。事件进入统一文件服务后分发给编辑器和扩展；历史与待处理路径有界，溢出时显式要求重新校准。
+
 ## 开发环境
 
 ### 环境要求与当前限制
@@ -104,7 +106,7 @@ git submodule foreach 'go test ./...'
 ```text
 桌面工作台（Onix）
         │
-        │ CS v8：本地子进程管道、SSH stdin/stdout 或 WebSocket
+        │ CS v9：本地子进程管道、SSH stdin/stdout 或 WebSocket
         ▼
 Pencode 服务端
         ├── 文件、文档、索引与语法解析
@@ -148,7 +150,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 (cd extensions/go && go build -o bin/go .)
 ```
 
-当前扩展协议为 peb v13（CS v8），旧扩展需要使用当前 SDK 重新构建。
+当前扩展协议为 peb v13（CS v9），旧扩展需要使用当前 SDK 重新构建。
 
 ## 文档
 

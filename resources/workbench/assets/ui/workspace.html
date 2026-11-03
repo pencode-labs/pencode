@@ -51,13 +51,18 @@
       <div data-ref="connection-ssh-fields" class="pencode-connection-fields">
       <label for="connection-host">主机名</label><input id="connection-host" data-ref="connection-host" type="text" placeholder="host.com 或 user@host.com" autocomplete="off" spellcheck="false">
       <label for="connection-port">SSH 端口（可选）</label><input id="connection-port" data-ref="connection-port" type="text" inputmode="numeric" placeholder="使用 SSH config">
-      <label for="connection-identity">身份文件（可选）</label><input id="connection-identity" data-ref="connection-identity" type="text" placeholder="留空使用 SSH config 或 agent" autocomplete="off" spellcheck="false">
       </div>
       <div data-ref="connection-websocket-fields" class="pencode-connection-fields" hidden>
         <label for="connection-address">服务地址</label><input id="connection-address" data-ref="connection-address" type="text" placeholder="ws://host.com:8080/ws" autocomplete="off" spellcheck="false">
         <label for="connection-token">Token</label><input id="connection-token" data-ref="connection-token" type="password" autocomplete="off" spellcheck="false">
       </div>
-      <label for="connection-directory">起始目录（可选，用于项目选择）</label><input id="connection-directory" data-ref="connection-directory" type="text" placeholder="~ 或 ~/workspace/app" autocomplete="off" spellcheck="false">
+      <button id="connection-toggle-options" data-ref="connection-toggle-options" class="pencode-connection-options-toggle" type="button" aria-expanded="false" aria-controls="connection-options"><img data-ref="connection-options-icon" src="icons/chevron-right.svg" alt="">更多配置</button>
+      <div id="connection-options" data-ref="connection-options" class="pencode-connection-fields" hidden>
+        <div data-ref="connection-identity-fields" class="pencode-connection-fields">
+          <label for="connection-identity">身份文件（可选）</label><input id="connection-identity" data-ref="connection-identity" type="text" placeholder="留空使用 SSH config 或 agent" autocomplete="off" spellcheck="false">
+        </div>
+        <label for="connection-directory">起始目录（可选，用于项目选择）</label><input id="connection-directory" data-ref="connection-directory" type="text" placeholder="~ 或 ~/workspace/app" autocomplete="off" spellcheck="false">
+      </div>
       <footer class="pencode-connection-form-actions"><button data-ref="connection-form-cancel" type="button">取消</button><button id="connection-save" data-ref="connection-save" class="primary" type="button">保存</button></footer>
     </section>
   </section>
@@ -427,7 +432,7 @@
         <section id="debug-pane" data-ref="debug-pane" class="pencode-debug-pane" role="tabpanel" aria-labelledby="status-debug" hidden>
           <p id="debug-message" data-ref="debug-message" class="pencode-panel-empty" role="status" hidden></p>
           <div class="pencode-debug-columns">
-            <section class="pencode-debug-stack"><h3 class="pencode-debug-threads-heading"><button id="debug-toggle-threads" data-ref="debug-toggle-threads" class="pencode-debug-section-toggle" type="button" aria-expanded="false" aria-controls="debug-threads"><span data-ref="debug-threads-toggle" class="pencode-debug-toggle">▸</span>线程</button></h3><div id="debug-threads" data-ref="debug-threads" hidden></div><h3>调用栈</h3><div data-ref="debug-frames"></div><h3>断点</h3><div data-ref="debug-breakpoints"></div></section>
+            <section class="pencode-debug-stack"><h3 class="pencode-debug-threads-heading"><button id="debug-toggle-threads" data-ref="debug-toggle-threads" class="pencode-debug-section-toggle" type="button" aria-expanded="false" aria-controls="debug-threads"><img data-ref="debug-threads-toggle" class="pencode-debug-toggle" src="icons/chevron-right.svg" alt="">线程</button></h3><div id="debug-threads" data-ref="debug-threads" hidden></div><h3>调用栈</h3><div data-ref="debug-frames"></div><h3>断点</h3><div data-ref="debug-breakpoints"></div></section>
             <section class="pencode-debug-values"><h3>变量</h3><div data-ref="debug-variables"></div></section>
             <section class="pencode-debug-output"><div class="pencode-debug-console-heading"><h3>Debug Console</h3><button id="debug-clear" data-ref="debug-clear" class="pencode-icon-button" type="button" title="清空 Debug Console" aria-label="清空 Debug Console"><img data-ref="debug-clear-icon" src="icons/clear-all.svg" alt=""></button></div><div class="pencode-debug-console"><pre id="debug-console" data-ref="debug-console"></pre><div data-ref="debug-evaluations"></div></div><div class="pencode-debug-evaluate"><input id="debug-expression" data-ref="debug-expression" type="text" placeholder="输入表达式，Enter 求值" aria-label="调试表达式" autocomplete="off" spellcheck="false"><button id="debug-evaluate" data-ref="debug-evaluate" type="button">求值</button></div></section>
           </div>
@@ -559,7 +564,7 @@
   </div>
   <div data-ref="close-dialog" class="pencode-close-overlay" hidden>
     <section class="pencode-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="close-title" aria-describedby="close-message">
-      <h2 id="close-title">未保存的更改</h2>
+      <h2 id="close-title" data-ref="close-title">未保存的更改</h2>
       <p id="close-message" data-ref="close-message" class="pencode-close-message"></p>
       <p data-ref="close-error" class="pencode-close-error" role="alert" hidden></p>
       <div class="pencode-close-actions">

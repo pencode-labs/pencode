@@ -55,6 +55,79 @@ func TestClosingFileRevealsExtensionEditorTab(t *testing.T) {
 	if active != 1 {
 		t.Fatalf("got %d active tabs, want 1", active)
 	}
+	if err := m.applyExtensionUI("codex-test", &extensions.ActionSession{}, peb.UI{
+		ID: "new-chat", Title: "Codex 新会话", Kind: peb.EditorTab,
+		View: &peb.EditorView{HTML: `<p>New conversation</p>`},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second := m.actions.ui.editor
+	markPencodeRootDirtyByModel(world, m)
+	languageInteractionStep(t, app)
+	editorContextClick(t, app, m, state, "file-tab-close:"+second.rootID)
+	languageInteractionStep(t, app)
+	if m.actions.ui.editor != chat || !chat.live() {
+		t.Fatal("closing the selected extension did not reveal the remaining chat")
+	}
+	for _, id := range []string{chat.rootID, "pencode-extension-reply", "active-tab"} {
+		editorContextBounds(t, m, id)
+	}
+}
+
+func TestClosingExtensionRevealsAdjacentEditorTab(t *testing.T) {
+	for _, mode := range []string{"project", "standalone"} {
+		for _, tc := range []struct {
+			name                    string
+			active, close, wantChat int
+			files, comparison       bool
+		}{
+			{name: "right extension", active: 0, close: 0, wantChat: 1},
+			{name: "left extension", active: 1, close: 1, wantChat: 0},
+			{name: "extension beside files", active: 1, close: 1, wantChat: 0, files: true},
+			{name: "background extension", active: 1, close: 0, wantChat: 1},
+			{name: "right comparison", active: 1, close: 1, wantChat: -1, comparison: true},
+			{name: "remaining file", active: 0, close: 0, wantChat: -1, files: true},
+			{name: "last tab", active: 0, close: 0, wantChat: -1},
+		} {
+			t.Run(mode+"/"+tc.name, func(t *testing.T) {
+				m := &workspaceModel{}
+				if tc.files {
+					m.tabs, m.activePath = []string{"a.go", "b.go"}, "a.go"
+					m.files = map[string]*openFile{"a.go": {Path: "a.go"}, "b.go": {Path: "b.go"}}
+				}
+				if mode == "project" {
+					m.projects = []*pencodeProject{{Tabs: m.tabs, ActivePath: m.activePath, Files: m.files}}
+					m.syncActiveProjectFields()
+				}
+				one := &pencodeExtensionSurface{model: m, session: &extensions.ActionSession{}, ui: peb.UI{Kind: peb.EditorTab}}
+				two := &pencodeExtensionSurface{model: m, session: &extensions.ActionSession{}, ui: peb.UI{Kind: peb.EditorTab}}
+				panel := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.Panel}}
+				chats := []*pencodeExtensionSurface{one, two}
+				m.actions.ui.surfaces = []*pencodeExtensionSurface{one, panel}
+				if tc.wantChat >= 0 || tc.comparison {
+					m.actions.ui.surfaces = append(m.actions.ui.surfaces, two)
+				}
+				if tc.comparison {
+					m.sourceState().Tabs = []*sourceTab{{Key: "diff", Kind: "changes"}}
+				}
+				m.selectExtensionTab(chats[tc.active])
+				m.closeExtensionSurface(chats[tc.close], "button", true)
+				if tc.wantChat >= 0 {
+					if m.actions.ui.editor != chats[tc.wantChat] {
+						t.Fatal("wrong extension selected after closing")
+					}
+				} else if m.actions.ui.editor != nil {
+					t.Fatal("closed extension remains selected")
+				}
+				if tc.comparison && (m.sourceState().Active != "diff" || !m.sourceState().RestoreScroll) {
+					t.Fatal("adjacent comparison was not selected")
+				}
+				if tc.files && tc.wantChat < 0 && m.activePath != "b.go" {
+					t.Fatal("adjacent file was not selected")
+				}
+			})
+		}
+	}
 }
 
 func TestClosingFileSelectsAdjacentTab(t *testing.T) {

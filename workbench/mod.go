@@ -3,7 +3,6 @@ package workbench
 import (
 	"time"
 
-	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/module"
 	html "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
@@ -64,7 +63,7 @@ func (m *Mod) Install(c *module.Context) error {
 	uiFont, uiBold := model.uiFont()
 	model.surface = spawnPencodeSurface(content, uiFont, uiBold, model.settings.UIFontSize)
 	model.windowBorder = spawnPencodeWindowBorder(content, model.workbenchTheme.border)
-	m.icons = &pencodeIconProvider{content: content, model: model, textures: make(map[string]*graphics.Texture)}
+	m.icons = &pencodeIconProvider{content: content, model: model, textures: make(map[string]*pencodeCachedImage)}
 	if surface := content.Mut[html.Surface](model.surface); surface != nil {
 		surface.Images = &html.Images{Provider: m.icons}
 	}
@@ -317,9 +316,9 @@ func (m *Mod) Destroy(c *module.Context) error {
 		m.model.closeReferenceWorker()
 	}
 	if m.icons != nil {
-		for _, texture := range m.icons.textures {
-			if texture != nil {
-				_ = texture.Dispose()
+		for _, image := range m.icons.textures {
+			if image.texture != nil {
+				_ = image.texture.Dispose()
 			}
 		}
 		clear(m.icons.textures)

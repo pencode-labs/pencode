@@ -35,11 +35,13 @@ type ActionExtension struct {
 	remote  *client.Extension
 }
 type ActionResult struct {
-	Change peb.ActionChange
-	UI     *peb.UI
-	Assets map[string][]byte
-	Icons  map[string][]byte
-	Err    error
+	Change    peb.ActionChange
+	UI        *peb.UI
+	Assets    map[string][]byte
+	Icons     map[string][]byte
+	Lifecycle *peb.LifecycleReply
+	Token     uint64
+	Err       error
 	// Fatal marks a disconnected process; its actions must be removed.
 	Fatal bool
 }
@@ -51,13 +53,17 @@ type ActionSession struct {
 	cancel   context.CancelFunc
 	remote   *client.Extension
 	output   *output.Channel
+	files    fileChangeMailbox
 }
 
 type actionRequest struct {
-	action   peb.ActionContext
-	event    peb.UIEvent
-	settings peb.SettingValues
-	ui       bool
+	action    peb.ActionContext
+	event     peb.UIEvent
+	settings  peb.SettingValues
+	ui        bool
+	files     *peb.FileChanges
+	lifecycle *peb.LifecycleEvent
+	token     uint64
 }
 
 // Editor binds a live Open With action to the extension's document process.
@@ -67,6 +73,11 @@ func (s *ActionSession) Editor(a peb.Action) Editor {
 
 func (s *ActionSession) SubmitSettings(values peb.SettingValues) bool {
 	return submitSettings(s.settings, s.Done, values)
+}
+
+// SubmitLifecycle serializes host lifecycle events with action and UI requests.
+func (s *ActionSession) SubmitLifecycle(event peb.LifecycleEvent, token uint64) bool {
+	return s.submit(actionRequest{lifecycle: &event, token: token})
 }
 
 func (s *ActionSession) Submit(c peb.ActionContext) bool { return s.submit(actionRequest{action: c}) }
@@ -95,7 +106,9 @@ func (extension *ActionExtension) Start(values peb.SettingValues, wake func()) *
 	ctx, cancel := context.WithCancel(context.Background())
 	results, done := make(chan ActionResult, 16), make(chan struct{})
 	s := &ActionSession{Results: results, Done: done, settings: make(chan peb.SettingValues, 1), requests: make(chan actionRequest, 64), cancel: cancel, remote: extension.remote, output: extension.Output}
+	s.files.initialize()
 	go func() {
+		defer s.files.stop()
 		defer close(done)
 		defer close(results)
 		defer cancel()
@@ -108,7 +121,7 @@ func (extension *ActionExtension) Start(values peb.SettingValues, wake func()) *
 			case <-ctx.Done():
 			}
 		}
-		if err := extension.run(ctx, values, s.settings, s.requests, publish); err != nil && ctx.Err() == nil {
+		if err := extension.run(ctx, values, s.settings, s.requests, &s.files, publish); err != nil && ctx.Err() == nil {
 			publish(ActionResult{Err: err, Fatal: true})
 		}
 	}()
@@ -148,7 +161,7 @@ func loadAction(files *resourceFiles, extensionID string, a peb.Action, icons ma
 	return a, nil
 }
 
-func (extension *ActionExtension) run(parent context.Context, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan actionRequest, publish func(ActionResult)) (err error) {
+func (extension *ActionExtension) run(parent context.Context, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan actionRequest, fileEvents *fileChangeMailbox, publish func(ActionResult)) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stream, stderr, closeProcess, err := openExtensionProcess(ctx, extension.remote, "", extension.Output)
@@ -204,6 +217,7 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 	resync := make(chan actionRequest, 32)
 	resyncing := make(map[string]bool)
 	var pending, responseKind atomic.Uint32
+	var lifecycleToken atomic.Uint64
 	completions := make(chan uint32, 1)
 	writerDone := make(chan struct{})
 	go func() {
@@ -221,6 +235,12 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 			case values := <-settings:
 				request.settings = values
 			case request = <-requests:
+			case <-fileEvents.ready:
+				batch := fileEvents.take()
+				if batch.Root == "" {
+					continue
+				}
+				request.files = &batch
 			case request = <-resync:
 			}
 			id++
@@ -231,7 +251,14 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 			requestDeadline.Reset(StartupTimeout)
 			var writeErr error
 			kind, response := peb.ActionInvoke, peb.ActionResponse
-			if request.settings != nil {
+			if request.lifecycle != nil {
+				kind, response = peb.LifecycleRequest, peb.LifecycleResponse
+				lifecycleToken.Store(request.token)
+				buffer, writeErr = peb.EncodeLifecycleEvent(buffer, *request.lifecycle)
+			} else if request.files != nil {
+				kind, response = peb.FileChangesRequest, peb.FileChangesResponse
+				buffer, writeErr = peb.EncodeFileChanges(buffer, *request.files)
+			} else if request.settings != nil {
 				kind, response = peb.SettingsRequest, peb.SettingsResponse
 				buffer, writeErr = peb.EncodeSettingValues(buffer, request.settings)
 			} else if request.ui {
@@ -334,7 +361,22 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 				added = map[string][]byte{change.Action.Icon: icons[change.Action.Icon]}
 			}
 			publish(ActionResult{Change: change, Icons: added})
-		case peb.ActionResponse, peb.UIResponse, peb.SettingsResponse:
+		case peb.LifecycleResponse:
+			if responseKind.Load() != uint32(f.Kind) || !pending.CompareAndSwap(f.ID, 0) {
+				return peb.ErrProtocol
+			}
+			reply, decodeErr := peb.DecodeLifecycleReply(f.Payload)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			token := lifecycleToken.Load()
+			publish(ActionResult{Lifecycle: &reply, Token: token})
+			select {
+			case completions <- f.ID:
+			default:
+				return peb.ErrProtocol
+			}
+		case peb.ActionResponse, peb.UIResponse, peb.SettingsResponse, peb.FileChangesResponse:
 			if responseKind.Load() != uint32(f.Kind) {
 				return peb.ErrProtocol
 			}
@@ -354,12 +396,16 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 			if decodeErr != nil {
 				return decodeErr
 			}
+			if responseKind.Load() == uint32(peb.LifecycleResponse) {
+				publish(ActionResult{Lifecycle: &peb.LifecycleReply{Message: "扩展未能完成关闭检查：" + message}, Token: lifecycleToken.Load()})
+			} else {
+				publish(ActionResult{Err: errors.New(message)})
+			}
 			select {
 			case completions <- f.ID:
 			default:
 				return peb.ErrProtocol
 			}
-			publish(ActionResult{Err: errors.New(message)})
 		default:
 			return peb.ErrProtocol
 		}

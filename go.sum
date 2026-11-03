@@ -11,8 +11,6 @@ github.com/eugenioenko/regexp2/v2 v2.8.2 h1:FK5xiQNuz6TCgNeMXGGIUfH89ZJ2pxmu9n8q
 github.com/eugenioenko/regexp2/v2 v2.8.2/go.mod h1:59/YhHVxgrxxHgjTuG4YFRRxynIz4E0bI+rqNBzwOrs=
 github.com/eugenioenko/textmate-go v0.2.2 h1:IFdXOZcY4GHFm4JDERuOfyS+UqZJY9DzSBIMK9Mhdjk=
 github.com/eugenioenko/textmate-go v0.2.2/go.mod h1:cYY9RpILD0oRBWCBIW1Z9GMlv0GAGvSdvv/iRvnkiNM=
-github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=
-github.com/fsnotify/fsnotify v1.9.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
 github.com/ftrvxmtrx/tga v0.0.0-20150524081124-bd8e8d5be13a/go.mod h1:US5WvgEHtG+BvWNNs6gk937h0QL2g2x+r7RH8m3g80Y=
 github.com/go-gl/mathgl v1.2.0 h1:v2eOj/y1B2afDxF6URV1qCYmo1KW08lAMtTbOn3KXCY=
 github.com/go-gl/mathgl v1.2.0/go.mod h1:pf9+b5J3LFP7iZ4XXaVzZrCle0Q/vNpB/vDe5+3ulRE=

@@ -64,6 +64,7 @@ type fileIOJob struct {
 	navigation                                            *fileNavigation
 	language                                              *languageEditPlan
 	searchReplace                                         *folderReplacePlan
+	external                                              bool
 }
 type fileNavigation struct {
 	line        int
@@ -82,6 +83,7 @@ type fileIOResult struct {
 	moveErrors           map[*client.Document]error
 	reload               []fileReloadResult
 	err                  error
+	external             bool
 }
 
 func (r *fileIOResult) release() {
@@ -216,6 +218,7 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		r.err = executeFolderReplace(j)
 	case fileReload:
 		r.reload = j.reload
+		r.external = j.external
 		for i := range r.reload {
 			item := &r.reload[i]
 			if item.previous != nil {
@@ -591,6 +594,7 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 }
 func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 	p := r.job.project
+	changed := !r.external
 	for i := range r.reload {
 		item := &r.reload[i]
 		if p.Files[item.relative] != item.file {
@@ -603,7 +607,7 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		if f.document == item.previous {
 			f.document = nil
 		}
-		if f.content() != item.before {
+		if f.content() != item.before || r.external && f.Dirty {
 			m.setProjectStatus(p, "重新加载期间内容已改变，保留当前编辑")
 			continue
 		}
@@ -611,10 +615,14 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 			m.setProjectStatus(p, "重新加载失败："+item.err.Error())
 			continue
 		}
-		m.highlightCache.remove(f)
 		f.closeDocument()
 		f.document = item.document
 		item.document = nil
+		if r.external && f.content() == item.content {
+			continue
+		}
+		changed = true
+		m.highlightCache.remove(f)
 		start, oldEnd, newEnd, _ := pencodeChangedRange(f.content(), item.content)
 		m.rebaseDebugBreakpoints(p, f, snapshotText(item.content), start, oldEnd, newEnd)
 		f.contentSnapshot = snapshotText(item.content)
@@ -623,7 +631,9 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		f.pencodeEditHistory = pencodeEditHistory{}
 		m.syncDebugBreakpoints(p, f)
 	}
-	m.resetHighlight()
+	if changed {
+		m.resetHighlight()
+	}
 	m.syncActiveProjectFields()
 	m.syncLanguageDocuments()
 }

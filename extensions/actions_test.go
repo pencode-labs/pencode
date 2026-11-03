@@ -21,6 +21,7 @@ func TestActionHelperProcess(t *testing.T) {
 	}
 	fmt.Fprintln(os.Stderr, "extension startup")
 	var publisher *peb.ActionPublisher
+	var lastFiles peb.FileChanges
 	action := peb.Action{ID: "run", Text: "Run", Location: peb.StatusBar}
 	if slices.Contains(os.Args, "peb-bad-icon") {
 		action.Icon = "resources/broken.svg"
@@ -34,6 +35,27 @@ func TestActionHelperProcess(t *testing.T) {
 		}}
 	}
 	err := peb.ServeExtension(os.Stdin, os.Stdout, contributions, peb.Handlers{
+		Lifecycle: func(event peb.LifecycleEvent) (peb.LifecycleReply, error) {
+			if event.ProjectPath == "/fail" {
+				return peb.LifecycleReply{}, errors.New("lifecycle fixture failure")
+			}
+			return peb.LifecycleReply{Message: fmt.Sprintf("%d:%s", event.Kind, event.ProjectPath)}, nil
+		},
+		FileChanges: func(changes peb.FileChanges) error {
+			lastFiles = changes
+			if publisher != nil {
+				action.Text = changes.Root + ":" + changes.Files[0].Path
+				return publisher.Update(action)
+			}
+			return nil
+		},
+		Editor: func(peb.EditorMessage) (peb.EditorReply, error) {
+			if len(lastFiles.Files) == 0 {
+				return peb.EditorReply{}, nil
+			}
+			value := lastFiles.Root + ":" + lastFiles.Files[0].Path
+			return peb.EditorReply{Content: &value}, nil
+		},
 		ActivateActions: func(_ context.Context, p *peb.ActionPublisher) {
 			publisher = p
 			fmt.Fprintln(os.Stderr, "action activated")
@@ -288,5 +310,48 @@ func TestOpenWithActionResourcesAndAssociations(t *testing.T) {
 	a.Selectors = nil
 	if _, err := loadBundle(root.FS(), "test", peb.Contributions{Actions: []peb.Action{a}}); err == nil {
 		t.Fatal("accepted open-with action with no associations")
+	}
+}
+
+func TestActionSessionLifecycleRepliesKeepTokens(t *testing.T) {
+	backend, _ := actionFixture(t)
+	bundle, err := Load(context.Background(), backend, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := bundle.Actions.Start(nil, nil)
+	defer session.Close()
+	events := [...]peb.LifecycleEvent{{Kind: peb.WindowClosing}, {Kind: peb.ProjectClosing, ProjectPath: "/fail"}, {Kind: peb.ProjectClosed, ProjectPath: "/project"}}
+	for i, event := range events {
+		if !session.SubmitLifecycle(event, uint64(i+10)) {
+			t.Fatal("lifecycle request rejected")
+		}
+	}
+	deadline := time.After(5 * time.Second)
+	for i, event := range events {
+		for {
+			select {
+			case result, ok := <-session.Results:
+				if !ok || result.Err != nil {
+					t.Fatalf("session failed: %+v", result)
+				}
+				if result.Lifecycle == nil {
+					continue
+				}
+				if result.Token != uint64(i+10) {
+					t.Fatal("reply lost request token", result.Token)
+				}
+				want := fmt.Sprintf("%d:%s", event.Kind, event.ProjectPath)
+				if i == 1 {
+					want = "扩展未能完成关闭检查：lifecycle fixture failure"
+				}
+				if result.Lifecycle.Message != want {
+					t.Fatal("wrong lifecycle reply", result.Lifecycle)
+				}
+			case <-deadline:
+				t.Fatal("lifecycle reply timed out")
+			}
+			break
+		}
 	}
 }

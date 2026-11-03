@@ -104,6 +104,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 		return
 	}
 	model := s.active.model
+	defer s.active.icons.trimImages()
 	model.focusQuickControls(model.fontResources, model.surface)
 	model.focusConnectionPassword(model.fontResources)
 	defer model.syncInputContext(model.fontResources)
@@ -126,6 +127,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 		}
 	}
 	scrollChanged = model.syncExtensionUI(model.fontResources)
+	scrollChanged = model.actions.ui.selection.sync(model.fontResources, model) || scrollChanged
 	model.focusFileContext(model.fontResources)
 	model.focusFindInput(model.fontResources, model.surface)
 	model.focusFolderSearch(model.fontResources)

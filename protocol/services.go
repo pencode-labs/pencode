@@ -52,6 +52,7 @@ type WorkspaceChange uint32
 const (
 	WorkspaceTreeChanged WorkspaceChange = 1 << iota
 	WorkspaceGitChanged
+	WorkspaceRepositoriesChanged
 )
 
 type Port struct {
@@ -70,4 +71,27 @@ type IndexEntry struct {
 type PathRule struct {
 	Pattern string
 	Suffix  bool
+}
+
+// FileOperation is shared by every native watcher and file-service consumer.
+type FileOperation uint8
+
+const (
+	FileCreated FileOperation = 1 << iota
+	FileWritten
+	FileRemoved
+	FileRenamed
+	FileMetadataChanged
+)
+
+type FileEvent struct {
+	Path      string // Workspace-relative, slash-separated; never an external Git path.
+	Op        FileOperation
+	Directory bool
+}
+type FileChanges struct {
+	Version uint64
+	Changes WorkspaceChange
+	Reset   bool // Reconcile when history or native events overflowed.
+	Files   []FileEvent
 }

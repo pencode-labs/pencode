@@ -25,13 +25,16 @@ type EditorSession struct {
 	settings chan peb.SettingValues
 	requests chan peb.EditorMessage
 	cancel   context.CancelFunc
+	files    fileChangeMailbox
 }
 
 func (editor *Editor) Start(root string, values peb.SettingValues, wake func()) *EditorSession {
 	ctx, cancel := context.WithCancel(context.Background())
 	results, done := make(chan EditorResult, 1), make(chan struct{})
 	s := &EditorSession{Results: results, Done: done, settings: make(chan peb.SettingValues, 1), requests: make(chan peb.EditorMessage, 1), cancel: cancel}
+	s.files.initialize()
 	go func() {
+		defer s.files.stop()
 		defer close(done)
 		defer close(results)
 		defer cancel()
@@ -44,7 +47,7 @@ func (editor *Editor) Start(root string, values peb.SettingValues, wake func()) 
 			case <-ctx.Done():
 			}
 		}
-		if err := editor.run(ctx, root, values, s.settings, s.requests, publish); err != nil && ctx.Err() == nil {
+		if err := editor.run(ctx, root, values, s.settings, s.requests, &s.files, publish); err != nil && ctx.Err() == nil {
 			publish(EditorResult{Err: err})
 		}
 	}()
@@ -76,7 +79,7 @@ func (s *EditorSession) Close() {
 	}
 }
 
-func (editor *Editor) run(parent context.Context, root string, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan peb.EditorMessage, publish func(EditorResult)) (err error) {
+func (editor *Editor) run(parent context.Context, root string, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan peb.EditorMessage, fileEvents *fileChangeMailbox, publish func(EditorResult)) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stream, stderr, closeProcess, err := openExtensionProcess(ctx, editor.remote, root, editor.Output)
@@ -141,6 +144,41 @@ func (editor *Editor) run(parent context.Context, root string, values peb.Settin
 			deadline.Stop()
 			if err != nil {
 				return err
+			}
+		case <-fileEvents.ready:
+			changes := fileEvents.take()
+			if changes.Root == "" {
+				continue
+			}
+			id++
+			if id == 0 {
+				id++
+			}
+			deadline.Reset(StartupTimeout)
+			data, err = peb.EncodeFileChanges(data, changes)
+			if err != nil {
+				return err
+			}
+			if err = w.Write(peb.FileChangesRequest, id, data); err != nil {
+				return err
+			}
+			f, err = r.Read()
+			deadline.Stop()
+			if err != nil {
+				return err
+			}
+			if f.ID != id {
+				return peb.ErrProtocol
+			}
+			if f.Kind == peb.Failure {
+				message, decodeErr := peb.DecodeFailure(f.Payload)
+				if decodeErr != nil {
+					return decodeErr
+				}
+				return errors.New(message)
+			}
+			if f.Kind != peb.FileChangesResponse {
+				return peb.ErrProtocol
 			}
 		case message := <-requests:
 			id++

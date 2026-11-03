@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +117,118 @@ func TestPencodeLoadProjectDefersTreeWithoutOpeningFiles(t *testing.T) {
 	}
 }
 
+func TestPencodeScanShowsRootBeforeWatchIsReady(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"a", "z", ".git", "node_modules", "dist"} {
+		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name, "child.go"), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const rootFiles = 520
+	for i := range rootFiles {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("file-%03d.go", i)), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &pencodeProject{Path: root, Status: pencodeTreeLoading}
+	connectPencodeProject(t, p)
+	ready := make(chan struct{})
+	wakes := make(chan struct{}, 1)
+	p.scan = newBackendProjectScan(p.backend, p.workspace, true, 0, func() {
+		select {
+		case wakes <- struct{}{}:
+		default:
+		}
+	}, ready)
+	t.Cleanup(p.stopScan)
+	m := workspaceModel{projects: []*pencodeProject{p}, activeProjectIndex: 0}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for len(p.Entries) < rootFiles+2 {
+		m.pollProjectScans()
+		if len(p.Entries) == rootFiles+2 {
+			break
+		}
+		select {
+		case <-wakes:
+		case <-deadline.C:
+			t.Fatal("root listing waited for recursive watch setup")
+		}
+	}
+	if p.scan == nil || p.index != 0 || p.Entries[0].Path != "a" || p.Entries[1].Path != "z" {
+		t.Fatal("root preview started indexing before the watch was ready or lost directory ordering")
+	}
+	for _, entry := range p.Entries {
+		if entry.Depth != 0 || skipProjectEntry(entry.Name) {
+			t.Fatalf("preview included a nested or excluded entry: %+v", entry)
+		}
+	}
+	if allocations := testing.AllocsPerRun(100, func() {
+		if m.pollProjectScans() {
+			t.Fatal("waiting for the watch changed the root preview")
+		}
+	}); allocations != 0 {
+		t.Fatalf("waiting for the watch allocated %g times", allocations)
+	}
+	// Changes made during watch setup must be reconciled by the real index.
+	if err := os.Remove(filepath.Join(root, "file-519.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "added.go"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	close(ready)
+	waitPencodeProjectScan(t, p, func() { m.pollProjectScans() })
+	if len(p.Entries) != rootFiles+4 || p.index == 0 || p.Status != "" {
+		t.Fatalf("index did not replace the preview: count=%d status=%q", len(p.Entries), p.Status)
+	}
+	for i, name := range []string{"a", "a/child.go", "z", "z/child.go", "added.go"} {
+		if p.Entries[i].Path != name {
+			t.Fatalf("index order at %d: got %q, want %q", i, p.Entries[i].Path, name)
+		}
+	}
+	for i := range rootFiles - 1 {
+		if want := fmt.Sprintf("file-%03d.go", i); p.Entries[i+5].Path != want {
+			t.Fatalf("index lost or duplicated a root file: got %q, want %q", p.Entries[i+5].Path, want)
+		}
+	}
+}
+
+func TestPencodeScanKeepsRootSiblingsWhileIndexingSubtree(t *testing.T) {
+	a := treeEntry{Path: "a", Name: "a", IsDir: true}
+	z := treeEntry{Path: "z", Name: "z", IsDir: true}
+	main := treeEntry{Path: "main.go", Name: "main.go", Openable: true}
+	child := treeEntry{Path: "a/child.go", Name: "child.go", Depth: 1, Openable: true}
+	scan := &pencodeProjectScan{cancel: func() {}, results: make(chan *pencodeTreeBatch, 1), buffers: make(chan *pencodeTreeBatch, 2)}
+	p := &pencodeProject{scan: scan, ExpandedDirs: map[string]bool{"a": true}}
+	m := workspaceModel{projects: []*pencodeProject{p}, activeProjectIndex: 0}
+	for _, step := range []struct {
+		batch pencodeTreeBatch
+		want  []treeEntry
+	}{
+		{pencodeTreeBatch{preview: true, count: 3, entries: [pencodeTreeBatchSize]treeEntry{a, z, main}}, []treeEntry{a, z, main}},
+		{pencodeTreeBatch{index: 7, count: 1, entries: [pencodeTreeBatchSize]treeEntry{a}}, []treeEntry{a, z, main}},
+		{pencodeTreeBatch{index: 7, count: 1, entries: [pencodeTreeBatchSize]treeEntry{child}}, []treeEntry{a, child, z, main}},
+		{pencodeTreeBatch{index: 7, count: 2, done: true, entries: [pencodeTreeBatchSize]treeEntry{z, main}}, []treeEntry{a, child, z, main}},
+	} {
+		scan.results <- &step.batch
+		if !m.pollProjectScans() || !slices.Equal(p.Entries, step.want) {
+			t.Fatalf("partial index hid root siblings or duplicated entries: %+v", p.Entries)
+		}
+		rows := p.visibleTreeRows(&m)
+		if len(rows) != len(step.want) {
+			t.Fatalf("expanded subtree or root siblings are hidden: %v", rows)
+		}
+		<-scan.buffers
+	}
+	if p.scan != nil || p.index != 7 || !p.ExpandedDirs["a"] {
+		t.Fatal("index completion discarded the directory expansion")
+	}
+}
+
 func TestPencodeScanPublishesBeforeSlowSubtreeAndKeepsUserEdits(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
@@ -172,7 +285,7 @@ func TestPencodeScanBatchesInvalidateQuickOpen(t *testing.T) {
 	}
 	project := &pencodeProject{Path: root, Files: make(map[string]*openFile)}
 	connectPencodeProject(t, project)
-	project.scan = newBackendProjectScan(project.backend, root, false, nil, nil)
+	project.scan = newBackendProjectScan(project.backend, project.workspace, false, 0, nil, nil)
 	t.Cleanup(project.stopScan)
 	model := workspaceModel{backend: project.backend, projects: []*pencodeProject{project}, activeProjectIndex: 0, quickQuery: "file-2999"}
 	model.refreshQuickMatches()

@@ -70,7 +70,11 @@ func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 	if n := testing.AllocsPerRun(100, func() { model.syncTreeScroll(world); project.visibleTreeRows(model) }); n != 0 {
 		t.Fatalf("stable tree viewport allocated %g", n)
 	}
-	// Navigation can reveal a row that has no mounted component.
+	// A staged background refresh must not block navigation within the
+	// visible snapshot, including rows that have no mounted component.
+	project.stopScan()
+	project.scan = &pencodeProjectScan{staged: true, cancel: func() {}}
+	t.Cleanup(project.stopScan)
 	entry := project.Entries[count-1]
 	project.Files[entry.Path] = &openFile{Path: entry.Path, Name: entry.Name}
 	project.ActivePath = entry.Path

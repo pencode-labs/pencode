@@ -140,10 +140,11 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 	}
 	switch op {
 	case protocol.WorkspaceWatch:
+		after := d.U64()
 		if err := d.Done(); err != nil {
 			return err
 		}
-		return s.watchWorkspace(ctx, root, e)
+		return s.watchWorkspace(ctx, root, after, e)
 	case protocol.DebugAdapterOpen:
 		return s.openDebugAdapter(ctx, root, &d, e)
 	case protocol.DebugTerminalOpen:

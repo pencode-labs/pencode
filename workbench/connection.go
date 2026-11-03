@@ -69,6 +69,7 @@ type pencodeConnection struct {
 	profiles            []connection.Profile
 	port                string
 	webSocket           bool
+	optionsExpanded     bool
 	typeOptions         [2]htmlui.VNode
 	open, formOpen      bool
 	busy, launch        bool
@@ -750,6 +751,7 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 		case "connection-menu-edit":
 			c.form, c.formOpen, c.edit = profile, true, index
 			c.webSocket = profile.WebSocket.Address != ""
+			c.optionsExpanded = profile.SSH.IdentityFile != "" || profile.Directory != ""
 			c.port = ""
 			if profile.SSH.Port != 0 {
 				c.port = strconv.Itoa(int(profile.SSH.Port))
@@ -787,6 +789,7 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 	case "connection-add":
 		c.form, c.port = connection.Profile{}, ""
 		c.webSocket = false
+		c.optionsExpanded = false
 		c.setMessage("", false)
 		c.formOpen, c.edit, c.menu = true, -1, -1
 	case "connection-form-close", "connection-form-cancel":
@@ -805,6 +808,8 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 		c.form.SSH.Host = value
 	case "connection-port":
 		c.port = value
+	case "connection-toggle-options":
+		c.optionsExpanded = !c.optionsExpanded
 	case "connection-identity":
 		c.form.SSH.IdentityFile = value
 	case "connection-directory":
@@ -926,6 +931,14 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 		view.Attr(field.ref, "value", field.value)
 	}
 	view.Event("connection-type", htmlui.EventChange)
+	view.Event("connection-toggle-options", htmlui.EventClick)
+	view.Attr("connection-toggle-options", "aria-expanded", boolAttribute(c.optionsExpanded))
+	arrow := "icons/chevron-right.svg"
+	if c.optionsExpanded {
+		arrow = "icons/chevron-down.svg"
+	}
+	view.Attr("connection-options-icon", "src", model.themedIcon(arrow, "icon.foreground"))
+	setPanelVisible(view, "connection-options", c.optionsExpanded)
 	nameLabel := "显示名称"
 	if c.webSocket {
 		nameLabel = "显示名称（可选）"
@@ -936,6 +949,7 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 		show bool
 	}{
 		{"connection-ssh-fields", !c.webSocket}, {"connection-websocket-fields", c.webSocket},
+		{"connection-identity-fields", !c.webSocket},
 	} {
 		if field.show {
 			view.RemoveAttr(field.ref, "hidden")

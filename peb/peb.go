@@ -1,4 +1,4 @@
-// Package peb implements Pencode Extension Binary protocol version 16.
+// Package peb implements Pencode Extension Binary protocol version 18.
 // Frames and payloads use little endian integers; stdout is reserved for frames.
 package peb
 
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version    = 16
+	Version    = 18
 	HeaderSize = 16
 	MaxPayload = 4 << 20
 	MaxString  = 64 << 10
@@ -37,6 +37,10 @@ const (
 	UIResponse
 	SettingsRequest
 	SettingsResponse
+	FileChangesRequest
+	FileChangesResponse
+	LifecycleRequest
+	LifecycleResponse
 )
 
 type Capability uint32
@@ -129,10 +133,10 @@ func validFrame(kind Kind, id uint32, size int) bool {
 	if kind == ActionUpdate || kind == UIUpdate {
 		return id == 0
 	}
-	if kind == ActionResponse || kind == UIResponse || kind == SettingsResponse {
+	if kind == FileChangesResponse || kind == ActionResponse || kind == UIResponse || kind == SettingsResponse {
 		return id != 0 && size == 0
 	}
-	if kind == UIRequest || kind == SettingsRequest {
+	if kind == LifecycleRequest || kind == LifecycleResponse || kind == FileChangesRequest || kind == UIRequest || kind == SettingsRequest {
 		return id != 0
 	}
 	return kind >= Initialize && kind <= ActionInvoke && id != 0
@@ -164,7 +168,7 @@ type Theme struct{ ID, Label, Path string }
 // Font contributes a regular face and an optional bold face from resources/.
 type Font struct{ ID, Label, Path, BoldPath string }
 
-// Match rules are case sensitive. Suffix includes its leading dot; the longest
+// Match selects basenames or suffixes. Suffix includes its leading dot; the longest
 // suffix wins, after an exact basename match. Directory names use FolderName.
 type Match uint32
 
@@ -176,6 +180,7 @@ const (
 	FolderName
 )
 
+// IconRule matches file and folder names case-insensitively.
 type IconRule struct {
 	Match         Match
 	Pattern, Path string
@@ -404,7 +409,7 @@ func ServeEditors(input io.Reader, output io.Writer, contributions Contributions
 // ServeExtension supports static registration, editors and live actions. Logs
 // belong on stderr. Action updates can be published independently of clicks.
 func ServeExtension(input io.Reader, output io.Writer, contributions Contributions, handlers Handlers) error {
-	contributions.ActionService = handlers.Action != nil || handlers.UIEvent != nil || handlers.ActivateActions != nil
+	contributions.ActionService = handlers.Action != nil || handlers.UIEvent != nil || handlers.ActivateActions != nil || handlers.FileChanges != nil || handlers.Lifecycle != nil
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	r, w := Reader{Source: input}, Writer{Target: output}
@@ -470,6 +475,31 @@ func ServeExtension(input io.Reader, output io.Writer, contributions Contributio
 		kind := EditorResponse
 		var handleErr error
 		switch f.Kind {
+		case LifecycleRequest:
+			if !active {
+				return ErrProtocol
+			}
+			event, decodeErr := DecodeLifecycleEvent(f.Payload)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			var reply LifecycleReply
+			if handlers.Lifecycle != nil {
+				reply, handleErr = handlers.Lifecycle(event)
+			}
+			kind = LifecycleResponse
+			if handleErr == nil {
+				data, err = EncodeLifecycleReply(data, reply)
+			}
+		case FileChangesRequest:
+			message, decodeErr := DecodeFileChanges(f.Payload)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if handlers.FileChanges != nil {
+				handleErr = handlers.FileChanges(message)
+			}
+			kind, data = FileChangesResponse, data[:0]
 		case SettingsRequest:
 			values, decodeErr := DecodeSettingValues(f.Payload)
 			if decodeErr != nil {

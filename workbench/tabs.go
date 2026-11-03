@@ -145,16 +145,19 @@ type pencodeCloseTarget struct {
 }
 
 type pencodeCloseRequest struct {
-	editorTabs []pencodeEditorTab
-	action     pencodeCloseAction
-	project    *pencodeProject
-	path       string
-	targets    []pencodeCloseTarget
-	index      int
-	message    string
-	error      string
-	needsFocus bool
-	saveID     uint64
+	editorTabs       []pencodeEditorTab
+	action           pencodeCloseAction
+	project          *pencodeProject
+	path             string
+	targets          []pencodeCloseTarget
+	index            int
+	message          string
+	error            string
+	needsFocus       bool
+	saveID           uint64
+	lifecycle        bool
+	lifecycleToken   uint64
+	lifecyclePending map[string]bool
 }
 
 // Collect the dirty files once. Project/window closure only happens after all
@@ -212,6 +215,9 @@ func (model *workspaceModel) beginClose(action pencodeCloseAction, project *penc
 			}
 		}
 	}
+	if model.beginExtensionClose(action, project, relative) {
+		return false
+	}
 	if len(request.targets) == 0 {
 		return true
 	}
@@ -260,7 +266,11 @@ func (model *workspaceModel) clearCloseRequest() {
 
 func (model *workspaceModel) resolveClose(save bool) {
 	request := &model.closing
-	if request.action == pencodeCloseNone || request.saveID != 0 {
+	if request.action == pencodeCloseNone || request.saveID != 0 || len(request.lifecyclePending) != 0 {
+		return
+	}
+	if request.lifecycle {
+		model.approveExtensionClose()
 		return
 	}
 	if save {
@@ -280,6 +290,11 @@ func (model *workspaceModel) resolveClose(save bool) {
 		model.showCloseTarget()
 		return
 	}
+	model.finishClose()
+}
+
+func (model *workspaceModel) finishClose() {
+	request := &model.closing
 	action, project, relative := request.action, request.project, request.path
 	editorTabs := request.editorTabs
 	model.clearCloseRequest()
@@ -367,11 +382,20 @@ func (model *workspaceModel) renderCloseDialog(view *htmlui.View) {
 		view.Attr("content", "disabled", "")
 	}
 	for _, id := range [...]string{"close-save", "close-discard"} {
-		if model.closing.saveID != 0 {
+		if model.closing.saveID != 0 || len(model.closing.lifecyclePending) != 0 {
 			view.Attr(id, "disabled", "")
 		} else {
 			view.RemoveAttr(id, "disabled")
 		}
+	}
+	if model.closing.lifecycle {
+		view.Text("close-title", "确认关闭")
+		view.Text("close-save", "继续关闭")
+		view.Attr("close-discard", "hidden", "")
+	} else {
+		view.Text("close-title", "未保存的更改")
+		view.Text("close-save", "保存")
+		view.RemoveAttr("close-discard", "hidden")
 	}
 	view.Text("close-message", model.closing.message)
 	view.Text("close-error", model.closing.error)

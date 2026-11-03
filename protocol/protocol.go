@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Version    = 8
+	Version    = 10
 	HeaderSize = 24
 	MaxPayload = 64 << 10
 	MaxMessage = 64 << 20

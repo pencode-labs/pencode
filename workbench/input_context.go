@@ -12,6 +12,7 @@ import (
 )
 
 type pencodeInputContext struct {
+	selection            *pencodeExtensionTextSelection
 	target               ecs.Entity
 	value                string
 	caret, anchor, index int
@@ -84,6 +85,13 @@ func inputContextEnabled(field engineui.TextField, readOnly bool) [len(pencodeIn
 	}
 }
 
+func (c *pencodeInputContext) enabled(field engineui.TextField, readOnly bool) [len(pencodeInputContextRefs)]bool {
+	if c.selection != nil {
+		return [len(pencodeInputContextRefs)]bool{false, c.value != "", false, false, true}
+	}
+	return inputContextEnabled(field, readOnly)
+}
+
 func (m *workspaceModel) renderInputContext(view *htmlui.View, definition *htmlui.Definition[pencodeInputContextProps, struct{}]) {
 	c := &m.inputContext
 	p := pencodeInputContextProps{Model: m, Open: c.open, Activate: c.activate, Index: c.index, X: c.x, Y: c.y}
@@ -91,7 +99,7 @@ func (m *workspaceModel) renderInputContext(view *htmlui.View, definition *htmlu
 		field, _ := m.fontResources.Get[engineui.TextField](c.target)
 		control, _ := m.fontResources.Get[htmlui.Control](c.target)
 		field.Caret, field.Anchor = c.caret, c.anchor
-		p.Enabled = inputContextEnabled(field, control.ReadOnly)
+		p.Enabled = c.enabled(field, control.ReadOnly)
 	}
 	view.AppendComponentChild("input-context-slot", 1, definition, p, struct{}{})
 }
@@ -109,14 +117,14 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 	if c.open {
 		field, ok := world.Get[engineui.TextField](c.target)
 		control, _ := world.Get[htmlui.Control](c.target)
-		if !ok || control.Disabled || field.Value != c.value {
+		if c.selection != nil && !c.selection.valid(world) || c.selection == nil && (!ok || control.Disabled || field.Value != c.value) {
 			c.open = false
 			return false, true
 		}
 		inside := m.pointerInsideRefs(world, x, y, []string{"input-context"})
 		if inside {
 			if pointer.DeltaX != 0 || pointer.DeltaY != 0 {
-				enabled := inputContextEnabled(field, control.ReadOnly)
+				enabled := c.enabled(field, control.ReadOnly)
 				for i, ref := range pencodeInputContextRefs {
 					if enabled[i] && i != c.index && m.pointerInsideRefs(world, x, y, []string{ref}) {
 						c.index, c.focus = i, true
@@ -144,7 +152,7 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 				step = -1
 			}
 			if step != 0 {
-				enabled := inputContextEnabled(field, control.ReadOnly)
+				enabled := c.enabled(field, control.ReadOnly)
 				for range len(enabled) {
 					c.index = (c.index + step + len(enabled)) % len(enabled)
 					if enabled[c.index] {
@@ -193,6 +201,23 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 // editable host's cancellable beforeinput event and extension input bindings.
 func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 	c := &m.inputContext
+	if c.selection != nil {
+		if !c.open || !c.selection.valid(m.fontResources) {
+			return
+		}
+		switch ref {
+		case "input-context-copy":
+			state, _ := world.GetResource[*input.State]()
+			state.SetClipboardText(c.selection.text())
+		case "input-context-select-all":
+			c.selection.selectAll()
+		default:
+			return
+		}
+		c.open, c.restore = false, true
+		markPencodeRootDirtyByModel(m.fontResources, m)
+		return
+	}
 	field := world.GetMut[engineui.TextField](c.target)
 	control, _ := world.Get[htmlui.Control](c.target)
 	if !c.open || field == nil || control.Disabled || field.Value != c.value || !scene.IsInteractive(world, c.target) {
@@ -279,6 +304,9 @@ func (m *workspaceModel) syncInputContext(world *module.Content) {
 	c := &m.inputContext
 	if c.restore {
 		c.restore = false
+		if c.selection != nil && c.selection.valid(world) {
+			c.selection.focus(world, m)
+		}
 		if world.Focus(c.target) {
 			if field := world.Mut[engineui.TextField](c.target); field != nil {
 				field.Caret, field.Anchor, field.Selecting = c.caret, c.anchor, false

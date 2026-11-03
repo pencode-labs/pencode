@@ -46,6 +46,8 @@ type EditorReply struct {
 // changing its data-pencode-scroll-key reveals the end of a different transcript.
 // data-pencode-scroll="preserve" retains another scroll area's position while
 // its data-pencode-scroll-key stays the same.
+// A scroll container with data-ref and data-pencode-selectable supports native
+// text selection, copy/select-all shortcuts, and the text context menu.
 // A container with data-ref and data-pencode-region updates its children
 // independently. Changes confined to regions preserve the surrounding DOM,
 // including native input focus and selection. Nested regions update together.

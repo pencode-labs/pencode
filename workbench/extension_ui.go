@@ -28,6 +28,7 @@ type pencodeExtensionInvocation struct {
 	x, y    float32
 }
 type pencodeExtensionUIState struct {
+	selection           pencodeExtensionTextSelection
 	surfaces            []*pencodeExtensionSurface
 	invocations         map[string]pencodeExtensionInvocation
 	overlay, panel      *pencodeExtensionSurface
@@ -64,6 +65,7 @@ type pencodeExtensionScroll struct {
 	follow, restore, end bool
 }
 type pencodeExtensionSurface struct {
+	selectables                    []pencodeExtensionSelectable
 	model                          *workspaceModel
 	session                        *extensions.ActionSession
 	owner                          string
@@ -323,6 +325,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	}
 	focus := make([]pencodeExtensionFocus, 0, len(view.Events))
 	var focusTargets []pencodeExtensionFocusTarget
+	var selectables []pencodeExtensionSelectable
 	var icons []pencodeExtensionIcon
 	var links map[string]string
 	var iconErr error
@@ -381,6 +384,13 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			}
 		}
 		if ref, _ := node.Attr("data-ref"); ref != "" {
+			if _, selectable := node.Attr("data-pencode-selectable"); selectable && !hidden {
+				id, _ := node.Attr("id")
+				if id == "" {
+					id = s.prefix + "control-" + ref
+				}
+				selectables = append(selectables, pencodeExtensionSelectable{ref, id})
+			}
 			if target, _ := node.Attr("data-pencode-focus"); target != "" && !hidden {
 				focusTargets = append(focusTargets, pencodeExtensionFocusTarget{ref: ref, target: target})
 			}
@@ -448,6 +458,9 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			for _, icon := range surface.icons {
 				target.Attr(icon.ref, "src", surface.model.themedIcon(icon.source, icon.foreground))
 			}
+			for _, region := range surface.selectables {
+				target.Attr(region.ref, "id", region.id)
+			}
 			for _, scroll := range surface.scrolls {
 				if scroll.ref != "" {
 					target.Attr(scroll.ref, "id", scroll.id)
@@ -482,6 +495,9 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				}
 			}
 			if event.Kind == htmlui.EventClick {
+				if selection := &surface.model.actions.ui.selection; selection.surface == surface && selection.dragged {
+					return
+				}
 				if href := surface.links[c.Ref]; href != "" {
 					surface.openLink(href)
 					markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
@@ -571,6 +587,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	s.expanded = expanded
 	s.styles = styles
 	s.focusTargets, s.icons = focusTargets, icons
+	s.selectables = selectables
 	s.links = links
 	s.view, s.theme = view, s.model.workbenchTheme
 	s.output = channel
@@ -589,6 +606,10 @@ func (s *pencodeExtensionSurface) captureScroll(ref, id, key string, follow bool
 				if scroll, ok := s.model.fontResources.Get[scene.UIScroll](area); ok {
 					state.position, state.restore = [2]float32{scroll.Position.X(), scroll.Position.Y()}, true
 					state.end = follow && scroll.ContentSize.Y()-scroll.ViewportSize.Y()+scroll.Position.Y() < 24
+					selection := &s.model.actions.ui.selection
+					if selection.surface == s && selection.region == previous.id && (selection.dragging || selection.anchor != selection.caret) {
+						state.end = false
+					}
 				}
 			}
 		}
@@ -752,6 +773,9 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 	if restore && (s.ui.Kind == peb.Popup || s.ui.Kind == peb.Notification) && model.fontResources != nil {
 		restore = s.ownsFocus(model.fontResources)
 	}
+	if state.editor == s {
+		model.selectExtensionTabNeighbor(s)
+	}
 	for i, candidate := range state.surfaces {
 		if candidate == s {
 			copy(state.surfaces[i:], state.surfaces[i+1:])
@@ -762,9 +786,6 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 	}
 	if state.overlay == s {
 		state.overlay = nil
-	}
-	if state.editor == s {
-		state.editor = nil
 	}
 	if state.panel == s {
 		state.panel = nil

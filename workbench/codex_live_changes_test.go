@@ -8,7 +8,6 @@ import (
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
-	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -60,19 +59,18 @@ func TestCodexLiveChangesHover(t *testing.T) {
 	}
 	move(pill.X+pill.Width/2, pill.Y+pill.Height/2)
 	if !visible() {
-		control, ok := m.fontResources.HTMLControl(m.surface, "pencode-extension-live-pill")
-		t.Log("pill", pill, "pointer", state.Pointer(), "control", control, ok)
-		inputState, _ := app.World.Get[scene.InputState2D](control)
-		transform, _ := app.World.Get[scene.UITransform](control)
-		t.Log("input", inputState, "transform", transform)
-		t.Log("hover updated", htmlui.SetControlHover(app.World, control, true))
-		languageInteractionStep(t, app)
-		t.Fatalf("hover did not reveal file list (direct hover visible=%v)", visible())
+		t.Fatal("hover did not reveal file list")
 	}
-	popup := editorContextBounds(t, m, "pencode-extension-live-popup")
+
 	list := editorContextBounds(t, m, "pencode-extension-live-list")
-	if popup.Y+popup.Height > pill.Y+1 || list.Height > 241 || math.Abs(float64(popup.X+popup.Width/2-pill.X-pill.Width/2)) > 1 {
-		t.Fatalf("hover list must be bounded and centered above pill: popup=%+v list=%+v pill=%+v", popup, list, pill)
+	listNode, _ := m.fontResources.HTMLNode(m.surface, "pencode-extension-live-list")
+	area, _ := listNode.ScrollContainer()
+	position := m.fontResources.Ref[scene.UIGlobalTransform](area)
+	// Layout bounds omit the popover's translateX(-50%). Use its rendered
+	// scrollport position for centering and pointer interaction.
+	list.X, list.Y = position.Matrix[12], position.Matrix[13]
+	if list.Y+list.Height > pill.Y || list.Height > 241 || math.Abs(float64(list.X+list.Width/2-pill.X-pill.Width/2)) > 1 {
+		t.Fatalf("hover list must be bounded and centered above pill: list=%+v pill=%+v", list, pill)
 	}
 	move(list.X+list.Width/2, list.Y+list.Height/2)
 	if !visible() {
@@ -83,4 +81,3 @@ func TestCodexLiveChangesHover(t *testing.T) {
 		t.Fatal("hover list stayed visible after pointer left")
 	}
 }
-

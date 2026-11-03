@@ -25,25 +25,25 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 	process.Results = results
 	m.actions.sessions = map[string]*extensions.ActionSession{"codex-test": process}
 	t.Cleanup(func() { delete(m.actions.sessions, "codex-test") })
-	show := func(busy bool) {
+	show := func(busy, unread bool) {
 		t.Helper()
 		results <- extensions.ActionResult{UI: &peb.UI{
-			ID: "task", Title: "Task", Kind: peb.EditorTab, Busy: busy,
+			ID: "task", Title: "Task", Kind: peb.EditorTab, Busy: busy, Unread: unread,
 			View: &peb.EditorView{HTML: `<p>reply</p>`},
 		}}
 		for range 3 {
 			languageInteractionStep(t, app)
 		}
 	}
-	show(false)
+	show(false, false)
 	surface := m.actions.ui.editor
 	file, project := m.activeProjectState().ActivePath, m.activeProjectState()
 	m.selectProjectTab(project, file)
 	markPencodeRootDirtyByModel(m.fontResources, m)
 	languageInteractionStep(t, app)
-	check := func(busy bool) {
+	check := func(busy, unread bool) {
 		t.Helper()
-		if m.actions.ui.editor != nil || surface.ui.Busy != busy {
+		if m.actions.ui.editor != nil || surface.ui.Busy != busy || surface.ui.Unread != unread {
 			t.Fatal("background busy update changed selection or lost state")
 		}
 		found := false
@@ -51,7 +51,7 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 			props := access.Ref().Props
 			if props.Surface == surface {
 				found = true
-				if props.Busy != busy || props.Active {
+				if props.Busy != busy || props.Unread != unread || props.Active {
 					t.Fatal("busy update did not reach the inactive tab", props)
 				}
 			}
@@ -60,20 +60,22 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 			t.Fatalf("tab animation scheduling: found=%t animating=%t busy=%t", found, htmlui.Animating(app.World), busy)
 		}
 	}
-	check(false)
-	show(true)
-	check(true)
+	check(false, false)
+	show(true, false)
+	check(true, false)
 	root, _ := m.fontResources.Get[htmlui.Component[appProps, appState]](m.root)
-	show(true)
-	check(true)
+	show(true, false)
+	check(true, false)
 	current, _ := m.fontResources.Get[htmlui.Component[appProps, appState]](m.root)
 	if root.State.Revision != current.State.Revision {
 		t.Fatal("unchanged busy streaming update rebuilt the workbench")
 	}
-	show(false)
-	check(false)
-	show(true)
-	check(true)
+	show(false, false)
+	check(false, false)
+	show(false, true)
+	check(false, true)
+	show(true, false)
+	check(true, false)
 	state, _ := app.World.GetResource[*input.State]()
 	editorContextClick(t, app, m, state, "file-tab-close:"+surface.rootID)
 	for range 3 {
@@ -208,8 +210,8 @@ func TestExtensionEditorTabsRetainSelectionAndFile(t *testing.T) {
 	}
 	m.selectExtensionTab(one)
 	m.closeExtensionSurface(one, "button", false)
-	if m.actions.ui.editor != nil || m.activeFile() != file {
-		t.Fatal("closing chat did not restore the file")
+	if m.actions.ui.editor != two {
+		t.Fatal("closing chat did not select the adjacent chat")
 	}
 	m.selectExtensionTab(two)
 	m.clearExtensionUI("codex-test")

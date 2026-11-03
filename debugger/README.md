@@ -2,7 +2,7 @@
 
 Pencode implements a DAP client in `dap/`, session state in `debugger/`, and
 debugger views in `workbench/`. Adapters and debug terminals run on the workspace
-machine through CS v8, including SSH workspaces. The GUI never opens a local
+machine through CS v9, including SSH workspaces. The GUI never opens a local
 debugger for a remote project.
 
 ## Go quick start

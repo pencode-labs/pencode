@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -106,12 +108,9 @@ func (model *workspaceModel) unloadContributions(prefix, sourcePrefix string) {
 			if view.icons == nil {
 				continue
 			}
-			for source, texture := range view.icons.textures {
+			for source, image := range view.icons.textures {
 				if strings.HasPrefix(source, sourcePrefix) {
-					if texture != nil {
-						_ = texture.Dispose()
-					}
-					delete(view.icons.textures, source)
+					view.icons.removeImage(image)
 				}
 			}
 		}
@@ -138,11 +137,11 @@ func newPencodeFileIcons(t peb.IconTheme) *pencodeFileIcons {
 		case peb.DefaultFolder:
 			icons.folder = r.Path
 		case peb.FileName:
-			icons.names[r.Pattern] = r.Path
+			icons.names[strings.ToLower(r.Pattern)] = r.Path
 		case peb.FileSuffix:
-			icons.suffixes[r.Pattern] = r.Path
+			icons.suffixes[strings.ToLower(r.Pattern)] = r.Path
 		case peb.FolderName:
-			icons.folders[r.Pattern] = r.Path
+			icons.folders[strings.ToLower(r.Pattern)] = r.Path
 		}
 	}
 	return icons
@@ -152,18 +151,25 @@ func (icons *pencodeFileIcons) source(name string, directory bool) string {
 	if icons == nil {
 		return ""
 	}
+	// Fold into stack storage so ordinary filename lookups stay allocation-free.
+	// Converting the bytes to a string directly in a map lookup does not copy.
+	var buffer [256]byte
+	lower := buffer[:0]
+	for _, c := range name {
+		lower = utf8.AppendRune(lower, unicode.ToLower(c))
+	}
 	if directory {
-		if source := icons.folders[name]; source != "" {
+		if source := icons.folders[string(lower)]; source != "" {
 			return source
 		}
 		return icons.folder
 	}
-	if source := icons.names[name]; source != "" {
+	if source := icons.names[string(lower)]; source != "" {
 		return source
 	}
-	for i := 0; i < len(name); i++ {
-		if name[i] == '.' {
-			if source := icons.suffixes[name[i:]]; source != "" {
+	for i := 0; i < len(lower); i++ {
+		if lower[i] == '.' {
+			if source := icons.suffixes[string(lower[i:])]; source != "" {
 				return source
 			}
 		}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -21,14 +22,26 @@ type serviceIndex struct {
 	done    bool
 	err     error
 	cancel  context.CancelFunc
+	watch   *workspaceWatch
 }
 
 func (p *serviceIndex) signal() { close(p.changed); p.changed = make(chan struct{}) }
 func (p *serviceIndex) walk(ctx context.Context) {
+	p.walkSnapshot(ctx, nil, workspaceTreeDelta{full: true})
+}
+
+func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []protocol.IndexEntry, delta workspaceTreeDelta) {
 	root, err := os.OpenRoot(p.root)
 	if err == nil {
 		defer root.Close()
-		err = p.scan(ctx, root, ".", 0)
+		if delta.full {
+			err = p.scan(ctx, root, ".", 0)
+		} else {
+			p.mu.Lock()
+			p.entries = make([]protocol.IndexEntry, 0, len(previous))
+			p.mu.Unlock()
+			err = p.reconcile(ctx, root, ".", 0, previous, &delta)
+		}
 	}
 	p.mu.Lock()
 	p.done = true
@@ -38,47 +51,96 @@ func (p *serviceIndex) walk(ctx context.Context) {
 	p.signal()
 	p.mu.Unlock()
 }
-func (p *serviceIndex) scan(ctx context.Context, root *os.Root, directory string, depth int) error {
+
+func (p *serviceIndex) append(entry protocol.IndexEntry) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.entries) >= 262144 {
+		return fmt.Errorf("index exceeds 262144 entry budget")
+	}
+	p.entries = append(p.entries, entry)
+	if len(p.entries)%256 == 0 || len(p.entries) == 1 {
+		p.signal()
+	}
+	return nil
+}
+
+func indexSubtreeEnd(entries []protocol.IndexEntry, start int) int {
+	end := start + 1
+	if entries[start].Directory {
+		for end < len(entries) && entries[end].Depth > entries[start].Depth {
+			end++
+		}
+	}
+	return end
+}
+
+func compareIndexNames(a string, aDir bool, b string, bDir bool) int {
+	if aDir != bDir {
+		if aDir {
+			return -1
+		}
+		return 1
+	}
+	return strings.Compare(a, b)
+}
+
+// Reconcile direct children of dirty directories. Existing subtrees retain
+// their paths and entries; only newly discovered directories require a walk.
+func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory string, depth int, previous []protocol.IndexEntry, delta *workspaceTreeDelta) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if depth > 256 {
 		return fmt.Errorf("directory depth exceeds budget")
 	}
+	if delta != nil && !delta.full && !delta.contains(directory) {
+		for i := 0; i < len(previous); i++ {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			entry := previous[i]
+			if err := p.append(entry); err != nil {
+				return err
+			}
+			if entry.Directory && delta.contains(entry.Path) {
+				end := indexSubtreeEnd(previous, i)
+				if err := p.reconcile(ctx, root, entry.Path, entry.Depth+1, previous[i+1:end], delta); err != nil {
+					return err
+				}
+				i = end - 1
+			}
+		}
+		return nil
+	}
 	f, err := root.Open(directory)
 	if err != nil {
-		p.mu.Lock()
-		if p.err == nil {
-			p.err = err
+		if delta == nil {
+			p.mu.Lock()
+			if p.err == nil {
+				p.err = err
+			}
+			p.mu.Unlock()
+			return nil
 		}
-		p.mu.Unlock()
-		return nil
+		return err
 	}
 	children, err := f.ReadDir(262145)
 	f.Close()
 	if err != nil && err != io.EOF {
-		p.mu.Lock()
-		if p.err == nil {
-			p.err = err
-		}
-		p.mu.Unlock()
+		return err
 	}
 	if len(children) > 262144 {
 		return fmt.Errorf("directory exceeds index budget")
 	}
 	slices.SortFunc(children, func(a, b fs.DirEntry) int {
-		if a.IsDir() != b.IsDir() {
-			if a.IsDir() {
-				return -1
-			}
-			return 1
-		}
-		return strings.Compare(a.Name(), b.Name())
+		return compareIndexNames(a.Name(), a.IsDir(), b.Name(), b.IsDir())
 	})
 	prefix := ""
 	if directory != "." {
 		prefix = directory + "/"
 	}
+	offset := 0
 	for _, child := range children {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -88,27 +150,42 @@ func (p *serviceIndex) scan(ctx context.Context, root *os.Root, directory string
 		case ".git", "dist", "node_modules":
 			continue
 		}
-		entry := protocol.IndexEntry{Path: prefix + name, Name: name, Depth: depth, Directory: child.IsDir()}
-		p.mu.Lock()
-		if len(p.entries) >= 262144 {
-			p.mu.Unlock()
-			return fmt.Errorf("index exceeds 262144 entry budget")
+		for offset < len(previous) && compareIndexNames(previous[offset].Name, previous[offset].Directory, name, child.IsDir()) < 0 {
+			offset = indexSubtreeEnd(previous, offset)
 		}
-		p.entries = append(p.entries, entry)
-		if len(p.entries)%256 == 0 || len(p.entries) == 1 {
-			p.signal()
+		var entry protocol.IndexEntry
+		var cached []protocol.IndexEntry
+		matched := offset < len(previous) && previous[offset].Name == name && previous[offset].Directory == child.IsDir()
+		if matched {
+			entry = previous[offset]
+			end := indexSubtreeEnd(previous, offset)
+			cached = previous[offset+1 : end]
+			offset = end
+		} else {
+			entry = protocol.IndexEntry{Path: prefix + name, Name: name, Depth: depth, Directory: child.IsDir()}
 		}
-		p.mu.Unlock()
+		if err := p.append(entry); err != nil {
+			return err
+		}
 		if entry.Directory {
-			if err := p.scan(ctx, root, entry.Path, depth+1); err != nil {
+			if matched {
+				err = p.reconcile(ctx, root, entry.Path, depth+1, cached, delta)
+			} else {
+				err = p.scan(ctx, root, entry.Path, depth+1)
+			}
+			if err != nil {
 				return err
 			}
 		}
 	}
 	return nil
 }
+func (p *serviceIndex) scan(ctx context.Context, root *os.Root, directory string, depth int) error {
+	return p.reconcile(ctx, root, directory, depth, nil, nil)
+}
 func (s *services) index(ctx context.Context, op protocol.Operation, root string, d *protocol.Decoder, e *protocol.Encoder) error {
 	if op == protocol.IndexOpen {
+		previousID := d.U64()
 		if err := d.Done(); err != nil {
 			return err
 		}
@@ -120,24 +197,60 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 		if root != "" && !s.roots[root] {
 			return &protocol.Error{Code: protocol.NotFound, Message: "workspace is closed"}
 		}
-		// Replace an obsolete scan instead of retaining multiple copies of the tree.
-		for id, p := range s.indexes {
-			if p.root == root {
-				p.cancel()
-				delete(s.indexes, id)
+		if p := s.indexes[previousID]; p != nil && p.root != root {
+			return protocol.ErrProtocol
+		}
+		s.next++
+		id := s.next
+		watch := s.watches[root]
+		var baseline uint64
+		var previous []protocol.IndexEntry
+		delta := workspaceTreeDelta{full: true}
+		if watch != nil {
+			baseline, watch.index = watch.index, id
+			delta = watch.tree.take()
+			select {
+			case <-watch.done:
+				delta.full = true
+			default:
+			}
+			for i, name := range delta.directories[:delta.count] {
+				relative, err := filepath.Rel(filepath.FromSlash(root), name)
+				if err != nil || !filepath.IsLocal(relative) {
+					delta.full = true
+					break
+				}
+				delta.directories[i] = filepath.ToSlash(relative)
 			}
 		}
-		if len(s.indexes) >= 32 {
+		// Keep the visible snapshot queryable until the client commits the new
+		// one. Directory hints apply only to the most recently started snapshot;
+		// a cancelled or failed replacement cannot make an older baseline clean.
+		for oldID, p := range s.indexes {
+			if p.root == root {
+				p.mu.Lock()
+				if oldID == previousID && oldID == baseline && watch != nil && p.watch == watch && p.done && p.err == nil {
+					previous = p.entries
+				}
+				p.mu.Unlock()
+				if oldID != previousID {
+					p.cancel()
+					delete(s.indexes, oldID)
+				}
+			}
+		}
+		if previous == nil {
+			delta.full = true
+		}
+		if len(s.indexes) >= 64 {
 			return &protocol.Error{Code: protocol.Busy, Message: "index budget exceeded"}
 		}
 		scanCtx, cancel := context.WithCancel(s.ctx)
-		s.next++
-		id := s.next
-		p := &serviceIndex{root: root, changed: make(chan struct{}), cancel: cancel}
+		p := &serviceIndex{root: root, changed: make(chan struct{}), cancel: cancel, watch: watch}
 		s.indexes[id] = p
 		e.U64(id)
 		s.background.Add(1)
-		go func() { defer s.background.Done(); p.walk(scanCtx) }()
+		go func() { defer s.background.Done(); p.walkSnapshot(scanCtx, previous, delta) }()
 		return nil
 	}
 	id := d.U64()

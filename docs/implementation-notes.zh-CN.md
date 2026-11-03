@@ -254,7 +254,7 @@ cp -R extensions/go/resources "$pencode_extension_dir/"
 
 不打包字体。启动时读取系统已安装的字体列表，在「设置 → 外观 → 代码字体 / 界面字体」中分别选择。列表按字体家族去重，支持 TTF、OTF、TTC、OTC；字体按需加载，普通体与粗体缓存由会话共享。新安装的字体在重启后显示。
 
-macOS / iOS 优先 Menlo，其次 Monaco、Courier New；Windows 代码字体优先 Consolas，其次 Courier New、Menlo、Monaco，界面字体默认使用 Microsoft YaHei，不可用时回退到代码默认字体；Linux 等平台优先 Courier New，其次 Menlo、Monaco。上述字体均未安装时使用其他可用的系统等宽字体。其他平台的代码与界面默认使用同一字体，选择按字体家族名保存到 `resources/settings.json`，已卸载的字体会回退到当前平台默认字体。
+macOS 代码字体默认使用 SF Mono Regular（SF Mono 家族的常规体），不可用时依次回退到 Menlo、Monaco、Courier New，界面字体默认使用系统原生界面字体；iOS 优先 Menlo，其次 Monaco、Courier New；Windows 代码字体优先 Consolas，其次 Courier New、Menlo、Monaco，界面字体默认使用 Microsoft YaHei，不可用时回退到代码默认字体；Linux 等平台优先 Courier New，其次 Menlo、Monaco。上述字体均未安装时使用其他可用的系统等宽字体。其他平台的代码与界面默认使用同一字体，选择按字体家族名保存到 `resources/settings.json`，已卸载的字体会回退到当前平台默认字体。
 
 所选字体缺少字形时，文本系统按需查找支持该字符的系统字体，并尽量匹配字重和斜体。例如选择 Consolas 后，英文仍使用 Consolas，中文自动使用已安装的中文字体。测量、光标、选区与灰度/LCD 绘制共用字形回退结果；首次遇到缺字时读取候选字体的字符映射，仅加载命中的字体，后续复用缓存（包括未找到字形的结果）。行高和基线继续由主字体决定。
 

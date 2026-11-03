@@ -14,11 +14,29 @@ import (
 	"github.com/pencode-labs/pencode/extensions"
 )
 
+func TestPencodeSystemUIFontFamily(t *testing.T) {
+	installed := []font.SystemFont{
+		{Family: "Mono", Path: "/system/ui.ttc", Monospace: true},
+		{Family: "UI Italic", Path: "/system/ui.ttc", Weight: 400, Italic: true},
+		{Family: "UI", Path: "/system/ui.ttc", Weight: 400},
+		{Family: "Other", Path: "/other.ttf", Weight: 400},
+	}
+	if got := systemUIFontFamily("/system/ui.ttc", installed); got != "UI" {
+		t.Fatalf("system UI family = %q, want UI", got)
+	}
+	if got := systemUIFontFamily("/missing.ttf", installed); got != "" {
+		t.Fatalf("missing system UI family = %q, want empty", got)
+	}
+	if got := systemUIFontFamily("/system/ui.ttc", []font.SystemFont{{Family: "Mono", Path: "/system/ui.ttc", Monospace: true}}); got != "Mono" {
+		t.Fatalf("monospace fallback = %q, want Mono", got)
+	}
+}
+
 func TestPencodePlatformFontPreference(t *testing.T) {
 	for _, goos := range []string{"darwin", "ios", "windows", "linux", "android"} {
 		t.Run(goos, func(t *testing.T) {
 			model := workspaceModel{fonts: make(map[string]pencodeFont)}
-			for _, id := range []string{"Menlo", "Monaco", "Courier New", "Consolas"} {
+			for _, id := range []string{"SF Mono", "Menlo", "Monaco", "Courier New", "Consolas"} {
 				model.fonts[id] = pencodeFont{regular: &text.Font{}}
 			}
 			want := "Courier New"
@@ -27,6 +45,9 @@ func TestPencodePlatformFontPreference(t *testing.T) {
 			}
 			if goos == "darwin" || goos == "ios" {
 				want = "Menlo"
+			}
+			if goos == "darwin" {
+				want = "SF Mono"
 			}
 			if got := model.resolveDefaultFont(goos); got != want || defaultPencodeFont(goos) != want {
 				t.Fatalf("default = %q, want %q", got, want)
@@ -37,6 +58,12 @@ func TestPencodePlatformFontPreference(t *testing.T) {
 			}
 			if got := defaultPencodeUIFont(goos); got != wantUI {
 				t.Fatalf("UI default = %q, want %q", got, wantUI)
+			}
+			delete(model.fonts, "SF Mono")
+			if goos == "darwin" {
+				if got := model.resolveDefaultFont(goos); got != "Menlo" {
+					t.Fatalf("SF Mono fallback = %q, want Menlo", got)
+				}
 			}
 			delete(model.fonts, "Consolas")
 			delete(model.fonts, "Menlo")

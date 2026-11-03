@@ -133,7 +133,8 @@ func (model *workspaceModel) refreshQuickMatches() {
 		model.quickCount = 0
 		return
 	}
-	if model.quickCachedQuery == model.quickQuery && model.quickProjectPath == project.Path && model.quickCount >= 0 {
+	sameQuery := model.quickCachedQuery == model.quickQuery && model.quickProjectPath == project.Path && model.quickCount >= 0
+	if sameQuery && model.quickSnapshot == project.index {
 		return
 	}
 	if model.quickWorker == nil {
@@ -169,8 +170,12 @@ func (model *workspaceModel) refreshQuickMatches() {
 		}
 	}
 	model.quickCachedQuery, model.quickProjectPath = model.quickQuery, project.Path
-	clear(model.quickMatches[:])
-	model.quickCount = 0
+	model.quickSnapshot = project.index
+	// Keep visible results selectable while file events refresh their index.
+	if !sameQuery {
+		clear(model.quickMatches[:])
+		model.quickCount = 0
+	}
 	model.quickWorker.submit(job)
 }
 func (model *workspaceModel) closeQuickWorker() {

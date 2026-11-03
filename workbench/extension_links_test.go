@@ -80,7 +80,7 @@ func TestExtensionLinkIconsRenderOnce(t *testing.T) {
 			if want := source + "?foreground=" + m.workbenchTheme.theme.Color("textLink.foreground").Hex()[1:]; colored != want {
 				t.Fatalf("%s: %s color = %s, want %s", theme, name, colored, want)
 			}
-			texture, ok := provider.ResolveHTMLImage(colored)
+			texture, ok := provider.ResolveHTMLImage(colored, 0, 0)
 			if !ok {
 				t.Fatalf("missing %s texture", name)
 			}

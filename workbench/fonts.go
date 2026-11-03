@@ -21,6 +21,9 @@ type pencodeFont struct {
 }
 
 func defaultPencodeFont(goos string) string {
+	if goos == "darwin" {
+		return "SF Mono"
+	}
 	if goos == "windows" {
 		return "Consolas"
 	}
@@ -35,6 +38,46 @@ func defaultPencodeUIFont(goos string) string {
 		return "Microsoft YaHei"
 	}
 	return defaultPencodeFont(goos)
+}
+
+// defaultUIFontSelection follows the font CoreText uses for native macOS UI.
+// The system font catalog stores the same file path, so resolve that family
+// back to the selectable font registry used by the workbench.
+func defaultUIFontSelection() string {
+	if runtime.GOOS == "darwin" {
+		if path, err := font.DefaultFontPath(); err == nil {
+			if installed, err := font.SystemFonts(); err == nil {
+				if family := systemUIFontFamily(path, installed); family != "" {
+					return family
+				}
+			}
+		}
+	}
+	return defaultPencodeUIFont(runtime.GOOS)
+}
+
+func systemUIFontFamily(path string, installed []font.SystemFont) string {
+	best, distance := "", int(^uint(0)>>1)
+	fallback, fallbackDistance := "", int(^uint(0)>>1)
+	for _, source := range installed {
+		if source.Path != path {
+			continue
+		}
+		d := fontStyleDistance(source, 400)
+		if fallback == "" || d < fallbackDistance || d == fallbackDistance && source.Family < fallback {
+			fallback, fallbackDistance = source.Family, d
+		}
+		if source.Monospace {
+			continue
+		}
+		if best == "" || d < distance || d == distance && source.Family < best {
+			best, distance = source.Family, d
+		}
+	}
+	if best != "" {
+		return best
+	}
+	return fallback
 }
 
 func (model *workspaceModel) loadFont(id string) bool {
@@ -73,6 +116,9 @@ func fontStyleDistance(source font.SystemFont, target int) int {
 }
 
 func (model *workspaceModel) resolveDefaultFont(goos string) string {
+	if goos == "darwin" && model.loadFont("SF Mono") {
+		return "SF Mono"
+	}
 	if goos == "windows" && model.loadFont("Consolas") {
 		return "Consolas"
 	}
@@ -131,7 +177,7 @@ func (model *workspaceModel) initializeFonts() error {
 	}
 	model.defaultFont = model.fonts[model.defaultFontID].regular
 	model.defaultUIFontID = model.defaultFontID
-	if id := defaultPencodeUIFont(runtime.GOOS); model.loadFont(id) {
+	if id := defaultUIFontSelection(); model.loadFont(id) {
 		model.defaultUIFontID = id
 	}
 	for _, selection := range [...]struct {

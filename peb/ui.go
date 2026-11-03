@@ -84,6 +84,8 @@ type UI struct {
 	Severity NotificationSeverity
 	// Busy replaces an EditorTab's close icon with a processing animation.
 	Busy bool
+	// Unread marks an EditorTab with completed work that has not been viewed.
+	Unread bool
 	// InterceptClose keeps an EditorTab open on user close and emits
 	// "closerequest" instead. Call CloseUI after any confirmation succeeds.
 	InterceptClose bool
@@ -120,6 +122,7 @@ func EncodeUI(dst []byte, v UI) ([]byte, error) {
 	e.number(v.AutoCloseMS)
 	e.number(uint32(v.Severity))
 	e.number(boolNumber(v.Busy))
+	e.number(boolNumber(v.Unread))
 	e.number(boolNumber(v.InterceptClose))
 	encodeActionContext(&e, v.Context)
 	encodeView(&e, v.View)
@@ -147,6 +150,7 @@ func DecodeUI(data []byte) (UI, error) {
 	v.AutoCloseMS = d.number()
 	v.Severity = NotificationSeverity(d.number())
 	v.Busy = d.boolean()
+	v.Unread = d.boolean()
 	v.InterceptClose = d.boolean()
 	v.Context, v.View = decodeActionContext(&d), decodeView(&d)
 	v.ViewVersion = d.number()

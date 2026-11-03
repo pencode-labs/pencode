@@ -76,7 +76,7 @@ type pencodeDebugRowProps struct {
 }
 
 func newDebugRowDefinition(content *module.Content) (*htmlui.Definition[pencodeDebugRowProps, struct{}], error) {
-	return content.Define[pencodeDebugRowProps, struct{}](htmlui.NewTemplate(`<button data-ref="row" class="pencode-debug-row" type="button"><span data-ref="toggle" class="pencode-debug-toggle"></span><span data-ref="label" class="pencode-debug-label"></span><span data-ref="detail" class="pencode-debug-detail"></span></button>`), "", module.ContentBehavior[pencodeDebugRowProps, struct{}]{
+	return content.Define[pencodeDebugRowProps, struct{}](htmlui.NewTemplate(`<button data-ref="row" class="pencode-debug-row" type="button"><img data-ref="toggle" class="pencode-debug-toggle" src="icons/chevron-right.svg" alt=""><span data-ref="label" class="pencode-debug-label"></span><span data-ref="detail" class="pencode-debug-detail"></span></button>`), "", module.ContentBehavior[pencodeDebugRowProps, struct{}]{
 		Render: func(c module.ContentRenderContext[pencodeDebugRowProps, struct{}], view *htmlui.View) {
 			r := c.Props.Row
 			if r.slot == "debug-template-menu" {
@@ -105,17 +105,21 @@ func newDebugRowDefinition(content *module.Content) (*htmlui.Definition[pencodeD
 			view.Event("row", htmlui.EventClick)
 			view.Text("label", r.label)
 			view.Text("detail", r.detail)
-			arrow := ""
+			arrow := "icons/chevron-right.svg"
 			if r.expandable {
-				arrow = "▸"
 				if r.expanded {
-					arrow = "▾"
+					arrow = "icons/chevron-down.svg"
 				}
 				view.Attr("row", "aria-expanded", boolAttribute(r.expanded))
 			} else {
 				view.RemoveAttr("row", "aria-expanded")
 			}
-			view.Text("toggle", arrow)
+			view.Attr("toggle", "src", c.Props.Model.themedIcon(arrow, "icon.foreground"))
+			visibility := "visibility:hidden"
+			if r.expandable {
+				visibility = "visibility:visible"
+			}
+			view.Attr("toggle", "style", visibility)
 		},
 		HandleEvent: func(c *module.ContentEventContext[pencodeDebugRowProps, struct{}]) {
 			if c.Ref == "row" {
@@ -796,11 +800,11 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 		view.Event(ref, htmlui.EventClick)
 	}
 	view.Attr("debug-toggle-threads", "aria-expanded", boolAttribute(u.threadsExpanded))
-	arrow := "▸"
+	arrow := "icons/chevron-right.svg"
 	if u.threadsExpanded {
-		arrow = "▾"
+		arrow = "icons/chevron-down.svg"
 	}
-	view.Text("debug-threads-toggle", arrow)
+	view.Attr("debug-threads-toggle", "src", m.themedIcon(arrow, "icon.foreground"))
 	setPanelVisible(view, "debug-threads", u.threadsExpanded)
 	view.Event("debug-config", htmlui.EventChange)
 	view.Event("debug-expression", htmlui.EventInput)

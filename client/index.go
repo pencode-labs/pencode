@@ -7,7 +7,18 @@ import (
 )
 
 func (c *Client) OpenIndex(ctx context.Context, root string) (uint64, error) {
+	return c.openIndex(ctx, root, 0)
+}
+
+// RefreshIndex reuses the previous snapshot and rereads directories reported by
+// the native watcher. A missing or invalid snapshot is rebuilt in full.
+func (c *Client) RefreshIndex(ctx context.Context, root string, previous uint64) (uint64, error) {
+	return c.openIndex(ctx, root, previous)
+}
+
+func (c *Client) openIndex(ctx context.Context, root string, previous uint64) (uint64, error) {
 	e := service(protocol.IndexOpen, root)
+	e.U64(previous)
 	d, err := c.execute(ctx, &e)
 	if err != nil {
 		return 0, err

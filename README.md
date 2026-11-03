@@ -27,6 +27,8 @@ The extension manager currently installs from local directories; there is no onl
 
 At startup, the editor, standalone server, and extension installer import manual HTTP/HTTPS system proxies from Windows Internet settings (including machine policy), macOS network settings, or Linux GNOME settings. Extensions and tools inherit them through environment variables. Existing `HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` variables (including lowercase forms) take precedence, and explicit `NO_PROXY` settings are preserved. Restart the relevant process after changing system proxies. PAC/WPAD scripts are not evaluated; child processes interpret bypass rules according to their own `NO_PROXY` support.
 
+File changes use native FSEvents on macOS, recursive `ReadDirectoryChangesW` on Windows, and inotify on Linux. A unified file service distributes changes to the editor and extensions, with bounded history and explicit resynchronization after overflow.
+
 ## Development setup
 
 ### Requirements and current limitations
@@ -112,7 +114,7 @@ go test -p 1 -tags codex_integration ./workbench
 ```text
 Desktop workbench (Onix)
         │
-        │ CS v8: local process pipes, SSH stdin/stdout, or WebSocket
+        │ CS v9: local process pipes, SSH stdin/stdout, or WebSocket
         ▼
 Pencode server
         ├── Files, documents, indexing, and syntax parsing
@@ -157,7 +159,7 @@ For an existing checkout, initialize the submodules with `git submodule update -
 (cd extensions/go && go build -o bin/go .)
 ```
 
-The current extension protocol is peb v13 (CS v8). Older extensions must be rebuilt with the current SDK.
+The current extension protocol is peb v13 (CS v9). Older extensions must be rebuilt with the current SDK.
 
 ## Documentation
 

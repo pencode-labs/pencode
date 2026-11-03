@@ -1,14 +1,17 @@
 package workbench
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
 
+	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/render"
 	"github.com/diiyw/onix/scene"
 	"github.com/diiyw/onix/syntax"
+	"github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/extensions"
@@ -71,7 +74,7 @@ func TestCodexStatusBarIconRenders(t *testing.T) {
 		if _, err := app.Step(); err != nil {
 			t.Fatal(err)
 		}
-		texture, ok := provider.ResolveHTMLImage(model.themedIcon(source, "icon.foreground"))
+		texture, ok := provider.ResolveHTMLImage(model.themedIcon(source, "icon.foreground"), 0, 0)
 		if !ok {
 			t.Fatal("missing Codex icon texture")
 		}
@@ -106,6 +109,7 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
    "symbolIcon.structForeground":"#008070", "symbolIcon.eventForeground":"#9e6a03", "symbolIcon.operatorForeground":"#af00db", "symbolIcon.typeParameterForeground":"#008070",
    "problemsErrorIcon.foreground":"#e81123", "problemsWarningIcon.foreground":"#bf8803",
    "problemsInfoIcon.foreground":"#1a85ff", "editorHint.foreground":"#6c6c6c",
+   "notificationsErrorIcon.foreground":"#d92233", "notificationsWarningIcon.foreground":"#ba8704", "notificationsInfoIcon.foreground":"#2b76ee",
    "list.activeSelectionForeground":"#cc00dd", "tab.activeForeground":"#112233", "tab.inactiveForeground":"#aabbcc",
    "debugIcon.startForeground":"#388e3c", "debugIcon.continueForeground":"#007acc",
    "debugIcon.pauseForeground":"#a06c00", "debugIcon.restartForeground":"#a06c00",
@@ -143,22 +147,22 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	provider.model = &workspaceModel{extensionIcons: map[string][]byte{codexIcon: data}}
 	prepared.icons[pencodeIconKey{codexIcon, "icon.foreground"}] = codexIcon + "?foreground=2468ac80"
 	defer func() {
-		for _, texture := range provider.textures {
-			if texture != nil {
-				_ = texture.Dispose()
+		for _, image := range provider.textures {
+			if image.texture != nil {
+				_ = image.texture.Dispose()
 			}
 		}
 	}()
 	for key, source := range prepared.icons {
-		texture, ok := provider.ResolveHTMLImage(source)
+		texture, ok := provider.ResolveHTMLImage(source, 0, 0)
 		if !ok || !texture.Valid() {
 			t.Fatalf("decode %s", source)
 		}
 		if !texture.Mipmapped() || texture.MipLevels() < 3 {
-			t.Fatalf("%s has no mip chain for its 4x raster", source)
+			t.Fatalf("%s has no mip chain for its raster", source)
 		}
-		if x, y := texture.RasterScale(); x != 4 || y != 4 {
-			t.Fatalf("%s raster scale = %gx%g, want 4x4", source, x, y)
+		if x, y := texture.RasterScale(); x != 1 || y != 1 {
+			t.Fatalf("%s raster scale = %gx%g, want 1x1", source, x, y)
 		}
 		if descriptor := driver.descriptors[texture.RenderHandle()]; descriptor.Filter != render.TextureFilterLinearMipmapLinear {
 			t.Fatalf("%s uploaded without mipmap filtering: %v", source, descriptor.Filter)
@@ -188,7 +192,7 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 			t.Fatalf("%s lost its theme opacity", source)
 		}
 		if allocations := testing.AllocsPerRun(100, func() {
-			cached, ok := provider.ResolveHTMLImage(source)
+			cached, ok := provider.ResolveHTMLImage(source, 0, 0)
 			if !ok || cached != texture {
 				t.Fatal("cached icon texture changed")
 			}
@@ -200,7 +204,7 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	provider.model = &workspaceModel{extensionImages: map[string][]byte{
 		preview: []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32"/></svg>`),
 	}}
-	texture, ok := provider.ResolveHTMLImage(preview)
+	texture, ok := provider.ResolveHTMLImage(preview, 0, 0)
 	if !ok || texture.Width != 64 || texture.Height != 32 {
 		t.Fatal("editor preview inherited icon supersampling")
 	}
@@ -236,7 +240,7 @@ func TestPencodeIconsFollowSelectionAndTabState(t *testing.T) {
 			{"icons/close.svg", "tab.activeForeground"},
 			{"icons/close.svg", "tab.inactiveForeground"},
 		} {
-			texture, ok := provider.ResolveHTMLImage(model.themedIcon(key.source, key.foreground))
+			texture, ok := provider.ResolveHTMLImage(model.themedIcon(key.source, key.foreground), 0, 0)
 			if !ok {
 				t.Fatalf("missing %v texture", key)
 			}
@@ -288,12 +292,12 @@ func TestExtensionUIReusesIDEIconTextures(t *testing.T) {
 			if bounds.Width != 16 || bounds.Height != 16 {
 				t.Fatalf("%s size = %gx%g", icon.id, bounds.Width, bounds.Height)
 			}
-			texture, ok := provider.ResolveHTMLImage(model.themedIcon(icon.source, "icon.foreground"))
+			texture, ok := provider.ResolveHTMLImage(model.themedIcon(icon.source, "icon.foreground"), 0, 0)
 			if !ok {
 				t.Fatalf("missing IDE texture for %s", icon.source)
 			}
-			if x, y := texture.RasterScale(); x != 4 || y != 4 || !texture.Mipmapped() {
-				t.Fatalf("%s must use IDE 4x sampling and mipmaps", icon.source)
+			if x, y := texture.RasterScale(); x != 1 || y != 1 || !texture.Mipmapped() {
+				t.Fatalf("%s must use display-sized sampling and mipmaps", icon.source)
 			}
 			found := false
 			for entity, access := range model.fontResources.Query[scene.Sprite2D]() {
@@ -310,5 +314,84 @@ func TestExtensionUIReusesIDEIconTextures(t *testing.T) {
 				t.Fatalf("%s did not render the shared %s texture", theme, icon.source)
 			}
 		}
+	}
+}
+
+func TestIconResolutionFollowsRenderedSize(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	provider := session.active.icons
+	const source = "icons/close.svg?foreground=123456"
+	small, ok := provider.ResolveHTMLImage(source, 14, 14)
+	if !ok {
+		t.Fatal("small icon")
+	}
+	beforeWidth, beforeHeight := small.Width, small.Height
+	before := beforeWidth * beforeHeight
+	layer := provider.content.SpawnNode(ui.NodeOptions{}, scene.SpriteLayers2D{Layers: []scene.SpriteLayer2D{{Sprite: scene.Sprite2D{Texture: small}}}})
+	large, ok := provider.ResolveHTMLImage(source, 28, 28)
+	if !ok {
+		t.Fatal("large icon")
+	}
+	if large.Width*large.Height != before*4 {
+		t.Fatalf("raster did not follow actual display size: %dx%d -> %dx%d", beforeWidth, beforeHeight, large.Width, large.Height)
+	}
+	if got, _ := provider.content.Get[scene.SpriteLayers2D](layer); got.Layers[0].Sprite.Texture != large {
+		t.Fatal("resolution upgrade left a layered image with a retired texture")
+	}
+	if n := testing.AllocsPerRun(100, func() {
+		cached, ok := provider.ResolveHTMLImage(source, 16, 16)
+		if !ok || cached != large {
+			t.Fatal("larger raster was not reused")
+		}
+	}); n != 0 {
+		t.Fatalf("warm image lookup allocated %g", n)
+	}
+	app.RequestRender()
+	if _, err := app.Step(); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestImageCacheBoundsAndKeepsLiveSprites(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	provider := session.active.icons
+	if _, err := app.Step(); err != nil {
+		t.Fatal(err)
+	}
+	var live *graphics.Texture
+	for _, access := range provider.content.Query[scene.Sprite2D]() {
+		if image := provider.images[access.Ref().Texture]; image != nil {
+			live = image.texture
+			break
+		}
+	}
+	if live == nil {
+		t.Fatal("missing live icon fixture")
+	}
+	layerLive, ok := provider.ResolveHTMLImage("icons/close.svg?foreground=ff00ff", 14, 14)
+	if !ok {
+		t.Fatal("layered image fixture")
+	}
+	provider.content.SpawnNode(ui.NodeOptions{}, scene.SpriteLayers2D{Layers: []scene.SpriteLayer2D{{Sprite: scene.Sprite2D{Texture: layerLive}}}})
+	for i := range pencodeImageCacheEntries + 64 {
+		source := fmt.Sprintf("icons/close.svg?foreground=%06x", i)
+		if _, ok := provider.ResolveHTMLImage(source, 16, 16); !ok {
+			t.Fatal(source)
+		}
+	}
+	provider.trimImages()
+	if len(provider.textures) > pencodeImageCacheEntries || provider.bytes > pencodeImageCacheBytes {
+		t.Fatalf("cache exceeded budget: %d images %d bytes", len(provider.textures), provider.bytes)
+	}
+	if !live.Valid() || !layerLive.Valid() {
+		t.Fatal("cache disposed a live sprite texture")
+	}
+	oldCount := len(provider.textures)
+	provider.model.selectTheme("light-plus")
+	provider.trimImages()
+	if len(provider.textures) >= oldCount {
+		t.Fatal("theme switch retained unused old variants")
+	}
+	if !live.Valid() || !layerLive.Valid() {
+		t.Fatal("theme sweep disposed a retained sprite")
 	}
 }

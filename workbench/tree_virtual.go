@@ -62,7 +62,7 @@ func (project *pencodeProject) treeRange(world *module.Content, model *workspace
 	}
 	c := &model.fileContext
 	editing := c.project == project && c.inline()
-	if (model.revealProject == project || editing && c.needsFocus) && project.scan == nil {
+	if (model.revealProject == project || editing && c.needsFocus) && (project.scan == nil || project.scan.staged) {
 		for i, index := range rows {
 			if editing && index != -1 || !editing && (index < 0 || project.Entries[index].Path != model.revealPath) {
 				continue

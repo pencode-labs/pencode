@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/fsnotify/fsnotify"
+	"github.com/pencode-labs/pencode/internal/filewatch"
 )
 
 func TestWorkspaceWatchDirectoryMemory(t *testing.T) {
@@ -20,7 +20,7 @@ func TestWorkspaceWatchDirectoryMemory(t *testing.T) {
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	watcher, err := fsnotify.NewWatcher()
+	watcher, err := filewatch.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,10 +31,9 @@ func TestWorkspaceWatchDirectoryMemory(t *testing.T) {
 	}
 	runtime.GC()
 	runtime.ReadMemStats(&after)
-	// Allow directory metadata and runtime noise, while rejecting a return to
-	// the Windows default of 64 KiB per directory.
+	// One recursive 16 KiB buffer, plus directory metadata and runtime noise.
 	used := int64(after.HeapAlloc) - int64(before.HeapAlloc)
-	budget := int64(len(w.directories)*(20<<10) + (512 << 10))
+	budget := int64(512 << 10)
 	if used > budget {
 		t.Fatalf("%d directories retain %d bytes, budget %d", len(w.directories), used, budget)
 	}

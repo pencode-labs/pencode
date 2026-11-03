@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -57,6 +56,13 @@ func TestCodexHistorySwitchesConversations(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
 	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
 	t.Setenv("PENCODE_CODEX_HISTORY_SWITCH", "1")
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexWindowAndProjectCloseConfirmBackgroundWork(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
+	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
+	t.Setenv("PENCODE_CODEX_LIFECYCLE", "1")
 	testCodexStatusBarWorkspace(t, "")
 }
 
@@ -234,29 +240,56 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		})
 		return id
 	}
+	if os.Getenv("PENCODE_CODEX_LIFECYCLE") == "1" {
+		phase = "start running conversation"
+		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "wait"}, "")
+		surface.send(peb.EditorEvent{Kind: "click", Ref: "send"}, "")
+		wait(func() bool { return surface.ui.Busy && strings.Contains(surface.view.HTML, "Thread permissions:") })
+		phase = "close running tab"
+		editorContextClick(t, app, model, state, "file-tab-close:"+surface.rootID)
+		wait(func() bool { return len(model.actions.ui.surfaces) == 0 })
+		for _, projectClose := range []bool{false, true} {
+			phase = fmt.Sprintf("confirm background work for project=%t", projectClose)
+			project := model.activeProjectState()
+			if projectClose {
+				model.closeProject(project)
+			} else if model.requestWindowClose() {
+				t.Fatal("window closed without checking background work")
+			}
+			wait(func() bool {
+				return model.closing.lifecycle && len(model.closing.lifecyclePending) == 0 && strings.Contains(model.closing.message, "1 个会话")
+			})
+			editorContextClick(t, app, model, state, "close-cancel")
+			if model.closing.action != pencodeCloseNone || model.activeProjectState() != project {
+				t.Fatal("cancel did not preserve project")
+			}
+		}
+		phase = "reopen background work after cancelling close"
+		editorContextClick(t, app, model, state, button)
+		wait(func() bool { return model.actions.ui.editor != nil && model.actions.ui.editor.ui.Busy })
+		return
+	}
 	if os.Getenv("PENCODE_CODEX_NEW_SESSION") == "1" {
-		original := surface
+		original, count := surface, len(model.actions.ui.surfaces)
 		for index := 1; index <= 2; index++ {
 			phase = "create session " + strconv.Itoa(index)
 			editorContextClick(t, app, model, state, waitControl(surface, "new"))
 			wait(func() bool {
-				next := model.actions.ui.editor
-				return next != nil && next != surface && next.ui.ID == strconv.Itoa(index)+".composer"
+				return model.actions.ui.editor == original && strings.Contains(surface.view.HTML, "新会话")
 			})
-			surface = model.actions.ui.editor
 			phase = "open new session permissions"
 			editorContextClick(t, app, model, state, waitControl(surface, "permission-settings"))
 			wait(func() bool {
 				menu := model.actions.ui.overlay
-				return menu != nil && menu.ui.ID == strconv.Itoa(index)+".permissions" && menu.ui.Anchor == "ui:"+surface.ui.ID+"#permission-settings"
+				return menu != nil && menu.ui.ID == "permissions" && menu.ui.Anchor == "ui:composer#permission-settings"
 			})
 			editorContextClick(t, app, model, state, waitControl(model.actions.ui.overlay, "permission/full"))
 			wait(func() bool {
 				return model.actions.ui.overlay == nil && strings.Contains(surface.view.HTML, "完全访问</span>")
 			})
 		}
-		if !slices.Contains(model.actions.ui.surfaces, original) {
-			t.Fatal("new session closed the original tab")
+		if len(model.actions.ui.surfaces) != count || model.actions.ui.editor != original {
+			t.Fatal("new session opened another tab")
 		}
 		return
 	}
@@ -286,6 +319,33 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: key})
 			languageInteractionStep(t, app)
 		}
+		for _, token := range []string{"/", "@"} {
+			control, _ := model.fontResources.HTMLControl(model.surface, promptID)
+			field := model.fontResources.Mut[engineui.TextField](control)
+			field.Anchor, field.Caret = 0, field.Text().Runes()
+			state.Enqueue(input.Event{Kind: input.EventTextInput, Text: token})
+			phase = "open " + token + " suggestions before dismissal"
+			wait(func() bool {
+				return strings.Contains(surface.view.HTML, `role="listbox"`) && value() == token && focused()
+			})
+			press(input.KeyEscape)
+			phase = "dismiss " + token + " suggestions"
+			wait(func() bool {
+				control, ok := model.fontResources.HTMLControl(model.surface, promptID)
+				return !strings.Contains(surface.view.HTML, `role="listbox"`) && ok && model.fontResources.Has[engineui.TextField](control)
+			})
+			control, _ = model.fontResources.HTMLControl(model.surface, promptID)
+			field = model.fontResources.Mut[engineui.TextField](control)
+			if !focused() || field.Anchor != 1 || field.Caret != 1 || !state.TextInputConfig().Active {
+				t.Fatalf("dismissing %s suggestions lost input focus or caret: %+v", token, field)
+			}
+			state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "x"})
+			phase = "type after dismissing " + token + " suggestions"
+			wait(func() bool { return value() == token+"x" && focused() })
+		}
+		control, _ := model.fontResources.HTMLControl(model.surface, promptID)
+		field := model.fontResources.Mut[engineui.TextField](control)
+		field.Anchor, field.Caret = 0, field.Text().Runes()
 		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "@codex-context"})
 		phase = "open file suggestions"
 		wait(func() bool {
@@ -299,11 +359,11 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		if value() != "[@codex-context.txt](codex-context.txt) " {
 			t.Fatal("file completion did not replace mention", value())
 		}
-		control, _ := model.fontResources.HTMLControl(model.surface, promptID)
+		control, _ = model.fontResources.HTMLControl(model.surface, promptID)
 		if model.fontResources.FocusedControl() != control {
 			t.Fatal("file completion lost input focus")
 		}
-		field := model.fontResources.Mut[engineui.TextField](control)
+		field = model.fontResources.Mut[engineui.TextField](control)
 		field.Anchor, field.Caret = 0, field.Text().Runes()
 		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "/fixture-r"})
 		phase = "open skill suggestions"
@@ -406,21 +466,18 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			previous, count := surface, len(model.actions.ui.surfaces)
 			surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "keep this conversation draft"}, "")
 			editorContextClick(t, app, model, state, waitControl(surface, "new"))
-			phase = fmt.Sprintf("history tab %d: select new tab", iteration)
-			wait(func() bool { return model.actions.ui.editor != nil && model.actions.ui.editor != previous })
-			surface = model.actions.ui.editor
-			if surface == nil || surface.ui.ID == previous.ui.ID || len(model.actions.ui.surfaces) != count+1 {
-				t.Fatal("new conversation did not create a separate editor tab")
+			phase = fmt.Sprintf("history tab %d: switch to new conversation", iteration)
+			wait(func() bool {
+				return strings.Contains(surface.view.HTML, "新会话") && !strings.Contains(surface.view.HTML, "Stored conversation")
+			})
+			if model.actions.ui.editor != previous || len(model.actions.ui.surfaces) != count {
+				t.Fatal("new conversation opened another editor tab")
 			}
-			phase = fmt.Sprintf("history tab %d: render new tab", iteration)
-			wait(func() bool { return strings.Contains(surface.view.HTML, "给 Codex 的任务") })
-			if strings.Contains(surface.view.HTML, "Stored conversation") || strings.Contains(surface.view.HTML, "keep this conversation draft") {
-				t.Fatal("new conversation inherited the previous transcript or draft")
+			if strings.Contains(surface.view.HTML, "keep this conversation draft") {
+				t.Fatal("new conversation inherited the previous draft")
 			}
-			if !strings.Contains(previous.view.HTML, "Stored conversation") {
-				t.Fatal("new conversation overwrote the original tab")
-			}
-			phase = fmt.Sprintf("history tab %d: find new prompt", iteration)
+			editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
+			wait(func() bool { return strings.Contains(surface.view.HTML, ">keep this conversation draft</textarea>") })
 			waitControl(surface, "prompt")
 		}
 		return

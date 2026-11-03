@@ -14,8 +14,72 @@ import (
 
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/lsp"
+	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/server"
 )
+
+func TestFileIOExternalChangesReloadCleanTabsAndPreserveDrafts(t *testing.T) {
+	m, p, _, _ := delayedFileModel(t)
+	resourceTestWrite(t, p, "main.go", "package original\n")
+	openProjectFile(p, "main.go")
+	m.syncActiveProjectFields()
+	f := m.activeFile()
+	notify := func() {
+		m.distributeFileChanges(p, []protocol.FileEvent{{Path: "main.go", Op: protocol.FileWritten}}, false)
+		m.reloadExternalFiles(p)
+		if err := awaitFileIO(t, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resourceTestWrite(t, p, "main.go", "package external\n")
+	notify()
+	if f.content() != "package external\n" || f.Dirty {
+		t.Fatal("clean tab did not follow external write")
+	}
+	m.updateActiveContent("package draft\n")
+	resourceTestWrite(t, p, "main.go", "package another\n")
+	notify()
+	if f.content() != "package draft\n" || !f.Dirty {
+		t.Fatal("external write overwrote draft")
+	}
+}
+
+func TestFileIOExternalReloadPreservesTypingAndSaveHistory(t *testing.T) {
+	m, p, g, unblock := delayedFileModel(t)
+	resourceTestWrite(t, p, "main.go", "package original\n")
+	openProjectFile(p, "main.go")
+	m.syncActiveProjectFields()
+	f := m.activeFile()
+	m.updateActiveContent("package saved\n")
+	if err := saveFileAndWait(t, m, p.Path, f); err != nil {
+		t.Fatal(err)
+	}
+	history := len(f.undo)
+	m.distributeFileChanges(p, nil, true)
+	m.reloadExternalFiles(p)
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	if f.Dirty || len(f.undo) != history {
+		t.Fatal("own save notification discarded undo history")
+	}
+	resourceTestWrite(t, p, "main.go", "package external\n")
+	g.pause.Store(true)
+	m.distributeFileChanges(p, nil, true)
+	m.reloadExternalFiles(p)
+	awaitFileGate(t, g)
+	m.updateActiveContent("package typing\n")
+	unblock()
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	if f.content() != "package typing\n" || !f.Dirty || f.document != nil {
+		t.Fatal("reload discarded new typing or kept a retired document")
+	}
+	if err := saveFileAndWait(t, m, p.Path, f); err == nil {
+		t.Fatal("save overwrote external content without conflict")
+	}
+}
 
 type fileIOGate struct {
 	net.Conn

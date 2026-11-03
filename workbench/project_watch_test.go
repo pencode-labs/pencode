@@ -1,6 +1,9 @@
 package workbench
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +12,69 @@ import (
 	"github.com/diiyw/onix/module"
 	"github.com/pencode-labs/pencode/protocol"
 )
+
+func TestProjectWatchRetriesWithoutBlockingInitialScan(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	w := &pencodeProjectWatch{ready: make(chan struct{}), errors: make(chan error, 1)}
+	calls, recover := make(chan struct{}, 1), make(chan struct{})
+	done := make(chan struct{})
+	failure := errors.New("native watch unavailable")
+	all := protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged | protocol.WorkspaceRepositoriesChanged
+	go func() {
+		defer close(done)
+		attempt := 0
+		w.run(ctx, func(ctx context.Context) (protocol.WorkspaceChange, error) {
+			attempt++
+			calls <- struct{}{}
+			if attempt == 1 {
+				return 0, failure
+			}
+			if attempt == 2 {
+				select {
+				case <-recover:
+					return all, nil
+				case <-ctx.Done():
+					return 0, ctx.Err()
+				}
+			}
+			<-ctx.Done()
+			return 0, ctx.Err()
+		}, nil)
+	}()
+	select {
+	case err := <-w.errors:
+		if !errors.Is(err, failure) {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch failure was not reported")
+	}
+	waitPencodeScanSignal(t, w.ready)
+	if got := protocol.WorkspaceChange(w.pending.Swap(0)); got != all {
+		t.Fatalf("failure did not invalidate snapshots: %b", got)
+	}
+	waitPencodeScanSignal(t, calls)
+	waitPencodeScanSignal(t, calls)
+	close(recover)
+	waitPencodeScanSignal(t, calls)
+	if got := protocol.WorkspaceChange(w.pending.Swap(0)); got != all {
+		t.Fatalf("recovery did not request a new snapshot: %b", got)
+	}
+	if err := <-w.errors; err != nil {
+		t.Fatalf("recovery left an error status: %v", err)
+	}
+	cancel()
+	waitPencodeScanSignal(t, done)
+}
+
+func TestProjectWatchRetryCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if waitProjectWatchRetry(ctx, projectWatchRetryMax) {
+		t.Fatal("cancelled watch retried")
+	}
+}
 
 func TestProjectWatchRefreshesTreeAndGitWithoutReloadingDrafts(t *testing.T) {
 	r := sourceTestRepository(t)
@@ -35,6 +101,7 @@ func TestProjectWatchRefreshesTreeAndGitWithoutReloadingDrafts(t *testing.T) {
 	}
 	draft := &openFile{Path: "main.go", contentSnapshot: snapshotText("unsaved draft"), Dirty: true}
 	p.Files[draft.Path] = draft
+	p.sourceControl.RepositoriesLoaded = true
 	if err := os.WriteFile(filepath.Join(p.Path, "created.go"), []byte("package created\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -58,9 +125,44 @@ func TestProjectWatchRefreshesTreeAndGitWithoutReloadingDrafts(t *testing.T) {
 	if p.Files[draft.Path] != draft || draft.content() != "unsaved draft" || !draft.Dirty {
 		t.Fatal("filesystem refresh overwrote an unsaved document")
 	}
+	if !p.sourceControl.RepositoriesLoaded {
+		t.Fatal("ordinary file creation invalidated repository discovery")
+	}
 	m.discardProject(p)
 	if p.watch != nil || p.scan != nil {
 		t.Fatal("closing a project retained its event listener")
+	}
+}
+
+func TestProjectWatchPublishesCompleteTreeSnapshot(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			old := treeEntry{Path: "old.go", Name: "old.go"}
+			scan := &pencodeProjectScan{staged: true, cancel: func() {}, results: make(chan *pencodeTreeBatch, 1), buffers: make(chan *pencodeTreeBatch, 2)}
+			p := &pencodeProject{Path: "/project", Entries: []treeEntry{old}, scan: scan, index: 3}
+			m := &workspaceModel{projects: []*pencodeProject{p}, activeProjectIndex: 0}
+			batch := &pencodeTreeBatch{index: 7, count: 1}
+			batch.entries[0] = treeEntry{Path: "new.go", Name: "new.go"}
+			scan.results <- batch
+			if m.pollProjectScans() || len(p.Entries) != 1 || p.Entries[0] != old || p.index != 3 {
+				t.Fatal("partial refresh changed the visible tree")
+			}
+			batch = &pencodeTreeBatch{index: 7, done: true}
+			if fail {
+				batch.err = errors.New("directory read failed")
+			}
+			scan.results <- batch
+			if !m.pollProjectScans() || p.scan != nil {
+				t.Fatal("completed snapshot was not applied")
+			}
+			if fail {
+				if p.Entries[0] != old || p.index != 3 {
+					t.Fatal("failed refresh replaced the last complete tree")
+				}
+			} else if p.Entries[0].Path != "new.go" || p.index != 7 {
+				t.Fatal("new tree and index were not published together")
+			}
+		})
 	}
 }
 

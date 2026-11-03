@@ -18,15 +18,20 @@ import (
 func sourceWait(t *testing.T, app *onix.App, m *workspaceModel) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
-	for m.sourceState().Done != nil && time.Now().Before(deadline) {
+	for {
+		// A native notification can start another refresh during the final
+		// frame. Wait for that work too before asserting the visible snapshot.
+		if m.sourceState().Done == nil {
+			m.sourceState().RefreshStarted, m.sourceState().RefreshPending = true, false
+		}
 		languageInteractionStep(t, app)
+		if m.sourceState().Done == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Git job did not complete")
+		}
 		time.Sleep(time.Millisecond)
-	}
-	// Interaction tests drive refresh explicitly between input events.
-	m.sourceState().RefreshStarted, m.sourceState().RefreshPending = true, false
-	languageInteractionStep(t, app)
-	if m.sourceState().Done != nil {
-		t.Fatal("Git job did not complete")
 	}
 	if notice := m.sourceState().Notice; notice != "" {
 		t.Fatal(notice)

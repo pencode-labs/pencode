@@ -280,21 +280,23 @@ func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 	if field.Buffer != nil {
 		apply = field.Buffer.ApplyTextEditsInRange
 	}
-	value, caret, anchor := apply(field.Value, start, end, field.MaxRunes, multiline, []input.TextEdit{edit})
+	value, caret, _ := apply(field.Value, start, end, field.MaxRunes, multiline, []input.TextEdit{edit})
 	if value == field.Value {
 		return
 	}
-	field.Value, field.Caret, field.Anchor, field.Composition = value, caret, anchor, ""
-	c.caret, c.anchor = caret, anchor
+	previous := *field
+	field.Value, field.Caret, field.Anchor, field.Composition = value, caret, caret, ""
+	field.RecordEdit(previous)
+	c.caret, c.anchor = caret, caret
 	if number := world.GetMut[engineui.NumberInput](c.target); number != nil {
 		number.Changed = true
 	}
 	if isEditable {
 		htmlui.SetEditableValue(world, c.target, value)
-		htmlui.SetEditableSelection(world, c.target, anchor, caret)
+		htmlui.SetEditableSelection(world, c.target, caret, caret)
 		world.WriteMessage(htmlui.Event{Entity: editable.Owner, Target: c.target, ID: editable.ID,
 			Kind: htmlui.EventInput, Value: value, InputType: inputType, Data: edit.Text,
-			Anchor: anchor, Focus: caret, Bubbles: true})
+			Anchor: caret, Focus: caret, Bubbles: true})
 	} else {
 		world.WriteMessage(engineui.InputEvent[string]{Entity: c.target, Value: value})
 	}

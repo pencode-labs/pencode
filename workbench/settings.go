@@ -525,6 +525,18 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 	if state == nil || state.Composing() {
 		return false
 	}
+	// Native input controls own their history. Never apply their undo chord
+	// to an open file or source-control editor behind the focused input.
+	if world != nil {
+		focused := world.FocusedControl()
+		if field, ok := world.Get[engineui.TextField](focused); ok && field.Buffer == nil && focused != model.terminalView.control {
+			for _, action := range [...]pencodeShortcutAction{pencodeShortcutUndo, pencodeShortcutRedo} {
+				if model.commandMatches(pencodeShortcutDefinitions[action].id, state, goos) {
+					return false
+				}
+			}
+		}
+	}
 	if model.session != nil && model.session.connection != nil && model.session.connection.passwordRequest != nil {
 		switch {
 		case model.uiKey(state, input.KeyEscape):

@@ -202,6 +202,8 @@ type workspaceModel struct {
 	debugTemplates                      []pencodeDebugTemplate
 	debugTemplateRows                   []pencodeDebugRow
 	sidebarHidden                       bool
+	sidebarWidthStyle                   string
+	resize                              pencodeWorkbenchResize
 	capturingShortcut                   bool
 	captureAction                       string
 	keymapName                          string
@@ -483,7 +485,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.tab, err = content.Define[tabProps, struct{}](
-		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""><span data-ref="unread-icon" class="pencode-tab-unread-icon" aria-hidden="true" hidden></span><span data-ref="busy-icon" class="pencode-tab-busy-icon" aria-hidden="true" hidden><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></button></div>`),
+		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span></button></div>`),
 		"",
 		module.ContentBehavior[tabProps, struct{}]{
 			Render: func(context module.ContentRenderContext[tabProps, struct{}], view *htmlui.View) {
@@ -532,11 +534,8 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if props.Busy {
 					view.Attr("close", "title", "关闭标签页并在后台运行")
 				}
-				setPanelVisible(view, "close-icon", !props.Busy && !props.Unread)
-				setPanelVisible(view, "unread-icon", props.Unread && !props.Busy)
-				setPanelVisible(view, "busy-icon", props.Busy)
+				renderTabIndicator(view, props, iconForeground)
 				view.Attr("tab", "aria-busy", boolAttribute(props.Busy))
-				view.Attr("close-icon", "src", props.Model.themedIcon("icons/close.svg", iconForeground))
 				view.Attr("select", "aria-selected", boolAttribute(props.Active))
 				view.Attr("close", "aria-label", "关闭 "+props.Name)
 				view.Text("name", props.Name)
@@ -667,6 +666,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Attr(icon.ref, "src", model.themedIcon(icon.source, icon.foreground))
 	}
 	model.renderTooltip(view)
+	model.renderWorkbenchResize(view)
 	model.renderLanguageTools(view)
 	model.renderLanguageEditorPopups(view)
 	model.renderCloseDialog(view)
@@ -822,14 +822,20 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		if model.quickOpen && index < model.quickCount {
 			view.RemoveAttr(ref, "hidden")
 			path := model.quickMatches[index]
-			view.Text(pencodeQuickLabelRefs[index], path)
+			name, directory := path, model.quickProjectPath
+			if slash := strings.LastIndexByte(path, '/'); slash >= 0 {
+				name, directory = path[slash+1:], path[:slash]
+			}
+			view.Text(pencodeQuickLabelRefs[index], name)
+			view.Text(pencodeQuickPathRefs[index], directory)
+			view.Attr(ref, "title", path)
 			className := ""
 			foreground := "icon.foreground"
 			if index == model.quickIndex {
 				className = "active"
 				foreground = "list.activeSelectionForeground"
 			}
-			icon := treeIcon(&treeProps{Model: model, Name: filepath.Base(path)})
+			icon := treeIcon(&treeProps{Model: model, Name: name})
 			view.Attr(pencodeQuickIconRefs[index], "src", model.themedIcon(icon, foreground))
 			view.Attr(ref, "class", className)
 			view.Attr(ref, "aria-selected", boolAttribute(index == model.quickIndex))
@@ -847,8 +853,15 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	}
 	if model.sidebarHidden {
 		view.Attr("sidebar", "hidden", "")
+		view.Attr("sidebar-resize", "hidden", "")
 	} else {
 		view.RemoveAttr("sidebar", "hidden")
+		view.RemoveAttr("sidebar-resize", "hidden")
+		if model.sidebarWidthStyle == "" {
+			view.RemoveAttr("sidebar", "style")
+		} else {
+			view.Attr("sidebar", "style", model.sidebarWidthStyle)
+		}
 	}
 
 	if context.Props.Screen == pencodeWorkspace {
@@ -2291,7 +2304,7 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 		markPencodeRootDirtyByModel(context.World, model)
 	}
 	model.updateTabWheel(context.World, state)
-	changed := model.updateBottomPanelResize(context.World, state)
+	changed := model.updateWorkbenchResize(context.World, state)
 	if model.updateDebugPointer(context.World, state) {
 		changed = true
 	}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/diiyw/onix/input"
+	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
@@ -85,6 +86,15 @@ func TestCodexComposerCompletions(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
 	t.Setenv("PENCODE_CODEX_REQUIRE_SKILL", "1")
 	t.Setenv("PENCODE_CODEX_COMPLETION", "1")
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexLiveFileChangesKeepStreaming(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
+	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
+	gate := filepath.Join(t.TempDir(), "finish-turn")
+	t.Setenv("PENCODE_CODEX_LIVE_CHANGES_GATE", gate)
+	defer os.WriteFile(gate, nil, 0o600)
 	testCodexStatusBarWorkspace(t, "")
 }
 
@@ -239,6 +249,67 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			return ok
 		})
 		return id
+	}
+	if gate := os.Getenv("PENCODE_CODEX_LIVE_CHANGES_GATE"); gate != "" {
+		phase = "open saved conversation"
+		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
+		editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
+		wait(func() bool { return strings.Contains(surface.view.HTML, "Stored conversation") })
+		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "edit files"}, "")
+		surface.send(peb.EditorEvent{Kind: "click", Ref: "send"}, "")
+		phase = "show live file changes before completion"
+		wait(func() bool {
+			return surface.ui.Busy && strings.Contains(surface.view.HTML, "1 个文件已更改") && strings.Contains(surface.view.HTML, `data-ref="accept/100"`)
+		})
+		pillID := waitControl(surface, "live-changes")
+		pill := editorContextBounds(t, model, pillID)
+		prompt := editorContextBounds(t, model, waitControl(surface, "prompt"))
+		if pill.Width < 100 || pill.Height < 20 || pill.Y+pill.Height > prompt.Y || pill.Y < 0 {
+			t.Fatalf("live changes pill is not visible above composer: pill=%+v prompt=%+v", pill, prompt)
+		}
+		phase = "open a live file diff preview"
+		scale := float64(model.settings.Zoom) / 100
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(pill.X+pill.Width/2) * scale, Y: float64(pill.Y+pill.Height/2) * scale})
+		for range 3 {
+			languageInteractionStep(t, app)
+		}
+		rowID := waitControl(surface, "change-file/turn1/0")
+		row, ok := model.extensionAnchorBounds(model.fontResources, rowID)
+		if !ok {
+			t.Fatal("live file row has no native bounds")
+		}
+		x, y := float64(row.X+row.Width/2)*scale, float64(row.Y+row.Height/2)*scale
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: y})
+		for range 3 {
+			languageInteractionStep(t, app)
+		}
+		control, _ := model.fontResources.HTMLControl(model.surface, rowID)
+		t.Logf("live diff click: pill=%+v row=%+v pointer=(%v,%v) target=%+v bindings=%+v", pill, row, x, y, model.fontResources.Ref[scene.InputTarget2D](control), surface.bindings)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+		wait(func() bool { return model.actions.ui.editor != surface && model.actions.ui.editor != nil })
+		preview := model.actions.ui.editor
+		if !strings.HasPrefix(preview.ui.ID, "diff/") || !strings.Contains(preview.view.HTML, "+new") || !strings.Contains(preview.view.HTML, "-old") || preview.ui.Title != "edited.go · 差异" {
+			t.Fatal("file click did not open the recorded diff in a separate tab", preview.ui, preview.view.HTML)
+		}
+		editorContextClick(t, app, model, state, "file-tab:"+surface.rootID)
+		wait(func() bool { return model.actions.ui.editor == surface })
+		phase = "stream reply with live file changes"
+		surface.send(peb.EditorEvent{Kind: "click", Ref: "accept/100"}, "")
+		wait(func() bool {
+			return surface.ui.Busy && strings.Contains(surface.view.HTML, "Streamed reply") && strings.Contains(surface.view.HTML, "1 个文件已更改")
+		})
+		phase = "complete turn and show final file changes"
+		if err := os.WriteFile(gate, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		wait(func() bool {
+			return !surface.ui.Busy && strings.Contains(surface.view.HTML, "Final reply") && strings.Contains(surface.view.HTML, "已编辑 1 个文件") && !strings.Contains(surface.view.HTML, `class="codex-live-changes"`)
+		})
+		phase = "reopen the completed file diff in the existing tab"
+		editorContextClick(t, app, model, state, waitControl(surface, "change-file/turn1/0"))
+		wait(func() bool { return model.actions.ui.editor == preview })
+		return
 	}
 	if os.Getenv("PENCODE_CODEX_LIFECYCLE") == "1" {
 		phase = "start running conversation"

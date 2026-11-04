@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/module"
@@ -43,8 +44,9 @@ type sourceResult struct {
 }
 
 type sourceClickBinding struct {
-	Node    htmlui.Node
-	Handler htmlui.ClickHandler
+	Node     htmlui.Node
+	Handler  htmlui.ClickHandler
+	Revision uint64
 }
 
 type sourcePanelKey struct {
@@ -54,6 +56,7 @@ type sourcePanelKey struct {
 	Commits                                  *sourceCommit
 	FileCount, CommitCount, CommitFileCount  int
 	First, Visible                           int
+	Changes                                  [3]sourceRowRange
 	TreeRevision                             uint64
 	Sync                                     sourceSyncStatus
 	Message, Selected                        string
@@ -106,11 +109,15 @@ type pencodeSourceControl struct {
 	MessageMultiline, MessageFocus          bool
 	MessageAnchor, MessageCaret             int
 	CommitFiles                             []sourceFile
-	commitTree                              []sourceTreeRow
-	commitTreeFiles                         *sourceFile
-	commitTreeCount                         int
-	commitTreeRevision                      uint64
+	commitTree                              sourceTreeCache
 	Tabs                                    []*sourceTab
+	OpenID, OpenKey                         string
+	OpenPinned                              bool
+	PendingOpen                             string
+	PendingPinned                           bool
+	PendingSelection                        uint64
+	lastClick                               string
+	lastClickAt                             time.Time
 	TabClose                                []pencodeEditorTab
 	Active                                  string
 	MenuHash                                string
@@ -137,6 +144,8 @@ type pencodeSourceControl struct {
 	changeCountText                         string
 	TreeRevision                            uint64
 	GraphFirst, GraphVisible                int
+	changeTrees                             [3]sourceTreeCache
+	changesPosition, changesHeight          float32
 	ExpandedCommit                          int
 	GraphScrollY                            float32
 	RestoreGraph                            bool
@@ -151,6 +160,7 @@ type pencodeSourceControl struct {
 	gutterTab                               *sourceTab
 	gutterY                                 float32
 	gutterRevision                          uint64
+	overview                                sourceOverview
 }
 
 func (s *pencodeSourceControl) activeTab() *sourceTab {
@@ -204,6 +214,7 @@ func (s *pencodeSourceControl) stop() {
 	}
 	s.Context = nil
 	s.Done = nil
+	s.PendingOpen, s.PendingPinned = "", false
 	s.RepositoriesLoaded = false
 	s.RefreshPending, s.RefreshStarted = false, false
 }
@@ -381,22 +392,47 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			s.CommitFiles = result.Files
 			s.resizeGraphDetails(height)
 		}
+		if tab := result.Tab; tab != nil && tab.Preview && result.Selection != s.Selection && !(s.OpenKey == tab.Key && s.OpenPinned) {
+			result.Tab = nil
+		}
 		if tab := result.Tab; tab != nil && result.Err == nil {
+			if s.OpenKey == tab.Key && s.OpenPinned {
+				tab.Preview = false
+			}
 			found := false
 			for i, old := range s.Tabs {
 				if old.Key == tab.Key {
+					tab.Preview = tab.Preview && old.Preview && old.Result == old.Saved
 					// Revalidate both sides on every list click, but keep paint and
 					// native editor state when the comparison has not changed.
 					if old.Result != old.Saved || !old.Binary && !tab.Binary &&
 						old.SubmoduleSummary == tab.SubmoduleSummary &&
 						old.Local == tab.Local && old.Incoming == tab.Incoming &&
 						old.Saved == tab.Saved && old.Disk == tab.Disk {
+						old.Preview = tab.Preview
 						tab = old
 					} else {
 						tab.ScrollX, tab.ScrollY, tab.FirstRow = old.ScrollX, old.ScrollY, old.FirstRow
+						s.releaseTab(old)
 						s.Tabs[i] = tab
 					}
 					found = true
+					break
+				}
+			}
+			if !found && result.Selection == s.Selection {
+				for i, old := range s.Tabs {
+					if !old.Preview {
+						continue
+					}
+					if old.Result != old.Saved {
+						old.Preview = false
+						continue
+					}
+					// A double click also consumes the preview slot, even if its
+					// first click's job has not completed yet.
+					s.releaseTab(old)
+					s.Tabs[i], found = tab, true
 					break
 				}
 			}
@@ -434,6 +470,14 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 		}
 		if result.Reload && project != nil {
 			m.reloadSourceFiles(project)
+		}
+		pending, pinned := s.PendingOpen, s.PendingPinned
+		s.PendingOpen, s.PendingPinned = "", false
+		if pending != "" && s.PendingSelection == s.Selection && s == m.sourceState() && !s.modal() {
+			m.sourceAction(pending)
+			if pinned && s.OpenID == pending {
+				s.OpenPinned = true
+			}
 		}
 		return true
 	default:
@@ -491,6 +535,7 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 	if state == nil {
 		return changed
 	}
+	changed = m.updateSourceOverview(world, state) || changed
 	pointer := state.Pointer()
 	zoom := max(float32(m.settings.Zoom)/100, .01)
 	x, y := pointer.X/zoom, pointer.Y/zoom
@@ -649,6 +694,9 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 		if tab.Result != tab.Saved {
 			class += " dirty"
 		}
+		if tab.Preview {
+			class += " preview"
+		}
 		foreground := "tab.inactiveForeground"
 		if tab.Key == s.Active {
 			foreground = "tab.activeForeground"
@@ -727,6 +775,29 @@ func (m *workspaceModel) syncSourceScroll(world *module.Content) {
 		m.sourceChanged()
 	}
 }
+
+// Runs after native wheel/drag input so newly visible rows paint in this frame.
+func (m *workspaceModel) syncSourceChangesScroll(world *module.Content) bool {
+	if world == nil || m.bottom.active != pencodePanelSourceControl {
+		return false
+	}
+	s := m.sourceState()
+	node, ok := world.HTMLNode(m.surface, "sc-changes-list")
+	if !ok {
+		return false
+	}
+	area, ok := node.ScrollContainer()
+	if !ok {
+		return false
+	}
+	scroll := world.Ref[scene.UIScroll](area)
+	if scroll == nil || scroll.ViewportSize.Y() <= 0 {
+		return false
+	}
+	s.changesPosition, s.changesHeight = max(-scroll.Position.Y(), 0), scroll.ViewportSize.Y()
+	return s.changeRanges() != s.panelKey.Changes
+}
+
 func (m *workspaceModel) bindSourceControls(world *module.Content) {
 	s := m.sourceState()
 	if s.Owner != m {
@@ -745,17 +816,24 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 			for _, id := range builder.clicks {
 				if node, ok := world.HTMLNode(m.surface, id); ok {
 					binding := s.Handlers[id]
+					binding.Revision = s.RenderRevision
 					if binding.Node == node {
+						s.Handlers[id] = binding
 						continue
 					}
 					if binding.Handler == nil {
-						binding.Handler = func(*htmlui.PointerEvent) { m.sourceAction(id) }
+						binding.Handler = func(*htmlui.PointerEvent) { m.sourceClick(id, time.Now()) }
 					}
 					binding.Node = node
 					s.Handlers[id] = binding
 					node.OnClick(binding.Handler)
 					bound = true
 				}
+			}
+		}
+		for id, binding := range s.Handlers {
+			if binding.Revision != s.RenderRevision {
+				delete(s.Handlers, id)
 			}
 		}
 		s.BoundRevision = s.RenderRevision
@@ -863,6 +941,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 	}
 	m.syncSourceMergePaint(world)
 	m.bindSourceDiffControls(world)
+	m.syncSourceOverview(world)
 	if tab := s.activeTab(); tab != nil && !tab.Binary && (s.gutterTab != tab || s.gutterY != tab.ScrollY || s.gutterRevision != s.RenderRevision) {
 		world.HTMLSetOffset(m.surface, "sc-diff-gutter-track", 0, tab.ScrollY)
 		world.HTMLSetOffset(m.surface, "sc-code-left-gutter-track", 0, tab.ScrollY)

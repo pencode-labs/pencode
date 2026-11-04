@@ -14,6 +14,7 @@ const (
 	pencodeRefreshTerminal
 	pencodeRefreshOutput
 	pencodeRefreshSelection
+	pencodeRefreshSourcePanel
 )
 
 func (m *workspaceModel) refreshRegion(world *module.Content, region pencodeRefresh) {
@@ -77,6 +78,12 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 			return false
 		}
 		view.Text("output-content", m.bottom.outputText)
+	}
+	if regions&pencodeRefreshSourcePanel != 0 && m.bottom.active == pencodePanelSourceControl {
+		s := m.sourceState()
+		m.renderSourceControl(&s.panelView)
+		view.Keyed("source-pane", s.panelView.nodes())
+		s.RenderRevision++
 	}
 	view.PatchBindings()
 	return true

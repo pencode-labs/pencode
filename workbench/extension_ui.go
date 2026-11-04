@@ -43,15 +43,17 @@ type pencodeExtensionSurfaceProps struct {
 	Visible  bool
 }
 type pencodeExtensionFocus struct {
-	ref, id    string
-	submit     string
-	showOutput bool
-	autosize   bool
-	style      string
-	height     float32
-	completion bool
-	caret      string
-	placeCaret bool
+	ref, id     string
+	submit      string
+	showOutput  bool
+	autosize    bool
+	style       string
+	height      float32
+	completion  bool
+	pasteImages bool
+	caret       string
+	placeCaret  bool
+	inputLinks  *pencodeInputLinks
 }
 type pencodeExtensionIcon struct {
 	ref, source, foreground string
@@ -81,6 +83,7 @@ type pencodeExtensionSurface struct {
 	theme                          *pencodeTheme
 	bindings                       []peb.EditorBinding
 	links                          map[string]string
+	copies                         map[string]string
 	focus                          []pencodeExtensionFocus
 	focusTargets                   []pencodeExtensionFocusTarget
 	icons                          []pencodeExtensionIcon
@@ -328,6 +331,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	var selectables []pencodeExtensionSelectable
 	var icons []pencodeExtensionIcon
 	var links map[string]string
+	var copies map[string]string
 	var iconErr error
 	var channel *output.Channel
 	var scrollKey string
@@ -346,6 +350,14 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 					links = make(map[string]string)
 				}
 				links[ref] = href
+			}
+			if value, ok := node.Attr("data-pencode-copy"); ok && node.Data == "button" && ref != "" && !extensionOwnsClick(view.Events, ref) {
+				if _, disabled := node.Attr("disabled"); !disabled {
+					if copies == nil {
+						copies = make(map[string]string)
+					}
+					copies[ref] = value
+				}
 			}
 		}
 		if name, ok := node.Attr("data-pencode-icon"); ok {
@@ -416,7 +428,20 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 					submit, _ = node.Attr("data-pencode-submit-on-enter")
 				}
 				completion, _ := node.Attr("data-pencode-completion")
+				_, pasteImages := node.Attr("data-pencode-paste-images")
 				caret, _ := node.Attr("data-pencode-caret")
+				var inputLinks *pencodeInputLinks
+				if _, enabled := node.Attr("data-pencode-markdown-links"); enabled && node.Data == "textarea" {
+					for _, previous := range s.focus {
+						if previous.ref == ref {
+							inputLinks = previous.inputLinks
+							break
+						}
+					}
+					if inputLinks == nil {
+						inputLinks = &pencodeInputLinks{}
+					}
+				}
 				placeCaret := caret != ""
 				for _, previous := range s.focus {
 					if previous.ref == ref && previous.caret == caret {
@@ -424,7 +449,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 						break
 					}
 				}
-				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", caret: caret, placeCaret: placeCaret})
+				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", pasteImages: pasteImages, caret: caret, placeCaret: placeCaret, inputLinks: inputLinks})
 			}
 		}
 	}); err != nil {
@@ -482,6 +507,9 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			for ref := range surface.links {
 				target.Event(ref, htmlui.EventClick)
 			}
+			for ref := range surface.copies {
+				target.Event(ref, htmlui.EventClick)
+			}
 		},
 		HandleEvent: func(c *htmlui.ComponentEventContext[pencodeExtensionSurfaceProps, struct{}]) {
 			surface := c.Props.Surface
@@ -496,6 +524,12 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			}
 			if event.Kind == htmlui.EventClick {
 				if selection := &surface.model.actions.ui.selection; selection.surface == surface && selection.dragged {
+					return
+				}
+				if value, ok := surface.copies[c.Ref]; ok {
+					if state, ok := surface.model.fontResources.Resource[*input.State](); ok {
+						state.SetClipboardText(value)
+					}
 					return
 				}
 				if href := surface.links[c.Ref]; href != "" {
@@ -589,6 +623,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	s.focusTargets, s.icons = focusTargets, icons
 	s.selectables = selectables
 	s.links = links
+	s.copies = copies
 	s.view, s.theme = view, s.model.workbenchTheme
 	s.output = channel
 	s.focused = -1
@@ -721,6 +756,14 @@ func (model *workspaceModel) refreshExtensionSurface(s *pencodeExtensionSurface)
 	world := model.fontResources
 	if world == nil {
 		return false
+	}
+	for entity, access := range world.Query[htmlui.Component[tabProps, struct{}]]() {
+		props := access.Ref().Props
+		if props.Surface == s && (props.Name != s.ui.Title || props.Busy != s.ui.Busy || props.Unread != s.ui.Unread) {
+			props.Name, props.Busy, props.Unread = s.ui.Title, s.ui.Busy, s.ui.Unread
+			world.Mut[htmlui.Component[tabProps, struct{}]](entity).Props = props
+			world.UpdateState[tabProps, struct{}](entity, func(*struct{}) {})
+		}
 	}
 	for entity, access := range world.Query[htmlui.Component[pencodeExtensionSurfaceProps, struct{}]]() {
 		component := access.Get()
@@ -899,6 +942,15 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 		if !visible {
 			continue
 		}
+		if s.syncInputLinks(world) {
+			scrollChanged = true
+			// Complete newly mounted native controls before autosizing and
+			// restoring focus/caret, all within the publication's render frame.
+			if err := world.SyncUI(); err != nil {
+				model.setActiveStatus(err.Error())
+				return
+			}
+		}
 		if s.resizeInputs(world) {
 			if err := world.SyncHTML(); err != nil {
 				model.setActiveStatus(err.Error())
@@ -982,6 +1034,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 				}
 			}
 		}
+		scrollChanged = s.syncInputLinks(world) || scrollChanged
 		if s.ui.Kind != peb.Panel && s.ui.Kind != peb.Notification && s.ui.Kind != peb.EditorTab {
 			menu, menuOK := world.HTMLNode(model.surface, s.rootID)
 			root, rootOK := world.HTMLNode(model.surface, "pencode-extension-overlays")
@@ -1024,7 +1077,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 			}
 		}
 		for _, f := range s.focus {
-			if f.submit != "" || f.completion || s.ui.Kind != peb.Panel && s.ui.Kind != peb.EditorTab {
+			if f.submit != "" || f.completion || f.pasteImages || f.inputLinks != nil || s.ui.Kind != peb.Panel && s.ui.Kind != peb.EditorTab {
 				s.bindKeys(world, f.id)
 			}
 		}
@@ -1047,14 +1100,21 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 		}
 	}
 	if scrollChanged {
-		// Restore paint culled using the previous offset before finalizing the
-		// native scroll transforms and scrollbar geometry in LayoutSystem.
+		// Reconcile paint after scroll or inline text changes before finalizing
+		// native controls and scroll geometry in LayoutSystem.
 		if err := world.SyncHTML(); err != nil {
 			model.setActiveStatus(err.Error())
 			return
 		}
 		if err := world.SyncUI(); err != nil {
 			model.setActiveStatus(err.Error())
+			return
+		}
+		for _, s := range state.surfaces {
+			if s.live() {
+				// Apply link paint to the final native parts after reconciliation.
+				s.syncInputLinks(world)
+			}
 		}
 	}
 	return
@@ -1204,7 +1264,13 @@ func (s *pencodeExtensionSurface) interceptKeys(state *input.State) bool {
 	if !s.live() || state.Composing() {
 		return false
 	}
+	if s.interceptImagePaste(state, readClipboardImage) {
+		return true
+	}
 	if s.interceptCompletion(state) {
+		return true
+	}
+	if s.interceptInputLinkKeys(state) {
 		return true
 	}
 	if s.model.commandMatches("extension-submit", state, runtime.GOOS) && !state.KeyPressedDuringComposition(input.KeyEnter) {

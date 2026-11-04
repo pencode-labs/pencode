@@ -87,6 +87,8 @@ func (s *pencodeSourceControl) selectRepository(repository sourceRepository) {
 	delete(s.RepositoryViews, repository.Root)
 	s.Snapshot, s.Tabs, s.Active, s.CommitMessage = view.Snapshot, view.Tabs, view.Active, view.Message
 	s.Snapshot.Repository = repository
+	s.OpenID, s.OpenKey, s.OpenPinned = "", "", false
+	s.PendingOpen, s.PendingPinned, s.lastClick = "", false, ""
 	s.MessageMultiline, s.MessageAnchor, s.MessageCaret = view.Multiline, view.Anchor, view.Caret
 	s.RestoreScroll = s.Active != ""
 	s.MessageFocus, s.BranchFocus = false, false

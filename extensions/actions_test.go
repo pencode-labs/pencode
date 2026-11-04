@@ -116,7 +116,7 @@ func TestActionSessionReconstructsPatchesBeforeResources(t *testing.T) {
 			}
 		}
 		timer.Stop()
-		if ui.Patch != nil || ui.View == nil || ui.ViewVersion != uint32(min(i+1, 2)) || !strings.Contains(ui.View.HTML, "<p>"+value+"</p>") || !strings.Contains(ui.View.HTML, `id="pencode-extension-ui/test/stream/control/0"`) {
+		if ui.Patch != nil || ui.View == nil || ui.ViewVersion != uint32(min(i+1, 2)) || !strings.Contains(ui.View.HTML, "<p>"+value+"</p>") || !strings.Contains(ui.View.HTML, `id="pencode-extension-ui/test/stream/control-prompt"`) {
 			t.Fatalf("raw transport base was lost during resource preparation: %+v", ui)
 		}
 	}

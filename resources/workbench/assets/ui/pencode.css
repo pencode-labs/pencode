@@ -410,7 +410,7 @@ textarea:focus {
     flex: 1;
     min-height: 0;
     display: flex;
-    gap: 6px;
+    gap: 0;
     background: var(--vscode-editor-background);
 }
 
@@ -425,6 +425,21 @@ textarea:focus {
     border-radius: 8px;
     overflow: hidden;
     background: var(--vscode-editor-background);
+}
+
+.pencode-sidebar-resize {
+    position: relative;
+    z-index: 5;
+    flex: 0 0 6px;
+    width: 6px;
+    min-width: 6px;
+    cursor: col-resize;
+    background: transparent;
+}
+
+.pencode-sidebar-resize:hover,
+.pencode-sidebar-resize.resizing {
+    background: var(--vscode-focusBorder);
 }
 
 .pencode-sidebar-actions {
@@ -1407,7 +1422,6 @@ textarea:focus {
     height: 280px;
     max-height: 45%;
     min-height: 0;
-    margin-top: 6px;
     border: 1px solid var(--vscode-editorGroup-border);
     border-radius: 8px;
     overflow: hidden;
@@ -1834,10 +1848,26 @@ textarea:focus {
     white-space: nowrap;
 }
 
+.pencode-quick-label {
+    flex: 0 1 auto;
+    max-width: 60%;
+}
+
+.pencode-quick-path {
+    flex: 1;
+    color: var(--vscode-descriptionForeground);
+}
+
 .pencode-quick-open-list button.active,
 .pencode-quick-open-list button:hover {
     background: var(--vscode-quickInputList-focusBackground);
     color: var(--vscode-quickInputList-focusForeground);
+}
+
+.pencode-quick-open-list button.active .pencode-quick-path,
+.pencode-quick-open-list button:hover .pencode-quick-path {
+    color: inherit;
+    opacity: 0.7;
 }
 
 @media (max-width: 900px) {
@@ -2521,6 +2551,7 @@ textarea:focus {
 .sc-lanes-continuation .sc-edge { top: 0; height: 100%; }
 .sc-commit-files { flex: 1 1 0; min-width: 0; height: 100%; background: transparent; }
 .sc-commit-files .sc-tree > .muted { height: 27px; }
+.sc-tree-spacer { padding: 0; margin: 0; pointer-events: none; }
 .sc-tree { list-style: none; margin: 0; padding: 0; }
 .sc-file, .sc-folder { display: flex; align-items: center; min-width: 0; min-height: 27px; }
 .sc-file { padding-right: 8px; }
@@ -2539,8 +2570,8 @@ textarea:focus {
     outline-offset: -1px;
 }
 .sc-file-group { min-width: 0; }
-.sc-group-heading { padding: 0; }
-.sc-group-toggle { display: flex; align-items: center; gap: 5px; width: 100%; padding: 7px 0; text-align: left; }
+.sc-group-heading { height: 32px; padding: 0; }
+.sc-group-toggle { height: 32px; display: flex; align-items: center; gap: 5px; width: 100%; padding: 7px 0; text-align: left; }
 .sc-group-toggle:hover { background: var(--vscode-list-hoverBackground); }
 .sc-panel .muted, .sc-editor .muted { padding: 6px; color: var(--vscode-descriptionForeground); }
 .sc-code-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
@@ -2562,6 +2593,15 @@ textarea:focus {
 .sc-code-input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; resize: none; overflow: hidden; font-family: monospace; font-size: 13px; line-height: 20px; white-space: pre; tab-size: 4; background: transparent; color: var(--vscode-editor-foreground); }
 .sc-diff-panes .sc-code-window { pointer-events: none; }
 .sc-diff-panes, .sc-merge { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.sc-diff-overview-heading, .sc-diff-overview { flex: 0 0 16px; width: 16px; }
+.sc-diff-overview { position: relative; overflow: hidden; background: var(--vscode-editor-background); border-left: 1px solid var(--vscode-editorGroup-border); cursor: pointer; user-select: none; }
+.sc-diff-overview-markers { position: absolute; top: 0; bottom: 3px; left: 6px; right: 1px; pointer-events: none; }
+.sc-diff-overview-marker { position: absolute; left: 0; width: 100%; min-height: 3px; }
+.sc-diff-overview-marker.added { background: var(--vscode-gitDecoration-addedResourceForeground); }
+.sc-diff-overview-marker.deleted { background: var(--vscode-gitDecoration-deletedResourceForeground); }
+.sc-diff-overview-marker.modified { background: var(--vscode-gitDecoration-modifiedResourceForeground); }
+.sc-diff-overview-thumb { position: absolute; top: 0; left: 0; width: 5px; height: 24px; background: var(--vscode-scrollbarSlider-background); opacity: .7; cursor: grab; }
+.sc-diff-overview:hover .sc-diff-overview-thumb { opacity: 1; }
 .sc-code-pane { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .sc-code-gutter { position: relative; order: -1; flex: 0 0 50px; overflow: hidden; background: var(--vscode-editorGutter-background); }
 .sc-code-gutter-track { position: absolute; top: 0; left: 0; width: 100%; }
@@ -2778,16 +2818,17 @@ textarea:focus {
 }
 
 .pencode-panel-resize {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
+    position: relative;
+    flex: 0 0 6px;
+    height: 6px;
+    min-height: 6px;
     z-index: 5;
     cursor: row-resize;
+    background: transparent;
 }
 
-.pencode-panel-resize:hover {
+.pencode-panel-resize:hover,
+.pencode-panel-resize.resizing {
     background: var(--vscode-focusBorder);
 }
 .pencode-titlebar-connection { position: absolute; top: 6px; right: 218px; z-index: 2; }

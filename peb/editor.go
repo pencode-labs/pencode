@@ -48,6 +48,11 @@ type EditorReply struct {
 // its data-pencode-scroll-key stays the same.
 // A scroll container with data-ref and data-pencode-selectable supports native
 // text selection, copy/select-all shortcuts, and the text context menu.
+// Copy retains paragraph breaks, explicit br elements and preformatted text.
+// Other containers with CSS white-space:pre-wrap can opt into preserving source
+// whitespace when copied with data-pencode-preserve-whitespace.
+// A button with data-ref and data-pencode-copy="text" copies that exact text to
+// the local clipboard on click. An explicit click binding overrides this action.
 // A container with data-ref and data-pencode-region updates its children
 // independently. Changes confined to regions preserve the surrounding DOM,
 // including native input focus and selection. Nested regions update together.
@@ -62,6 +67,14 @@ type EditorReply struct {
 // "previous", "next", "accept" or "dismiss", and the current text/selection.
 // data-pencode-caret="runeOffset:revision" restores focus and a collapsed caret
 // when this attribute changes. Use a new revision for each programmatic edit.
+// data-pencode-markdown-links displays inline [label](path) references using
+// the theme link color and hides their syntax with a one-pixel inset. References
+// behave as atomic tokens for selection, arrow navigation and deletion.
+// Values, selection offsets, clipboard contents and undo retain Markdown source.
+// A text control with data-pencode-paste-images receives images on the paste
+// shortcut as Kind:"paste", InputType:"image/png", Data:a PNG data URL, with
+// the current Value/Anchor/Focus. Text pastes retain native editing behavior.
+// InputType:"error" reports an image paste failure in Data.
 type EditorView struct {
 	HTML, CSS string
 	Events    []EditorBinding

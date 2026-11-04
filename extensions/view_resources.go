@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -66,11 +67,13 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 		}
 		if surfaceID != "" && node.Type == html.ElementNode {
 			ref, id, tab, href, editable := false, false, false, false, false
+			refValue := ""
 			refIndex, idIndex := -1, -1
 			for i, a := range node.Attr {
 				switch a.Key {
 				case "data-ref":
 					ref = a.Val != ""
+					refValue = a.Val
 					refIndex = i
 				case "id":
 					id = a.Val != ""
@@ -87,16 +90,16 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 				suffix := strconv.Itoa(focusCount)
 				focusCount++
 				if !ref {
-					value := "@peb-focus-" + suffix
+					refValue = "@peb-focus-" + suffix
 					if refIndex >= 0 {
-						node.Attr[refIndex].Val = value
+						node.Attr[refIndex].Val = refValue
 					} else {
-						node.Attr = append(node.Attr, html.Attribute{Key: "data-ref", Val: value})
+						node.Attr = append(node.Attr, html.Attribute{Key: "data-ref", Val: refValue})
 					}
 					changed = true
 				}
 				if !id {
-					value := "pencode-extension-ui/" + r.remote.Info.ID + "/" + surfaceID + "/control/" + suffix
+					value := "pencode-extension-ui/" + r.remote.Info.ID + "/" + surfaceID + "/control-" + refValue
 					if idIndex >= 0 {
 						node.Attr[idIndex].Val = value
 					} else {
@@ -112,6 +115,21 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 					continue
 				}
 				source := node.Attr[i].Val
+				if strings.HasPrefix(source, "data:") {
+					uri, err := r.inlineImage(source)
+					if err != nil {
+						return err
+					}
+					node.Attr[i].Val = uri
+					if _, ok := sources[uri]; !ok {
+						if len(paths) == maxAssets {
+							return fmt.Errorf("编辑器图片资源超过 %d 项", maxAssets)
+						}
+						sources[uri] = uri
+						paths = append(paths, uri)
+					}
+					break
+				}
 				parsed, parseErr := url.Parse(source)
 				if r.document != "" && (parseErr != nil || parsed.Scheme != "peb" && !validResourcePath(source, true)) {
 					changed = true
@@ -136,7 +154,7 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 					return parseErr
 				}
 				name := parsed.Path
-				if r.document != "" && parsed.Scheme == "peb" && parsed.Host == r.remote.Info.ID && strings.HasPrefix(parsed.Path, "/document/") {
+				if parsed.Scheme == "peb" && parsed.Host == r.remote.Info.ID && (strings.HasPrefix(parsed.Path, "/inline/") || r.document != "" && strings.HasPrefix(parsed.Path, "/document/")) {
 					if _, ok := r.cache[source]; !ok {
 						return fmt.Errorf("未知的文档图片 %q", source)
 					}
@@ -226,6 +244,39 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 		assets[sources[name]] = asset.data
 	}
 	return assets, renderViewNodes(view, nodes)
+}
+
+// Inline raster images become validated, memory-backed assets just like bundled
+// images. This also lets remote extensions show clipboard previews without files.
+func (r *viewResources) inlineImage(source string) (string, error) {
+	header, encoded, ok := strings.Cut(source, ",")
+	ext := ".png"
+	if header == "data:image/jpeg;base64" {
+		ext = ".jpg"
+	} else if header != "data:image/png;base64" {
+		return "", fmt.Errorf("仅支持 PNG 或 JPEG 内嵌图片")
+	}
+	if !ok || len(source) > peb.MaxDocument {
+		return "", fmt.Errorf("内嵌图片超过大小限制")
+	}
+	uri := fmt.Sprintf("peb://%s/inline/%x%s", r.remote.Info.ID, sha256.Sum256([]byte(source)), ext)
+	if _, ok := r.cache[uri]; ok {
+		return uri, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", err
+	}
+	config, err := imageConfig(ext, data)
+	if err != nil {
+		return "", err
+	}
+	if config.Width < 1 || config.Height < 1 || config.Width > 2048 || config.Height > 2048 || r.bytes+len(data) > maxResourceBytes {
+		return "", fmt.Errorf("内嵌图片超过大小或尺寸限制")
+	}
+	r.cache[uri] = viewResource{data, config}
+	r.bytes += len(data)
+	return uri, nil
 }
 
 // Document images are loaded on the session worker, then shared with the GUI as

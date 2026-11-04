@@ -76,11 +76,13 @@ func (a *workspaceModel) renderSourceTabs(b *sourceVNodeView) {
 		b.text("h3", "left", left, "class", "sc-heading")
 		b.text("div", "separator", "", "class", "sc-diff-gutter-heading", "aria-hidden", "true")
 		b.text("h3", "right", right, "class", "sc-heading")
+		b.text("div", "overview", "", "class", "sc-diff-overview-heading", "aria-hidden", "true")
 		b.close()
 		b.open("div", "diff-panes", "class", "sc-diff-panes")
 		sourceCodeLines(b, tab, true)
 		a.renderDiffGutter(b, tab)
 		sourceCodeLines(b, tab, false)
+		a.renderSourceOverview(b, tab)
 		b.close()
 	}
 	b.close()

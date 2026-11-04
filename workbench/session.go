@@ -76,6 +76,16 @@ func (s *Session) ScrollSystem() ecs.SystemConfig {
 			if s.active != nil && s.active.screen == pencodeWorkspace {
 				model := s.active.model
 				model.syncSourceScroll(model.fontResources)
+				if model.syncSourceChangesScroll(model.fontResources) {
+					// Advance the retained scroll paint window before replacing its
+					// rows, so new controls inherit this frame's clipping geometry.
+					if !model.fullRefresh {
+						if err := model.fontResources.SyncHTML(); err != nil {
+							return err
+						}
+					}
+					model.refreshRegion(model.fontResources, pencodeRefreshSourcePanel)
+				}
 				model.syncTreeScroll(model.fontResources)
 			}
 			return nil
@@ -90,8 +100,8 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 		Name: "sync_pencode_editor_layout", After: []string{"sync_ui_global_transform_after_layout"},
 		System: func(context *ecs.SystemContext) error {
 			if s.syncLayout() {
-				// Extension scroll restoration runs after layout. Apply it to the
-				// retained visuals before this frame reaches paint.
+				// Extension scroll restoration and inline text changes run after
+				// layout. Update native controls before this frame reaches paint.
 				return engineui.SyncAfterLayout(context.World)
 			}
 			return nil
@@ -113,6 +123,9 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 		return
 	}
 	model.bindSourceControls(model.fontResources)
+	if model.syncSourceChangesScroll(model.fontResources) {
+		model.refreshRegion(model.fontResources, pencodeRefreshSourcePanel)
+	}
 	model.bindTerminal(model.fontResources)
 	model.focusPorts(model.fontResources)
 	model.syncTabScroll(model.fontResources)

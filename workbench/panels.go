@@ -82,8 +82,6 @@ type pencodeProblemGroupState struct {
 type pencodeBottomPanel struct {
 	active                           pencodePanel
 	focusEditor                      bool
-	resizing                         bool
-	resizeY, resizeHeight            float32
 	heightStyle                      string
 	diagnostics                      map[pencodeDiagnosticKey][]lsp.Diagnostic
 	errorFiles                       map[pencodeProblemFile]bool
@@ -389,6 +387,7 @@ func (model *workspaceModel) renderBottomPanel(view *htmlui.View, definition *ht
 	view.Attr("status-problems", "aria-expanded", boolAttribute(problems))
 	view.Attr("status-output", "aria-expanded", boolAttribute(out))
 	setPanelVisible(view, "bottom-panel", p.active != pencodePanelClosed)
+	setPanelVisible(view, "panel-resize", p.active != pencodePanelClosed)
 	setPanelVisible(view, "problems-pane", problems)
 	setPanelVisible(view, "output-pane", out)
 	setPanelVisible(view, "output-tools", out)

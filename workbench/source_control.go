@@ -90,6 +90,7 @@ type sourceTab struct {
 	Rows                           []sourceDiffRow
 	Local, Incoming, Result, Saved string
 	Binary                         bool
+	Preview                        bool
 	SubmoduleSummary               string
 	FirstRow                       int
 	ScrollX, ScrollY               float32

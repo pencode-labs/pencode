@@ -1,9 +1,36 @@
 package workbench
 
 import (
+	"fmt"
 	"os"
 	"testing"
+
+	"github.com/diiyw/onix/scene"
 )
+
+func BenchmarkPencodeSourceChangesScroll(b *testing.B) {
+	for _, count := range []int{400, 4000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			app, m := sourceChangesApp(b, count)
+			node, _ := m.fontResources.HTMLNode(m.surface, "sc-changes-list")
+			area, _ := node.ScrollContainer()
+			b.Logf("files=%d panel nodes=%d", count, m.sourceState().panelView.used)
+			b.ReportAllocs()
+			position := float32(0)
+			for b.Loop() {
+				scroll := m.fontResources.Mut[scene.UIScroll](area)
+				position += 48
+				if position > scroll.ContentSize.Y()-scroll.ViewportSize.Y() {
+					position = 0
+				}
+				scroll.Position[1] = -position
+				if _, err := app.Step(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
 
 // Uses the same headless fixture as the editor benchmarks. Point
 // ONIX_PENCODE_PROFILE_PROJECT at a real repository to measure its working tree.

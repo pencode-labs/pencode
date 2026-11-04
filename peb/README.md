@@ -519,6 +519,10 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 
 输入控件的 `input` 事件携带以 Unicode 字符计数的 `Anchor` 和 `Focus`。设置 `data-pencode-completion="true"` 后，宿主优先将无修饰键的 ↑/↓、Enter/Tab 和 Esc 转为 `completion` 事件，`Ref` 为输入控件的 ref，`Data` 分别为 `previous`、`next`、`accept` 和 `dismiss`，并携带最新文本和选区；无需额外订阅此事件。Shift+Enter 和输入法确认保持原生行为。扩展负责候选的筛选、绘制和应用；插入或替换文本后，可用 `data-pencode-caret="字符位置:修订号"` 恢复光标，每次编辑使用新的修订号。动态增加候选或附件时，应为输入控件及表单指定固定 ID，以保留焦点。
 
+按钮设置 `data-ref` 和 `data-pencode-copy="文本"` 后，点击由宿主直接将属性值写入本机剪贴板，保留原始换行、空格和 Markdown，无需声明 `Events`。属性值须进行 HTML 转义；禁用和隐藏按钮不执行复制。显式订阅该按钮的 `click` 时，由扩展接管操作。
+
+文本控件设置 `data-pencode-paste-images` 后，粘贴快捷键可接收剪贴板图片，无需额外订阅事件。宿主发送 `Kind:"paste"`、`InputType:"image/png"`、`Data:PNG data URL`，并携带当前 `Value`、`Anchor` 和 `Focus`。普通文本继续原生粘贴。图片编码后超过 `MaxDocument`（2 MiB，原图约 1.5 MiB）时发送 `InputType:"error"`，`Data` 为可展示的错误消息。扩展 UI 的 `img` 支持 PNG/JPEG base64 data URL；宿主校验后转为缓存的内存图片资源，沿用现有图片尺寸及总量限制。
+
 生命周期事件无需显式订阅：
 
 | `e.Event.Kind`     | 内容                                                                             |

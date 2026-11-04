@@ -49,16 +49,26 @@ type pencodeExtensionTextSelection struct {
 // updated message contents.
 func (s *pencodeExtensionSurface) selectableText(ref string) string {
 	var b strings.Builder
-	space, newline := false, false
+	space, breaks := false, 0
+	separate := func(count int) {
+		if b.Len() > 0 {
+			breaks = max(breaks, count)
+		}
+		space = false
+	}
 	flush := func() {
 		if b.Len() > 0 {
-			if newline {
+			// Preformatted text may already supply the boundary's line breaks.
+			value := b.String()
+			trailing := len(value) - len(strings.TrimRight(value, "\n"))
+			for range max(0, breaks-trailing) {
 				b.WriteByte('\n')
-			} else if space {
+			}
+			if breaks == 0 && space && !strings.HasSuffix(value, "\n") && !strings.HasSuffix(value, "\t") {
 				b.WriteByte(' ')
 			}
 		}
-		space, newline = false, false
+		space, breaks = false, 0
 	}
 	var walk func(*dom.Node, bool, bool)
 	walk = func(node *dom.Node, selected, pre bool) {
@@ -73,15 +83,22 @@ func (s *pencodeExtensionSurface) selectableText(ref string) string {
 		}
 		nodeRef, _ := node.Attr("data-ref")
 		selected = selected || nodeRef == ref
-		pre = pre || node.Data == "pre"
-		block := false
+		_, preserve := node.Attr("data-pencode-preserve-whitespace")
+		pre = pre || node.Data == "pre" || preserve
+		boundary := 0
 		if selected {
 			switch node.Data {
-			case "p", "div", "section", "article", "pre", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "blockquote", "br":
-				block = true
+			case "p", "pre", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "table":
+				boundary = 2
+			case "div", "section", "article", "li", "tr":
+				boundary = 1
+			case "br":
+				flush()
+				b.WriteByte('\n')
+				return
 			}
-			if block {
-				space, newline = false, b.Len() > 0
+			if boundary > 0 {
+				separate(boundary)
 			}
 			if node.Type == dom.TextNode {
 				if pre {
@@ -92,7 +109,7 @@ func (s *pencodeExtensionSurface) selectableText(ref string) string {
 				for _, r := range node.Data {
 					switch r {
 					case ' ', '\t', '\r', '\n', '\f':
-						space = !newline
+						space = breaks == 0
 					default:
 						flush()
 						b.WriteRune(r)
@@ -109,11 +126,19 @@ func (s *pencodeExtensionSurface) selectableText(ref string) string {
 				}
 			}
 		}
+		cell := false
 		for _, child := range children {
+			if selected && node.Data == "tr" && (child.Data == "td" || child.Data == "th") {
+				if cell {
+					flush()
+					b.WriteByte('\t')
+				}
+				cell = true
+			}
 			walk(child, selected, pre)
 		}
-		if selected && block {
-			space, newline = false, b.Len() > 0
+		if selected && boundary > 0 {
+			separate(boundary)
 		}
 	}
 	walk(s.tree, false, false)
@@ -256,6 +281,9 @@ func (s *pencodeExtensionTextSelection) text() string {
 	first, last := s.spans[a.span], s.spans[b.span]
 	left, _ := pencodeSelectionBytes(first.value, a.rune, a.rune)
 	_, right := pencodeSelectionBytes(last.value, b.rune, b.rune)
+	if a.span == 0 && left == 0 && b.span == len(s.spans)-1 && right == len(last.value) {
+		return s.content
+	}
 	return s.content[first.offset+left : last.offset+right]
 }
 

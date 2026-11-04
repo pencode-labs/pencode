@@ -25,6 +25,11 @@ var pencodeQuickLabelRefs = [...]string{
 	"quick-label-4", "quick-label-5", "quick-label-6", "quick-label-7",
 }
 
+var pencodeQuickPathRefs = [...]string{
+	"quick-path-0", "quick-path-1", "quick-path-2", "quick-path-3",
+	"quick-path-4", "quick-path-5", "quick-path-6", "quick-path-7",
+}
+
 var pencodeQuickIconRefs = [...]string{
 	"quick-icon-0", "quick-icon-1", "quick-icon-2", "quick-icon-3",
 	"quick-icon-4", "quick-icon-5", "quick-icon-6", "quick-icon-7",

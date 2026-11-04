@@ -57,6 +57,7 @@ func (t *sourceTab) editResult(value string) {
 	if value == t.Result {
 		return
 	}
+	t.Preview = false
 	start, oldEnd, newEnd, _, changed := t.buffer.ChangedRange(t.Result, value)
 	if !changed {
 		start, oldEnd, newEnd, _ = pencodeChangedRange(t.Result, value)
@@ -68,6 +69,7 @@ func (t *sourceTab) editResult(value string) {
 func (t *sourceTab) undoResult(redo bool) bool {
 	value, _, ok := t.restoreEdit(t.Result, redo)
 	if ok {
+		t.Preview = false
 		t.Result = value
 	}
 	return ok

@@ -18,7 +18,6 @@ const pencodeTooltipDelay = 450 * time.Millisecond
 
 type pencodeTooltip struct {
 	control    ecs.Entity
-	revision   uint64
 	id, text   string
 	due        time.Time
 	open       bool
@@ -69,38 +68,19 @@ func tooltipTemplate(source, prefix string) htmlui.Template {
 	return htmlui.NewTemplate(b.String())
 }
 
-// Read the current title rather than retaining extension descriptions across
-// view updates. Serialization is confined to entering or updating a button;
-// stationary hover and positioning do not allocate.
+// Read current metadata directly: title updates need not repaint the control.
 func tooltipText(node htmlui.Node) string {
-	source, err := node.Serialize()
-	if err != nil {
-		return ""
-	}
-	z := nethtml.NewTokenizer(strings.NewReader(source))
-	if z.Next() != nethtml.StartTagToken {
-		return ""
-	}
-	token := z.Token()
-	var title, label string
-	for _, a := range token.Attr {
-		switch a.Key {
-		case "class":
-			for class := range strings.FieldsSeq(a.Val) {
-				if class == "pencode-window-control" {
-					return ""
-				}
-			}
-		case "title":
-			title = strings.TrimSpace(a.Val)
-		case "aria-label":
-			label = strings.TrimSpace(a.Val)
+	classes, _ := node.Attribute("class")
+	for class := range strings.FieldsSeq(classes) {
+		if class == "pencode-window-control" {
+			return ""
 		}
 	}
-	if title != "" {
-		return title
+	if title, _ := node.Attribute("title"); strings.TrimSpace(title) != "" {
+		return strings.TrimSpace(title)
 	}
-	return label
+	label, _ := node.Attribute("aria-label")
+	return strings.TrimSpace(label)
 }
 
 func (model *workspaceModel) renderTooltip(view *htmlui.View) {
@@ -130,7 +110,7 @@ func (model *workspaceModel) syncTooltip(world *module.Content, now time.Time) {
 	}
 	if control == 0 {
 		*t = pencodeTooltip{}
-	} else if control != t.control || button.RenderRevision != t.revision {
+	} else {
 		node, found := world.HTMLNode(model.surface, button.ID)
 		label := ""
 		if found {
@@ -139,7 +119,6 @@ func (model *workspaceModel) syncTooltip(world *module.Content, now time.Time) {
 		if control != t.control || label != t.text {
 			*t = pencodeTooltip{control: control, id: button.ID, text: label, due: now.Add(pencodeTooltipDelay)}
 		}
-		t.revision = button.RenderRevision
 	}
 	if p.Down || p.Pressed || p.Released || p.WheelX != 0 || p.WheelY != 0 || model.uiKey(state, input.KeyEscape) {
 		t.open, t.dismissed = false, true

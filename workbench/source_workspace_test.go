@@ -120,26 +120,26 @@ func TestSourceControlPencodeInteraction(t *testing.T) {
 	if s.CommitMessage != "reviewed" {
 		t.Fatalf("native commit input=%q", s.CommitMessage)
 	}
-	clickFileAction := func(id string) {
+	clickFolderAction := func(id string) {
 		t.Helper()
 		scale := float64(m.settings.Zoom) / 100
 		kind := "changes"
-		if strings.HasPrefix(id, "sc-unstage:") {
+		if strings.HasPrefix(id, "sc-unstage-folder:") {
 			kind = "staged"
 		}
-		for _, target := range []string{"sc-open:" + kind + ":" + url.PathEscape(name), id} {
+		for _, target := range []string{"sc-folder:" + kind + ":resources", id} {
 			bounds := editorContextBounds(t, m, target)
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(bounds.X+bounds.Width/2) * scale, Y: float64(bounds.Y+bounds.Height/2) * scale})
 			languageInteractionStep(t, app)
 		}
 		editorContextClick(t, app, m, state, id)
 	}
-	clickFileAction("sc-stage:" + url.PathEscape(name))
+	clickFolderAction("sc-stage-folder:resources")
 	sourceWait(t, app, m)
 	if len(s.Snapshot.Groups[1]) != 1 || len(s.Snapshot.Groups[2]) != 0 {
 		t.Fatal("staging did not move file")
 	}
-	clickFileAction("sc-unstage:" + url.PathEscape(name))
+	clickFolderAction("sc-unstage-folder:resources")
 	sourceWait(t, app, m)
 	if len(s.Snapshot.Groups[1]) != 0 || len(s.Snapshot.Groups[2]) != 1 {
 		t.Fatal("unstaging did not move file")
@@ -198,8 +198,8 @@ func TestSourceControlPencodeInteraction(t *testing.T) {
 	sourceWait(t, app, m)
 	editorContextClick(t, app, m, state, "sc-open:history:"+url.PathEscape(name))
 	sourceWait(t, app, m)
-	if s.activeTab().Kind != "history" || len(s.Tabs) != 2 {
-		t.Fatal("history did not create a distinct tab")
+	if s.activeTab().Kind != "history" || len(s.Tabs) != 1 || !s.activeTab().Preview {
+		t.Fatal("history did not replace the comparison preview")
 	}
 	m.selectProjectTab(m.activeProjectState(), name)
 	m.sourceChanged()
@@ -386,7 +386,7 @@ func TestSourceControlCommitMessageModes(t *testing.T) {
 
 func TestSourceControlPencodeMergeEditor(t *testing.T) {
 	r := sourceTestRepository(t)
-	name := "main.go"
+	name := "resources/main.go"
 	sourceTestWrite(t, r, name, "package demo\n// base\n")
 	sourceTestGit(t, r, "add", "--all")
 	sourceTestGit(t, r, "commit", "-m", "base")
@@ -400,18 +400,19 @@ func TestSourceControlPencodeMergeEditor(t *testing.T) {
 		t.Fatal("expected conflict")
 	}
 	t.Setenv("ONIX_PENCODE_PROFILE_PROJECT", r.Root)
+	t.Setenv("ONIX_PENCODE_PROFILE_FILE", name)
 	app, m, _, state := languageInteractionFixture(t)
 	editorContextClick(t, app, m, state, "status-source-control")
 	sourceWait(t, app, m)
 	s := m.sourceState()
-	// File actions become visible only after hovering their row.
+	// Folder actions become visible only after hovering their row.
 	scale := float64(m.settings.Zoom) / 100
-	for _, id := range []string{"sc-open:merge:" + name, "sc-stage:" + name} {
+	for _, id := range []string{"sc-folder:merge:resources", "sc-stage-folder:resources"} {
 		bounds := editorContextBounds(t, m, id)
 		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(bounds.X+bounds.Width/2) * scale, Y: float64(bounds.Y+bounds.Height/2) * scale})
 		languageInteractionStep(t, app)
 	}
-	editorContextClick(t, app, m, state, "sc-stage:"+name)
+	editorContextClick(t, app, m, state, "sc-stage-folder:resources")
 	deadline := time.Now().Add(5 * time.Second)
 	for s.Done != nil && time.Now().Before(deadline) {
 		languageInteractionStep(t, app)
@@ -421,7 +422,7 @@ func TestSourceControlPencodeMergeEditor(t *testing.T) {
 		t.Fatal("unresolved staging did not show merge warning", s.Notice)
 	}
 	editorContextClick(t, app, m, state, "sc-notice-close")
-	editorContextClick(t, app, m, state, "sc-open:merge:"+name)
+	editorContextClick(t, app, m, state, "sc-open:merge:"+url.PathEscape(name))
 	sourceWait(t, app, m)
 	tab := s.activeTab()
 	if tab == nil || tab.Kind != "merge" {

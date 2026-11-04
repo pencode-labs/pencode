@@ -1,10 +1,61 @@
 package workbench
 
 import (
+	"fmt"
 	"net/url"
 	"slices"
 	"testing"
 )
+
+func sourceChangesFixture(count int) sourceSnapshot {
+	s := sourceSnapshot{Files: make([]sourceFile, count)}
+	for i := range s.Files {
+		s.Files[i] = sourceFile{Path: fmt.Sprintf("folder%04d/file%05d.go", i/20, i), Index: 'M', Work: 'M'}
+	}
+	s.Groups[1], s.Groups[2] = s.Files, s.Files
+	return s
+}
+
+func TestSourceChangesWindowCache(t *testing.T) {
+	m := &workspaceModel{}
+	s := m.sourceState()
+	s.Snapshot = sourceChangesFixture(4000)
+	s.changesHeight = 200
+	s.changeRanges()
+	rows := s.changeTrees[1].rows
+	s.changesPosition = 32 + 2000*sourceChangeRowHeight
+	windows := s.changeRanges()
+	if windows[1].First > 2000 || windows[1].End <= 2000 || windows[1].End-windows[1].First > 33 || windows[2].End != 0 || &rows[0] != &s.changeTrees[1].rows[0] {
+		t.Fatalf("scroll did not reuse a bounded row window: %+v", windows)
+	}
+	if n := testing.AllocsPerRun(100, func() { s.changeRanges() }); n != 0 {
+		t.Fatalf("warm row window allocated %g times", n)
+	}
+	s.changesPosition++
+	if s.changeRanges() != windows {
+		t.Fatal("scrolling within a mounted band rebuilt the row window")
+	}
+	m.sourceAction("sc-folder:staged:folder0000")
+	s.changeRanges()
+	if len(s.changeTrees[1].rows) != len(rows)-20 || len(s.changeTrees[2].rows) != len(rows) {
+		t.Fatal("folder folding changed the wrong group or retained descendants")
+	}
+	m.sourceAction("sc-group:staged")
+	s.changeRanges()
+	if len(s.changeTrees[1].rows) != 0 || len(s.changeTrees[2].rows) != len(rows) {
+		t.Fatal("collapsed group retained rows or hid another group")
+	}
+	s.Snapshot = sourceChangesFixture(1)
+	windows = s.changeRanges()
+	if windows[2] != (sourceRowRange{End: 2}) || s.changeTrees[2].rows[1].File != &s.Snapshot.Files[0] {
+		t.Fatalf("shrinking the snapshot retained stale rows or an empty window: %+v", windows)
+	}
+	for _, row := range rows {
+		if row.File != nil {
+			t.Fatal("collapsed cache retained file references")
+		}
+	}
+}
 
 func TestSourceControlHistoryTree(t *testing.T) {
 	m := &workspaceModel{}

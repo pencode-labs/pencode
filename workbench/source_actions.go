@@ -7,9 +7,35 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/diiyw/onix/input"
 )
+
+func (a *workspaceModel) sourceClick(id string, now time.Time) {
+	s := a.sourceState()
+	double := s.lastClick == id && !s.lastClickAt.IsZero() && now.Sub(s.lastClickAt) <= 500*time.Millisecond
+	s.lastClick, s.lastClickAt = id, now
+	if double && (strings.HasPrefix(id, "sc-open:") || strings.HasPrefix(id, "sc-tab:")) {
+		s.lastClick = ""
+		if s.PendingOpen == id {
+			s.PendingPinned = true
+			return
+		}
+		key := strings.TrimPrefix(id, "sc-tab:")
+		if id == s.OpenID {
+			key, s.OpenPinned = s.OpenKey, true
+		}
+		for _, tab := range s.Tabs {
+			if tab.Key == key {
+				tab.Preview = false
+			}
+		}
+		a.sourceChanged()
+		return
+	}
+	a.sourceAction(id)
+}
 
 func (a *workspaceModel) sourceMutation(message string, operation func(sourceRepository) error) {
 	s := a.sourceState()
@@ -99,6 +125,11 @@ func (a *workspaceModel) sourceAction(id string) {
 	// Their private context and mailbox can be discarded without cancelling writes.
 	s.cancelRefresh()
 	if s.Done != nil {
+		if strings.HasPrefix(id, "sc-open:") {
+			s.PendingPinned = s.PendingPinned && s.PendingOpen == id
+			s.PendingOpen = id
+			s.PendingSelection = s.Selection
+		}
 		return
 	}
 	if id == "sc-repositories" {
@@ -210,6 +241,7 @@ func (a *workspaceModel) sourceAction(id string) {
 			}
 			for _, tab := range s.Tabs {
 				if tab.Key == key && tab.Result != tab.Saved {
+					tab.Preview = false
 					s.Active, s.RestoreScroll = key, true
 					s.Selection++
 					a.sourceChanged()
@@ -217,7 +249,14 @@ func (a *workspaceModel) sourceAction(id string) {
 				}
 			}
 			s.Selection++
-			a.sourceJob(sourceQuery, func() sourceResult { tab, err := r.openDiff(file, kind, hash); return sourceResult{Tab: tab, Err: err} })
+			s.OpenID, s.OpenKey, s.OpenPinned = id, key, false
+			a.sourceJob(sourceQuery, func() sourceResult {
+				tab, err := r.openDiff(file, kind, hash)
+				if tab != nil {
+					tab.Preview = true
+				}
+				return sourceResult{Tab: tab, Err: err}
+			})
 			break
 		}
 	case strings.HasPrefix(id, "sc-discard:"), strings.HasPrefix(id, "sc-discard-folder:"):
@@ -230,10 +269,10 @@ func (a *workspaceModel) sourceAction(id string) {
 			return
 		}
 		s.Prompt, s.PromptHash = op, kind+":"+encoded
-	case strings.HasPrefix(id, "sc-stage:"), strings.HasPrefix(id, "sc-stage-folder:"), strings.HasPrefix(id, "sc-unstage:"), id == "sc-stage-all", id == "sc-unstage-all":
+	case strings.HasPrefix(id, "sc-stage:"), strings.HasPrefix(id, "sc-stage-folder:"), strings.HasPrefix(id, "sc-unstage:"), strings.HasPrefix(id, "sc-unstage-folder:"), id == "sc-stage-all", id == "sc-unstage-all":
 		unstage := strings.HasPrefix(id, "sc-unstage")
 		all := id == "sc-stage-all" || id == "sc-unstage-all"
-		folder := strings.HasPrefix(id, "sc-stage-folder:")
+		folder := strings.HasPrefix(id, "sc-stage-folder:") || strings.HasPrefix(id, "sc-unstage-folder:")
 		var files []sourceFile
 		name := ""
 		if !all {
@@ -389,17 +428,7 @@ func (a *workspaceModel) closeSourceTab(key string) {
 	s := a.sourceState()
 	for i, tab := range s.Tabs {
 		if tab.Key == key {
-			if s.gutterTab == tab {
-				s.gutterTab = nil
-			}
-			if s.diffPaneTab == tab {
-				s.diffPaneTab = nil
-				s.diffEditors = [2]pencodeEditor{}
-				s.inlinePaint = [2]sourceInlinePaint{}
-			}
-			if s.Active == key && tab.Kind == "merge" {
-				s.mergeEditor = pencodeEditor{}
-			}
+			s.releaseTab(tab)
 			s.Tabs = slices.Delete(s.Tabs, i, i+1)
 			if s.Active == key {
 				s.Active = ""
@@ -411,6 +440,23 @@ func (a *workspaceModel) closeSourceTab(key string) {
 			}
 			return
 		}
+	}
+}
+
+func (s *pencodeSourceControl) releaseTab(tab *sourceTab) {
+	if s.overview.dragTab == tab {
+		s.overview.dragTab = nil
+	}
+	if s.gutterTab == tab {
+		s.gutterTab = nil
+	}
+	if s.diffPaneTab == tab {
+		s.diffPaneTab = nil
+		s.diffEditors = [2]pencodeEditor{}
+		s.inlinePaint = [2]sourceInlinePaint{}
+	}
+	if s.Active == tab.Key && tab.Kind == "merge" {
+		s.mergeEditor = pencodeEditor{}
 	}
 }
 
@@ -542,7 +588,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	key := sourcePanelKey{
 		Theme: a.workbenchTheme, Icons: a.fileIcons, Files: sourceFirst(s.Snapshot.Files), CommitFiles: sourceFirst(s.CommitFiles), Commits: sourceFirst(s.Snapshot.Commits),
 		FileCount: len(s.Snapshot.Files), CommitCount: len(s.Snapshot.Commits), CommitFileCount: len(s.CommitFiles),
-		First: s.GraphFirst, Visible: s.GraphVisible, TreeRevision: s.TreeRevision,
+		First: s.GraphFirst, Visible: s.GraphVisible, Changes: s.changeRanges(), TreeRevision: s.TreeRevision,
 		Sync:    s.Snapshot.Sync,
 		Message: s.CommitMessage, Multiline: s.MessageMultiline, Selected: s.SelectedHash, Busy: s.busy(), Modal: s.modal(), HasMore: s.Snapshot.HasMore,
 		Syncing:         s.Done != nil && s.JobKind == sourceSync,
@@ -617,7 +663,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	}
 	b.close()
 	b.open("div", "changes-list", "id", "sc-changes-list", "class", "sc-changes-list")
-	for i, group := range []struct{ Kind, Label string }{{"merge", "Merge Changes"}, {"staged", "Staged Changes"}, {"changes", "Changes"}} {
+	for i, group := range sourceChangeGroups {
 		if len(s.Snapshot.Groups[i]) > 0 {
 			a.sourceFileTree(b, group.Kind, group.Label, s.Snapshot.Groups[i], 14)
 		}
@@ -703,64 +749,28 @@ func (a *workspaceModel) sourceFileTree(b *sourceVNodeView, kind, label string, 
 		}
 	}
 	b.open("ul", "tree", "id", treeID, "class", "sc-tree", "aria-label", label)
-	rows := sourceTreeRows(kind, files, s.Collapsed)
+	var rows []sourceTreeRow
+	var window sourceRowRange
 	if kind == "history" {
-		rows = slices.Values(s.historyTree())
+		rows = s.historyTree()
+		window.End = len(rows)
+	} else {
+		ranges := s.changeRanges()
+		for i, group := range sourceChangeGroups {
+			if group.Kind == kind {
+				rows, window = s.changeTrees[i].rows, ranges[i]
+				break
+			}
+		}
 	}
-	for row := range rows {
-		if row.File == nil {
-			folder := row.Path
-			key := kind + ":" + folder
-			b.open("li", "folder:"+folder, "class", "sc-folder", "style", fmt.Sprintf("padding-left:%dpx", indent+row.Depth*14))
-			b.open("button", "sc-folder:"+key, "id", "sc-folder:"+key, "type", "button", "aria-expanded", strconv.FormatBool(!s.Collapsed[key]))
-			icon := "chevron-down"
-			if s.Collapsed[key] {
-				icon = "chevron-right"
-			}
-			a.sourceIcon(b, "arrow", icon, "")
-			a.sourceFileIcon(b, "folder", path.Base(folder), true, !s.Collapsed[key])
-			b.text("span", "name", path.Base(folder))
-			b.close()
-			if kind == "changes" {
-				name := url.PathEscape(folder)
-				a.sourceIconButton(b, "sc-discard-folder:"+kind+":"+name, "Discard Changes in "+folder, "discard", s.busy(), "sc-file-action")
-				a.sourceIconButton(b, "sc-stage-folder:"+name, "Stage Changes in "+folder, "add", s.busy(), "sc-file-action")
-			}
-			b.close()
-			continue
-		}
-		f := row.File
-		b.open("li", f.Path, "class", "sc-file", "style", fmt.Sprintf("padding-left:%dpx", indent+row.Depth*14))
-		name := url.PathEscape(f.Path)
-		status := f.Work
-		if kind == "staged" || kind == "history" {
-			status = f.Index
-		}
-		if f.Conflict {
-			status = 'U'
-		} else if status == '?' {
-			status = 'A'
-		}
-		b.open("button", f.Path, "id", "sc-open:"+kind+":"+name, "type", "button", "class", "sc-file-open", "title", f.Path)
-		a.sourceFileIcon(b, "file", path.Base(f.Path), false, false)
-		b.text("span", "name", path.Base(f.Path), "class", "sc-file-name")
-		b.close()
-		if kind != "history" {
-			if kind == "changes" {
-				a.sourceIconButton(b, "sc-discard:"+kind+":"+name, "Discard Changes "+f.Path, "discard", s.busy(), "sc-file-action")
-			}
-			id, title := "sc-stage:", "Stage Changes"
-			if kind == "staged" {
-				id, title = "sc-unstage:", "Unstage Changes"
-			}
-			icon := "add"
-			if kind == "staged" {
-				icon = "remove"
-			}
-			a.sourceIconButton(b, id+name, title+" "+f.Path, icon, s.busy(), "sc-file-action")
-		}
-		b.text("span", "status", string(status), "class", "sc-file-status sc-status-"+strings.ToLower(string(status)))
-		b.close()
+	if window.First > 0 {
+		b.text("li", "\x00before", "", "class", "sc-tree-spacer", "aria-hidden", "true", "style", fmt.Sprintf("height:%dpx", window.First*sourceChangeRowHeight))
+	}
+	for _, row := range rows[window.First:window.End] {
+		a.sourceFileTreeRow(b, kind, row, indent)
+	}
+	if window.End < len(rows) {
+		b.text("li", "\x00after", "", "class", "sc-tree-spacer", "aria-hidden", "true", "style", fmt.Sprintf("height:%dpx", (len(rows)-window.End)*sourceChangeRowHeight))
 	}
 	if len(files) == 0 {
 		label := "No files"
@@ -770,6 +780,69 @@ func (a *workspaceModel) sourceFileTree(b *sourceVNodeView, kind, label string, 
 		b.text("li", "empty", label, "class", "muted", "style", fmt.Sprintf("padding-left:%dpx", indent))
 	}
 	b.close()
+	b.close()
+}
+
+func (a *workspaceModel) sourceFileTreeRow(b *sourceVNodeView, kind string, row sourceTreeRow, indent int) {
+	s := a.sourceState()
+	if row.File == nil {
+		folder := row.Path
+		key := kind + ":" + folder
+		b.open("li", "folder:"+folder, "class", "sc-folder", "style", fmt.Sprintf("padding-left:%dpx", indent+row.Depth*14))
+		b.open("button", "sc-folder:"+key, "id", "sc-folder:"+key, "type", "button", "aria-expanded", strconv.FormatBool(!s.Collapsed[key]))
+		icon := "chevron-down"
+		if s.Collapsed[key] {
+			icon = "chevron-right"
+		}
+		a.sourceIcon(b, "arrow", icon, "")
+		a.sourceFileIcon(b, "folder", path.Base(folder), true, !s.Collapsed[key])
+		b.text("span", "name", path.Base(folder))
+		b.close()
+		if kind == "changes" {
+			name := url.PathEscape(folder)
+			a.sourceIconButton(b, "sc-discard-folder:"+kind+":"+name, "Discard Changes in "+folder, "discard", s.busy(), "sc-file-action")
+		}
+		if kind != "history" {
+			id, title, icon := "sc-stage-folder:", "Stage Changes in ", "add"
+			if kind == "staged" {
+				id, title, icon = "sc-unstage-folder:", "Unstage Changes in ", "remove"
+			}
+			a.sourceIconButton(b, id+url.PathEscape(folder), title+folder, icon, s.busy(), "sc-file-action")
+		}
+		b.close()
+		return
+	}
+	f := row.File
+	b.open("li", f.Path, "class", "sc-file", "style", fmt.Sprintf("padding-left:%dpx", indent+row.Depth*14))
+	name := url.PathEscape(f.Path)
+	status := f.Work
+	if kind == "staged" || kind == "history" {
+		status = f.Index
+	}
+	if f.Conflict {
+		status = 'U'
+	} else if status == '?' {
+		status = 'A'
+	}
+	b.open("button", f.Path, "id", "sc-open:"+kind+":"+name, "type", "button", "class", "sc-file-open", "title", f.Path)
+	a.sourceFileIcon(b, "file", path.Base(f.Path), false, false)
+	b.text("span", "name", path.Base(f.Path), "class", "sc-file-name")
+	b.close()
+	if kind != "history" {
+		if kind == "changes" {
+			a.sourceIconButton(b, "sc-discard:"+kind+":"+name, "Discard Changes "+f.Path, "discard", s.busy(), "sc-file-action")
+		}
+		id, title := "sc-stage:", "Stage Changes"
+		if kind == "staged" {
+			id, title = "sc-unstage:", "Unstage Changes"
+		}
+		icon := "add"
+		if kind == "staged" {
+			icon = "remove"
+		}
+		a.sourceIconButton(b, id+name, title+" "+f.Path, icon, s.busy(), "sc-file-action")
+	}
+	b.text("span", "status", string(status), "class", "sc-file-status sc-status-"+strings.ToLower(string(status)))
 	b.close()
 }
 

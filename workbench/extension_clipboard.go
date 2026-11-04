@@ -3,32 +3,21 @@ package workbench
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/diiyw/onix/input"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/pencode-labs/pencode/internal/clipboard"
 	"github.com/pencode-labs/pencode/peb"
-	"golang.design/x/clipboard"
 )
 
-var initImageClipboard = sync.OnceValue(clipboard.Init)
-
 func readClipboardImage() ([]byte, error) {
-	if err := initImageClipboard(); err != nil {
-		return nil, err
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	data, err := clipboard.Read(ctx, clipboard.FmtImage)
-	if errors.Is(err, clipboard.ErrNoData) {
-		return nil, nil
-	}
-	return data, err
+	return clipboard.ReadImage(ctx)
 }
 
 func (s *pencodeExtensionSurface) interceptImagePaste(state *input.State, readImage func() ([]byte, error)) bool {

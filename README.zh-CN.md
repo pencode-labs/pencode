@@ -38,6 +38,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 - Onix 桌面构建所需的平台原生开发库，具体见 Onix 源码中的 `docs/desktop-builds.md`。
 - Git 功能需要系统 `git`，SSH 连接需要 OpenSSH `ssh`。Go 扩展会自动安装所需工具；其他语言服务器由对应扩展决定。
 - GUI 所在设备需安装可用字体，Pencode 不随程序打包字体。
+- Linux 图片粘贴需要 Wayland 下的 `wl-paste`（由 `wl-clipboard` 提供）或 X11 下的 `xclip`；Windows 和 macOS 使用原生剪贴板 API。
 
 预期目录布局：
 

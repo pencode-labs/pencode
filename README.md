@@ -38,6 +38,7 @@ File changes use native FSEvents on macOS, recursive `ReadDirectoryChangesW` on 
 - The native development libraries required by Onix for desktop builds; see `docs/desktop-builds.md` in the Onix checkout.
 - System `git` for source control and OpenSSH `ssh` for SSH connections. The Go extension installs its tools automatically; other language servers depend on their extensions.
 - Fonts installed on the GUI host. Pencode does not bundle fonts.
+- Image paste on Linux requires `wl-paste` (from `wl-clipboard`) on Wayland or `xclip` on X11. Windows and macOS use native clipboard APIs.
 
 Expected layout:
 

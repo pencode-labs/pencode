@@ -10,7 +10,6 @@ require (
 	github.com/ebitengine/purego v0.11.2
 	github.com/go-gl/mathgl v1.2.0
 	github.com/yuin/goldmark/v2 v2.1.9
-	golang.design/x/clipboard v0.11.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 )
@@ -30,8 +29,4 @@ require (
 	github.com/mewkiz/flac v1.0.14 // indirect
 	github.com/mewkiz/pkg v0.0.0-20260703220044-4fb89b18cc87 // indirect
 	github.com/mewpkg/term v0.0.0-20241026122259-37a80af23985 // indirect
-	golang.design/x/x11 v0.2.0 // indirect
-	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
-	golang.org/x/image v0.41.0 // indirect
-	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 )

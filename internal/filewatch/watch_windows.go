@@ -15,16 +15,16 @@ const Recursive = true
 const notificationBufferSize = 16 << 10
 
 type directoryWatch struct {
+	stopped chan struct{}
 	handle  windows.Handle
 	event   windows.Handle
-	stopped chan struct{}
 	mu      sync.Mutex
 	closing bool
 }
 type nativeWatcher struct {
 	w     *Watcher
-	mu    sync.Mutex
 	roots map[string]*directoryWatch
+	mu    sync.Mutex
 }
 
 func (n *nativeWatcher) open(w *Watcher) error {

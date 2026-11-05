@@ -18,20 +18,20 @@ import (
 )
 
 type project struct {
-	info protocol.Workspace
 	root *os.Root
+	info protocol.Workspace
 }
 type document struct {
 	project *project
 	path    string
-	version uint64
 	tree    piecetree.Tree
+	version uint64
 	disk    [sha256.Size]byte
 }
 type Store struct {
-	next      uint64
 	projects  map[uint64]*project
 	documents map[uint64]*document
+	next      uint64
 	bytes     int
 }
 

@@ -11,10 +11,10 @@ const fileChangeCapacity = 128
 // Persistent processes each own a bounded mailbox. A busy extension merges
 // paths until it can read them; overflow requests reconciliation instead.
 type fileChangeMailbox struct {
-	mu    sync.Mutex
 	ready chan struct{}
 	roots map[string]*pendingFileChanges
 	spare *pendingFileChanges
+	mu    sync.Mutex
 }
 type pendingFileChanges struct {
 	files [fileChangeCapacity]peb.FileEvent

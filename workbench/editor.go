@@ -15,34 +15,34 @@ import (
 )
 
 type pencodeEditor struct {
-	control, text, gutter, numbers      ecs.Entity
 	file                                *openFile
-	needsFocus                          bool
-	guide                               ecs.Entity
-	firstLine, lastLine                 int
-	numberBuffer                        []byte
-	sourceLines                         []int
 	compositionSource, compositionValue piecetree.Snapshot
-	compositionText                     string
-	compositionCaret                    int
-	compositionRuneCaret                int
-	compositionSpans                    []scene.TextSpan2D
-	compositionPaint                    pencodeOverlayKey
-	linkSpans                           []scene.TextSpan2D
-	linkPaint                           pencodeOverlayKey
-	brackets                            pencodeBracketIndex
-	diagnostics                         pencodeDiagnosticPaint
-	debugPaint                          pencodeDebugPaint
-	findPaint                           pencodeFindPaint
-	layoutKey                           pencodeGutterLayoutKey
 	caretContent                        piecetree.Snapshot
 	caretInfo                           string
+	compositionText                     string
+	sourceLines                         []int
+	numberBuffer                        []byte
+	linkSpans                           []scene.TextSpan2D
+	compositionSpans                    []scene.TextSpan2D
+	debugPaint                          pencodeDebugPaint
+	layoutKey                           pencodeGutterLayoutKey
+	brackets                            pencodeBracketIndex
+	compositionPaint                    pencodeOverlayKey
+	linkPaint                           pencodeOverlayKey
+	diagnostics                         pencodeDiagnosticPaint
+	findPaint                           pencodeFindPaint
+	compositionCaret                    int
+	firstLine, lastLine                 int
+	compositionRuneCaret                int
+	control, text, gutter, numbers      ecs.Entity
+	guide                               ecs.Entity
 	caretIndex, caretLine               int
+	needsFocus                          bool
 }
 
 type pencodeGutterLayoutKey struct {
-	value               piecetree.Snapshot
 	font                *text.Font
+	value               piecetree.Snapshot
 	fontSize, dpi       float64
 	wrapWidth, tabWidth float32
 	wrapMode            scene.TextWrapMode
@@ -347,7 +347,7 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	originY := valueTransform.Translation.Y.Value
 	first := max(0, int(math.Floor(float64(-originY/lineHeight))))
 	count := scene.TextLineCount2D(valueText)
-	key := pencodeGutterLayoutKey{valueText.Text(), valueText.Font, valueText.FontSize, valueText.DPI, valueText.WrapWidth, valueText.TabWidth, valueText.WrapMode}
+	key := pencodeGutterLayoutKey{value: valueText.Text(), font: valueText.Font, fontSize: valueText.FontSize, dpi: valueText.DPI, wrapWidth: valueText.WrapWidth, tabWidth: valueText.TabWidth, wrapMode: valueText.WrapMode}
 	first = min(first, count)
 	last := min(count, max(first, int(math.Ceil(float64(bounds.Height-originY)/float64(lineHeight)))))
 	if key != editor.layoutKey || first != editor.firstLine || last != editor.lastLine {

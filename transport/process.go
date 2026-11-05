@@ -13,10 +13,10 @@ import (
 type process struct {
 	io.ReadCloser
 	writer   io.WriteCloser
-	cmd      *exec.Cmd
-	once     sync.Once
-	done     chan struct{}
 	err      error
+	cmd      *exec.Cmd
+	done     chan struct{}
+	once     sync.Once
 	graceful bool
 }
 

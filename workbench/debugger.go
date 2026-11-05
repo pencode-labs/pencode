@@ -28,41 +28,41 @@ var pencodeDebugEmptyOptions = [...]htmlui.VNode{appearanceOption(0, "", "暂无
 
 type pencodeBreakpoint struct{ offset, line int }
 type pencodeDebugEvent struct {
-	project           *pencodeProject
-	configs           []debugger.Config
 	err               error
 	ctx               context.Context
-	edit              bool
-	written, baseline string
+	project           *pencodeProject
 	stream            *client.Process
 	claim             func() bool
+	written, baseline string
 	title             string
+	configs           []debugger.Config
+	edit              bool
 }
 type pencodeDebugState struct {
-	session                     *debugger.Session
+	breakpointProject           *pencodeProject
 	project, configProject      *pencodeProject
 	backend                     *client.Client
-	view                        debugger.Snapshot
-	configs                     []debugger.Config
-	options                     []htmlui.VNode
-	selected                    int
-	loading, startPending       bool
-	adding                      bool
-	templateIndex               int
-	templateStyle               string
-	threadsExpanded             bool
-	events                      chan pencodeDebugEvent
-	cancel                      context.CancelFunc
 	expanded                    map[int]bool
+	cancel                      context.CancelFunc
+	session                     *debugger.Session
+	events                      chan pencodeDebugEvent
 	expression, message, output string
+	templateStyle               string
+	breakpointNames             []string
+	rows                        []pencodeDebugRow
+	options                     []htmlui.VNode
+	configs                     []debugger.Config
+	view                        debugger.Snapshot
 	outputRevision              uint64
+	templateIndex               int
+	selected                    int
 	navigationEpoch             uint64
 	navigationFrame             int
-	rows                        []pencodeDebugRow
 	rowRevision                 uint64
-	breakpointProject           *pencodeProject
 	breakpointRevision          uint64
-	breakpointNames             []string
+	threadsExpanded             bool
+	adding                      bool
+	loading, startPending       bool
 }
 type pencodeDebugRow struct {
 	ref, slot, label, detail       string

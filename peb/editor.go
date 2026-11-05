@@ -3,18 +3,18 @@ package peb
 import "unicode/utf8"
 
 type DocumentSelector struct {
-	Match   Match
 	Pattern string
 	// LanguageID overrides a language server's default for this selector.
 	LanguageID string
+	Match      Match
 }
 
 // EditorMessage contains a host-owned document snapshot. Binary files supply
 // only Path and Binary=true; this first API permits text edits only.
 type EditorMessage struct {
 	Editor, Path, Content string
-	Binary                bool
 	Event                 EditorEvent
+	Binary                bool
 }
 
 type EditorEvent struct {

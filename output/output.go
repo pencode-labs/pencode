@@ -11,20 +11,20 @@ import (
 const Capacity = 64 * 1024
 
 type Store struct {
-	mu       sync.Mutex
 	byName   map[string]*Channel
+	wake     func()
 	channels []*Channel
 	revision uint64
-	wake     func()
+	mu       sync.Mutex
 }
 
 type Channel struct {
 	store                    *Store
 	Name                     string
+	text                     string
 	data                     []byte
 	start, used              int
 	revision, cachedRevision uint64
-	text                     string
 }
 
 func (s *Store) SetWake(wake func()) {

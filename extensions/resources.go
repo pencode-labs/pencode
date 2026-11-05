@@ -23,13 +23,13 @@ const (
 
 // Font holds parsed, memory-backed faces validated on the loader worker.
 type Font struct {
-	ID, Label     string
 	Regular, Bold *font.Face
+	ID, Label     string
 }
 
 type Theme struct {
-	ID, Label string
 	Theme     *syntax.Theme
+	ID, Label string
 }
 
 // Bundle owns all imported assets. No extension directory remains open after
@@ -67,10 +67,10 @@ func (b *Bundle) Close() {
 
 // Editor retains its validated process entry for on-demand activation.
 type Editor struct {
-	Output *output.Channel
-	peb.Action
-	LocalID string
+	Output  *output.Channel
 	remote  *client.Extension
+	LocalID string
+	peb.Action
 }
 
 func validResourcePath(name string, resource bool) bool {
@@ -192,7 +192,7 @@ func loadBundle(source fs.FS, id string, c peb.Contributions) (result *Bundle, f
 				return nil, err
 			}
 		}
-		bundle.Fonts = append(bundle.Fonts, Font{"extensions/" + id + "/" + f.ID, f.Label, regular, bold})
+		bundle.Fonts = append(bundle.Fonts, Font{ID: "extensions/" + id + "/" + f.ID, Label: f.Label, Regular: regular, Bold: bold})
 	}
 	for _, t := range c.Themes {
 		if !validID(t.ID) || t.Label == "" || ids["theme/"+t.ID] {
@@ -206,7 +206,7 @@ func loadBundle(source fs.FS, id string, c peb.Contributions) (result *Bundle, f
 		if err != nil {
 			return nil, err
 		}
-		bundle.Themes = append(bundle.Themes, Theme{"extensions/" + id + "/" + t.ID, t.Label, theme})
+		bundle.Themes = append(bundle.Themes, Theme{ID: "extensions/" + id + "/" + t.ID, Label: t.Label, Theme: theme})
 	}
 	for _, t := range c.IconThemes {
 		if !validID(t.ID) || t.Label == "" || ids["icons/"+t.ID] {

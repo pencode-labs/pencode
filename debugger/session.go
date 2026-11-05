@@ -32,44 +32,44 @@ func (state State) String() string {
 }
 
 type Snapshot struct {
+	Breakpoints   map[string][]dap.Breakpoint
+	Variables     map[int][]dap.Variable
+	Reason, Error string
+	Frames        []dap.StackFrame
+	Threads       []dap.Thread
+	Scopes        []dap.Scope
+	Evaluations   []dap.Variable
+	Capabilities  dap.Capabilities
 	Revision      uint64
+	ThreadID      int
+	FrameID       int
 	Epoch         uint64
 	State         State
-	Reason, Error string
-	Capabilities  dap.Capabilities
-	Threads       []dap.Thread
-	ThreadID      int
-	Frames        []dap.StackFrame
-	FrameID       int
-	Scopes        []dap.Scope
-	Variables     map[int][]dap.Variable
-	Evaluations   []dap.Variable
-	Breakpoints   map[string][]dap.Breakpoint
 }
 
 type Open func(context.Context) (io.ReadWriteCloser, error)
 
 type Session struct {
-	mu                 sync.Mutex
-	bpMu               sync.Mutex
-	view               Snapshot
-	conn               *dap.Conn
 	ctx                context.Context
+	loading            map[int]bool
+	breakpoints        map[string][]dap.SourceBreakpoint
+	Output             *output.Channel
+	conn               *dap.Conn
 	cancel             context.CancelFunc
 	done               chan struct{}
 	initialized        chan struct{}
-	initOnce           sync.Once
-	stopOnce           sync.Once
+	wake               func()
 	config             Config
-	breakpoints        map[string][]dap.SourceBreakpoint
-	loading            map[int]bool
-	configured         bool
+	view               Snapshot
 	breakpointRevision uint64
-	controlPending     bool
 	frameGeneration    uint64
 	consoleGeneration  uint64
-	wake               func()
-	Output             *output.Channel
+	stopOnce           sync.Once
+	initOnce           sync.Once
+	mu                 sync.Mutex
+	bpMu               sync.Mutex
+	configured         bool
+	controlPending     bool
 }
 
 func Start(parent context.Context, config Config, breakpoints map[string][]dap.SourceBreakpoint, open Open, handler dap.Handler, channel *output.Channel, wake func()) *Session {
@@ -574,9 +574,9 @@ func (s *Session) Evaluate(expression string) {
 		var result dap.EvaluateResponse
 		err := s.request("evaluate", struct {
 			Expression string `json:"expression"`
-			FrameID    int    `json:"frameId"`
 			Context    string `json:"context"`
-		}{expression, frame, "repl"}, &result)
+			FrameID    int    `json:"frameId"`
+		}{Expression: expression, FrameID: frame, Context: "repl"}, &result)
 		s.mu.Lock()
 		if s.view.Epoch != epoch || s.frameGeneration != generation || s.consoleGeneration != console || s.view.State != Stopped {
 			s.mu.Unlock()

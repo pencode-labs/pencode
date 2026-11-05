@@ -36,9 +36,9 @@ type pencodeProblemFile struct{ root, path string }
 
 type pencodeProblem struct {
 	session  *pencodeLanguageSession
-	location lsp.Location
 	path     string
 	label    string
+	location lsp.Location
 	severity int
 }
 
@@ -80,25 +80,25 @@ type pencodeProblemGroupState struct {
 }
 
 type pencodeBottomPanel struct {
-	active                           pencodePanel
-	focusEditor                      bool
-	heightStyle                      string
+	problemGroupByURI                map[lsp.URI]*pencodeProblemGroup
+	cachedSource                     *output.Channel
+	source                           *output.Channel
 	diagnostics                      map[pencodeDiagnosticKey][]lsp.Diagnostic
 	errorFiles                       map[pencodeProblemFile]bool
-	problemsDirty                    bool
+	filter, cachedFilter, outputText string
+	lastStatus                       string
+	count                            string
+	heightStyle                      string
 	problems                         []pencodeProblem
 	problemGroups                    []*pencodeProblemGroup
-	problemGroupByURI                map[lsp.URI]*pencodeProblemGroup
-	problemRevision                  uint64
-	problemGroupsInitialized         bool
-	count                            string
 	channels                         []*output.Channel
 	options                          []htmlui.VNode
-	source                           *output.Channel
-	filter, cachedFilter, outputText string
-	cachedSource                     *output.Channel
 	outputRevision, storeRevision    uint64
-	lastStatus                       string
+	problemRevision                  uint64
+	problemsDirty                    bool
+	problemGroupsInitialized         bool
+	active                           pencodePanel
+	focusEditor                      bool
 }
 
 func (model *workspaceModel) outputStore() *output.Store {
@@ -384,11 +384,15 @@ func (model *workspaceModel) renderBottomPanel(view *htmlui.View, definition *ht
 	view.Event("output-source", htmlui.EventChange)
 	view.Event("output-filter", htmlui.EventInput)
 	problems, out, source := p.active == pencodePanelProblems, p.active == pencodePanelOutput, p.active == pencodePanelSourceControl
+	if problems || out {
+		view.Attr("bottom-panel", "class", "pencode-bottom-panel pencode-titled-panel")
+	}
 	view.Attr("status-problems", "aria-expanded", boolAttribute(problems))
 	view.Attr("status-output", "aria-expanded", boolAttribute(out))
 	setPanelVisible(view, "bottom-panel", p.active != pencodePanelClosed)
 	setPanelVisible(view, "panel-resize", p.active != pencodePanelClosed)
 	setPanelVisible(view, "problems-pane", problems)
+	setPanelVisible(view, "problems-title", problems)
 	setPanelVisible(view, "output-pane", out)
 	setPanelVisible(view, "output-tools", out)
 	setPanelVisible(view, "source-pane", source)

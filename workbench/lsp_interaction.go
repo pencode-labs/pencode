@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -29,41 +30,41 @@ const (
 type pencodeLanguageInteraction struct {
 	completionDue                             time.Time
 	completionFile                            *openFile
+	contextFile                               *openFile
 	completionContent                         piecetree.Snapshot
+	contextContent                            piecetree.Snapshot
 	completionMethod, trigger                 string
-	completionCaret                           int
-	hover                                     pencodeLanguageHover
 	underlineRects                            []scene.TextRangeRect2D
 	underlineNodes                            []htmlui.VNode
-	underlineOriginX, underlineOriginY        float32
-	contextOpen                               bool
-	contextFocus                              bool
-	contextX, contextY                        float32
-	contextCaret, contextAnchor, contextIndex int
+	hover                                     pencodeLanguageHover
 	contextGroup, contextSubIndex             int
+	completionCaret                           int
+	contextCaret, contextAnchor, contextIndex int
+	contextX, contextY                        float32
+	underlineOriginX, underlineOriginY        float32
 	contextSubX, contextSubY                  float32
 	contextPointerX, contextPointerY          float32
-	contextFile                               *openFile
-	contextContent                            piecetree.Snapshot
+	contextOpen                               bool
+	contextFocus                              bool
 	keysHandled                               bool
 }
 
 type pencodeLanguageHover struct {
-	cancel             context.CancelFunc
 	due                time.Time
-	token              uint64
+	definitions        *syntax.Definitions
+	cancel             context.CancelFunc
 	file               *openFile
+	theme              *syntax.Theme
 	content            piecetree.Snapshot
 	body               string
 	result             json.RawMessage
 	nodes              []htmlui.VNode
-	theme              *syntax.Theme
-	definitions        *syntax.Definitions
 	offset, start, end int // UTF-8 byte offsets, including the request position.
-	x, y               float32
-	pointerX, pointerY float32 // Mouse anchor relative to editor-body, before viewport clamping.
+	token              uint64
 	underline          htmlui.Rect
 	viewport           htmlui.Rect
+	x, y               float32
+	pointerX, pointerY float32 // Mouse anchor relative to editor-body, before viewport clamping.
 	open, link         bool
 	positioned         bool
 }
@@ -249,8 +250,11 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 	zoom := max(float32(model.settings.Zoom)/100, .01)
 	pointer := state.Pointer()
 	x, y := pointer.X/zoom, pointer.Y/zoom
-	ctrl := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
-	if ui.hover.link && !ctrl {
+	primary := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
+	if runtime.GOOS == "darwin" {
+		primary = state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
+	}
+	if ui.hover.link && !primary {
 		ui.hover.link = false
 		changed = true
 	}
@@ -310,7 +314,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		}
 		return changed
 	}
-	if state.MouseReleased(input.MouseLeft) && ctrl {
+	if state.MouseReleased(input.MouseLeft) && primary {
 		model.cancelLanguageAutomatic()
 		model.cancelLanguageHover()
 		model.dismissLanguageContext()
@@ -348,7 +352,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		doc = model.languages.documents[file]
 	}
 	action := languageSymbolAction(doc, offset)
-	link := ctrl && model.languageProvider(doc, action) != nil
+	link := primary && model.languageProvider(doc, action) != nil
 	if h.link != link {
 		h.link = link
 		changed = true

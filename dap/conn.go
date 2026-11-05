@@ -19,15 +19,15 @@ const MaxMessage = 32 << 20
 var ErrClosed = errors.New("dap: connection closed")
 
 type Message struct {
-	Seq        int             `json:"seq"`
 	Type       string          `json:"type"`
 	Command    string          `json:"command,omitempty"`
-	Arguments  json.RawMessage `json:"arguments,omitempty"`
-	RequestSeq int             `json:"request_seq,omitempty"`
-	Success    bool            `json:"success"`
 	Message    string          `json:"message,omitempty"`
 	Event      string          `json:"event,omitempty"`
+	Arguments  json.RawMessage `json:"arguments,omitempty"`
 	Body       json.RawMessage `json:"body,omitempty"`
+	Seq        int             `json:"seq"`
+	RequestSeq int             `json:"request_seq,omitempty"`
+	Success    bool            `json:"success"`
 }
 
 type Handler func(context.Context, string, json.RawMessage) (any, error)
@@ -40,19 +40,19 @@ type outbound struct {
 type Conn struct {
 	stream     io.ReadWriteCloser
 	ctx        context.Context
-	cancel     context.CancelFunc
-	done       chan struct{}
-	eventsDone chan struct{}
-	once       sync.Once
-	mu         sync.Mutex
-	writeMu    sync.Mutex
-	next       int
-	pending    map[int]chan Message
 	err        error
+	pending    map[int]chan Message
+	eventsDone chan struct{}
+	done       chan struct{}
+	cancel     context.CancelFunc
 	events     chan Message
 	outgoing   chan outbound
 	onEvent    func(string, json.RawMessage)
 	handler    Handler
+	next       int
+	once       sync.Once
+	mu         sync.Mutex
+	writeMu    sync.Mutex
 }
 
 // New owns stream. Event callbacks must return promptly; requests may be made

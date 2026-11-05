@@ -1,13 +1,13 @@
 package dap
 
 type Capabilities struct {
+	ExceptionBreakpointFilters []ExceptionFilter `json:"exceptionBreakpointFilters"`
 	ConfigurationDone          bool              `json:"supportsConfigurationDoneRequest"`
 	ConditionalBreakpoints     bool              `json:"supportsConditionalBreakpoints"`
 	HitConditionalBreakpoints  bool              `json:"supportsHitConditionalBreakpoints"`
 	LogPoints                  bool              `json:"supportsLogPoints"`
 	Terminate                  bool              `json:"supportsTerminateRequest"`
 	VariablePaging             bool              `json:"supportsVariablePaging"`
-	ExceptionBreakpointFilters []ExceptionFilter `json:"exceptionBreakpointFilters"`
 }
 type ExceptionFilter struct {
 	Filter  string `json:"filter"`
@@ -19,27 +19,27 @@ type Source struct {
 	SourceReference int    `json:"sourceReference,omitempty"`
 }
 type SourceBreakpoint struct {
-	Line         int    `json:"line"`
-	Column       int    `json:"column,omitempty"`
 	Condition    string `json:"condition,omitempty"`
 	HitCondition string `json:"hitCondition,omitempty"`
 	LogMessage   string `json:"logMessage,omitempty"`
+	Line         int    `json:"line"`
+	Column       int    `json:"column,omitempty"`
 }
 type Breakpoint struct {
-	ID       int    `json:"id"`
-	Verified bool   `json:"verified"`
 	Message  string `json:"message"`
 	Source   Source `json:"source"`
+	ID       int    `json:"id"`
 	Line     int    `json:"line"`
+	Verified bool   `json:"verified"`
 }
 type Thread struct {
-	ID   int    `json:"id"`
 	Name string `json:"name"`
+	ID   int    `json:"id"`
 }
 type StackFrame struct {
-	ID     int    `json:"id"`
 	Name   string `json:"name"`
 	Source Source `json:"source"`
+	ID     int    `json:"id"`
 	Line   int    `json:"line"`
 	Column int    `json:"column"`
 }
@@ -71,10 +71,10 @@ type StoppedEvent struct {
 	AllThreadsStopped bool   `json:"allThreadsStopped"`
 }
 type RunInTerminalArguments struct {
+	Env                         map[string]*string `json:"env"`
 	Kind                        string             `json:"kind"`
 	Title                       string             `json:"title"`
 	Cwd                         string             `json:"cwd"`
 	Args                        []string           `json:"args"`
-	Env                         map[string]*string `json:"env"`
 	ArgsCanBeInterpretedByShell bool               `json:"argsCanBeInterpretedByShell"`
 }

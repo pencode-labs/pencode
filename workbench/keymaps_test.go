@@ -3,6 +3,7 @@ package workbench
 import (
 	"encoding/json"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/diiyw/onix/input"
@@ -140,11 +141,58 @@ func TestKeymapContextConflictsAndNavigation(t *testing.T) {
 		t.Fatal("remapped previous-focus moved in wrong direction")
 	}
 	for _, d := range pencodeExtraShortcuts {
-		if d.chord != "" && d.defaultBinding().Key == 0 {
+		if d.chord != "" && d.defaultBinding(runtime.GOOS).Key == 0 {
 			t.Fatalf("invalid default for %s: %s", d.id, d.chord)
 		}
 	}
 }
+
+func TestCommandPlatformShortcuts(t *testing.T) {
+	want := map[string][2]string{
+		"language-completion":     {"Ctrl+Space", "Ctrl+Space"},
+		"language-signature":      {"Ctrl+Shift+Space", "Cmd+Shift+Space"},
+		"language-implementation": {"Ctrl+F12", "Cmd+F12"},
+		"language-code-action":    {"Ctrl+.", "Cmd+."},
+		"terminal-toggle":         {"Ctrl+`", "Ctrl+`"},
+		"terminal-new":            {"Ctrl+Shift+`", "Ctrl+Shift+`"},
+		"terminal-copy":           {"Ctrl+Shift+C", "Cmd+C"},
+		"terminal-paste":          {"Ctrl+Shift+V", "Cmd+V"},
+		"terminal-clear":          {"Ctrl+Shift+K", "Cmd+Shift+K"},
+	}
+	for _, definition := range pencodeExtraShortcuts {
+		labels, ok := want[definition.id]
+		if !ok {
+			continue
+		}
+		for _, goos := range []string{"linux", "windows", "darwin"} {
+			label := labels[0]
+			if goos == "darwin" {
+				label = labels[1]
+			}
+			binding := definition.defaultBinding(goos)
+			if got := binding.label(goos); got != label {
+				t.Fatalf("%s on %s: label = %q, want %q", definition.id, goos, got, label)
+			}
+			for _, modifier := range []input.KeyCode{input.KeyLeftControl, input.KeyRightControl, input.KeyLeftSuper, input.KeyRightSuper} {
+				state := input.NewState()
+				state.PressKey(modifier)
+				if strings.Contains(label, "Shift+") {
+					state.PressKey(input.KeyLeftShift)
+				}
+				state.PressKey(binding.Key)
+				command := modifier == input.KeyLeftSuper || modifier == input.KeyRightSuper
+				if got, expected := binding.matches(state, goos), command == strings.HasPrefix(label, "Cmd+"); got != expected {
+					t.Fatalf("%s on %s: modifier %v matched %v, want %v", definition.id, goos, modifier, got, expected)
+				}
+			}
+		}
+		delete(want, definition.id)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing shortcut definitions: %v", want)
+	}
+}
+
 func TestShortcutSettingsUIRecordsAndSwitchesProfiles(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)
 	m.settingsOpen, m.settingsShortcuts = true, true

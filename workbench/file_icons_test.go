@@ -24,24 +24,24 @@ func TestFileIconsMatchNamesWithoutCase(t *testing.T) {
 	}})
 	for _, test := range []struct {
 		name      string
-		directory bool
 		want      string
+		directory bool
 	}{
-		{"Dockerfile", false, "docker"},
-		{"DOCKERFILE", false, "docker"},
-		{"dockerfile.beta", false, "docker-beta"},
-		{"Dockerfile.Beta", false, "docker-beta"},
-		{"LICENSE", false, "license"},
-		{"École", false, "unicode"},
-		{"TYPES.d.ts", false, "types"},
-		{"component.D.TS", false, "declaration"},
-		{"component.Ts", false, "typescript"},
-		{"SRC", true, "source"},
-		{"SRC", false, "file"},
-		{"Dockerfile", true, "folder"},
-		{"unknown", false, "file"},
-		{"unknown", true, "folder"},
-		{strings.Repeat("A", 300) + ".TS", false, "typescript"},
+		{name: "Dockerfile", directory: false, want: "docker"},
+		{name: "DOCKERFILE", directory: false, want: "docker"},
+		{name: "dockerfile.beta", directory: false, want: "docker-beta"},
+		{name: "Dockerfile.Beta", directory: false, want: "docker-beta"},
+		{name: "LICENSE", directory: false, want: "license"},
+		{name: "École", directory: false, want: "unicode"},
+		{name: "TYPES.d.ts", directory: false, want: "types"},
+		{name: "component.D.TS", directory: false, want: "declaration"},
+		{name: "component.Ts", directory: false, want: "typescript"},
+		{name: "SRC", directory: true, want: "source"},
+		{name: "SRC", directory: false, want: "file"},
+		{name: "Dockerfile", directory: true, want: "folder"},
+		{name: "unknown", directory: false, want: "file"},
+		{name: "unknown", directory: true, want: "folder"},
+		{name: strings.Repeat("A", 300) + ".TS", directory: false, want: "typescript"},
 	} {
 		if got := icons.source(test.name, test.directory); got != test.want {
 			t.Errorf("source(%q, %t) = %q, want %q", test.name, test.directory, got, test.want)

@@ -138,8 +138,8 @@ func TestFileManagerCommands(t *testing.T) {
 	target := filepath.Join(string(filepath.Separator), "work space", "project", "main.go")
 	for _, test := range []struct {
 		goos, label string
-		directory   bool
 		args        []string
+		directory   bool
 	}{
 		{goos: "windows", label: "在文件资源管理器中显示", args: []string{"explorer", "/select," + target}},
 		{goos: "darwin", label: "在 Finder 中显示", args: []string{"open", "-R", target}},
@@ -236,11 +236,11 @@ func TestFileContextKeyboardActions(t *testing.T) {
 			platform.SetClipboard(func(value string) bool { clipboard = value; return true }, nil)
 			for _, test := range []struct {
 				name       string
+				dialog     string
+				copied     string
 				key        input.KeyCode
 				primary    bool
 				shift, alt bool
-				dialog     string
-				copied     string
 			}{
 				{name: "new-file", key: input.KeyN, primary: true, dialog: "new-file"},
 				{name: "new-folder", key: input.KeyN, primary: true, shift: true, dialog: "new-folder"},

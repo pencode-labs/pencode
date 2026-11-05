@@ -12,11 +12,11 @@ import (
 
 type pencodeTabContext struct {
 	project *pencodeProject
-	path    string
 	surface *pencodeExtensionSurface
 	source  *sourceTab
-	x, y    float32
+	path    string
 	index   int
+	x, y    float32
 	open    bool
 }
 

@@ -18,36 +18,36 @@ import (
 
 type pencodeLanguagePanel struct {
 	cancel                     context.CancelFunc
-	open, focus, pending       bool
+	navigate                   *openFile
+	message                    chan pencodeLanguageReply
+	session                    *pencodeLanguageSession
 	method, query, title, body string
 	rows                       []pencodeLanguageRow
 	referenceGroups            []pencodeReferenceGroup
+	job                        pencodeLanguageJob
+	token                      uint64
 	page                       int
 	selection                  int
-	token                      uint64
-	session                    *pencodeLanguageSession
-	job                        pencodeLanguageJob
-	message                    chan pencodeLanguageReply
-	navigate                   *openFile
 	offset, endOffset          int
-	completion                 bool
 	completionIndex            int
-	controlClick               bool
 	anchorX, anchorY           float32
 	originX, originY           float32 // Unclamped caret anchor, retained across popup size changes.
+	open, focus, pending       bool
+	controlClick               bool
+	completion                 bool
 }
 type pencodeLanguageRow struct {
-	label                string
-	matchStart, matchEnd int
+	location             *lsp.Location
+	session              *pencodeLanguageSession
+	sortText             string
+	kind                 string
 	fileName             string
 	path                 string
 	count                string
-	group                int
-	session              *pencodeLanguageSession
-	location             *lsp.Location
+	label                string
 	raw                  json.RawMessage
-	kind                 string
-	sortText             string
+	group                int
+	matchStart, matchEnd int
 	completionKind       int
 }
 
@@ -689,8 +689,8 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 		_ = json.Unmarshal(event.result, &items)
 		for _, raw := range items {
 			var item struct {
-				Range   lsp.Range    `json:"range"`
 				Command *lsp.Command `json:"command"`
+				Range   lsp.Range    `json:"range"`
 			}
 			if json.Unmarshal(raw, &item) == nil {
 				label := fmt.Sprintf("行 %d", item.Range.Start.Line+1)
@@ -868,10 +868,10 @@ func (model *workspaceModel) languageSymbolRows(raw json.RawMessage, uri lsp.URI
 		return
 	}
 	var items []struct {
-		Name           string          `json:"name"`
-		SelectionRange lsp.Range       `json:"selectionRange"`
 		Location       *lsp.Location   `json:"location"`
+		Name           string          `json:"name"`
 		Children       json.RawMessage `json:"children"`
+		SelectionRange lsp.Range       `json:"selectionRange"`
 	}
 	if json.Unmarshal(raw, &items) != nil {
 		return
@@ -890,10 +890,10 @@ func (model *workspaceModel) languageActionRows(raw json.RawMessage) {
 	_ = json.Unmarshal(raw, &items)
 	for _, item := range items {
 		var action struct {
-			Title    string `json:"title"`
 			Disabled *struct {
 				Reason string `json:"reason"`
 			} `json:"disabled"`
+			Title string `json:"title"`
 		}
 		if json.Unmarshal(item, &action) == nil {
 			label := action.Title

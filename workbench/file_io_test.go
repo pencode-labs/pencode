@@ -83,9 +83,9 @@ func TestFileIOExternalReloadPreservesTypingAndSaveHistory(t *testing.T) {
 
 type fileIOGate struct {
 	net.Conn
-	pause                  atomic.Bool
 	entered, release, done chan struct{}
 	enteredOnce, closeOnce sync.Once
+	pause                  atomic.Bool
 }
 
 func (g *fileIOGate) Write(p []byte) (int, error) {

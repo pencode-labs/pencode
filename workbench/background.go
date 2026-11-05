@@ -9,15 +9,15 @@ import (
 // submits immutable snapshots; obsolete queued requests/results are replaced.
 // Two result buffers are exchanged and reused without per-submit allocation.
 type latestWorker[J, R any] struct {
-	mu      sync.Mutex
 	request J
 	result  R
-	pending bool
-	ready   bool
 	signal  chan struct{}
 	cancel  context.CancelFunc
 	done    chan struct{}
 	reset   func(*R)
+	mu      sync.Mutex
+	pending bool
+	ready   bool
 }
 
 func newLatestWorker[J, R any](process func(J, *R) bool, reset func(*R), dispose, wake func()) *latestWorker[J, R] {

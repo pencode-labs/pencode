@@ -12,8 +12,8 @@ const (
 // LifecycleEvent reaches the action process even when all its views are closed.
 // ProjectPath is absolute for project events and empty for WindowClosing.
 type LifecycleEvent struct {
-	Kind        LifecycleKind
 	ProjectPath string
+	Kind        LifecycleKind
 }
 
 // LifecycleReply asks the host to confirm closure before proceeding. Empty

@@ -11,6 +11,7 @@ import (
 	"github.com/diiyw/onix/project"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/internal/environment"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
@@ -19,6 +20,7 @@ import (
 )
 
 func main() {
+	environment.Configure()
 	if handled, err := remote.RunAskpass(); handled {
 		if err != nil {
 			os.Exit(1)

@@ -15,26 +15,26 @@ import (
 )
 
 type pencodeActionState struct {
-	ui            pencodeExtensionUIState
-	local         *actions.Registry
-	revision      uint64
-	snapshot      []peb.Action
-	rows          []pencodeActionProps
-	shortcuts     []pencodeActionShortcut
-	theme         *pencodeTheme
-	owner         *workspaceModel
-	file          *openFile
-	fileName      string
-	closeToken    uint64
-	openWithCount int
+	theme     *pencodeTheme
+	local     *actions.Registry
+	sessions  map[string]*extensions.ActionSession
+	file      *openFile
+	owner     *workspaceModel
+	fileName  string
+	shortcuts []pencodeActionShortcut
+	rows      []pencodeActionProps
+	snapshot  []peb.Action
 	// Context references include the existing built-in items and visible actions.
 	leftRefs, rightRefs []string
-	sessions            map[string]*extensions.ActionSession
+	ui                  pencodeExtensionUIState
+	closeToken          uint64
+	openWithCount       int
+	revision            uint64
 }
 type pencodeActionProps struct {
 	Model            *workspaceModel
-	Action           peb.Action
 	Ref, Icon, Style string
+	Action           peb.Action
 	Active           bool
 }
 
@@ -356,14 +356,18 @@ func (model *workspaceModel) pollActions() bool {
 						changed = true
 						model.extensionFeedback = fmt.Sprintf("扩展 %s UI：%v", id, err)
 						model.logOutput("Extension: "+id, model.extensionFeedback)
-					} else if retained == nil || !model.refreshExtensionSurface(retained) {
-						changed = true
-					}
-					for source, data := range result.Assets {
-						if model.extensionImages == nil {
-							model.extensionImages = make(map[string][]byte)
+					} else {
+						if result.UI.View != nil && !result.UI.Close {
+							for _, surface := range model.actions.ui.surfaces {
+								if surface.owner == id && surface.ui.ID == ui.ID {
+									surface.images = model.replaceExtensionImages(surface.images, result.Assets)
+									break
+								}
+							}
 						}
-						model.extensionImages[source] = data
+						if retained == nil || !model.refreshExtensionSurface(retained) {
+							changed = true
+						}
 					}
 					continue
 				}

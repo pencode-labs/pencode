@@ -13,14 +13,14 @@ import (
 // Like syntax.Document it belongs to one worker, never the render thread.
 type Syntax struct {
 	context          context.Context
-	path             string
-	initialized      bool
 	client           *Client
-	id, version      uint64
+	path             string
 	source, language string
+	painter          syntax.Painter
 	captures         []syntax.Token
 	names            []syntax.Capture
-	painter          syntax.Painter
+	id, version      uint64
+	initialized      bool
 }
 
 func (c *Client) NewSyntax(ctx context.Context) *Syntax {

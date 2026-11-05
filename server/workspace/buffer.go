@@ -11,8 +11,8 @@ import (
 )
 
 type fileBuffer struct {
-	data [protocol.ChunkSize]byte
 	hash hash.Hash
+	data [protocol.ChunkSize]byte
 	sum  [sha256.Size]byte
 }
 

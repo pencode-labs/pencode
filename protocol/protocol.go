@@ -56,23 +56,23 @@ const (
 var ErrProtocol = errors.New("pencode: invalid client/server message")
 
 type Error struct {
-	Code    Code
 	Message string
+	Code    Code
 }
 
 func (e *Error) Error() string { return e.Message }
 
 type Frame struct {
-	Kind    Kind
+	Payload []byte
 	ID      uint64
 	Stream  uint32
-	Payload []byte
+	Kind    Kind
 }
 
 type Reader struct {
 	Source io.Reader
-	header [HeaderSize]byte
 	buffer []byte
+	header [HeaderSize]byte
 }
 
 func (r *Reader) Read() (Frame, error) {
@@ -144,8 +144,8 @@ func (e *Encoder) String(v string) { e.U32(uint32(len(v))); e.Buffer = append(e.
 func (e *Encoder) Bytes(v []byte)  { e.U32(uint32(len(v))); e.Buffer = append(e.Buffer, v...) }
 
 type Decoder struct {
-	Buffer []byte
 	Err    error
+	Buffer []byte
 }
 
 func (d *Decoder) take(n int) []byte {
@@ -187,13 +187,13 @@ func (d *Decoder) Done() error {
 }
 
 type Workspace struct {
-	ID         uint64
 	Path, Name string
+	ID         uint64
 }
 
 type Document struct {
-	ID, Version uint64
 	Content     string
+	ID, Version uint64
 }
 
 type Entry struct {

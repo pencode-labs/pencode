@@ -15,11 +15,11 @@ import (
 )
 
 type pencodeDebugPaint struct {
-	dots      []ecs.Entity
-	execution ecs.Entity
 	file      *openFile
 	project   *pencodeProject
 	filename  string
+	dots      []ecs.Entity
+	execution ecs.Entity
 }
 
 func (m *workspaceModel) updateDebugPointer(world *module.Content, state *input.State) bool {

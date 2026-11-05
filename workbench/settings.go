@@ -89,18 +89,18 @@ var pencodeShortcutDefinitions = [...]pencodeShortcutDefinition{
 }
 
 type pencodeSettings struct {
-	FontSize    int                                     `json:"fontSize"`
-	UIFontSize  int                                     `json:"uiFontSize"`
-	EditorWidth int                                     `json:"editorWidth"`
+	Bindings    map[string]pencodeKeybinding            `json:"bindings"`
+	Keymaps     map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
+	Extensions  map[string]peb.SettingValues            `json:"extensions,omitempty"`
 	CodeFont    string                                  `json:"codeFont"`
 	UIFont      string                                  `json:"uiFont"`
 	Theme       string                                  `json:"theme"`
 	IconTheme   string                                  `json:"iconTheme"`
-	Zoom        int                                     `json:"zoom"`
-	Bindings    map[string]pencodeKeybinding            `json:"bindings"`
 	Keymap      string                                  `json:"keymap"`
-	Keymaps     map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
-	Extensions  map[string]peb.SettingValues            `json:"extensions,omitempty"`
+	FontSize    int                                     `json:"fontSize"`
+	UIFontSize  int                                     `json:"uiFontSize"`
+	EditorWidth int                                     `json:"editorWidth"`
+	Zoom        int                                     `json:"zoom"`
 }
 
 func defaultPencodeSettings() pencodeSettings {
@@ -115,7 +115,7 @@ func defaultPencodeSettings() pencodeSettings {
 		settings.Bindings[definition.id] = defaultPencodeBinding(pencodeShortcutAction(action), runtime.GOOS)
 	}
 	for _, entry := range pencodeExtraShortcuts {
-		settings.Bindings[entry.id] = entry.defaultBinding()
+		settings.Bindings[entry.id] = entry.defaultBinding(runtime.GOOS)
 	}
 	return settings
 }

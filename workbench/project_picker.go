@@ -13,31 +13,31 @@ import (
 )
 
 type pencodeProjectDirectory struct {
+	err           error
 	backend       *client.Client
 	configuration *configuration.Snapshot
 	directory     string
 	path, parent  string
 	names         []string
-	err           error
 }
 
 type pencodeProjectPicker struct {
 	configurationBackend *client.Client
 	configuration        *configuration.Snapshot
+	done                 chan struct{}
+	cancel               context.CancelFunc
+	results              chan pencodeProjectDirectory
 	profile              connection.Profile
-	open, busy           bool
-	autoOpen             bool
-	connectionOpen       bool
+	parent               string
 	path, input          string
 	directory, listed    string
 	filter               string
-	parent               string
 	message              string
-	failed               bool
 	names                []string
-	results              chan pencodeProjectDirectory
-	cancel               context.CancelFunc
-	done                 chan struct{}
+	connectionOpen       bool
+	failed               bool
+	autoOpen             bool
+	open, busy           bool
 }
 
 func (p *pencodeProjectPicker) stop() {

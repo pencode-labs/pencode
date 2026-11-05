@@ -10,14 +10,14 @@ import (
 )
 
 type pencodeFileDrag struct {
+	expandAt              time.Time
 	source, target        *pencodeProject
 	path, directory       string
-	x, y                  float32
-	previewX, previewY    float32
 	depth                 int
+	previewX, previewY    float32
+	x, y                  float32
 	active, suppressClick bool
 	positioned            bool
-	expandAt              time.Time
 }
 
 func (drag *pencodeFileDrag) isTarget(project *pencodeProject, directory string) bool {

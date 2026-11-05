@@ -8,13 +8,13 @@ import "github.com/diiyw/onix/ui/html"
 type sourceVNodeView struct {
 	groups []sourceVNodeGroup
 	stack  []int
-	used   int
 	clicks []string
+	used   int
 }
 type sourceVNodeGroup struct {
-	node     html.VNode
 	children []html.VNode
 	attrs    []html.VNodeAttribute
+	node     html.VNode
 }
 
 func sourceVNodeKey(tag, value string) uint64 {

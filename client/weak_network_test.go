@@ -38,8 +38,8 @@ func shapedConnection(t testing.TB, latency time.Duration, bytesPerSecond, fragm
 	var workers sync.WaitGroup
 	t.Cleanup(func() { closeAll(); workers.Wait() })
 	type packet struct {
-		data []byte
 		due  time.Time
+		data []byte
 	}
 	forward := func(from, to net.Conn) {
 		queue := make(chan packet, 64)

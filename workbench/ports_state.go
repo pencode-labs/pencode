@@ -13,10 +13,10 @@ const pencodePortLimit = 128
 
 type pencodePortSpec struct {
 	Host          string
-	Port          uint16
-	Local         uint16
 	Label         string
 	Protocol      string
+	Port          uint16
+	Local         uint16
 	AllInterfaces bool
 	Auto          bool
 }

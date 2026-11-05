@@ -16,15 +16,15 @@ const (
 
 type pencodeHighlightCacheEntry struct {
 	file        *openFile
-	path        string // Set only while a replaced preview has no live file.
-	source      piecetree.Snapshot
 	theme       *syntax.Theme
 	definitions *syntax.Definitions
+	source      piecetree.Snapshot
+	path        string // Set only while a replaced preview has no live file.
+	lineInfo    string
 	spans       []scene.TextSpan2D
 	brackets    []pencodeBracket
 	lines       int
 	characters  int
-	lineInfo    string
 	valid       bool
 }
 
@@ -74,10 +74,10 @@ func (cache *pencodeHighlightCache) restorePreview(file *openFile) {
 }
 
 type pencodeHighlightCache struct {
+	spare   []scene.TextSpan2D // One small buffer for close/reopen and preview replacement.
 	entries [64]pencodeHighlightCacheEntry
 	next    int
 	spans   int
-	spare   []scene.TextSpan2D // One small buffer for close/reopen and preview replacement.
 }
 
 func (cache *pencodeHighlightCache) get(file *openFile, theme *syntax.Theme, definitions *syntax.Definitions) (*pencodeHighlightCacheEntry, bool) {

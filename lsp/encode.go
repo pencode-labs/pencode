@@ -35,8 +35,8 @@ func encodeMessage[T any](message T) (*bytes.Buffer, error) {
 }
 
 type requestMessage[P any] struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method"`
 	Params  P               `json:"params,omitempty"`
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	ID      json.RawMessage `json:"id,omitempty"`
 }

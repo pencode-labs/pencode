@@ -5,6 +5,7 @@ import (
 
 	"github.com/diiyw/onix"
 	"github.com/diiyw/onix/input"
+	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -36,6 +37,75 @@ func openInputContext(t *testing.T, app *onix.App, model *workspaceModel, state 
 	languageInteractionStep(t, app)
 	if !model.inputContext.open || model.inputContext.target != entity {
 		t.Fatalf("right click did not open text menu on %s: %+v", ref, model.inputContext)
+	}
+}
+
+func TestInputContextSelectionRemainsVisible(t *testing.T) {
+	for _, ref := range []string{"output-content", "find-query"} {
+		t.Run(ref, func(t *testing.T) {
+			app, model, _, state := languageInteractionFixture(t)
+			world := model.fontResources
+			model.findOpen, model.findQuery = true, "甲乙🙂尾"
+			model.outputStore().Channel("pencode").Clear()
+			model.logOutput("pencode", "甲乙🙂尾\n第二行")
+			model.bottom.active = pencodePanelOutput
+			markPencodeRootDirtyByModel(world, model)
+			languageInteractionStep(t, app)
+			copied := ""
+			state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
+			assertSelection := func(visible bool) {
+				t.Helper()
+				found := false
+				for entity, access := range world.Query[htmlui.ControlVisual]() {
+					visual := access.Get()
+					if visual.Control != model.inputContext.target || !visual.Selection {
+						continue
+					}
+					size, _ := world.Get[scene.Size2D](entity)
+					visibility, _ := world.Get[scene.Visibility](entity)
+					found = found || visibility.Visible && size.Width > 0 && size.Height > 0
+				}
+				if found != visible {
+					t.Fatalf("selection visibility = %v, want %v", found, visible)
+				}
+			}
+			for _, endpoints := range [][2]int{{3, 1}, {1, 3}} {
+				openInputContext(t, app, model, state, ref, endpoints[0], endpoints[1])
+				assertSelection(true)
+				for _, key := range []input.KeyCode{input.KeyDown, input.KeyUp} {
+					state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: key})
+					state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: key})
+					languageInteractionStep(t, app)
+					assertSelection(true)
+				}
+				if field := world.Ref[engineui.TextField](model.inputContext.target); field.Focused || field.Caret != endpoints[0] || field.Anchor != endpoints[1] {
+					t.Fatalf("menu navigation changed field focus or selection: %+v", field)
+				}
+				if n := testing.AllocsPerRun(100, func() { model.syncInputContextSelection(world) }); n != 0 {
+					t.Fatalf("warm selection visibility allocated %g times", n)
+				}
+				editorContextClick(t, app, model, state, "input-context-copy")
+				languageInteractionStep(t, app)
+				field := world.Ref[engineui.TextField](model.inputContext.target)
+				if copied != "乙🙂" || !field.Focused || field.Caret != endpoints[0] || field.Anchor != endpoints[1] {
+					t.Fatalf("copy lost selection: clipboard=%q field=%+v", copied, field)
+				}
+				assertSelection(true)
+				editorContextClick(t, app, model, state, "editor")
+				languageInteractionStep(t, app)
+				assertSelection(false)
+			}
+			openInputContext(t, app, model, state, ref, 3, 1)
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
+			languageInteractionStep(t, app)
+			languageInteractionStep(t, app)
+			assertSelection(true)
+			openInputContext(t, app, model, state, ref, 3, 1)
+			editorContextClick(t, app, model, state, "editor")
+			languageInteractionStep(t, app)
+			assertSelection(false)
+		})
 	}
 }
 

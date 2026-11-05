@@ -9,11 +9,11 @@ import (
 )
 
 type syntaxSession struct {
-	document syntax.Document
-	source   string
-	version  uint64
 	captures map[syntax.Capture]uint32
+	source   string
 	previous []syntax.Capture
+	document syntax.Document
+	version  uint64
 }
 
 func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protocol.Decoder, e *protocol.Encoder) error {

@@ -11,6 +11,7 @@ import (
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
 	engineui "github.com/diiyw/onix/ui"
+	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -22,6 +23,8 @@ func TestExtensionSelectableTextWhitespace(t *testing.T) {
 		{"inline whitespace", "<p><strong>one</strong>\n<em>two</em>   three</p>", "one two three"},
 		{"code", "<p>代码</p>\n<pre><code>first\n\n  last\n</code></pre>\n<p>结束</p>", "代码\n\nfirst\n\n  last\n\n结束"},
 		{"streaming", "<div data-pencode-preserve-whitespace>\nfirst\n\n  last\n</div>", "\nfirst\n\n  last\n"},
+		{"code whitespace", "<pre><code> \tfirst  \n\t last \t\n\n</code></pre>", " \tfirst  \n\t last \t\n\n"},
+		{"streaming whitespace", "<div data-pencode-preserve-whitespace> \tfirst  \n\t last \t\n\n</div>", " \tfirst  \n\t last \t\n\n"},
 		{"table", "<p>结果</p><table><tr><th>名称</th><th>是否通过</th></tr>\n<tr><td>8 个中文</td><td>✅</td></tr>\n<tr><td>超出</td><td>❌</td></tr></table><p>结束</p>", "结果\n\n名称\t是否通过\n8 个中文\t✅\n超出\t❌\n\n结束"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -35,6 +38,81 @@ func TestExtensionSelectableTextWhitespace(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExtensionSelectionWhitespaceOnly(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	w := m.fontResources
+	m.app.GetViewport = func() (int, int) { return 1440, 900 }
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
+		camera.Mut().UpdateViewport(1440, 900)
+	}
+	state, _ := app.World.GetResource[*input.State]()
+	if err := m.applyExtensionUI("test", &extensions.ActionSession{}, peb.UI{ID: "whitespace", Kind: peb.EditorTab, View: &peb.EditorView{
+		HTML: `<div data-ref="transcript" data-pencode-selectable><pre><code>first	 	  last
+
+end</code></pre></div>`,
+		CSS: `[data-ref="transcript"] { overflow: auto; height: 300px; } pre { white-space: pre; font-size: 14px; line-height: 24px; }`,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	markPencodeRootDirtyByModel(w, m)
+	for range 3 {
+		languageInteractionStep(t, app)
+	}
+	point := func(label string, caret int) (float64, float64, float64) {
+		t.Helper()
+		for _, values := range w.Query2[scene.Text2D, scene.UIGlobalTransform]() {
+			text := values.A.Ref()
+			if text.Value != label {
+				continue
+			}
+			x, y, _, height, ok := scene.TextCaretRect2D(text, text.Text(), caret)
+			if !ok {
+				t.Fatal("missing text geometry")
+			}
+			matrix := values.B.Ref().Matrix
+			return float64(matrix[12] + x*matrix[0]), float64(matrix[13] + (y+height*.5)*matrix[5]), float64(height * matrix[5])
+		}
+		t.Fatalf("missing text %q", label)
+		return 0, 0, 0
+	}
+	var copied string
+	state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
+	copyRange := func(x, y, endX, endY float64, want string) {
+		t.Helper()
+		selection := &m.actions.ui.selection
+		selection.lastClick = selection.lastClick.Add(-1e9)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: endX, Y: endY})
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: endX, Y: endY})
+		languageInteractionStep(t, app)
+		primary := input.KeyLeftControl
+		if runtime.GOOS == "darwin" {
+			primary = input.KeyLeftSuper
+		}
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyC})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyC})
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
+		languageInteractionStep(t, app)
+		if copied != want {
+			t.Fatalf("copied %q, want whitespace %q", copied, want)
+		}
+	}
+	x, y, _ := point("first", 5)
+	endX, endY, _ := point("last", 0)
+	copyRange(x+1, y, endX, endY, "\t \t  ")
+	x, y, height := point("last", 4)
+	endX, endY, _ = point("end", 0)
+	copyRange(x+1, y+height*.5+1, endX, endY, "\n\n")
+	x, y, _ = point("first", 0)
+	endX, endY, _ = point("end", 3)
+	copyRange(x+.1, y, endX, endY, "first\t \t  last\n\nend")
 }
 
 func TestExtensionSelectionRangeRetainsWhitespace(t *testing.T) {
@@ -243,5 +321,303 @@ func TestExtensionTranscriptSelection(t *testing.T) {
 	}
 	if n := testing.AllocsPerRun(100, func() { _ = selection.text() }); n != 0 {
 		t.Fatalf("copying a selected range allocated %g", n)
+	}
+}
+
+func TestExtensionSelectionDuringTranscriptUpdates(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	w := m.fontResources
+	m.app.GetViewport = func() (int, int) { return 1440, 900 }
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
+	for _, camera := range app.World.Query[scene.Camera]().All {
+		camera.Mut().UpdateViewport(1440, 900)
+	}
+	state, _ := app.World.GetResource[*input.State]()
+	css, err := os.ReadFile("testdata/codex/chat.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "task"
+	frames := 3
+	show := func(heading, upper, lower string) {
+		t.Helper()
+		if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "composer", Kind: peb.EditorTab, Busy: true, View: &peb.EditorView{
+			HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-selectable data-pencode-scroll="end" data-pencode-scroll-key="` + key + `"><article class="codex-chat codex-chat-running"><section data-ref="heading" data-pencode-region><p>` + heading + `</p></section><section data-ref="upper" data-pencode-region><div class="codex-text" data-pencode-preserve-whitespace>` + upper + `</div></section><section data-ref="lower" data-pencode-region><div class="codex-text" data-pencode-preserve-whitespace>` + lower + `</div></section></article></div><section class="codex-composer"><textarea data-ref="prompt" class="codex-prompt">draft</textarea></section></section></main>`,
+			CSS:  string(css), Events: []peb.EditorBinding{{Ref: "prompt", Kind: "input"}},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		markPencodeRootDirtyByModel(w, m)
+		for range frames {
+			languageInteractionStep(t, app)
+		}
+	}
+	const upper = "upper-original"
+	show("status", upper, "lower-original")
+	selection := &m.actions.ui.selection
+	var copied string
+	state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
+	copySelection := func(want string) {
+		t.Helper()
+		primary := input.KeyLeftControl
+		if runtime.GOOS == "darwin" {
+			primary = input.KeyLeftSuper
+		}
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyC})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyC})
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
+		languageInteractionStep(t, app)
+		if copied != want {
+			t.Fatalf("copied %q, want %q", copied, want)
+		}
+	}
+	enqueuePointer := func(kind input.EventKind, label string, caret int) {
+		t.Helper()
+		found := false
+		for _, values := range w.Query2[scene.Text2D, scene.UIGlobalTransform]() {
+			text := values.A.Ref()
+			if text.Value != label {
+				continue
+			}
+			x, y, _, height, ok := scene.TextCaretRect2D(text, text.Text(), caret)
+			if !ok {
+				t.Fatal("missing text geometry")
+			}
+			matrix := values.B.Ref().Matrix
+			state.Enqueue(input.Event{Kind: kind, Button: input.MouseLeft, X: float64(matrix[12] + (x+.1)*matrix[0]), Y: float64(matrix[13] + (y+height*.5)*matrix[5])})
+			found = true
+			break
+		}
+		if !found {
+			t.Fatalf("missing text %q", label)
+		}
+	}
+	pointer := func(kind input.EventKind, label string, caret int) {
+		t.Helper()
+		enqueuePointer(kind, label, caret)
+		languageInteractionStep(t, app)
+	}
+	drag := func(label string, start, end int) {
+		t.Helper()
+		selection.lastClick = selection.lastClick.Add(-1e9)
+		pointer(input.EventMouseDown, label, start)
+		pointer(input.EventMouseMove, label, end)
+		pointer(input.EventMouseUp, label, end)
+	}
+	drag("lower-original", 0, 5)
+	if got := selection.text(); got != "lower" {
+		t.Fatalf("first selection: %q", got)
+	}
+	copySelection("lower")
+	drag(upper, 0, 5)
+	if got := selection.text(); got != "upper" {
+		t.Fatalf("second selection retained the previous anchor: %q", got)
+	}
+	copySelection("upper")
+	for _, entity := range selection.quads {
+		if visible, _ := w.Get[scene.Visibility](entity); visible.Visible {
+			parent, _ := w.Get[scene.Parent](entity)
+			if text, _ := w.Get[scene.Text2D](parent.Entity); text.Value != upper {
+				t.Fatalf("second selection highlighted old text: %q", text.Value)
+			}
+		}
+	}
+	// A busy frame can receive the complete next drag in one input batch.
+	selection.lastClick = selection.lastClick.Add(-1e9)
+	enqueuePointer(input.EventMouseDown, "lower-original", 5)
+	enqueuePointer(input.EventMouseMove, upper, 5)
+	enqueuePointer(input.EventMouseUp, upper, 5)
+	languageInteractionStep(t, app)
+	if got := selection.text(); got != "-original\nlower" {
+		t.Fatalf("batched drag lost its press position: %q", got)
+	}
+	copySelection("-original\nlower")
+	// The first streamed token replaces the selected message's render entities.
+	selection.lastClick = selection.lastClick.Add(-1e9)
+	pointer(input.EventMouseDown, upper, 0)
+	show("status", upper+" appended", "lower-original")
+	pointer(input.EventMouseMove, upper, 5)
+	pointer(input.EventMouseUp, upper, 5)
+	if !selection.valid(w) || selection.text() != "upper" {
+		t.Fatalf("streaming interrupted drag: valid=%v text=%q", selection.valid(w), selection.text())
+	}
+	show("status", upper+" appended again", "lower-original")
+	if !selection.valid(w) || selection.text() != "upper" {
+		t.Fatalf("streaming discarded selection: valid=%v text=%q", selection.valid(w), selection.text())
+	}
+	copySelection("upper")
+	// Copy can arrive in the same frame as the next streamed publication.
+	frames = 0
+	show("status", upper+" appended once more", "lower-original")
+	copySelection("upper")
+	frames = 3
+	// Timer and output regions can both change around the selected text.
+	show("longer status", upper+" appended again", "lower-original")
+	if !selection.valid(w) || selection.text() != "upper" {
+		t.Fatalf("preceding update displaced selection: valid=%v text=%q", selection.valid(w), selection.text())
+	}
+	copySelection("upper")
+	show("longer status", "replaced message", "lower-original")
+	if selection.valid(w) {
+		t.Fatal("selection survived an edit to selected text")
+	}
+	drag("lower-original", 5, 0)
+	copySelection("lower")
+	key = "another task"
+	show("longer status", "replaced message", "lower-original")
+	if selection.valid(w) {
+		t.Fatal("selection leaked into another conversation with matching text")
+	}
+}
+
+func TestExtensionTranscriptButtonClicksDoNotSelectText(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	w := m.fontResources
+	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "composer", Kind: peb.EditorTab, Busy: true, View: &peb.EditorView{
+		HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-selectable data-pencode-scroll="end"><article class="codex-chat codex-chat-running"><p>Selectable reply</p><section class="codex-activity-group"><button class="codex-activity-summary" type="button" data-ref="activity" data-pencode-copy="clicked"><img src="resources/icons/terminal.svg" alt=""><span>Running command</span><img src="resources/icons/chevron-down.svg" alt=""></button></section></article></div></section></main>`,
+		CSS:  string(css),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	markPencodeRootDirtyByModel(w, m)
+	for range 3 {
+		languageInteractionStep(t, app)
+	}
+	clicks := 0
+	state.SetClipboard(func(value string) bool {
+		if value == "clicked" {
+			clicks++
+		}
+		return true
+	}, nil)
+	selection := &m.actions.ui.selection
+	for click := range 2 {
+		editorContextClick(t, app, m, state, m.actions.ui.editor.prefix+"control-activity")
+		if clicks != click+1 {
+			t.Fatalf("button click %d was swallowed: clicks=%d selection=%q", click+1, clicks, selection.text())
+		}
+		if selection.anchor != selection.caret || selection.dragging || selection.dragged {
+			t.Fatalf("button click %d started text selection", click+1)
+		}
+	}
+}
+
+func TestExtensionHistoricalSelectionIgnoresClippedToolOutput(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	w := m.fontResources
+	if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "composer", Kind: peb.EditorTab, Busy: true, View: &peb.EditorView{
+		HTML: `<div data-ref="transcript" data-pencode-selectable><section class="tools" data-ref="tools" data-pencode-scroll="preserve"><p>first output</p><p>second output</p>` + strings.Repeat(`<p>hidden output extending across the historical reply</p>`, 20) + `</section><p class="reply">Historical reply</p><div style="height:180px"></div><p>Running reply</p></div>`,
+		CSS:  `[data-ref="transcript"] { height:700px; overflow:auto; font-size:14px; line-height:24px; } p { margin:0; height:24px; } .tools { height:48px; overflow:auto; } .reply { padding-left:40px; }`,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	markPencodeRootDirtyByModel(w, m)
+	for range 3 {
+		languageInteractionStep(t, app)
+	}
+	selection := &m.actions.ui.selection
+	point := func(label string, caret int) (float64, float64) {
+		t.Helper()
+		for _, values := range w.Query2[scene.Text2D, scene.UIGlobalTransform]() {
+			text := values.A.Ref()
+			if text.Value != label {
+				continue
+			}
+			x, y, _, height, ok := scene.TextCaretRect2D(text, text.Text(), caret)
+			if !ok {
+				t.Fatal("missing historical text geometry")
+			}
+			matrix := values.B.Ref().Matrix
+			return float64(matrix[12] + (x+.1)*matrix[0]), float64(matrix[13] + (y+height*.5)*matrix[5])
+		}
+		t.Fatalf("missing reply %q", label)
+		return 0, 0
+	}
+	var copied string
+	state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
+	for _, label := range []string{"Historical", "Running"} {
+		selection.lastClick = selection.lastClick.Add(-1e9)
+		x, y := point(label, 0)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		if selection.dragged || selection.anchor != selection.caret {
+			t.Fatalf("stationary press on %s selected clipped output: %q", label, selection.text())
+		}
+		x, y = point(label, len(label))
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: y})
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		if got := selection.text(); got != label {
+			t.Fatalf("dragging %s selected %q", label, got)
+		}
+		primary := input.KeyLeftControl
+		if runtime.GOOS == "darwin" {
+			primary = input.KeyLeftSuper
+		}
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyC})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyC})
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
+		languageInteractionStep(t, app)
+		if copied != label {
+			t.Fatalf("copying %s produced %q", label, copied)
+		}
+	}
+	// A tiny movement across a caret boundary remains a click.
+	selection.lastClick = selection.lastClick.Add(-1e9)
+	x, y := point("Historical", 4)
+	state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x - .2, Y: y})
+	languageInteractionStep(t, app)
+	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x + .2, Y: y})
+	languageInteractionStep(t, app)
+	if selection.dragged || selection.anchor != selection.caret {
+		t.Fatalf("pointer jitter started text selection: %q", selection.text())
+	}
+	tools, _ := w.HTMLNode(m.surface, m.actions.ui.editor.prefix+"control-tools")
+	area, _ := tools.ScrollContainer()
+	found := false
+	for entity, part := range w.Query[htmlui.ScrollbarPart]() {
+		if part.Ref().Area != area || part.Ref().Axis != htmlui.ScrollbarVertical || part.Ref().Kind != htmlui.ScrollbarThumb {
+			continue
+		}
+		transform := w.Ref[scene.UIGlobalTransform](entity)
+		size := w.Ref[scene.Size2D](entity)
+		x, y = float64(transform.Matrix[12]+size.Width/2), float64(transform.Matrix[13]+size.Height/2)
+		found = true
+		break
+	}
+	if !found {
+		t.Fatal("missing tool output scrollbar")
+	}
+	state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+	languageInteractionStep(t, app)
+	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: y + 12})
+	languageInteractionStep(t, app)
+	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y + 12})
+	languageInteractionStep(t, app)
+	if selection.surface != nil || selection.dragged {
+		t.Fatalf("scrollbar drag started transcript selection: %q", selection.text())
+	}
+	scroll := w.Ref[scene.UIScroll](area)
+	if scroll.Position.Y() >= 0 {
+		t.Fatal("tool output did not scroll")
+	}
+	x, y = point("Historical", 0)
+	state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+	languageInteractionStep(t, app)
+	x, y = point("Historical", 10)
+	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: y})
+	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+	languageInteractionStep(t, app)
+	if got := selection.text(); got != "Historical" {
+		t.Fatalf("tool scrolling displaced historical selection: %q", got)
 	}
 }

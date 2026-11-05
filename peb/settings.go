@@ -21,9 +21,9 @@ const (
 // Options, when present, constrain a string setting to the listed values.
 type Setting struct {
 	ID, Label, Description string
-	Type                   SettingType
 	Default                json.RawMessage
 	Options                []SettingOption
+	Type                   SettingType
 }
 
 type SettingOption struct{ Value, Label string }

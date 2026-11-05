@@ -90,9 +90,17 @@ func testCodexLiveChangesHover(t *testing.T, filename string, width int) {
 	listNode, _ := m.fontResources.HTMLNode(m.surface, "pencode-extension-live-list")
 	area, _ := listNode.ScrollContainer()
 	position := m.fontResources.Ref[scene.UIGlobalTransform](area)
-	// Layout bounds omit the popover's translateX(-50%). Use its rendered
-	// scrollport position for centering and pointer interaction.
+	// Check rendered positions as well as layout bounds: a transform can
+	// offset the rows independently of the scrollport and clip the filenames.
 	list.X, list.Y = position.Matrix[12], position.Matrix[13]
+	rowControl, ok := m.fontResources.HTMLControl(m.surface, "pencode-extension-live-row")
+	if !ok {
+		t.Fatal("file row control is missing")
+	}
+	rowPosition := m.fontResources.Ref[scene.UIGlobalTransform](rowControl)
+	if math.Abs(float64(rowPosition.Matrix[12]-list.X-6)) > .2 {
+		t.Fatalf("rendered file row must align with list padding: list=%+v row x=%g", list, rowPosition.Matrix[12])
+	}
 	if list.X < 0 || list.X+list.Width > float32(width) || list.Y+list.Height > pill.Y || list.Height > 241 || math.Abs(float64(list.X+list.Width/2-pill.X-pill.Width/2)) > 1 {
 		t.Fatalf("hover list must be bounded and centered above pill: list=%+v pill=%+v", list, pill)
 	}

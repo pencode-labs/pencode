@@ -1,3 +1,4 @@
 - Avoid compatibility code. Prefer generics and keep implementations concise.
 - Aim for zero allocations when adding features, especially on warm paths.
 - Apply a consistent theme style.
+- All struct type fields must be aligned.(use the `fieldalignment` tool to check).

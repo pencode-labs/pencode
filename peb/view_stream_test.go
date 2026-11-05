@@ -100,8 +100,8 @@ func TestViewReceiverRejectsInvalidPatchesTransactionally(t *testing.T) {
 }
 
 type failingViewWriter struct {
-	fail bool
 	bytes.Buffer
+	fail bool
 }
 
 func (w *failingViewWriter) Write(p []byte) (int, error) {

@@ -10,8 +10,8 @@ import (
 
 // Ranges use line-local UTF-8 byte offsets, independently of syntax spans.
 type sourceInlineChange struct {
-	Start, End [2]int
 	Style      [2]string
+	Start, End [2]int
 }
 
 type sourceInlineRune struct {
@@ -118,16 +118,16 @@ func (d *sourceInlineDiffer) compare(left, right string) []sourceInlineChange {
 }
 
 type sourceInlinePaint struct {
-	key     sourceInlinePaintKey
 	offsets []int
 	widths  []float32
+	key     sourceInlinePaintKey
 }
 
 type sourceInlinePaintKey struct {
 	tab      *sourceTab
+	layout   pencodeGutterLayoutKey
 	revision uint64
 	firstRow int
-	layout   pencodeGutterLayoutKey
 	spacing  float32
 }
 
@@ -138,7 +138,7 @@ func sourceInlineID(side, row, change int) string {
 func (paint *sourceInlinePaint) sync(world *module.Content, model *workspaceModel, tab *sourceTab, side int, text *scene.Text2D) {
 	key := sourceInlinePaintKey{
 		tab: tab, revision: tab.DiffRevision, firstRow: tab.FirstRow,
-		layout:  pencodeGutterLayoutKey{text.Text(), text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
+		layout:  pencodeGutterLayoutKey{value: text.Text(), font: text.Font, fontSize: text.FontSize, dpi: text.DPI, wrapWidth: text.WrapWidth, tabWidth: text.TabWidth, wrapMode: text.WrapMode},
 		spacing: text.LetterSpacing,
 	}
 	if paint.key == key {

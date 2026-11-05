@@ -22,16 +22,16 @@ type Process interface {
 // Session bounds both queues. Output applies backpressure instead of dropping
 // bytes (dropping even one byte can corrupt a VT sequence). No worker touches UI.
 type Session struct {
-	mu                    sync.Mutex
-	output, input         byteRing
+	process               Process
+	err                   error
 	changed               *sync.Cond
 	signal                chan struct{}
 	done                  chan struct{}
-	process               Process
-	closed, ready, exited bool
-	err                   error
-	cols, rows            int
 	wake                  func()
+	output, input         byteRing
+	cols, rows            int
+	mu                    sync.Mutex
+	closed, ready, exited bool
 }
 type byteRing struct {
 	data       []byte

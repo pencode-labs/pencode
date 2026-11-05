@@ -10,24 +10,24 @@ import (
 )
 
 type serviceChunk struct {
-	data [protocol.ChunkSize]byte
-	n    int
 	err  error
+	n    int
+	data [protocol.ChunkSize]byte
 }
 type readOnlyStream struct{ io.ReadCloser }
 
 func (readOnlyStream) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 type serviceStream struct {
-	root                 string
-	extension            uint64
-	related              *serviceStream
-	readerDone, waitDone chan struct{}
 	waitErr              error
 	process              io.ReadWriteCloser
+	readerDone, waitDone chan struct{}
+	related              *serviceStream
 	ready                chan *serviceChunk
 	free                 chan *serviceChunk
 	done                 chan struct{}
+	root                 string
+	extension            uint64
 	once                 sync.Once
 	readMu, writeMu      sync.Mutex
 	ended                bool

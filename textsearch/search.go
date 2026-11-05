@@ -15,15 +15,15 @@ type Options struct {
 }
 
 type Match struct {
-	Start, End int
 	groups     []int
+	Start, End int
 }
 
 type Pattern struct {
-	query   string
-	options Options
 	re      *regexp.Regexp
 	after   *regexp.Regexp
+	query   string
+	options Options
 	literal bool
 }
 
@@ -151,7 +151,7 @@ func (p *Pattern) FindRange[T string | []byte](content T, dst []Match, start, en
 				break
 			}
 			empty := groups[0] == groups[1]
-			if (!empty || groups[0] != previousEnd) && accept(Match{groups[0], groups[1], groups}) {
+			if (!empty || groups[0] != previousEnd) && accept(Match{Start: groups[0], End: groups[1], groups: groups}) {
 				break
 			}
 			previousEnd = groups[1]

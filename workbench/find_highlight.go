@@ -11,9 +11,9 @@ import (
 )
 
 type pencodeFindPaint struct {
+	theme *pencodeTheme
 	pencodeDiagnosticPaint
 	index int
-	theme *pencodeTheme
 }
 
 func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
@@ -32,7 +32,7 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 	stack, _ := world.Get[scene.UIStackIndex](m.editor.text)
 	colors := m.workbenchTheme.findColors
 	key := pencodeDiagnosticPaintKey{
-		layout: pencodeGutterLayoutKey{text.Text(), text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
+		layout: pencodeGutterLayoutKey{value: text.Text(), font: text.Font, fontSize: text.FontSize, dpi: text.DPI, wrapWidth: text.WrapWidth, tabWidth: text.TabWidth, wrapMode: text.WrapMode},
 		file:   m.activeFile(), revision: m.findRevision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight, ink: text.InkOffsetY, stack: stack, color: colors[0],
 	}

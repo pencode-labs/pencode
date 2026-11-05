@@ -64,15 +64,15 @@ var ErrProtocol = errors.New("peb: invalid protocol message")
 // Initialize/Register/Failure use the same nonzero ID. Shutdown, ActionActivate
 // and unsolicited ActionUpdate/UIUpdate notifications use zero.
 type Frame struct {
-	Kind    Kind
-	ID      uint32
 	Payload []byte
+	ID      uint32
+	Kind    Kind
 }
 
 type Reader struct {
 	Source io.Reader
-	header [HeaderSize]byte
 	buffer []byte
+	header [HeaderSize]byte
 }
 
 func (r *Reader) Read() (Frame, error) {
@@ -95,7 +95,7 @@ func (r *Reader) Read() (Frame, error) {
 	if _, err := io.ReadFull(r.Source, r.buffer); err != nil {
 		return Frame{}, err
 	}
-	return Frame{kind, id, r.buffer}, nil
+	return Frame{Kind: kind, ID: id, Payload: r.buffer}, nil
 }
 
 type Writer struct {
@@ -182,16 +182,14 @@ const (
 
 // IconRule matches file and folder names case-insensitively.
 type IconRule struct {
-	Match         Match
 	Pattern, Path string
+	Match         Match
 }
 type IconTheme struct {
 	ID, Label string
 	Rules     []IconRule
 }
 type Contributions struct {
-	// ActionService keeps a live process even when no buttons are registered yet.
-	ActionService   bool
 	Actions         []Action
 	Themes          []Theme
 	IconThemes      []IconTheme
@@ -199,11 +197,13 @@ type Contributions struct {
 	LanguageServers []LanguageServer
 	DebugAdapters   []DebugAdapter
 	Settings        []Setting
+	// ActionService keeps a live process even when no buttons are registered yet.
+	ActionService bool
 }
 
 type encoder struct {
-	data []byte
 	err  error
+	data []byte
 }
 
 func (e *encoder) number(n uint32) {
@@ -237,8 +237,8 @@ func (e *encoder) str(s string) {
 }
 
 type decoder struct {
-	data []byte
 	err  error
+	data []byte
 }
 
 func (d *decoder) number() uint32 {

@@ -24,8 +24,8 @@ type pencodePortCommand struct {
 	id             uint64
 }
 type pencodePortRow struct {
-	id                                                                            uint64
 	key, remote, local, source, process, status, url, label, protocol, visibility string
+	id                                                                            uint64
 	port, localPort                                                               uint16
 	failed, allInterfaces                                                         bool
 }
@@ -43,11 +43,11 @@ type pencodePorts struct {
 	commands            chan pencodePortCommand
 	cancel              context.CancelFunc
 	done                chan struct{}
-	mu                  sync.Mutex
-	revision, completed uint64
-	rows                []pencodePortRow
-	state               pencodePortsState
 	message, selected   string
+	state               pencodePortsState
+	rows                []pencodePortRow
+	revision, completed uint64
+	mu                  sync.Mutex
 	failed              bool
 }
 

@@ -15,8 +15,8 @@ import (
 
 type Registration struct {
 	Info          Installed
-	Contributions peb.Contributions
 	Diagnostics   string
+	Contributions peb.Contributions
 }
 
 // Register probes a package on the server. Appearance resources are interpreted

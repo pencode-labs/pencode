@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -21,13 +22,13 @@ func TestExtensionLinksAlignWithSurroundingText(t *testing.T) {
 	m := session.active.model
 	m.app.GetViewport = func() (int, int) { return 1440, 900 }
 	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
-	css, err := os.ReadFile("testdata/codex/chat.css")
+	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, font := range []string{"12px/1.2 ui", "14px/1.7 ui", "18px/2 monospace"} {
 		if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "link-baseline", Kind: peb.EditorTab, View: &peb.EditorView{
-			HTML: `<main data-pencode-layout="fill"><article class="codex-chat"><section data-ref="message" data-pencode-region><p><span>Before</span> <button type="button" role="link" class="codex-link" data-ref="site" data-pencode-href="http://127.0.0.1:8000"><img class="codex-link-icon" data-ref="globe" data-pencode-icon="globe" alt="">http://127.0.0.1:8000</button> <span>After</span></p></section></article></main>`,
+			HTML: `<main data-pencode-layout="fill"><article class="codex-chat"><section data-ref="message" data-pencode-region><p><span>Before</span> <a role="link" class="codex-link" data-ref="site" href="http://127.0.0.1:8000"><img class="codex-link-icon" data-ref="globe" data-pencode-icon="globe" alt="">http://127.0.0.1:8000</a> <span>After</span></p></section></article></main>`,
 			CSS:  string(css) + `.codex-chat { font: ` + font + `; }`,
 		}}); err != nil {
 			t.Fatal(err)
@@ -58,12 +59,12 @@ func TestExtensionLinksAlignWithSurroundingText(t *testing.T) {
 func TestExtensionLinkIconsRenderOnce(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m, provider := session.active.model, session.active.icons
-	css, err := os.ReadFile("testdata/codex/chat.css")
+	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "link-icons", Kind: peb.EditorTab, View: &peb.EditorView{
-		HTML: `<main data-pencode-layout="fill"><article class="codex-chat"><section data-ref="message" data-pencode-region><p>Running at <button type="button" role="link" class="codex-link" data-ref="site" data-pencode-href="http://127.0.0.1:8000"><img class="codex-link-icon" data-ref="globe" data-pencode-icon="globe" alt="">http://127.0.0.1:8000</button>. <button type="button" role="link" class="codex-link" data-ref="file" data-pencode-href="main.go"><img class="codex-link-icon" data-ref="code" data-pencode-icon="code" alt=""><code>main.go</code></button></p></section></article><section class="codex-directory"><nav><button type="button" role="link" class="codex-link" data-ref="directory" data-pencode-href="docs/"><img class="codex-link-icon" data-ref="folder" data-pencode-icon="folder" alt="">docs</button><button type="button" role="link" class="codex-link" data-ref="notes" data-pencode-href="notes.md"><img class="codex-link-icon" data-ref="file-text" data-pencode-icon="file-text" alt="">notes.md</button></nav></section></main>`,
+		HTML: `<main data-pencode-layout="fill"><article class="codex-chat"><section data-ref="message" data-pencode-region><p>Running at <a role="link" class="codex-link" data-ref="site" href="http://127.0.0.1:8000"><img class="codex-link-icon" data-ref="globe" data-pencode-icon="globe" alt="">http://127.0.0.1:8000</a>. <a role="link" class="codex-link" data-ref="file" href="main.go"><img class="codex-link-icon" data-ref="code" data-pencode-icon="code" alt=""><code>main.go</code></a></p></section></article><section class="codex-directory"><nav><button type="button" role="link" class="codex-link" data-ref="directory" data-pencode-href="docs/"><img class="codex-link-icon" data-ref="folder" data-pencode-icon="folder" alt="">docs</button><button type="button" role="link" class="codex-link" data-ref="notes" data-pencode-href="notes.md"><img class="codex-link-icon" data-ref="file-text" data-pencode-icon="file-text" alt="">notes.md</button></nav></section></main>`,
 		CSS:  string(css),
 	}}); err != nil {
 		t.Fatal(err)
@@ -108,8 +109,8 @@ func TestExtensionLinksNativeClickAndThemeIcons(t *testing.T) {
 	project := m.activeProjectState()
 	target := m.activeFile()
 	if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "links", Title: "Links", Kind: peb.EditorTab, Context: peb.ActionContext{ProjectPath: project.Path}, View: &peb.EditorView{
-		HTML: `<section data-ref="message" data-pencode-region><p>Created <button type="button" role="link" class="codex-link" data-ref="file" data-pencode-href="` + target.Path + `"><img data-ref="code" data-pencode-icon="code" alt="">` + target.Name + `</button>. <a data-ref="site" href="https://example.com"><img data-ref="globe" data-pencode-icon="globe" alt="">Website</a></p></section>`,
-		CSS:  `img { width: 14px; height: 14px; } .codex-link { display: inline-block; max-width: 100%; } a { color: var(--vscode-textLink-foreground); cursor: pointer; }`,
+		HTML: `<section data-ref="message" data-pencode-region><p>Created <a role="link" class="codex-link" data-ref="file" href="` + target.Path + `"><img data-ref="code" data-pencode-icon="code" alt="">` + target.Name + `</a>. <a data-ref="site" href="https://example.com"><img data-ref="globe" data-pencode-icon="globe" alt="">Website</a></p></section>`,
+		CSS:  `img { width: 14px; height: 14px; } .codex-link { display: inline; max-width: 100%; } a { color: var(--vscode-textLink-foreground); cursor: pointer; }`,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +127,22 @@ func TestExtensionLinksNativeClickAndThemeIcons(t *testing.T) {
 			t.Fatal("link icon did not use the link color", icon)
 		}
 	}
-	editorContextClick(t, app, m, state, s.prefix+"control-file")
+	clicked := false
+	for entity, text := range m.fontResources.Query[scene.Text2D]() {
+		if text.Ref().Value != target.Name {
+			continue
+		}
+		matrix := m.fontResources.Ref[scene.UIGlobalTransform](entity).Matrix
+		x, y := float64(matrix[12]+2), float64(matrix[13]+7)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+		clicked = true
+		break
+	}
+	if !clicked {
+		t.Fatal("missing file link text")
+	}
+	languageInteractionStep(t, app)
 	for range 3 {
 		languageInteractionStep(t, app)
 	}

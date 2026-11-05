@@ -53,7 +53,7 @@ func TestContributionsOwnStringsAndRejectMalformedPayloads(t *testing.T) {
 	want := Contributions{
 		Fonts:         []Font{{"mono", "等宽", "resources/fonts/mono.ttf", "resources/fonts/bold.ttf"}},
 		Themes:        []Theme{{"ink", "墨色", "resources/themes/ink.json"}},
-		IconThemes:    []IconTheme{{"code", "代码", []IconRule{{FileSuffix, ".d.ts", "resources/icons/code.svg"}, {DefaultFolder, "", "resources/icons/folder.svg"}}}},
+		IconThemes:    []IconTheme{{"code", "代码", []IconRule{{Match: FileSuffix, Pattern: ".d.ts", Path: "resources/icons/code.svg"}, {Match: DefaultFolder, Pattern: "", Path: "resources/icons/folder.svg"}}}},
 		DebugAdapters: []DebugAdapter{{ID: "Delve", Label: "Go", Command: "bin/go", Args: []string{"--tool", "dlv"}, Templates: `[{"label":"Go","adapter":"Delve","request":"launch","configuration":{}}]`}},
 	}
 	data, err := EncodeContributions(nil, want)
@@ -170,7 +170,7 @@ func TestCachedFramingAndEncodingAllocateNothing(t *testing.T) {
 }
 
 func FuzzDecode(f *testing.F) {
-	seed, _ := EncodeContributions(nil, Contributions{IconThemes: []IconTheme{{ID: "code", Label: "Code", Rules: []IconRule{{FileSuffix, ".go", "resources/icons/code.svg"}}}}})
+	seed, _ := EncodeContributions(nil, Contributions{IconThemes: []IconTheme{{ID: "code", Label: "Code", Rules: []IconRule{{Match: FileSuffix, Pattern: ".go", Path: "resources/icons/code.svg"}}}}})
 	f.Add(seed)
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, data []byte) {

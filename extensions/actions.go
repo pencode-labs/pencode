@@ -30,18 +30,18 @@ func validUIAnchor(anchor string) bool {
 // ActionExtension retains a validated process entry for its live button session.
 type ActionExtension struct {
 	Output  *output.Channel
+	remote  *client.Extension
 	ID      string
 	Actions []peb.Action
-	remote  *client.Extension
 }
 type ActionResult struct {
-	Change    peb.ActionChange
+	Err       error
 	UI        *peb.UI
 	Assets    map[string][]byte
 	Icons     map[string][]byte
 	Lifecycle *peb.LifecycleReply
+	Change    peb.ActionChange
 	Token     uint64
-	Err       error
 	// Fatal marks a disconnected process; its actions must be removed.
 	Fatal bool
 }
@@ -57,13 +57,13 @@ type ActionSession struct {
 }
 
 type actionRequest struct {
-	action    peb.ActionContext
-	event     peb.UIEvent
 	settings  peb.SettingValues
-	ui        bool
 	files     *peb.FileChanges
 	lifecycle *peb.LifecycleEvent
+	event     peb.UIEvent
+	action    peb.ActionContext
 	token     uint64
+	ui        bool
 }
 
 // Editor binds a live Open With action to the extension's document process.

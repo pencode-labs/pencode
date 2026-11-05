@@ -29,13 +29,13 @@ func TestNotificationSeverityUpdatesRetainContent(t *testing.T) {
 		}
 		definition := notice.definition
 		for _, test := range []struct {
-			severity                                   peb.NotificationSeverity
 			class, icon, foreground, label, role, live string
+			severity                                   peb.NotificationSeverity
 		}{
-			{peb.NotificationInfo, "info", "info", "notificationsInfoIcon.foreground", "信息", "status", "polite"},
-			{peb.NotificationWarning, "warning", "warning", "notificationsWarningIcon.foreground", "警告", "status", "polite"},
-			{peb.NotificationError, "error", "error", "notificationsErrorIcon.foreground", "错误", "alert", "assertive"},
-			{peb.NotificationInfo, "info", "info", "notificationsInfoIcon.foreground", "信息", "status", "polite"},
+			{severity: peb.NotificationInfo, class: "info", icon: "info", foreground: "notificationsInfoIcon.foreground", label: "信息", role: "status", live: "polite"},
+			{severity: peb.NotificationWarning, class: "warning", icon: "warning", foreground: "notificationsWarningIcon.foreground", label: "警告", role: "status", live: "polite"},
+			{severity: peb.NotificationError, class: "error", icon: "error", foreground: "notificationsErrorIcon.foreground", label: "错误", role: "alert", live: "assertive"},
+			{severity: peb.NotificationInfo, class: "info", icon: "info", foreground: "notificationsInfoIcon.foreground", label: "信息", role: "status", live: "polite"},
 		} {
 			ui.Severity = test.severity
 			if err := model.applyExtensionUI("test", process, ui); err != nil {

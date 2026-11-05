@@ -1,0 +1,134 @@
+package workbench
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/diiyw/onix"
+	"github.com/diiyw/onix/ecs"
+	"github.com/diiyw/onix/render"
+)
+
+type memoryProbeRequest struct {
+	context         context.Context
+	op, path, value string
+	done            chan any
+}
+
+func (s *Session) StartMemoryProbe(app *onix.App) error {
+	requests := make(chan memoryProbeRequest, 1)
+	if err := app.AddSystems(onix.StagePostUpdate, ecs.SystemConfig{Name: "memory_probe", System: func(*ecs.SystemContext) error {
+		select {
+		case request := <-requests:
+			if request.context.Err() == nil {
+				request.done <- s.memoryProbeCommand(app, request)
+			}
+		default:
+		}
+		return nil
+	}}); err != nil {
+		return err
+	}
+	http.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
+		query := r.URL.Query()
+		request := memoryProbeRequest{ctx, query.Get("op"), query.Get("path"), query.Get("value"), make(chan any, 1)}
+		select {
+		case requests <- request:
+			app.RequestRender()
+		case <-ctx.Done():
+			http.Error(w, ctx.Err().Error(), http.StatusGatewayTimeout)
+			return
+		}
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case result := <-request.done:
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(result)
+				return
+			case <-ticker.C:
+				app.RequestRender()
+			case <-ctx.Done():
+				http.Error(w, ctx.Err().Error(), http.StatusGatewayTimeout)
+				return
+			}
+		}
+	})
+	return nil
+}
+
+func (s *Session) memoryProbeCommand(app *onix.App, request memoryProbeRequest) any {
+	if s.active == nil {
+		return map[string]string{"error": "no active view"}
+	}
+	m := s.active.model
+	var err error
+	switch request.op {
+	case "project":
+		err = m.loadProject(request.path)
+	case "open":
+		m.openFile(request.path)
+	case "preview":
+		if !m.selectEditor(request.path) {
+			err = fmt.Errorf("editor unavailable: %s", request.path)
+		}
+	case "edit":
+		m.updateActiveContent(request.value)
+	case "close":
+		m.closeProjectTab(m.activeProjectState(), request.path)
+	case "action":
+		m.runAction(m.fontResources, request.path)
+	case "clear-ui":
+		m.clearExtensionUI(request.path)
+	case "quit":
+		app.RequestClose()
+	case "state":
+	default:
+		err = fmt.Errorf("unknown operation: %s", request.op)
+	}
+	if err != nil {
+		return map[string]string{"error": err.Error()}
+	}
+	if request.op != "state" {
+		markPencodeRootDirtyByModel(m.fontResources, m)
+	}
+	assets, assetBytes := len(m.extensionImages), 0
+	for _, image := range m.extensionImages {
+		assetBytes += len(image.data)
+	}
+	views := make([]map[string]any, 0, len(m.customDocuments)+len(m.actions.ui.surfaces))
+	for file, document := range m.customDocuments {
+		htmlBytes := 0
+		if document.view != nil {
+			htmlBytes = len(document.view.HTML)
+		}
+		views = append(views, map[string]any{"document": file.Path, "html_bytes": htmlBytes, "busy": document.busy(), "assets": len(document.images), "message": document.message})
+	}
+	for _, surface := range m.actions.ui.surfaces {
+		views = append(views, map[string]any{"owner": surface.owner, "id": surface.ui.ID, "assets": len(surface.images), "html_bytes": len(surface.view.HTML)})
+	}
+	editors, actions := []string{}, []string{}
+	scanning := false
+	if project := m.activeProjectState(); project != nil {
+		scanning = project.scan != nil
+	}
+	for _, editor := range m.customEditors {
+		editors = append(editors, editor.ID)
+	}
+	for _, action := range m.actions.snapshot {
+		actions = append(actions, action.ID)
+	}
+	return map[string]any{
+		"project": m.projectPath, "file": m.activePath, "files": len(m.files), "views": views,
+		"entries": len(m.entries), "scanning": scanning,
+		"assets": assets, "asset_bytes": assetBytes, "textures": len(s.active.icons.textures), "texture_bytes": s.active.icons.bytes,
+		"buffers": render.CurrentBufferMemoryStatistics(), "renderer": render.CurrentRendererInfo(),
+		"editors": editors, "actions": actions, "status": m.status, "feedback": m.extensionFeedback,
+	}
+}

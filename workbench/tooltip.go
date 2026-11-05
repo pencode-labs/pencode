@@ -17,12 +17,12 @@ import (
 const pencodeTooltipDelay = 450 * time.Millisecond
 
 type pencodeTooltip struct {
-	control    ecs.Entity
-	id, text   string
 	due        time.Time
+	id, text   string
+	control    ecs.Entity
+	x, y       float32
 	open       bool
 	dismissed  bool
-	x, y       float32
 	positioned bool
 }
 

@@ -58,7 +58,7 @@ func checkRegexpRange(t testing.TB, content, query string, wholeWord bool, start
 		}
 		count++
 		if limit < 0 || len(want) < limit {
-			want = append(want, Match{groups[0], groups[1], groups})
+			want = append(want, Match{Start: groups[0], End: groups[1], groups: groups})
 		}
 		if !countAll && limit > 0 && count == limit {
 			break

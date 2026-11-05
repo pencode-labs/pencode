@@ -27,35 +27,35 @@ type cursor struct {
 
 // Screen is owned by the foreground. Feed accepts arbitrary byte boundaries.
 type Screen struct {
-	Cols, Rows                                       int
+	Title                                            string
+	reply                                            []byte
 	Cells                                            []Cell
 	History                                          []Cell
-	HistoryLimit                                     int
-	historyHead                                      int
-	Scrolled                                         uint64
-	Title                                            string
-	DefaultForeground, DefaultBackground             Color
-	CursorVisible, ApplicationCursor, BracketedPaste bool
-	Revision                                         uint64
+	primary                                          []Cell
+	params                                           [32]int
+	primaryCursor                                    cursor
+	saved                                            cursor
 	MouseTracking                                    int
-	MouseSGR                                         bool
-	charsets                                         [2]bool
+	historyHead                                      int
+	Cols, Rows                                       int
+	length                                           int
+	Scrolled                                         uint64
+	Revision                                         uint64
+	pendingLen                                       int
+	HistoryLimit                                     int
 	activeCharset, designateCharset                  int
 	x, y, top, bottom                                int
 	style                                            Cell
-	saved                                            cursor
-	primary                                          []Cell
-	primaryCursor                                    cursor
-	alternate                                        bool
+	DefaultForeground, DefaultBackground             Color
+	sequence                                         [4096]byte
+	pending                                          [utf8.UTFMax]byte
+	charsets                                         [2]bool
+	CursorVisible, ApplicationCursor, BracketedPaste bool
 	autowrap, origin, insert, wrap                   bool
 	state                                            uint8
-	sequence                                         [4096]byte
-	length                                           int
 	sequenceOverflow                                 bool
-	pending                                          [utf8.UTFMax]byte
-	pendingLen                                       int
-	params                                           [32]int
-	reply                                            []byte
+	alternate                                        bool
+	MouseSGR                                         bool
 }
 
 func NewScreen(cols, rows int) *Screen {

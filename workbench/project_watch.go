@@ -20,12 +20,12 @@ const (
 
 type pencodeProjectWatch struct {
 	cancel    context.CancelFunc
-	pending   atomic.Uint32
 	errors    chan error
 	ready     chan struct{}
-	mu        sync.Mutex
 	files     [128]protocol.FileEvent
 	fileCount int
+	mu        sync.Mutex
+	pending   atomic.Uint32
 	reset     bool
 }
 

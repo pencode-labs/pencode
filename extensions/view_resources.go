@@ -31,8 +31,8 @@ type viewResource struct {
 type viewResources struct {
 	remote         *client.Extension
 	cache          map[string]viewResource
-	bytes          int
 	root, document string
+	bytes          int
 }
 
 func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfaceID string) (map[string][]byte, error) {

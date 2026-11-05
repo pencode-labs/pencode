@@ -18,20 +18,20 @@ import (
 // Session keeps the foreground model available while preloaded views own their
 // HTML, editor entities and resource readers independently.
 type Session struct {
-	backend      *client.Client
-	localBackend *client.Client
-	connection   *pencodeConnection
-	// Actions accepts native registrations before or after the session starts.
-	Actions         actions.Registry
-	Output          output.Store
+	quickHistory    *pencodeQuickHistory
+	localBackend    *client.Client
+	connection      *pencodeConnection
 	active          *Mod
 	extensions      *extensions.Host
 	views           map[*Mod]struct{}
 	market          *pencodeMarketplace
-	quickHistory    *pencodeQuickHistory
+	backend         *client.Client
 	recentProjects  *pencodeRecentProjects
 	fonts           map[string]pencodeFont
 	settingsWriters map[*client.Client]*pencodeSettingsWriter
+	// Actions accepts native registrations before or after the session starts.
+	Actions actions.Registry
+	Output  output.Store
 }
 
 func NewSession(backend *client.Client) *Session {
@@ -102,7 +102,12 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 			if s.syncLayout() {
 				// Extension scroll restoration and inline text changes run after
 				// layout. Update native controls before this frame reaches paint.
-				return engineui.SyncAfterLayout(context.World)
+				if err := engineui.SyncAfterLayout(context.World); err != nil {
+					return err
+				}
+			}
+			if s.active != nil {
+				s.active.model.syncInputContextSelection(s.active.model.fontResources)
 			}
 			return nil
 		},

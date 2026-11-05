@@ -100,6 +100,7 @@ func startNativeCommand(cmd *exec.Cmd, cols, rows int) (Process, error) {
 	if err != nil {
 		return nil, err
 	}
+	// STARTUPINFOEX requires StartupInfo followed by the attribute list pointer.
 	startup := struct {
 		info       syscall.StartupInfo
 		attributes *byte

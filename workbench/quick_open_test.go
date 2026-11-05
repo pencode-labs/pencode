@@ -369,20 +369,20 @@ func TestTitlebarSearchOutsideClickAndResultSelection(t *testing.T) {
 
 func TestPencodePlatformShortcuts(t *testing.T) {
 	for _, fixture := range []struct {
-		action pencodeShortcutAction
 		goos   string
 		label  string
 		key    input.KeyCode
+		action pencodeShortcutAction
 		shift  bool
 		alt    bool
 	}{
-		{pencodeShortcutSave, "darwin", "Cmd+S", input.KeyS, false, false},
-		{pencodeShortcutQuickOpen, "darwin", "Cmd+P", input.KeyP, false, false},
-		{pencodeShortcutFind, "darwin", "Cmd+F", input.KeyF, false, false},
-		{pencodeShortcutRedo, "darwin", "Cmd+Shift+Z", input.KeyZ, true, false},
-		{pencodeShortcutReplace, "darwin", "Cmd+Option+F", input.KeyF, false, true},
-		{pencodeShortcutQuickOpen, "windows", "Ctrl+P", input.KeyP, false, false},
-		{pencodeShortcutSave, "linux", "Ctrl+S", input.KeyS, false, false},
+		{action: pencodeShortcutSave, goos: "darwin", label: "Cmd+S", key: input.KeyS, shift: false, alt: false},
+		{action: pencodeShortcutQuickOpen, goos: "darwin", label: "Cmd+P", key: input.KeyP, shift: false, alt: false},
+		{action: pencodeShortcutFind, goos: "darwin", label: "Cmd+F", key: input.KeyF, shift: false, alt: false},
+		{action: pencodeShortcutRedo, goos: "darwin", label: "Cmd+Shift+Z", key: input.KeyZ, shift: true, alt: false},
+		{action: pencodeShortcutReplace, goos: "darwin", label: "Cmd+Option+F", key: input.KeyF, shift: false, alt: true},
+		{action: pencodeShortcutQuickOpen, goos: "windows", label: "Ctrl+P", key: input.KeyP, shift: false, alt: false},
+		{action: pencodeShortcutSave, goos: "linux", label: "Ctrl+S", key: input.KeyS, shift: false, alt: false},
 	} {
 		t.Run(fixture.label+"/"+fixture.goos, func(t *testing.T) {
 			binding := defaultPencodeBinding(fixture.action, fixture.goos)

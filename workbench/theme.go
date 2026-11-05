@@ -12,25 +12,24 @@ import (
 )
 
 type pencodeTheme struct {
-	id               string
-	label            string
+	selectStyle      engineui.HTMLSelectStyle
 	theme            *syntax.Theme
-	css              string
 	variables        map[string]string
 	icons            map[pencodeIconKey]string
-	border, guide    graphics.ColorRGBA
-	link             graphics.ColorRGBA
-	bracket          graphics.ColorRGBA
-	findColors       [3]graphics.ColorRGBA
-	diagnosticColors [len(pencodeProblemSeverities)]graphics.ColorRGBA
+	label            string
+	css              string
+	id               string
 	editorStyle      engineui.StyleOverride[engineui.TextFieldStyle]
-	selectStyle      engineui.HTMLSelectStyle
+	diagnosticColors [len(pencodeProblemSeverities)]graphics.ColorRGBA
+	findColors       [3]graphics.ColorRGBA
+	border, guide    graphics.ColorRGBA
+	bracket          graphics.ColorRGBA
+	link             graphics.ColorRGBA
 }
 
 type pencodeIconKey struct{ source, foreground string }
 
 var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
-	{"status-source-icon", "icons/source-control.svg", "icon.foreground"},
 	{"connection-open-icon", "icons/remote.svg", "icon.foreground"},
 	{"open-marketplace-icon", "icons/extensions.svg", "icon.foreground"},
 	{"close-marketplace-icon", "icons/close.svg", "icon.foreground"},
@@ -244,6 +243,16 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 		}
 		source = after
 	}
+	// Extension previews share the editor's TextMate palette, including colors
+	// that the workbench chrome itself does not use.
+	for _, token := range [...]struct{ name, scope string }{
+		{"keyword", "keyword"}, {"operator", "keyword.operator"},
+		{"string", "string"}, {"number", "constant.numeric"},
+		{"comment", "comment"}, {"type", "entity.name.type"},
+		{"function", "entity.name.function"},
+	} {
+		resolvedVariables["syntax-"+token.name] = theme.Resolve(token.scope).Foreground.Hex()
+	}
 	variables.WriteByte('}')
 	css.WriteString(variables.String())
 	result := pencodeTheme{id: id, theme: theme, css: css.String(), variables: resolvedVariables, icons: make(map[pencodeIconKey]string, len(pencodeThemeIcons)+6)}
@@ -273,7 +282,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 	}
-	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "globe", "code", "refresh-cw", "close", "discard"} {
+	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "globe", "code", "refresh-cw", "close", "discard"} {
 		if err := addIcon(pencodeIconKey{"icons/" + name + ".svg", "icon.foreground"}); err != nil {
 			return pencodeTheme{}, err
 		}

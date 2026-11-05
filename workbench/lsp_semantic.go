@@ -13,13 +13,13 @@ import (
 
 type pencodeSemanticTokens struct {
 	session            *pencodeLanguageSession
-	requested, version int
+	theme              *syntax.Theme
+	baseSource         piecetree.Snapshot
 	resultID           string
 	data               []uint32
 	tokens             []lsp.SemanticToken
 	spans, merged      []scene.TextSpan2D
-	theme              *syntax.Theme
-	baseSource         piecetree.Snapshot
+	requested, version int
 	baseRevision       uint64
 }
 type pencodeSemanticProvider struct {

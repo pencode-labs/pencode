@@ -18,29 +18,29 @@ type documentUpdate struct {
 
 type documentSave struct {
 	ctx     context.Context
-	content piecetree.Snapshot
 	result  chan error
+	content piecetree.Snapshot
 }
 
 // Document keeps one latest immutable edit snapshot. Submitting an edit never
 // waits for I/O and does not allocate. A worker coalesces intermediate snapshots
 // and sends ordered, versioned deltas; saves explicitly wait for that barrier.
 type Document struct {
-	client     *Client
-	id         uint64
-	mu         sync.Mutex
-	latest     documentUpdate
-	applied    uint64
-	version    uint64
 	err        error
-	notify     chan struct{}
-	signal     chan struct{}
 	done       chan struct{}
 	cancel     context.CancelFunc
-	once       sync.Once
-	operations chan struct{}
-	saves      chan documentSave
 	closed     chan struct{}
+	saves      chan documentSave
+	operations chan struct{}
+	notify     chan struct{}
+	signal     chan struct{}
+	client     *Client
+	latest     documentUpdate
+	version    uint64
+	id         uint64
+	applied    uint64
+	once       sync.Once
+	mu         sync.Mutex
 }
 
 func newDocument(c *Client, id, version uint64, content string) *Document {

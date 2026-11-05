@@ -18,26 +18,26 @@ type terminalBackground struct {
 	color       graphics.ColorRGBA
 }
 type pencodeTerminalView struct {
-	control, text  ecs.Entity
-	active         *pencodeTerminal
-	revision       uint64
-	scroll         int
-	theme          *pencodeTheme
-	value          string
-	buffer         []byte
-	spans          []scene.TextSpan2D
-	backgrounds    []terminalBackground
-	underlines     []terminalBackground
-	decorations    []ecs.Entity
-	tabs           sourceVNodeView
-	tabsGeneration uint64
-	tabsCount      int
 	tabsActive     *pencodeTerminal
 	tabsTheme      *pencodeTheme
+	active         *pencodeTerminal
+	theme          *pencodeTheme
+	value          string
+	edits          []input.TextEdit
+	spans          []scene.TextSpan2D
+	backgrounds    []terminalBackground
+	buffer         []byte
+	decorations    []ecs.Entity
+	underlines     []terminalBackground
+	tabs           sourceVNodeView
 	tabScroll      pencodeTabScroll
 	context        pencodeTerminalContext
+	control, text  ecs.Entity
+	tabsCount      int
+	scroll         int
+	revision       uint64
 	caret          int
-	edits          []input.TextEdit
+	tabsGeneration uint64
 }
 
 func (m *workspaceModel) renderTerminal(view *htmlui.View) {

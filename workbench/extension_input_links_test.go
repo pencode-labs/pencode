@@ -11,6 +11,7 @@ import (
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/input"
 	"github.com/diiyw/onix/scene"
+	"github.com/diiyw/onix/text/piecetree"
 	engineui "github.com/diiyw/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
@@ -79,6 +80,57 @@ func TestInputLinksPaintKeepsSourceAndComposition(t *testing.T) {
 	}
 }
 
+func TestInputLinksPaintDuringComposition(t *testing.T) {
+	const first = `[中文 \[笔记\].go](src/note.go)`
+	const second = `[main.go](src/main.go)`
+	const value = first + " 文本 " + second
+	source := piecetree.FromString(value)
+	for _, test := range []struct {
+		name, composition string
+		anchor, caret     int
+		count             int
+	}{
+		{"after", "de", source.Runes(), source.Runes(), 2},
+		{"before", "拼音", 0, 0, 2},
+		{"between", "de", utf8.RuneCountInString(first), utf8.RuneCountInString(first), 2},
+		{"replace text", "字", utf8.RuneCountInString(first + " "), utf8.RuneCountInString(first + " 文本"), 2},
+		{"replace first", "新文件", utf8.RuneCountInString(first), 0, 1},
+		{"replace second", "新文件", utf8.RuneCountInString(first + " 文本 "), source.Runes(), 1},
+		{"replace all", "重写", 0, source.Runes(), 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			field := engineui.TextField{Value: value, Anchor: test.anchor, Caret: test.caret, Composition: test.composition}
+			start, end := source.ByteOffset(min(test.anchor, test.caret)), source.ByteOffset(max(test.anchor, test.caret))
+			visual := source.Replace(start, end, test.composition)
+			text := scene.Text2D{Source: visual}
+			color := graphics.ColorFromRGB(30, 140, 230)
+			var links pencodeInputLinks
+			if !links.paint(&text, field, color) {
+				t.Fatal("composition did not invalidate link geometry")
+			}
+			var want pencodeInputLinks
+			want.paint(&scene.Text2D{}, engineui.TextField{Value: visual.String()}, color)
+			if len(text.Spans) != test.count || !reflect.DeepEqual(text.Spans, want.spans) || !reflect.DeepEqual(text.InlineObjects, want.objects) {
+				t.Fatalf("composition link offsets differ from visual text: spans=%+v want=%+v objects=%+v want=%+v", text.Spans, want.spans, text.InlineObjects, want.objects)
+			}
+			if links.paint(&text, field, color) {
+				t.Fatal("unchanged composition invalidated geometry")
+			}
+			if n := testing.AllocsPerRun(100, func() { links.paint(&text, field, color) }); n != 0 {
+				t.Fatalf("warm composition paint allocated %g", n)
+			}
+			field.Composition += "ng"
+			if !links.paint(&text, field, color) {
+				t.Fatal("updated composition did not invalidate geometry")
+			}
+			field.Composition = ""
+			if !links.paint(&text, field, color) || len(text.Spans) != 2 || field.Text() != source {
+				t.Fatal("cancelling composition lost the references or committed source")
+			}
+		})
+	}
+}
+
 func TestExtensionInputLinksUseNativeLayoutAndMarkdownEvents(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
@@ -138,6 +190,22 @@ func TestExtensionInputLinksUseNativeLayoutAndMarkdownEvents(t *testing.T) {
 	languageInteractionStep(t, app)
 	liveState, _ := app.World.GetResource[*input.State]()
 	w.Focus(control)
+	for _, composition := range []string{"de", "deng", "", "bianji"} {
+		liveState.Enqueue(input.Event{Kind: input.EventTextComposition, Composition: input.TextComposition{Text: composition, Active: composition != ""}})
+		languageInteractionStep(t, app)
+		field = w.Mut[engineui.TextField](control)
+		text = w.Mut[scene.Text2D](visual)
+		if field.Text().String() != value+"继续" || text.Text().String() != value+"继续"+composition || len(text.InlineObjects) != 4 || len(text.Spans) != 2 {
+			t.Fatalf("IME composition expanded references or changed the draft: composition=%q field=%+v text=%+v", composition, field, text)
+		}
+		caretVisual, _ = w.FindPart[engineui.CaretPart, engineui.SurfaceStyle](control)
+		caretTransform, _ = w.Get[scene.UITransform](caretVisual)
+		textTransform, _ = w.Get[scene.UITransform](visual)
+		x, _, _, _, ok = scene.TextCaretRect2D(text, text.Text(), field.Caret+utf8.RuneCountInString(composition))
+		if actual := caretTransform.Translation.X.Value - textTransform.Translation.X.Value; !ok || actual-x > 1 || x-actual > 1 {
+			t.Fatalf("IME caret left rendered references: composition=%q actual=%v expected=%v", composition, actual, x)
+		}
+	}
 	liveState.Enqueue(input.Event{Kind: input.EventTextInput, Text: "编辑"})
 	languageInteractionStep(t, app)
 	liveState.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftControl})

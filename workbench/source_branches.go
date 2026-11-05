@@ -128,12 +128,12 @@ func (m *workspaceModel) switchSourceBranch(ref string) {
 type sourceBranchMenuKey struct {
 	Theme                *pencodeTheme
 	Branches             *sourceBranch
-	Count, Index         int
 	Current              string
-	X, Y, Width, Height  float32
-	Submenu              bool
+	Count, Index         int
 	SubIndex             int
+	X, Y, Width, Height  float32
 	SubX, SubY, SubWidth float32
+	Submenu              bool
 }
 
 var sourceBranchActions = [...]struct{ ID, Label string }{

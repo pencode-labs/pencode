@@ -32,9 +32,9 @@ type Watcher struct {
 	Events    chan Event
 	Errors    chan error
 	done      chan struct{}
+	native    nativeWatcher
 	closeOnce sync.Once
 	mu        sync.Mutex
-	native    nativeWatcher
 }
 
 func New() (*Watcher, error) {

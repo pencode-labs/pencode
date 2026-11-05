@@ -78,8 +78,8 @@ func TestMaterialIconsRegistersIconTheme(t *testing.T) {
 	// which would mean the table dropped an icon it still references.
 	sources := make(map[string]bool)
 	type ruleKey struct {
-		match   peb.Match
 		pattern string
+		match   peb.Match
 	}
 	rules := make(map[ruleKey]string, len(theme.Rules))
 	for _, rule := range theme.Rules {
@@ -87,7 +87,7 @@ func TestMaterialIconsRegistersIconTheme(t *testing.T) {
 		if len(bundle.Icons[rule.Path]) == 0 {
 			t.Fatalf("rule %q has no cached icon at %s", rule.Pattern, rule.Path)
 		}
-		key := ruleKey{rule.Match, rule.Pattern}
+		key := ruleKey{match: rule.Match, pattern: rule.Pattern}
 		if previous, exists := rules[key]; exists && previous != rule.Path {
 			t.Fatalf("conflicting rules for %q: %s and %s", rule.Pattern, previous, rule.Path)
 		}
@@ -98,24 +98,24 @@ func TestMaterialIconsRegistersIconTheme(t *testing.T) {
 	}
 	// Spot checks against the upstream manifest after parsing and registration.
 	for _, expected := range []struct {
-		match   peb.Match
 		pattern string
 		icon    string
+		match   peb.Match
 	}{
-		{peb.FileSuffix, ".go", "go"},
-		{peb.FileSuffix, ".ts", "typescript"},
-		{peb.FileSuffix, ".json", "json"},
-		{peb.FileName, "go.mod", "go-mod"},
-		{peb.FileName, "dockerfile", "docker"},
-		{peb.FileName, "dockerfile.beta", "docker"},
-		{peb.FileName, "makefile", "makefile"},
-		{peb.FileName, "license", "license"},
-		{peb.FolderName, "src", "folder-src"},
-		{peb.FolderName, ".github", "folder-github"},
-		{peb.DefaultFile, "", "file"},
-		{peb.DefaultFolder, "", "folder"},
+		{match: peb.FileSuffix, pattern: ".go", icon: "go"},
+		{match: peb.FileSuffix, pattern: ".ts", icon: "typescript"},
+		{match: peb.FileSuffix, pattern: ".json", icon: "json"},
+		{match: peb.FileName, pattern: "go.mod", icon: "go-mod"},
+		{match: peb.FileName, pattern: "dockerfile", icon: "docker"},
+		{match: peb.FileName, pattern: "dockerfile.beta", icon: "docker"},
+		{match: peb.FileName, pattern: "makefile", icon: "makefile"},
+		{match: peb.FileName, pattern: "license", icon: "license"},
+		{match: peb.FolderName, pattern: "src", icon: "folder-src"},
+		{match: peb.FolderName, pattern: ".github", icon: "folder-github"},
+		{match: peb.DefaultFile, pattern: "", icon: "file"},
+		{match: peb.DefaultFolder, pattern: "", icon: "folder"},
 	} {
-		if got := rules[ruleKey{expected.match, expected.pattern}]; got != "peb://material-icons/resources/icons/"+expected.icon+".svg" {
+		if got := rules[ruleKey{match: expected.match, pattern: expected.pattern}]; got != "peb://material-icons/resources/icons/"+expected.icon+".svg" {
 			t.Fatalf("rule %d %q = %q, want %q", expected.match, expected.pattern, got, expected.icon)
 		}
 	}

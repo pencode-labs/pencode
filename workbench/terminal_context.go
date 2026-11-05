@@ -11,10 +11,10 @@ import (
 )
 
 type pencodeTerminalContext struct {
-	open, keysHandled bool
-	x, y              float32
-	index             int
 	selection         string
+	index             int
+	x, y              float32
+	open, keysHandled bool
 }
 
 var pencodeTerminalContextRefs = [...]string{"terminal-copy", "terminal-paste", "terminal-clear"}

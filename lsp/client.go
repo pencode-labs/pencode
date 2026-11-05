@@ -13,30 +13,30 @@ import (
 )
 
 type Options struct {
-	Root                  string
-	InitializationOptions json.RawMessage
-	Configuration         json.RawMessage
 	// Handler receives server requests and notifications not handled internally.
 	// Returning MethodNotFound is required for unsupported requests.
 	Handler Handler
 	// Capabilities augments the conservative built-in client capabilities.
-	Capabilities map[string]any
+	Capabilities          map[string]any
+	Root                  string
+	InitializationOptions json.RawMessage
+	Configuration         json.RawMessage
 }
 
 type Client struct {
+	Capabilities  ServerCapabilities
+	ProcessDone   <-chan struct{}
+	registrations map[string]Registration
 	*Conn
-	Capabilities                        ServerCapabilities
+	documents                           map[URI]document
 	Encoding                            PositionEncoding
 	Root                                URI
-	ProcessDone                         <-chan struct{}
 	options                             Options
-	mu                                  sync.Mutex
-	registrations                       map[string]Registration
-	documentsMu                         sync.Mutex
-	documents                           map[URI]document
 	syncKind                            int
-	openClose, save, saveText, willSave bool
 	closeOnce                           sync.Once
+	documentsMu                         sync.Mutex
+	mu                                  sync.Mutex
+	openClose, save, saveText, willSave bool
 }
 
 type document struct {
@@ -89,10 +89,10 @@ func Connect(ctx context.Context, options Options, conn io.ReadWriteCloser) (*Cl
 			c.syncKind, c.openClose = kind, true
 		} else {
 			var sync struct {
-				OpenClose bool            `json:"openClose"`
-				Change    int             `json:"change"`
-				WillSave  bool            `json:"willSave"`
 				Save      json.RawMessage `json:"save"`
+				Change    int             `json:"change"`
+				OpenClose bool            `json:"openClose"`
+				WillSave  bool            `json:"willSave"`
 			}
 			if err := json.Unmarshal(raw, &sync); err != nil {
 				return fail(err)

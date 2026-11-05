@@ -273,5 +273,5 @@ func TestSourceControlPublishesBackgroundResultWithoutInput(t *testing.T) {
 			return
 		}
 	}
-	t.Fatalf("Git completion did not publish the new branch label without user input: branch=%q pending=%v revision=%d tools=%q", s.Snapshot.Branch, s.Done != nil, s.RenderRevision, s.toolsKey.Branch)
+	t.Fatalf("Git completion did not publish the new branch label without user input: branch=%q pending=%v revision=%d panel=%q", s.Snapshot.Branch, s.Done != nil, s.RenderRevision, s.panelKey.Branch)
 }

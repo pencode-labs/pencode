@@ -48,10 +48,10 @@ func TestSSHConnectReusesInstalledCommands(t *testing.T) {
 	}
 	for _, fixture := range []struct {
 		name       string
+		want       string
 		serverMode os.FileMode
 		pencode    bool
 		homeServer bool
-		want       string
 	}{
 		{name: "server", serverMode: 0o700, want: "pencode-server:\n"},
 		{name: "pencode", pencode: true, want: "pencode:--pencode-server\n"},
@@ -83,6 +83,7 @@ func TestSSHConnectReusesInstalledCommands(t *testing.T) {
 				}
 				return path
 			}
+			t.Setenv("SHELL", writeCommand(filepath.Join(directory, "login-shell"), "[ \"$1\" = -lc ] || exit 1\nexec "+shellQuote(shell)+" -c \"$2\"\n", 0o700))
 			peer := func(name string) string {
 				return "printf '" + name + ":%s\\n' \"$*\"\nIFS= read -r request\nprintf '%s\\n' \"$request\"\n"
 			}
@@ -125,6 +126,39 @@ func TestSSHConnectReusesInstalledCommands(t *testing.T) {
 				t.Fatal("installed server triggered an upload", progress)
 			}
 		})
+	}
+}
+
+func TestSSHLoginEnvironmentAndStdio(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX login shell fixture")
+	}
+	directory := filepath.Join(t.TempDir(), "user's tools")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tool := filepath.Join(directory, "workspace-tool")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf 'login environment ready\\n'\nIFS= read -r request\nprintf '%s\\n' \"$request\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	shell := filepath.Join(directory, "login-shell")
+	script := "#!/bin/sh\n[ \"$1\" = -lc ] || exit 1\nexport PATH=" + shellQuote(directory) + ":\"$PATH\"\nexec /bin/sh -c \"$2\"\n"
+	if err := os.WriteFile(shell, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", shell)
+	args := (Connector{}).arguments(Target{Host: "fixture"}, "exec workspace-tool", false)
+	var output bytes.Buffer
+	err := transport.Run(t.Context(), strings.NewReader("client's payload $PATH\n"), &output, &output, "/bin/sh", "-c", args[len(args)-1])
+	if err != nil || output.String() != "login environment ready\nclient's payload $PATH\n" {
+		t.Fatalf("login environment or stdio lost: %q, %v", output.String(), err)
+	}
+	t.Setenv("SHELL", "")
+	args = (Connector{}).arguments(Target{Host: "fixture"}, "printf 'default shell ready\\n'", false)
+	output.Reset()
+	err = transport.Run(t.Context(), nil, &output, &output, "/bin/sh", "-c", args[len(args)-1])
+	if err != nil || output.String() != "default shell ready\n" {
+		t.Fatalf("default shell: %q, %v", output.String(), err)
 	}
 }
 

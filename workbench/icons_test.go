@@ -21,9 +21,9 @@ import (
 // Capture uploads in memory; no window, editor process or screenshot is used.
 type pencodeIconDriver struct {
 	render.Driver
-	next        uint32
 	pixels      map[render.TextureHandle][]byte
 	descriptors map[render.TextureHandle]render.TextureDescriptor
+	next        uint32
 }
 
 func (*pencodeIconDriver) RendererInfo() render.RendererInfo { return render.RendererInfo{} }
@@ -201,8 +201,8 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 		}
 	}
 	const preview = "peb://preview/resources/image.svg"
-	provider.model = &workspaceModel{extensionImages: map[string][]byte{
-		preview: []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32"/></svg>`),
+	provider.model = &workspaceModel{extensionImages: map[string]pencodeExtensionImage{
+		preview: {data: []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32"/></svg>`), references: 1},
 	}}
 	texture, ok := provider.ResolveHTMLImage(preview, 0, 0)
 	if !ok || texture.Width != 64 || texture.Height != 32 {

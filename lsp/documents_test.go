@@ -77,7 +77,7 @@ func TestIncrementalChangesReconstructUnicodeAndLineEndings(t *testing.T) {
 			if !utf8.ValidString(replacement) {
 				t.Fatal("split rune")
 			}
-			got, err := ApplyTextEdits(old, []TextEdit{{r, replacement}}, encoding)
+			got, err := ApplyTextEdits(old, []TextEdit{{Range: r, NewText: replacement}}, encoding)
 			if err != nil || got != next {
 				t.Fatalf("%q -> %q: %+v %q => %q %v", old, next, r, replacement, got, err)
 			}

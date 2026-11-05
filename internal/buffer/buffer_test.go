@@ -12,16 +12,16 @@ func TestReadAllSizeHintsAndLimits(t *testing.T) {
 	b := Get(0)
 	defer Put(b)
 	for _, test := range []struct {
+		err   error
 		text  string
 		size  int
 		limit int
-		err   error
 	}{
-		{"", 0, 0, nil},
-		{"short", 20, 32, nil},
-		{strings.Repeat("a", 4096), 1, 4096, nil},
-		{strings.Repeat("b", 4097), 4096, 4096, ErrLimit},
-		{"next", 0, 10, nil},
+		{text: "", size: 0, limit: 0, err: nil},
+		{text: "short", size: 20, limit: 32, err: nil},
+		{text: strings.Repeat("a", 4096), size: 1, limit: 4096, err: nil},
+		{text: strings.Repeat("b", 4097), size: 4096, limit: 4096, err: ErrLimit},
+		{text: "next", size: 0, limit: 10, err: nil},
 	} {
 		err := b.ReadAll(strings.NewReader(test.text), test.size, test.limit)
 		if !errors.Is(err, test.err) || string(b.Bytes) != test.text {

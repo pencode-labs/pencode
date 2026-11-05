@@ -16,10 +16,10 @@ const Recursive = false
 type nativeWatcher struct {
 	w           *Watcher
 	file        *os.File
-	mu          sync.Mutex
 	paths       map[int32]string
 	descriptors map[string]int32
 	stopped     chan struct{}
+	mu          sync.Mutex
 }
 
 func (n *nativeWatcher) open(w *Watcher) error {

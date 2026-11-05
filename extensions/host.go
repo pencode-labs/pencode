@@ -24,9 +24,9 @@ type Manifest = protocol.ExtensionManifest
 type Installed = protocol.ExtensionInfo
 
 type Result struct {
-	ID     string
-	Bundle *Bundle
 	Err    error
+	Bundle *Bundle
+	ID     string
 }
 type Host struct {
 	Results <-chan Result

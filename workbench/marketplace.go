@@ -25,30 +25,30 @@ const (
 )
 
 type pencodeMarketResult struct {
-	op        pencodeMarketOperation
+	err       error
+	bundles   map[string]*extensions.Bundle
 	directory string
 	id        string
 	items     []extensions.Installed
-	bundles   map[string]*extensions.Bundle
-	err       error
+	op        pencodeMarketOperation
 }
 
 // UI state belongs to the session, so a scene switch does not lose an ongoing
 // installation. Workers publish immutable results; only the UI mutates state.
 type pencodeMarketplace struct {
-	directory                  string // Backend path; only local workspaces can open it.
-	open, busy                 bool
-	filter, selected, feedback string
-	items                      []extensions.Installed
-	results                    chan pencodeMarketResult
-	cancel                     context.CancelFunc
-	done                       chan struct{}
-	revision, rowsRevision     uint64
 	rowsModel                  *workspaceModel
 	rowsDefinition             *htmlui.Definition[pencodeMarketProps, struct{}]
-	rows                       []htmlui.ComponentVNode
-	details                    [5]string
 	selectedItem               *extensions.Installed
+	cancel                     context.CancelFunc
+	done                       chan struct{}
+	results                    chan pencodeMarketResult
+	details                    [5]string
+	filter, selected, feedback string
+	directory                  string // Backend path; only local workspaces can open it.
+	items                      []extensions.Installed
+	rows                       []htmlui.ComponentVNode
+	revision, rowsRevision     uint64
+	open, busy                 bool
 }
 
 type pencodeMarketProps struct {

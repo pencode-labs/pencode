@@ -1471,9 +1471,23 @@ textarea:focus {
     min-width: 0;
     height: 28px;
     padding: 2px 8px;
-    border: 1px solid var(--vscode-dropdown-border);
+    border: 1px solid transparent;
     border-radius: 8px;
+    color: var(--vscode-input-foreground);
+    background: transparent;
+}
+
+.pencode-output-tools select {
     color: var(--vscode-dropdown-foreground);
+}
+
+.pencode-output-tools input:focus,
+.pencode-output-tools select:focus {
+    border-color: var(--vscode-focusBorder);
+    outline: none;
+}
+
+.pencode-output-tools select:focus {
     background: var(--vscode-dropdown-background);
 }
 
@@ -2499,7 +2513,7 @@ textarea:focus {
 .sc-toolbar button:hover, .sc-file:hover, .sc-folder:hover, .sc-commit:hover { background: var(--vscode-list-hoverBackground); }
 .sc-workspace button:disabled { opacity: .45; cursor: default; }
 .sc-body { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
-.sc-changes { display: flex; flex-direction: column; width: 32%; min-width: 190px; max-width: 420px; min-height: 0; flex: 0 0 auto; overflow: hidden; padding: 8px; border-right: 1px solid var(--vscode-editorGroup-border); background: var(--vscode-sideBar-background); }
+.sc-changes { display: flex; flex-direction: column; width: 40%; min-width: 190px; max-width: 480px; min-height: 0; flex: 0 0 auto; overflow: hidden; padding: 8px; border-right: 1px solid var(--vscode-editorGroup-border); background: var(--vscode-sideBar-background); }
 .sc-changes-list { flex: 1; min-height: 0; overflow: auto; padding-right: 10px; }
 .sc-message { flex: 0 0 auto; width: 100%; height: 30px; min-height: 30px; padding: 6px; border: 1px solid var(--vscode-input-border); border-radius: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
 .sc-message-multiline { line-height: 20px; resize: vertical; }
@@ -2662,7 +2676,7 @@ textarea:focus {
 .sc-panel-pane .sc-history > .sc-heading { min-height: 32px; }
 .sc-graph-height { position: relative; min-width: 100%; }
 .sc-graph-window { position: absolute; left: 0; right: 0; }
-.sc-icon, #status-source-control img {
+.sc-icon {
     width: 16px;
     height: 16px;
     flex: 0 0 auto;
@@ -2687,6 +2701,8 @@ textarea:focus {
     scrollbar-width: thin;
     scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
 }
+
+.sc-repository-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; min-width: 0; margin-bottom: 6px; }
 
 .sc-branch-button {
     display: flex;
@@ -2996,9 +3012,11 @@ textarea:focus {
 .pencode-extension-notification button:hover { background: var(--vscode-button-hoverBackground); }
 .pencode-extension-notification button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 
-.pencode-ports-panel .pencode-panel-toolbar { position: relative; top: auto; right: auto; max-width: none; padding: 3px 6px 3px 12px; border-radius: 0; border-bottom: 1px solid var(--vscode-editorGroup-border); opacity: 1; }
+.pencode-titled-panel .pencode-panel-toolbar,
+.pencode-ports-panel .pencode-panel-toolbar { position: relative; top: auto; right: auto; max-width: none; min-height: 34px; flex-shrink: 0; padding: 3px 6px 3px 12px; border-radius: 0; border-bottom: 1px solid var(--vscode-editorGroup-border); opacity: 1; }
 .pencode-ports-tools { display: flex; flex: 1; align-items: center; gap: 4px; min-height: 28px; }
-.pencode-ports-title { margin-right: auto; font-size: calc(11rem / 14); font-weight: 600; text-transform: uppercase; }
+.pencode-panel-title,
+.pencode-ports-title { margin-right: auto; flex-shrink: 0; font-size: calc(11rem / 14); font-weight: 600; text-transform: uppercase; }
 .pencode-ports-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .pencode-ports-pane.is-empty { align-items: center; justify-content: center; }
 .pencode-ports-table { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; }

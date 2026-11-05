@@ -14,19 +14,19 @@ import (
 
 type services struct {
 	ctx                    context.Context
-	mu                     sync.Mutex
-	next                   uint64
+	watches                map[string]*workspaceWatch
 	roots                  map[string]bool
 	projects               map[uint64]string
 	derived                map[string]string
-	background             sync.WaitGroup
 	streams                map[uint64]*serviceStream
 	indexes                map[uint64]*serviceIndex
-	watches                map[string]*workspaceWatch
-	syntaxMu               sync.Mutex
 	syntax                 map[uint64]*syntaxSession
 	extensions             *extensionService
 	configurationDirectory string
+	background             sync.WaitGroup
+	next                   uint64
+	mu                     sync.Mutex
+	syntaxMu               sync.Mutex
 }
 
 func newServices(ctx context.Context, options Options) *services {

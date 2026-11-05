@@ -51,19 +51,19 @@ var pencodeExtraShortcuts = []pencodeCommandBinding{
 	{"debug-stepOut", "单步跳出", "global", "Shift+F11"},
 	{"debug-evaluate", "计算调试表达式", "debug", "Enter"},
 	{"language-completion", "触发补全", "editor", "Ctrl+Space"},
-	{"language-signature", "参数提示", "editor", "Ctrl+Shift+Space"},
+	{"language-signature", "参数提示", "editor", "Primary+Shift+Space"},
 	{"language-definition", "转到定义", "editor", "F12"},
 	{"language-references", "查找引用", "editor", "Shift+F12"},
-	{"language-implementation", "转到实现", "editor", "Ctrl+F12"},
+	{"language-implementation", "转到实现", "editor", "Primary+F12"},
 	{"language-rename", "重命名符号", "editor", "F2"},
 	{"language-format", "格式化文档", "editor", "Alt+Shift+F"},
-	{"language-code-action", "代码操作", "editor", "Ctrl+."},
+	{"language-code-action", "代码操作", "editor", "Primary+."},
 	{"terminal-toggle", "切换终端", "global", "Ctrl+`"},
 	{"terminal-new", "新建终端", "global", "Ctrl+Shift+`"},
 	{"terminal-copy", "终端复制", "terminal", "Ctrl+Shift+C"},
 	{"terminal-paste", "终端粘贴", "terminal", "Ctrl+Shift+V"},
 	{"terminal-paste-alternate", "终端粘贴（备用）", "terminal", "Shift+Insert"},
-	{"terminal-clear", "清空终端", "terminal", "Ctrl+Shift+K"},
+	{"terminal-clear", "清空终端", "terminal", "Primary+Shift+K"},
 	{"terminal-scroll-up", "终端向上翻页", "terminal", "Shift+PageUp"},
 	{"terminal-scroll-down", "终端向下翻页", "terminal", "Shift+PageDown"},
 	{"file-context-open", "打开文件", "files", "Enter"},
@@ -93,9 +93,9 @@ var pencodeExtraShortcuts = []pencodeCommandBinding{
 	{"extension-submit", "提交扩展输入框", "extension", "Enter"},
 }
 
-func (d pencodeCommandBinding) defaultBinding() pencodeKeybinding {
+func (d pencodeCommandBinding) defaultBinding(goos string) pencodeKeybinding {
 	chord := d.chord
-	if runtime.GOOS == "darwin" && (d.id == "terminal-copy" || d.id == "terminal-paste") {
+	if goos == "darwin" && (d.id == "terminal-copy" || d.id == "terminal-paste") {
 		chord = "Super+" + chord[len("Ctrl+Shift+"):]
 	}
 	return pencodeBindingChord(chord)

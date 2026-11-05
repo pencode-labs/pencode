@@ -16,11 +16,11 @@ type pencodeQuickHistoryEntry struct {
 }
 
 type pencodeQuickHistory struct {
-	file    string
-	entries [pencodeQuickHistoryLimit]pencodeQuickHistoryEntry
-	count   int
 	ranks   map[pencodeQuickHistoryEntry]int
+	entries [pencodeQuickHistoryLimit]pencodeQuickHistoryEntry
+	file    string
 	buffer  []byte
+	count   int
 	dirty   bool
 }
 

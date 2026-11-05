@@ -22,25 +22,25 @@ const (
 )
 
 type extensionEntry struct {
-	registration extensionhost.Registration
-	root         *os.Root
 	ctx          context.Context
+	root         *os.Root
 	cancel       context.CancelFunc
 	upload       *extensionhost.Upload
+	resourceData map[string][]byte
+	registration extensionhost.Registration
+	resourceSize int
 	committed    bool
 	enable       bool
-	resourceSize int
-	resourceData map[string][]byte
 }
 
 type extensionService struct {
-	mu            sync.Mutex
 	owner         *services
+	entries       map[uint64]*extensionEntry
 	directory     string
 	next          uint64
-	entries       map[uint64]*extensionEntry
-	closed        bool
 	resourceBytes int
+	mu            sync.Mutex
+	closed        bool
 }
 
 func (s *extensionService) close() {

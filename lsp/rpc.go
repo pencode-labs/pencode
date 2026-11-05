@@ -33,9 +33,9 @@ const (
 )
 
 type ResponseError struct {
-	Code    int             `json:"code"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data,omitempty"`
+	Code    int             `json:"code"`
 }
 
 func (e *ResponseError) Error() string { return fmt.Sprintf("lsp (%d): %s", e.Code, e.Message) }
@@ -43,12 +43,12 @@ func (e *ResponseError) Error() string { return fmt.Sprintf("lsp (%d): %s", e.Co
 // Message.ID is absent for notifications. Raw JSON preserves string and numeric
 // server IDs, result unions, custom methods and future protocol additions.
 type Message struct {
+	Error   *ResponseError  `json:"error,omitempty"`
 	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method,omitempty"`
+	ID      json.RawMessage `json:"id,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *ResponseError  `json:"error,omitempty"`
 }
 
 type Reader struct {
@@ -149,8 +149,8 @@ func (w *Writer) Write(data []byte) error {
 
 type Handler func(context.Context, string, json.RawMessage) (any, error)
 type response struct {
-	data json.RawMessage
 	err  error
+	data json.RawMessage
 }
 type outbound struct {
 	data *bytes.Buffer
@@ -163,19 +163,19 @@ type inbound struct {
 
 type Conn struct {
 	ctx      context.Context
+	err      error
+	running  map[string]context.CancelFunc
 	cancel   context.CancelFunc
 	done     chan struct{}
-	stop     sync.Once
 	closeIO  func()
 	outgoing chan outbound
 	incoming chan inbound
 	handler  Handler
-	sendMu   sync.RWMutex
-	mu       sync.Mutex
-	next     uint64
 	pending  map[string]chan response
-	running  map[string]context.CancelFunc
-	err      error
+	next     uint64
+	sendMu   sync.RWMutex
+	stop     sync.Once
+	mu       sync.Mutex
 }
 
 // NewConn owns its streams. closeIO must interrupt both reads and writes.
@@ -271,8 +271,8 @@ func (c *Conn) notify[P any](ctx context.Context, method string, params P) error
 // including when its context has been cancelled, to release the registration.
 type PendingCall struct {
 	conn     *Conn
-	id       string
 	response <-chan response
+	id       string
 }
 
 // BeginCall enqueues the request before returning. A session can therefore keep

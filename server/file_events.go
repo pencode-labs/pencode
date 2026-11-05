@@ -10,20 +10,20 @@ const fileEventHistory = 512
 const allWorkspaceChanges = protocol.WorkspaceTreeChanged | protocol.WorkspaceGitChanged | protocol.WorkspaceRepositoriesChanged
 
 type fileEventRecord struct {
+	file    protocol.FileEvent
 	version uint64
 	changes protocol.WorkspaceChange
-	file    protocol.FileEvent
 	reset   bool
 }
 
 // One bounded journal serves independent editor/extension subscribers. Slow
 // readers receive an explicit reset rather than silently losing notifications.
 type fileEventJournal struct {
-	mu            sync.Mutex
-	root          string
-	base, version uint64
-	records       [fileEventHistory]fileEventRecord
 	changed       chan struct{}
+	root          string
+	records       [fileEventHistory]fileEventRecord
+	base, version uint64
+	mu            sync.Mutex
 }
 
 func (j *fileEventJournal) append(r fileEventRecord) {

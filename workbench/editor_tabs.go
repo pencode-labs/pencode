@@ -10,9 +10,9 @@ import (
 
 type pencodeEditorTab struct {
 	project *pencodeProject
-	path    string
 	surface *pencodeExtensionSurface
 	source  *sourceTab
+	path    string
 }
 
 // Match the visible strip order: files, extension editors, then comparisons.

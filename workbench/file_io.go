@@ -35,54 +35,54 @@ type fileMove struct {
 	relative string
 }
 type fileReloadResult struct {
-	file                      *openFile
-	relative, before, content string
-	document, previous        *client.Document
-	retired                   bool
 	err                       error
+	file                      *openFile
+	document, previous        *client.Document
+	relative, before, content string
+	retired                   bool
 }
 
 // Jobs contain immutable inputs. Project/file pointers are identity tokens;
 // only the foreground may dereference them. The worker owns returned handles.
 type fileIOJob struct {
-	id                                                    uint64
-	finished                                              bool
 	err                                                   error
-	kind                                                  fileIOKind
 	ctx                                                   context.Context
-	cancel                                                context.CancelFunc
 	backend                                               *client.Client
-	project, target                                       *pencodeProject
-	workspace, targetWorkspace                            uint64
-	file                                                  *openFile
-	document                                              *client.Document
-	root, relative, destination, content                  string
-	text, baseline                                        piecetree.Snapshot
-	preview, reveal, directory, cut, duplicate, clipboard bool
-	moves                                                 []fileMove
-	reload                                                []fileReloadResult
-	navigation                                            *fileNavigation
 	language                                              *languageEditPlan
 	searchReplace                                         *folderReplacePlan
+	cancel                                                context.CancelFunc
+	project, target                                       *pencodeProject
+	navigation                                            *fileNavigation
+	file                                                  *openFile
+	document                                              *client.Document
+	text, baseline                                        piecetree.Snapshot
+	root, relative, destination, content                  string
+	moves                                                 []fileMove
+	reload                                                []fileReloadResult
+	workspace, targetWorkspace                            uint64
+	id                                                    uint64
+	preview, reveal, directory, cut, duplicate, clipboard bool
+	kind                                                  fileIOKind
+	finished                                              bool
 	external                                              bool
 }
 type fileNavigation struct {
-	line        int
 	selection   *lsp.Range
-	encoding    lsp.PositionEncoding
-	history     bool
-	query       string
 	searchMatch *protocol.TextMatch
+	encoding    lsp.PositionEncoding
+	query       string
 	digest      string
+	line        int
+	history     bool
 }
 type fileIOResult struct {
-	job                  *fileIOJob
-	workspace            protocol.Workspace
-	document             *client.Document
-	content, destination string
-	moveErrors           map[*client.Document]error
-	reload               []fileReloadResult
 	err                  error
+	job                  *fileIOJob
+	document             *client.Document
+	moveErrors           map[*client.Document]error
+	workspace            protocol.Workspace
+	content, destination string
+	reload               []fileReloadResult
 	external             bool
 }
 

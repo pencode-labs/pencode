@@ -16,10 +16,10 @@ import (
 // LanguageServer is a validated contribution. A workspace activates one process
 // per contribution and root, shared by all matching open documents.
 type LanguageServer struct {
-	Output *output.Channel
-	peb.LanguageServer
+	Output  *output.Channel
 	remote  *client.Extension
 	LocalID string
+	peb.LanguageServer
 }
 
 func (s *LanguageServer) Match(name string) bool {

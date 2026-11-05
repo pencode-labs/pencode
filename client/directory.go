@@ -11,9 +11,9 @@ import (
 // Directories supplies only directory enumeration to the existing scanner.
 // File content is accessed through versioned Document APIs.
 type Directories struct {
+	Context   context.Context
 	Client    *Client
 	Workspace uint64
-	Context   context.Context
 }
 
 // BrowseDirectory enumerates project choices without opening a workspace.

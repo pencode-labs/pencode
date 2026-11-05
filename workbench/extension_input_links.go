@@ -17,10 +17,12 @@ type pencodeInputLink struct{ start, labelEnd, end int }
 // Conceal syntax in native layout, keeping the source, IME and undo untouched.
 // Each concealed delimiter reserves a one-pixel inset around the link label.
 type pencodeInputLinks struct {
-	source  piecetree.Snapshot
-	links   []pencodeInputLink
-	objects []scene.TextInlineObject2D
-	spans   []scene.TextSpan2D
+	source        piecetree.Snapshot
+	composition   string
+	links         []pencodeInputLink
+	objects       []scene.TextInlineObject2D
+	spans         []scene.TextSpan2D
+	anchor, caret int
 }
 
 func (s *pencodeExtensionSurface) syncInputLinks(world *module.Content) (changed bool) {
@@ -55,20 +57,33 @@ func (s *pencodeExtensionSurface) syncInputLinks(world *module.Content) (changed
 
 func (p *pencodeInputLinks) paint(text *scene.Text2D, field engineui.TextField, color graphics.ColorRGBA) (changed bool) {
 	changed = p.update(field.Text())
+	changed = p.composition != field.Composition || field.Composition != "" && (p.anchor != field.Anchor || p.caret != field.Caret) || changed
+	p.composition, p.anchor, p.caret = field.Composition, field.Anchor, field.Caret
 	source := p.source
 	p.objects, p.spans = p.objects[:0], p.spans[:0]
-	if field.Composition == "" {
-		for _, link := range p.links {
-			p.spans = append(p.spans, scene.TextSpan2D{Start: link.start + 1, End: link.labelEnd, Color: color})
-			p.conceal(link.start, link.start+1)
-			for offset := link.start + 1; offset < link.labelEnd; offset++ {
-				if source.ByteAt(offset) == '\\' && offset+1 < link.labelEnd {
-					p.conceal(offset, offset+1)
-					offset++
-				}
+	start, end := 0, 0
+	if field.Composition != "" {
+		start, end = source.ByteOffset(min(field.Anchor, field.Caret)), source.ByteOffset(max(field.Anchor, field.Caret))
+	}
+	for _, link := range p.links {
+		shift := 0
+		if field.Composition != "" && link.end > start {
+			// Native IME display replaces the selection. Shift references after
+			// it, and leave any replaced reference to the composition itself.
+			if link.start < end {
+				continue
 			}
-			p.conceal(link.labelEnd, link.end)
+			shift = len(field.Composition) - (end - start)
 		}
+		p.spans = append(p.spans, scene.TextSpan2D{Start: link.start + 1 + shift, End: link.labelEnd + shift, Color: color})
+		p.conceal(link.start+shift, link.start+1+shift)
+		for offset := link.start + 1; offset < link.labelEnd; offset++ {
+			if source.ByteAt(offset) == '\\' && offset+1 < link.labelEnd {
+				p.conceal(offset+shift, offset+1+shift)
+				offset++
+			}
+		}
+		p.conceal(link.labelEnd+shift, link.end+shift)
 	}
 	changed = changed || len(text.InlineObjects) != len(p.objects)
 	text.InlineObjects, text.Spans = p.objects, p.spans

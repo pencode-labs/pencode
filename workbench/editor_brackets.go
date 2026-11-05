@@ -24,11 +24,11 @@ type pencodeBracketIndex struct {
 
 // A paint revision is required as reusable span buffers can change in place.
 type pencodeOverlayKey struct {
-	source             piecetree.Snapshot
 	base               *scene.TextSpan2D
+	theme              *pencodeTheme
+	source             piecetree.Snapshot
 	count              int
 	paint, semantic    uint64
-	theme              *pencodeTheme
 	start, end         int
 	linkStart, linkEnd int
 	linked             bool

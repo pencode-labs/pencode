@@ -11,23 +11,23 @@ import (
 )
 
 type terminalTabBinding struct {
-	node    htmlui.Node
 	handler htmlui.ClickHandler
+	node    htmlui.Node
 }
 
 type pencodeTerminal struct {
 	bindings            [2]terminalTabBinding
-	id, root, label     string
-	selectRef, closeRef string
+	err                 error
 	session             *terminal.Session
 	screen              *terminal.Screen
+	id, root, label     string
+	selectRef, closeRef string
 	scroll              int
 	ready, exited       bool
-	err                 error
 }
 type pencodeTerminals struct {
-	items  []*pencodeTerminal
 	active *pencodeTerminal
+	items  []*pencodeTerminal
 	nextID uint64
 	focus  bool
 }

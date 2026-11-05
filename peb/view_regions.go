@@ -12,15 +12,15 @@ import (
 // ViewRegion replaces the children of an existing data-pencode-region element.
 type ViewRegion struct {
 	Ref, HTML  string
-	start, end int
 	tag        string
+	start, end int
 }
 
 // ViewPatch is relative to exactly one previously received view version.
 // Nested regions belong to their outer region and cannot be patched separately.
 type ViewPatch struct {
-	Base    uint32
 	Regions []ViewRegion
+	Base    uint32
 }
 
 // ViewRegionSplitter reuses region boundaries when an update changes only one

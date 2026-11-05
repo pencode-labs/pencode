@@ -101,14 +101,14 @@ func mixedEditorTabs(t *testing.T) (*workspaceModel, *pencodeProject, *pencodeEx
 
 func TestMixedEditorTabCloseActions(t *testing.T) {
 	for _, tc := range []struct {
-		action pencodeCloseAction
 		want   []string
+		action pencodeCloseAction
 	}{
-		{pencodeCloseTab, []string{"a.go", "b.go", "diff", "merge"}},
-		{pencodeCloseOtherTabs, []string{"tool"}},
-		{pencodeCloseRightTabs, []string{"a.go", "b.go", "tool"}},
-		{pencodeCloseSavedTabs, nil},
-		{pencodeCloseAllTabs, nil},
+		{action: pencodeCloseTab, want: []string{"a.go", "b.go", "diff", "merge"}},
+		{action: pencodeCloseOtherTabs, want: []string{"tool"}},
+		{action: pencodeCloseRightTabs, want: []string{"a.go", "b.go", "tool"}},
+		{action: pencodeCloseSavedTabs, want: nil},
+		{action: pencodeCloseAllTabs, want: nil},
 	} {
 		t.Run(pencodeTabContextActions[int(tc.action)-1].ref, func(t *testing.T) {
 			m, _, tool := mixedEditorTabs(t)

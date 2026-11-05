@@ -23,17 +23,17 @@ import (
 const maxExtensionSurfaces = 32
 
 type pencodeExtensionInvocation struct {
-	context peb.ActionContext
 	anchor  string
+	context peb.ActionContext
 	x, y    float32
 }
 type pencodeExtensionUIState struct {
-	selection           pencodeExtensionTextSelection
-	surfaces            []*pencodeExtensionSurface
 	invocations         map[string]pencodeExtensionInvocation
 	overlay, panel      *pencodeExtensionSurface
 	editor              *pencodeExtensionSurface
 	wrapper             *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
+	surfaces            []*pencodeExtensionSurface
+	selection           pencodeExtensionTextSelection
 	revealNotifications bool
 }
 type pencodeExtensionSurfaceProps struct {
@@ -43,17 +43,18 @@ type pencodeExtensionSurfaceProps struct {
 	Visible  bool
 }
 type pencodeExtensionFocus struct {
+	inputLinks  *pencodeInputLinks
 	ref, id     string
 	submit      string
+	style       string
+	caret       string
+	height      float32
 	showOutput  bool
 	autosize    bool
-	style       string
-	height      float32
 	completion  bool
 	pasteImages bool
-	caret       string
 	placeCaret  bool
-	inputLinks  *pencodeInputLinks
+	selectText  bool
 }
 type pencodeExtensionIcon struct {
 	ref, source, foreground string
@@ -67,41 +68,42 @@ type pencodeExtensionScroll struct {
 	follow, restore, end bool
 }
 type pencodeExtensionSurface struct {
-	selectables                    []pencodeExtensionSelectable
+	expiresAt                      time.Time
+	tree                           *dom.Node
 	model                          *workspaceModel
 	session                        *extensions.ActionSession
-	owner                          string
-	ui                             peb.UI
-	invocation                     pencodeExtensionInvocation
+	output                         *output.Channel
+	images                         map[string][]byte
+	copies                         map[string]string
 	definition                     *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
 	styles                         *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
 	view                           *peb.EditorView
-	regions                        []pencodeExtensionRegion
-	regionSplitter                 peb.ViewRegionSplitter
-	tree                           *dom.Node
-	expanded                       []pencodeExtensionExpanded
-	theme                          *pencodeTheme
-	bindings                       []peb.EditorBinding
 	links                          map[string]string
-	copies                         map[string]string
-	focus                          []pencodeExtensionFocus
-	focusTargets                   []pencodeExtensionFocusTarget
-	icons                          []pencodeExtensionIcon
-	pointerFocus                   string
-	submitEdits                    []input.TextEdit
-	scrolls                        []pencodeExtensionScroll
-	output                         *output.Channel
-	focused                        int
-	revision                       uint64
-	prefix, rootID, closeID, style string
+	theme                          *pencodeTheme
 	contentID                      string
-	scrollKey                      string
 	inputID, inputValue            string
+	owner                          string
+	scrollKey                      string
+	prefix, rootID, closeID, style string
+	pointerFocus                   string
+	invocation                     pencodeExtensionInvocation
+	regionSplitter                 peb.ViewRegionSplitter
+	regions                        []pencodeExtensionRegion
+	bindings                       []peb.EditorBinding
+	scrolls                        []pencodeExtensionScroll
+	icons                          []pencodeExtensionIcon
+	focusTargets                   []pencodeExtensionFocusTarget
+	focus                          []pencodeExtensionFocus
+	expanded                       []pencodeExtensionExpanded
+	selectables                    []pencodeExtensionSelectable
+	submitEdits                    []input.TextEdit
+	ui                             peb.UI
+	focused                        int
 	inputAnchor, inputCaret        int
-	fill                           bool
+	revision                       uint64
 	x, y                           float32
+	fill                           bool
 	needsFocus, visible            bool
-	expiresAt                      time.Time
 }
 
 func (model *workspaceModel) captureExtensionAction(world *module.Content, c peb.ActionContext) {
@@ -449,7 +451,8 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 						break
 					}
 				}
-				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", pasteImages: pasteImages, caret: caret, placeCaret: placeCaret, inputLinks: inputLinks})
+				role, _ := node.Attr("role")
+				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", pasteImages: pasteImages, caret: caret, placeCaret: placeCaret, inputLinks: inputLinks, selectText: node.Data == "a" || role == "link"})
 			}
 		}
 	}); err != nil {
@@ -836,6 +839,7 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 			model.bottom.active = pencodePanelClosed
 		}
 	}
+	s.images = model.replaceExtensionImages(s.images, nil)
 	s.send(peb.EditorEvent{Kind: "close"}, reason)
 	if restore && wasLive && state.overlay == nil && model.fontResources != nil {
 		if control, ok := model.fontResources.HTMLControl(model.surface, s.invocation.anchor); ok && model.fontResources.Focus(control) {
@@ -853,6 +857,7 @@ func (model *workspaceModel) clearExtensionUI(owner string) {
 			retained = append(retained, s)
 			continue
 		}
+		s.images = model.replaceExtensionImages(s.images, nil)
 		// No lifecycle RPC after unload/disconnect.
 		if state.overlay == s {
 			state.overlay = nil

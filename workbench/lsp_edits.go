@@ -14,20 +14,20 @@ import (
 // Plans own immutable snapshots until the foreground validates every target.
 // No buffer is changed if any file, version, or language session became stale.
 type languageEditTarget struct {
-	uri                       lsp.URI
 	file                      *openFile
-	relative, before, content string
-	edits                     []lsp.TextEdit
 	version                   *int
 	document                  *client.Document
+	uri                       lsp.URI
+	relative, before, content string
+	edits                     []lsp.TextEdit
 }
 type languageEditPlan struct {
 	state    *pencodeLanguageState
 	session  *pencodeLanguageSession
 	client   *lsp.Client
+	complete func(error)
 	encoding lsp.PositionEncoding
 	targets  []languageEditTarget
-	complete func(error)
 }
 
 func (p *languageEditPlan) finish(err error) {

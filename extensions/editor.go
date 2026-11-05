@@ -11,10 +11,10 @@ import (
 )
 
 type EditorResult struct {
-	Message peb.EditorMessage
 	Reply   peb.EditorReply
-	Assets  map[string][]byte
 	Err     error
+	Assets  map[string][]byte
+	Message peb.EditorMessage
 }
 
 // EditorSession owns one active document process. All pipe I/O happens on its

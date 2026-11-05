@@ -13,28 +13,28 @@ import (
 )
 
 type pencodePortsIdentity struct {
-	target    connection.Endpoint
 	directory string
+	target    connection.Endpoint
 }
 type pencodePortUI struct {
 	owner                                     pencodePortsIdentity
-	owned, resumeReady                        bool
+	selected, message                         string
+	mode, editKey, value                      string
 	resume                                    pencodePortsState
 	rows                                      []pencodePortRow
 	revision, nextCommand, pending, completed uint64
-	selected, message                         string
 	failed                                    bool
-	mode, editKey, value                      string
+	owned, resumeReady                        bool
 	focus                                     bool
 }
 type pencodePortProps struct {
 	Model          *workspaceModel
-	Row            pencodePortRow
-	Selected       bool
-	Editing, Value string
-	Pending        bool
 	Theme          *pencodeTheme
+	Editing, Value string
+	Row            pencodePortRow
 	Rename, Stop   pencodeKeybinding
+	Selected       bool
+	Pending        bool
 }
 
 func newPortDefinition(content *module.Content) (*htmlui.Definition[pencodePortProps, struct{}], error) {
@@ -194,7 +194,7 @@ func (m *workspaceModel) pollPorts() bool {
 		}
 		return changed
 	}
-	identity := pencodePortsIdentity{m.session.connection.workspaceProfile.Endpoint(), m.projectPath}
+	identity := pencodePortsIdentity{target: m.session.connection.workspaceProfile.Endpoint(), directory: m.projectPath}
 	if m.ports == nil || m.ports.backend != m.backend || u.owner != identity {
 		m.closePorts()
 		if !u.owned || u.owner != identity {

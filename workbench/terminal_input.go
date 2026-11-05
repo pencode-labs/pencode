@@ -112,12 +112,12 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 		modifier += 4
 	}
 	for _, key := range [...]struct {
-		code            input.KeyCode
 		sequence, final string
+		code            input.KeyCode
 	}{
-		{input.KeyUp, "A", "A"}, {input.KeyDown, "B", "B"}, {input.KeyRight, "C", "C"}, {input.KeyLeft, "D", "D"}, {input.KeyHome, "H", "H"}, {input.KeyEnd, "F", "F"},
-		{input.KeyInsert, "2~", ""}, {input.KeyDelete, "3~", ""}, {input.KeyPageUp, "5~", ""}, {input.KeyPageDown, "6~", ""},
-		{input.KeyF1, "P", "P"}, {input.KeyF2, "Q", "Q"}, {input.KeyF3, "R", "R"}, {input.KeyF4, "S", "S"}, {input.KeyF5, "15~", ""}, {input.KeyF6, "17~", ""}, {input.KeyF7, "18~", ""}, {input.KeyF8, "19~", ""}, {input.KeyF9, "20~", ""}, {input.KeyF10, "21~", ""}, {input.KeyF11, "23~", ""}, {input.KeyF12, "24~", ""},
+		{code: input.KeyUp, sequence: "A", final: "A"}, {code: input.KeyDown, sequence: "B", final: "B"}, {code: input.KeyRight, sequence: "C", final: "C"}, {code: input.KeyLeft, sequence: "D", final: "D"}, {code: input.KeyHome, sequence: "H", final: "H"}, {code: input.KeyEnd, sequence: "F", final: "F"},
+		{code: input.KeyInsert, sequence: "2~", final: ""}, {code: input.KeyDelete, sequence: "3~", final: ""}, {code: input.KeyPageUp, sequence: "5~", final: ""}, {code: input.KeyPageDown, sequence: "6~", final: ""},
+		{code: input.KeyF1, sequence: "P", final: "P"}, {code: input.KeyF2, sequence: "Q", final: "Q"}, {code: input.KeyF3, sequence: "R", final: "R"}, {code: input.KeyF4, sequence: "S", final: "S"}, {code: input.KeyF5, sequence: "15~", final: ""}, {code: input.KeyF6, sequence: "17~", final: ""}, {code: input.KeyF7, sequence: "18~", final: ""}, {code: input.KeyF8, sequence: "19~", final: ""}, {code: input.KeyF9, sequence: "20~", final: ""}, {code: input.KeyF10, sequence: "21~", final: ""}, {code: input.KeyF11, sequence: "23~", final: ""}, {code: input.KeyF12, sequence: "24~", final: ""},
 	} {
 		if state.KeyPressed(key.code) {
 			prefix := "\x1b["

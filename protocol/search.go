@@ -8,14 +8,14 @@ const TextSearchFilesLimit = 65536
 
 type SearchDocument struct{ Path, Content string }
 type TextMatch struct {
+	Preview                  string
 	Start, End, Line, Column int
 	PreviewStart             int
-	Preview                  string
 }
 type SearchFile struct {
 	Path, Digest string
-	Count        int
 	Matches      []TextMatch
+	Count        int
 }
 type SearchResult struct {
 	Files     []SearchFile

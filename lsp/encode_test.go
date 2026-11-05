@@ -42,8 +42,8 @@ func TestReaderReleasesLargeMessageBeforeNextFrame(t *testing.T) {
 
 type signaledStream struct {
 	net.Conn
-	once    sync.Once
 	entered chan struct{}
+	once    sync.Once
 }
 
 func (s *signaledStream) Write(p []byte) (int, error) {
@@ -84,8 +84,8 @@ func TestNotificationOwnsEncodedBytesUntilWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	var message struct {
-		Method string            `json:"method"`
 		Params map[string]string `json:"params"`
+		Method string            `json:"method"`
 	}
 	if err := json.Unmarshal(raw, &message); err != nil || message.Method != "test/notification" || message.Params["text"] != want {
 		t.Fatal("in-flight notification storage was reused", err)
@@ -193,8 +193,8 @@ func TestDocumentNotificationPayloads(t *testing.T) {
 	type wireDocument struct {
 		URI        URI    `json:"uri"`
 		LanguageID string `json:"languageId"`
-		Version    int    `json:"version"`
 		Text       string `json:"text"`
+		Version    int    `json:"version"`
 	}
 	for _, kind := range []int{1, 2} {
 		t.Run(strconv.Itoa(kind), func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestDocumentNotificationPayloads(t *testing.T) {
 			var opened struct {
 				TextDocument wireDocument `json:"textDocument"`
 			}
-			if err := json.Unmarshal(read("textDocument/didOpen"), &opened); err != nil || opened.TextDocument != (wireDocument{uri, "go", 1, initial}) {
+			if err := json.Unmarshal(read("textDocument/didOpen"), &opened); err != nil || opened.TextDocument != (wireDocument{URI: uri, LanguageID: "go", Version: 1, Text: initial}) {
 				t.Fatal("incorrect didOpen", opened, err)
 			}
 			if err := c.SyncDocument(t.Context(), uri, "go", "", 2); err != nil {
@@ -243,7 +243,7 @@ func TestDocumentNotificationPayloads(t *testing.T) {
 				t.Fatal("changed full/incremental or empty replacement semantics", change)
 			}
 			if change.Range != nil {
-				if result, err := ApplyTextEdits(initial, []TextEdit{{*change.Range, change.Text}}, UTF16); err != nil || result != "" {
+				if result, err := ApplyTextEdits(initial, []TextEdit{{Range: *change.Range, NewText: change.Text}}, UTF16); err != nil || result != "" {
 					t.Fatal("incremental range failed to clear Unicode text", err)
 				}
 			}

@@ -112,7 +112,7 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 		control, ok = model.fontResources.HTMLControl(model.surface, "pencode-extension-source")
 		return ok
 	})
-	if len(model.extensionImages["peb://source/resources/preview.svg"]) == 0 {
+	if len(model.extensionImages["peb://source/resources/preview.svg"].data) == 0 {
 		t.Fatal("custom editor asset was not fetched through the server")
 	}
 	if model.textEditorActive() || model.highlightRequest.file != nil {
@@ -169,6 +169,9 @@ func TestPencodeCustomEditorDOMEventsAndHostHistory(t *testing.T) {
 	}
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	wait(func() bool { return model.customDocuments[file] == nil })
+	if len(model.extensionImages) != 0 {
+		t.Fatal("returning to source retained preview assets")
+	}
 	if !model.textEditorActive() {
 		t.Fatal("native editor was not restored")
 	}
@@ -289,6 +292,28 @@ func TestPencodeCustomViewRejectsInvalidBindingsAndHostIDs(t *testing.T) {
 	}
 	if !document.definition.ScopedCSS || !strings.Contains(document.definition.CSS, "onix-scope-") {
 		t.Fatal("extension CSS can escape its component")
+	}
+}
+
+func TestPencodeCustomViewReusesUnchangedMarkup(t *testing.T) {
+	document := &pencodeCustomDocument{}
+	view := peb.EditorView{HTML: `<button data-ref="x">OK</button>`, CSS: `button { color: red; }`, Events: []peb.EditorBinding{{Ref: "x", Kind: "click"}}}
+	if err := document.setView(&view); err != nil {
+		t.Fatal(err)
+	}
+	definition := document.definition
+	copy := view
+	if n := testing.AllocsPerRun(100, func() {
+		if err := document.setView(&copy); err != nil {
+			t.Fatal(err)
+		}
+	}); n != 0 || document.definition != definition {
+		t.Fatalf("unchanged preview rebuilt its definition: %g allocations", n)
+	}
+	invalid := copy
+	invalid.Events = []peb.EditorBinding{{Ref: "missing", Kind: "click"}}
+	if document.setView(&invalid) == nil || document.definition != definition {
+		t.Fatal("reuse bypassed binding validation or discarded the current view")
 	}
 }
 

@@ -29,37 +29,37 @@ type pencodeLanguageState struct {
 type pencodeLanguageDocument struct {
 	file        *openFile
 	project     *pencodeProject
-	root        string
-	uri         lsp.URI
-	content     piecetree.Snapshot
-	saved       piecetree.Snapshot
-	version     int
 	semantic    *pencodeSemanticTokens
-	seen        bool
 	servers     map[*pencodeLanguageSession]pencodeLanguageSynced
 	diagnostics map[*pencodeLanguageSession][]lsp.Diagnostic
+	content     piecetree.Snapshot
+	saved       piecetree.Snapshot
+	root        string
+	uri         lsp.URI
+	version     int
+	seen        bool
 }
 type pencodeLanguageSynced struct {
+	update       *pencodeLanguageUpdate
 	version      int
 	saveRevision uint64
-	update       *pencodeLanguageUpdate
 }
 type pencodeLanguageSession struct {
-	key    pencodeLanguageKey
 	server *extensions.LanguageServer
 	client *lsp.Client // published on UI thread by ready event
 	jobs   chan pencodeLanguageJob
 	cancel context.CancelFunc
 	done   chan struct{}
+	key    pencodeLanguageKey
 	failed bool
 }
 
 // At most one queued snapshot per document is retained while a request runs.
 // Updating it drops obsolete source strings rather than filling the job queue.
 type pencodeLanguageUpdate struct {
+	job   pencodeLanguageJob
 	mu    sync.Mutex
 	taken bool
-	job   pencodeLanguageJob
 }
 
 func (u *pencodeLanguageUpdate) replace(job pencodeLanguageJob) bool {
@@ -88,33 +88,33 @@ func (u *pencodeLanguageUpdate) take() pencodeLanguageJob {
 }
 
 type pencodeLanguageJob struct {
+	params      any
+	context     context.Context
 	update      *pencodeLanguageUpdate
 	document    *pencodeLanguageDocument
-	uri         lsp.URI
-	content     piecetree.Snapshot
 	saved       piecetree.Snapshot
+	content     piecetree.Snapshot
 	method      string
+	uri         lsp.URI
 	version     int
-	close, save bool
-	semantic    bool
-	willSave    bool
-	notify      bool
-	context     context.Context
-	params      any
-	token       uint64
 	offset      int
+	token       uint64
+	close, save bool
+	notify      bool
+	willSave    bool
+	semantic    bool
 	hover       bool
 	automatic   bool
 }
 type pencodeLanguageEvent struct {
+	err     error
 	session *pencodeLanguageSession
 	client  *lsp.Client
+	reply   chan pencodeLanguageReply
 	method  string
 	params  json.RawMessage
 	result  json.RawMessage
 	job     pencodeLanguageJob
-	err     error
-	reply   chan pencodeLanguageReply
 }
 type pencodeLanguageReply struct {
 	result any
@@ -552,9 +552,9 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 				}
 			case "window/showDocument":
 				var p struct {
+					Selection *lsp.Range `json:"selection"`
 					URI       lsp.URI    `json:"uri"`
 					External  bool       `json:"external"`
-					Selection *lsp.Range `json:"selection"`
 				}
 				state.panel.session = event.session
 				success := json.Unmarshal(event.params, &p) == nil && !p.External && model.navigateLanguageLocation(world, lsp.Location{URI: p.URI}, p.Selection)

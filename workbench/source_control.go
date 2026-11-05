@@ -21,9 +21,9 @@ const (
 )
 
 type sourceRepository struct {
+	Context context.Context
 	Backend *client.Client
 	Root    string
-	Context context.Context
 }
 type sourceFile struct {
 	Path, Previous string
@@ -32,22 +32,22 @@ type sourceFile struct {
 }
 type sourceCommit struct {
 	Hash, Parents, Subject, Author, Date, Refs string
-	Lane, Color                                int
-	Incoming                                   bool
 	Edges                                      []sourceEdge
 	Joins                                      []sourceEdge
+	Lane, Color                                int
+	Incoming                                   bool
 }
 type sourceEdge struct{ From, To, Color, ToColor int }
 type sourceSnapshot struct {
 	Repository  sourceRepository
 	Branch      string
+	HistoryRefs string
+	Groups      [3][]sourceFile // conflicts, index, working tree
 	Branches    []sourceBranch
 	Files       []sourceFile
-	Groups      [3][]sourceFile // conflicts, index, working tree
-	HasHead     bool
-	HistoryRefs string
-	Sync        sourceSyncStatus
 	sourceHistoryPage
+	Sync    sourceSyncStatus
+	HasHead bool
 }
 type sourceDiffKind uint8
 
@@ -70,41 +70,41 @@ func (kind sourceDiffKind) class() string {
 
 type sourceDiffRow struct {
 	Left, Right             string
+	Changes                 []sourceInlineChange
 	LeftNumber, RightNumber int
 	LeftKind, RightKind     sourceDiffKind
-	Changes                 []sourceInlineChange
 }
 type sourceDiffView struct {
 	Rows                     []sourceDiffRow
-	CodeColumns, FirstChange int
 	Blocks                   []sourceDiffBlock
-	Layouts                  [2]scene.TextLineLayout2D
 	changes                  []sourceInlineChange
+	Layouts                  [2]scene.TextLineLayout2D
+	CodeColumns, FirstChange int
 }
 type sourceDiffBlock struct {
 	FirstRow, EndRow                         int
 	LeftStart, LeftEnd, RightStart, RightEnd int
 }
 type sourceTab struct {
-	Key, Path, Revision, Kind      string
-	Rows                           []sourceDiffRow
-	Local, Incoming, Result, Saved string
-	Binary                         bool
-	Preview                        bool
-	SubmoduleSummary               string
-	FirstRow                       int
-	ScrollX, ScrollY               float32
-	CodeColumns                    int
-	Highlight                      [3]sourceHighlight
-	scrollApplied                  [2][2]float32
-	Blocks                         []sourceDiffBlock
-	LineLayouts                    [2]scene.TextLineLayout2D
-	DiffContent                    string
-	DiffRevision                   uint64
-	diffChanges                    []sourceInlineChange
+	Key, Path, Revision, Kind string
 	// Disk is the file read when opening; saving refuses to overwrite external edits.
-	Disk string
+	Disk                           string
+	Local, Incoming, Result, Saved string
+	DiffContent                    string
+	SubmoduleSummary               string
+	Blocks                         []sourceDiffBlock
+	diffChanges                    []sourceInlineChange
+	Rows                           []sourceDiffRow
+	Highlight                      [3]sourceHighlight
+	LineLayouts                    [2]scene.TextLineLayout2D
 	pencodeEditHistory
+	FirstRow         int
+	CodeColumns      int
+	DiffRevision     uint64
+	scrollApplied    [2][2]float32
+	ScrollX, ScrollY float32
+	Preview          bool
+	Binary           bool
 }
 
 func (t *sourceTab) editable() bool {

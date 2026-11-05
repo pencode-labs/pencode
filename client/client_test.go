@@ -85,9 +85,9 @@ func TestChunkedDocumentRoundTrip(t *testing.T) {
 
 type gated struct {
 	net.Conn
-	pause            atomic.Bool
 	entered, release chan struct{}
 	once             sync.Once
+	pause            atomic.Bool
 }
 
 func (g *gated) Write(p []byte) (int, error) {

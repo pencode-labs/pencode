@@ -62,8 +62,8 @@ func TestSessionEvaluationsExpandAndClear(t *testing.T) {
 		case "evaluate":
 			var args struct {
 				Expression string `json:"expression"`
-				FrameID    int    `json:"frameId"`
 				Context    string `json:"context"`
+				FrameID    int    `json:"frameId"`
 			}
 			if err := json.Unmarshal(payload, &args); err != nil {
 				return nil, err
@@ -370,11 +370,11 @@ func TestConfigResolvesSelectedFileAtLaunch(t *testing.T) {
 			t.Fatal(err)
 		}
 		var result struct {
+			Env          map[string]string
 			Program, Cwd string
 			Args         []string
-			Env          map[string]string
-			StopOnEntry  bool
 			Port         int
+			StopOnEntry  bool
 		}
 		if err := json.Unmarshal(config.Configuration, &result); err != nil {
 			t.Fatal(err)

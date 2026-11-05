@@ -31,62 +31,62 @@ type pencodeConnectionProject struct {
 }
 
 type pencodeRemoteLink struct {
-	profile     connection.Profile
+	connectedAt time.Time
 	backend     *client.Client
 	watchCancel context.CancelFunc
-	connectedAt time.Time
+	profile     connection.Profile
 	rapidLosses int
 	lostHandled bool
 }
 
 type pencodeAuthenticationRequest struct {
-	prompt remote.AuthenticationPrompt
-	answer chan string
 	ctx    context.Context
+	answer chan string
+	prompt remote.AuthenticationPrompt
 }
 
 type pencodeConnectionResult struct {
 	configuration configuration.Snapshot
-	restore       bool
+	err           error
 	backend       *client.Client
 	profile       connection.Profile
 	projects      []pencodeConnectionProject
 	restored      []connection.RestoredProject
-	err           error
+	restore       bool
 }
 
 type pencodeConnection struct {
 	picker              pencodeProjectPicker
-	links               map[connection.Endpoint]*pencodeRemoteLink
-	workspaceProfile    connection.Profile
-	restoring           bool
-	passwordFocus       bool
-	password            string
+	connectedAt         time.Time
 	passwordRequest     *pencodeAuthenticationRequest
+	done                chan struct{}
+	cancel, watchCancel context.CancelFunc
 	passwords           chan *pencodeAuthenticationRequest
 	dial                pencodeDial
+	progress            chan string
+	results             chan pencodeConnectionResult
+	links               map[connection.Endpoint]*pencodeRemoteLink
+	workspaceProfile    connection.Profile
 	profile, form       connection.Profile
-	profiles            []connection.Profile
+	message             string
+	namespace           string
+	password            string
 	port                string
-	webSocket           bool
-	optionsExpanded     bool
+	recentProject       string
+	profiles            []connection.Profile
 	typeOptions         [2]htmlui.VNode
-	open, formOpen      bool
-	busy, launch        bool
 	edit                int
+	rapidLosses         int
 	menu                int
 	menuX, menuY        float32
-	lostHandled         bool
-	connectedAt         time.Time
-	rapidLosses         int
-	message             string
 	messageError        bool
-	namespace           string
-	recentProject       string
-	results             chan pencodeConnectionResult
-	progress            chan string
-	cancel, watchCancel context.CancelFunc
-	done                chan struct{}
+	webSocket           bool
+	optionsExpanded     bool
+	lostHandled         bool
+	busy, launch        bool
+	open, formOpen      bool
+	passwordFocus       bool
+	restoring           bool
 }
 
 func (c *pencodeConnection) setMessage(message string, failed bool) {

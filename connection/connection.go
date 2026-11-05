@@ -18,21 +18,21 @@ import (
 )
 
 type Profile struct {
-	Name      string                 `json:"name"`
-	SSH       remote.Target          `json:"ssh"`
 	WebSocket remote.WebSocketTarget `json:"websocket,omitzero"`
+	Name      string                 `json:"name"`
 	Directory string                 `json:"directory,omitempty"`
+	SSH       remote.Target          `json:"ssh"`
 }
 
 func (p Profile) Remote() bool { return p.SSH.Host != "" || p.WebSocket != (remote.WebSocketTarget{}) }
 
 type Endpoint struct {
-	SSH       remote.Target
 	WebSocket string
+	SSH       remote.Target
 }
 
 // Endpoint identifies a connection without allocating or retaining its token.
-func (p Profile) Endpoint() Endpoint { return Endpoint{p.SSH, p.WebSocket.Address} }
+func (p Profile) Endpoint() Endpoint { return Endpoint{SSH: p.SSH, WebSocket: p.WebSocket.Address} }
 
 func (p Profile) Address() string {
 	if p.WebSocket.Address != "" {
@@ -82,8 +82,8 @@ func (p Profile) Namespace() string {
 }
 
 type Dialer struct {
-	LocalExecutable string
 	SSH             remote.Connector
+	LocalExecutable string
 }
 
 func DefaultDialer(executable string, output io.Writer) Dialer {
@@ -133,15 +133,15 @@ type Project struct {
 }
 
 type RestoredFile struct {
+	Err      error
 	Document *client.Document
 	Disk     string
-	Err      error
 }
 
 type RestoredProject struct {
+	Err       error
 	Workspace protocol.Workspace
 	Files     []RestoredFile
-	Err       error
 }
 
 // Restore only opens workspaces and reads disk baselines. The foreground decides

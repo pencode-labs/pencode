@@ -13,13 +13,13 @@ import (
 )
 
 type pencodeReferencePreview struct {
-	group      int
 	root, path string
 	rows       []pencodeLanguageRow
+	group      int
 }
 type pencodeReferenceJob struct {
-	groups          []pencodeReferencePreview
 	encoding        lsp.PositionEncoding
+	groups          []pencodeReferencePreview
 	revision, token uint64
 }
 type pencodeReferenceResult struct{ job pencodeReferenceJob }
@@ -64,8 +64,8 @@ func (model *workspaceModel) closeReferenceWorker() {
 }
 
 type pencodeReferenceGroup struct {
-	header   pencodeLanguageRow
 	rows     []pencodeLanguageRow
+	header   pencodeLanguageRow
 	expanded bool
 }
 

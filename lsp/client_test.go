@@ -70,8 +70,8 @@ func runTestServer() error {
 			var p struct {
 				TextDocument struct {
 					Text    string `json:"text"`
-					Version int    `json:"version"`
 					URI     URI    `json:"uri"`
+					Version int    `json:"version"`
 				} `json:"textDocument"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
@@ -83,20 +83,20 @@ func runTestServer() error {
 			continue
 		case "textDocument/didChange":
 			var p struct {
-				TextDocument struct {
-					Version int `json:"version"`
-				} `json:"textDocument"`
 				ContentChanges []struct {
 					Range *Range `json:"range"`
 					Text  string `json:"text"`
 				} `json:"contentChanges"`
+				TextDocument struct {
+					Version int `json:"version"`
+				} `json:"textDocument"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
 			for _, change := range p.ContentChanges {
 				if change.Range == nil {
 					text = change.Text
 				} else {
-					text, err = ApplyTextEdits(text, []TextEdit{{*change.Range, change.Text}}, UTF16)
+					text, err = ApplyTextEdits(text, []TextEdit{{Range: *change.Range, NewText: change.Text}}, UTF16)
 					if err != nil {
 						return err
 					}

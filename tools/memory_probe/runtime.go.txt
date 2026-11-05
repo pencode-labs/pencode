@@ -1,0 +1,101 @@
+package main
+
+import (
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"runtime/debug"
+	"runtime/pprof"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/diiyw/onix/resource"
+)
+
+func init() {
+	directory := os.Getenv("PENCODE_MEMORY_DIRECTORY")
+	if directory == "" {
+		panic("diagnostic build requires PENCODE_MEMORY_DIRECTORY")
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		panic(err)
+	}
+	role := "gui"
+	if len(os.Args) == 2 && os.Args[1] == "--pencode-server" {
+		role = "server"
+	} else if resources := os.Getenv("PENCODE_MEMORY_RESOURCES"); resources != "" {
+		manager, err := resource.OpenManager(resources)
+		if err != nil {
+			panic(err)
+		}
+		if err := resource.SetDefault(manager, "."); err != nil {
+			panic(err)
+		}
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	prefix := fmt.Sprintf("%s-%d", role, os.Getpid())
+	token := rand.Text()
+	endpoint, _ := json.Marshal(map[string]any{"pid": os.Getpid(), "role": role, "address": "http://" + listener.Addr().String(), "token": token})
+	if err := os.WriteFile(filepath.Join(directory, prefix+".endpoint.json"), endpoint, 0600); err != nil {
+		panic(err)
+	}
+	var snapshot sync.Mutex
+	http.HandleFunc("/stacks", func(w http.ResponseWriter, r *http.Request) {
+		_ = pprof.Lookup("goroutine").WriteTo(w, 2)
+	})
+	http.HandleFunc("/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		name, mode := r.URL.Query().Get("name"), r.URL.Query().Get("mode")
+		if name == "" || strings.ContainsAny(name, "/\\.") || len(name) > 80 || mode != "natural" && mode != "gc" && mode != "trim" {
+			http.Error(w, "require name and mode=natural|gc|trim", http.StatusBadRequest)
+			return
+		}
+		snapshot.Lock()
+		defer snapshot.Unlock()
+		if mode == "gc" {
+			runtime.GC()
+		} else if mode == "trim" {
+			debug.FreeOSMemory()
+		}
+		var stats runtime.MemStats
+		runtime.ReadMemStats(&stats)
+		path := filepath.Join(directory, prefix+"-"+name)
+		file, err := os.Create(path + ".heap")
+		if err == nil {
+			err = pprof.WriteHeapProfile(file)
+			closeErr := file.Close()
+			if err == nil {
+				err = closeErr
+			}
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		value := map[string]any{"pid": os.Getpid(), "role": role, "mode": mode, "time": time.Now().Format(time.RFC3339Nano), "stats": stats}
+		data, _ := json.MarshalIndent(value, "", "  ")
+		if err := os.WriteFile(path+".json", data, 0600); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(data)
+	})
+	go func() {
+		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer "+token {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			http.DefaultServeMux.ServeHTTP(w, r)
+		}))
+	}()
+}

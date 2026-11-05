@@ -206,13 +206,13 @@ func TestPencodeScanKeepsRootSiblingsWhileIndexingSubtree(t *testing.T) {
 	p := &pencodeProject{scan: scan, ExpandedDirs: map[string]bool{"a": true}}
 	m := workspaceModel{projects: []*pencodeProject{p}, activeProjectIndex: 0}
 	for _, step := range []struct {
-		batch pencodeTreeBatch
 		want  []treeEntry
+		batch pencodeTreeBatch
 	}{
-		{pencodeTreeBatch{preview: true, count: 3, entries: [pencodeTreeBatchSize]treeEntry{a, z, main}}, []treeEntry{a, z, main}},
-		{pencodeTreeBatch{index: 7, count: 1, entries: [pencodeTreeBatchSize]treeEntry{a}}, []treeEntry{a, z, main}},
-		{pencodeTreeBatch{index: 7, count: 1, entries: [pencodeTreeBatchSize]treeEntry{child}}, []treeEntry{a, child, z, main}},
-		{pencodeTreeBatch{index: 7, count: 2, done: true, entries: [pencodeTreeBatchSize]treeEntry{z, main}}, []treeEntry{a, child, z, main}},
+		{batch: pencodeTreeBatch{preview: true, count: 3, entries: [pencodeTreeBatchSize]treeEntry{a, z, main}}, want: []treeEntry{a, z, main}},
+		{batch: pencodeTreeBatch{index: 7, count: 1, entries: [pencodeTreeBatchSize]treeEntry{a}}, want: []treeEntry{a, z, main}},
+		{batch: pencodeTreeBatch{index: 7, count: 1, entries: [pencodeTreeBatchSize]treeEntry{child}}, want: []treeEntry{a, child, z, main}},
+		{batch: pencodeTreeBatch{index: 7, count: 2, done: true, entries: [pencodeTreeBatchSize]treeEntry{z, main}}, want: []treeEntry{a, child, z, main}},
 	} {
 		scan.results <- &step.batch
 		if !m.pollProjectScans() || !slices.Equal(p.Entries, step.want) {

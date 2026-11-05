@@ -21,8 +21,8 @@ const (
 )
 
 type Snapshot struct {
-	Directory string
 	Files     map[string][]byte
+	Directory string
 }
 
 func (s Snapshot) Open(name string) (fs.File, error) {

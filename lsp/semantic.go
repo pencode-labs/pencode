@@ -15,9 +15,9 @@ type SemanticTokens struct {
 	Data     []uint32 `json:"data"`
 }
 type SemanticTokensEdit struct {
+	Data        []uint32 `json:"data,omitempty"`
 	Start       int      `json:"start"`
 	DeleteCount int      `json:"deleteCount"`
-	Data        []uint32 `json:"data,omitempty"`
 }
 type SemanticTokensDelta struct {
 	ResultID string               `json:"resultId,omitempty"`

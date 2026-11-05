@@ -22,11 +22,11 @@ import (
 
 type Target struct {
 	Host         string `json:"host"`
-	Port         uint16 `json:"port,omitempty"`
 	IdentityFile string `json:"identityFile,omitempty"`
 	ConfigFile   string `json:"configFile,omitempty"`
 	ServerBinary string `json:"serverBinary,omitempty"` // Explicit local transfer source.
 	ServerRoot   string `json:"serverRoot,omitempty"`   // Absolute POSIX path on the remote host.
+	Port         uint16 `json:"port,omitempty"`
 }
 
 func (t Target) Validate() error {
@@ -49,10 +49,10 @@ type Platform struct{ OS, Arch string }
 func (p Platform) String() string { return p.OS + "-" + p.Arch }
 
 type Connector struct {
+	Output          io.Writer
 	Executable      string // Empty selects ssh from PATH.
 	ServerDirectory string // resources/servers/<os>-<arch>/pencode-server.
 	LocalServer     string // Adjacent native standalone binary.
-	Output          io.Writer
 }
 
 func (c Connector) arguments(t Target, command string, interactive bool) []string {
@@ -72,6 +72,9 @@ func (c Connector) arguments(t Target, command string, interactive bool) []strin
 	if t.ConfigFile != "" {
 		args = append(args, "-F", t.ConfigFile)
 	}
+	// SSH commands do not normally load the login environment. Use the user's
+	// shell so workspace tools inherit PATH, then run the POSIX bootstrap in sh.
+	command = `exec "${SHELL:-/bin/sh}" -lc ` + shellQuote("exec sh -c "+shellQuote(command))
 	return append(args, "--", t.Host, "sh -c "+shellQuote(command))
 }
 
@@ -320,10 +323,10 @@ func (s *sshStream) Read(data []byte) (int, error) {
 
 // Continue draining arbitrary diagnostics while retaining at most 4 KiB.
 type boundedOutput struct {
+	output io.Writer
+	used   int
 	mu     sync.Mutex
 	data   [4096]byte
-	used   int
-	output io.Writer
 }
 
 func (b *boundedOutput) Write(data []byte) (int, error) {

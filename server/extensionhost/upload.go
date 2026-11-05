@@ -11,13 +11,13 @@ import (
 // Upload retains one open file and accepts ordered chunks. The containing
 // connection serializes its use and owns cleanup, including abandoned uploads.
 type Upload struct {
-	Directory string
 	root      *os.Root
 	file      *os.File
+	paths     map[string]bool
+	Directory string
 	name      string
 	offset    uint64
 	bytes     int
-	paths     map[string]bool
 	sealed    bool
 }
 

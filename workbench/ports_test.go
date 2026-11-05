@@ -105,7 +105,7 @@ func TestPortsPanelInlineInteractions(t *testing.T) {
 	}
 	m.session.ConfigureConnection(nil, connection.Profile{})
 	m.session.connection.workspaceProfile = connection.Profile{SSH: remote.Target{Host: "development"}}
-	m.portUI.owner = pencodePortsIdentity{m.session.connection.workspaceProfile.Endpoint(), m.projectPath}
+	m.portUI.owner = pencodePortsIdentity{target: m.session.connection.workspaceProfile.Endpoint(), directory: m.projectPath}
 	m.portUI.owned, m.portUI.resumeReady = true, true
 	m.portUI.resume = portTestState(t, m.backend)
 	m.pollPorts()
@@ -412,7 +412,7 @@ func TestPortsBackendReplacementAndWorkspaceSwitch(t *testing.T) {
 	session.connection = &pencodeConnection{workspaceProfile: connection.Profile{SSH: remote.Target{Host: "development"}}}
 	m := &workspaceModel{session: session, backend: backend, projectPath: t.TempDir()}
 	defer m.closePorts()
-	m.portUI.owner = pencodePortsIdentity{m.session.connection.workspaceProfile.Endpoint(), m.projectPath}
+	m.portUI.owner = pencodePortsIdentity{target: m.session.connection.workspaceProfile.Endpoint(), directory: m.projectPath}
 	m.portUI.owned, m.portUI.resumeReady = true, true
 	m.portUI.resume = portTestState(t, backend)
 	m.pollPorts()

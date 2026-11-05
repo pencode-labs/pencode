@@ -16,11 +16,11 @@ import (
 // Retain drafts and comparisons per repository. Background jobs finish before a
 // switch, so a completion can never apply a previous repository's result.
 type sourceRepositoryView struct {
-	Snapshot        sourceSnapshot
-	Tabs            []*sourceTab
 	Active, Message string
-	Multiline       bool
+	Tabs            []*sourceTab
+	Snapshot        sourceSnapshot
 	Anchor, Caret   int
+	Multiline       bool
 }
 
 func sourceRepositoryForPath(roots []string, name string) string {
@@ -139,9 +139,9 @@ type sourceRepositoryMenuKey struct {
 	Theme               *pencodeTheme
 	Roots               *string
 	Refs                *string
-	Count, Index        int
 	Current, Project    string
 	CurrentRef          string
+	Count, Index        int
 	X, Y, Width, Height float32
 }
 

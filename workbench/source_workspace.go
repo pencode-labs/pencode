@@ -26,26 +26,26 @@ const (
 )
 
 type sourceResult struct {
+	Err               error
+	Snapshot          *sourceSnapshot
+	Tab               *sourceTab
+	Page              *sourceHistoryPage
+	SavedKey, Message string
+	PageRefs          string
+	Hash              string
+	RepositoryError   string
+	Files             []sourceFile
 	Repositories      []string
 	RepositoryRefs    []string
-	Selection         uint64
-	Page              *sourceHistoryPage
-	PageRefs          string
 	PageOffset        int
-	Snapshot          *sourceSnapshot
+	Selection         uint64
 	StatusOnly        bool
-	Files             []sourceFile
-	Hash              string
-	Tab               *sourceTab
-	SavedKey, Message string
-	Err               error
-	RepositoryError   string
 	Reload            bool
 }
 
 type sourceClickBinding struct {
-	Node     htmlui.Node
 	Handler  htmlui.ClickHandler
+	Node     htmlui.Node
 	Revision uint64
 }
 
@@ -54,26 +54,26 @@ type sourcePanelKey struct {
 	Icons                                    *pencodeFileIcons
 	Files, CommitFiles                       *sourceFile
 	Commits                                  *sourceCommit
-	FileCount, CommitCount, CommitFileCount  int
-	First, Visible                           int
-	Changes                                  [3]sourceRowRange
-	TreeRevision                             uint64
-	Sync                                     sourceSyncStatus
-	Message, Selected                        string
+	Repositories                             *string
+	Branch, Repository                       string
 	RepositoryError                          string
+	ChangesWidthStyle                        string
+	Message, Selected                        string
+	Changes                                  [3]sourceRowRange
+	Sync                                     sourceSyncStatus
+	RepositoryCount                          int
+	First, Visible                           int
+	TreeRevision                             uint64
+	FileCount, CommitCount, CommitFileCount  int
 	Busy, Modal, HasMore, Multiline, Syncing bool
+	Resizing                                 bool
+	BranchMenu, RepositoryMenu               bool
 }
 
 type sourceToolsKey struct {
-	Theme           *pencodeTheme
-	Branch          string
-	Busy            bool
-	BranchMenu      bool
-	Unavailable     bool
-	Repositories    *string
-	RepositoryCount int
-	Repository      string
-	RepositoryMenu  bool
+	Theme       *pencodeTheme
+	Busy        bool
+	Unavailable bool
 }
 
 func sourceFirst[T any](values []T) *T {
@@ -86,81 +86,81 @@ func sourceFirst[T any](values []T) *T {
 // UI state belongs to one project. A job only receives captured immutable values;
 // its bounded result is applied by the foreground, including for inactive projects.
 type pencodeSourceControl struct {
-	Repositories                            []string
-	RepositoryRefs                          []string
-	RepositoriesLoaded                      bool
+	lastClickAt                             time.Time
+	Context                                 context.Context
+	Collapsed                               map[string]bool
+	gutterTab                               *sourceTab
+	diffPaneTab                             *sourceTab
+	Owner                                   *workspaceModel
 	RepositoryViews                         map[string]sourceRepositoryView
+	Handlers                                map[string]sourceClickBinding
+	Cancel                                  context.CancelFunc
+	RefreshCancel                           context.CancelFunc
+	Done                                    chan sourceResult
+	RepositoryError                         string
+	lastClick                               string
+	OpenID, OpenKey                         string
+	MenuHash                                string
 	FollowPath                              string
-	RepositoryMenuOpen, RepositoryFocus     bool
-	RepositoryIndex                         int
-	RepositoryX, RepositoryY                float32
-	RepositoryWidth, RepositoryHeight       float32
+	Prompt, PromptHash, PromptValue, Notice string
+	changeCountText                         string
+	PendingOpen                             string
+	Active                                  string
+	CommitMessage, SelectedHash             string
+	FocusedModal, FocusedTab                string
+	TabClose                                []pencodeEditorTab
+	Tabs                                    []*sourceTab
+	CommitFiles                             []sourceFile
+	RepositoryRefs                          []string
+	Repositories                            []string
+	view, tabsView, overlayView             sourceVNodeView
+	branchView                              sourceVNodeView
+	panelView, toolsView                    sourceVNodeView
 	repositoryView                          sourceVNodeView
+	toolsKey                                sourceToolsKey
+	overview                                sourceOverview
+	changeTrees                             [3]sourceTreeCache
+	commitTree                              sourceTreeCache
 	repositoryKey                           sourceRepositoryMenuKey
 	Snapshot                                sourceSnapshot
-	RepositoryError                         string
-	Done                                    chan sourceResult
-	JobKind                                 sourceJobKind
-	RefreshCancel                           context.CancelFunc
-	Cancel                                  context.CancelFunc
-	Context                                 context.Context
-	RefreshPending, RefreshStarted          bool
-	CommitMessage, SelectedHash             string
-	MessageMultiline, MessageFocus          bool
-	MessageAnchor, MessageCaret             int
-	CommitFiles                             []sourceFile
-	commitTree                              sourceTreeCache
-	Tabs                                    []*sourceTab
-	OpenID, OpenKey                         string
-	OpenPinned                              bool
-	PendingOpen                             string
-	PendingPinned                           bool
-	PendingSelection                        uint64
-	lastClick                               string
-	lastClickAt                             time.Time
-	TabClose                                []pencodeEditorTab
-	Active                                  string
-	MenuHash                                string
-	BranchMenuOpen                          bool
-	BranchHeight, BranchWidth               float32
-	BranchIndex                             int
-	BranchFocus                             bool
-	BranchSubmenu                           bool
-	BranchSubIndex                          int
-	BranchSubX, BranchSubY, BranchSubWidth  float32
-	branchView                              sourceVNodeView
+	inlinePaint                             [2]sourceInlinePaint
 	branchKey                               sourceBranchMenuKey
-	MenuOpen                                bool
-	MenuX, MenuY                            float32
-	Prompt, PromptHash, PromptValue, Notice string
-	Collapsed                               map[string]bool
-	RestoreScroll                           bool
-	FocusedModal, FocusedTab                string
-	view, tabsView, overlayView             sourceVNodeView
-	panelView, toolsView                    sourceVNodeView
 	panelKey                                sourcePanelKey
-	toolsKey                                sourceToolsKey
-	changeCount                             int
-	changeCountText                         string
+	diffEditors                             [2]pencodeEditor
+	mergeEditor                             pencodeEditor
 	TreeRevision                            uint64
+	RenderRevision, BoundRevision           uint64
 	GraphFirst, GraphVisible                int
-	changeTrees                             [3]sourceTreeCache
-	changesPosition, changesHeight          float32
+	BranchIndex                             int
+	changeCount                             int
+	BranchSubIndex                          int
+	PendingSelection                        uint64
+	Selection                               uint64
+	gutterRevision                          uint64
+	MessageAnchor, MessageCaret             int
+	RepositoryIndex                         int
 	ExpandedCommit                          int
 	GraphScrollY                            float32
-	RestoreGraph                            bool
-	RenderRevision, BoundRevision           uint64
-	Selection                               uint64
-	Handlers                                map[string]sourceClickBinding
-	Owner                                   *workspaceModel
-	mergeEditor                             pencodeEditor
-	diffEditors                             [2]pencodeEditor
-	inlinePaint                             [2]sourceInlinePaint
-	diffPaneTab                             *sourceTab
-	gutterTab                               *sourceTab
+	BranchHeight, BranchWidth               float32
+	MenuX, MenuY                            float32
+	BranchSubX, BranchSubY, BranchSubWidth  float32
+	RepositoryX, RepositoryY                float32
+	RepositoryWidth, RepositoryHeight       float32
 	gutterY                                 float32
-	gutterRevision                          uint64
-	overview                                sourceOverview
+	changesPosition, changesHeight          float32
+	OpenPinned                              bool
+	JobKind                                 sourceJobKind
+	RestoreGraph                            bool
+	RefreshPending, RefreshStarted          bool
+	MessageMultiline, MessageFocus          bool
+	RestoreScroll                           bool
+	MenuOpen                                bool
+	BranchSubmenu                           bool
+	RepositoryMenuOpen, RepositoryFocus     bool
+	RepositoriesLoaded                      bool
+	BranchFocus                             bool
+	BranchMenuOpen                          bool
+	PendingPinned                           bool
 }
 
 func (s *pencodeSourceControl) activeTab() *sourceTab {

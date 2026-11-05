@@ -6,8 +6,8 @@ package peb
 // and create. The batch owns its paths and may be retained by the handler.
 type FileChanges struct {
 	Root  string
-	Reset bool
 	Files []FileEvent
+	Reset bool
 }
 type FileEvent struct {
 	Path      string

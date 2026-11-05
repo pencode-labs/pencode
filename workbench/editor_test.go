@@ -177,16 +177,16 @@ func TestPencodeCaretStatus(t *testing.T) {
 	}
 	for _, fixture := range []struct {
 		value string
-		caret int
 		want  string
+		caret int
 	}{
-		{"", 0, "Ln 1, Col 1"},
-		{"中文🙂\r\n\talpha\n", 3, "Ln 1, Col 4"},
-		{"中文🙂\r\n\talpha\n", 5, "Ln 2, Col 1"},
-		{"中文🙂\r\n\talpha\n", 8, "Ln 2, Col 4"},
-		{"中文🙂\r\n\talpha\n", 12, "Ln 3, Col 1"},
-		{"中文🙂\r\n\talpha\n", 1, "Ln 1, Col 2"},
-		{"a\nb", 1, "Ln 1, Col 2"},
+		{value: "", caret: 0, want: "Ln 1, Col 1"},
+		{value: "中文🙂\r\n\talpha\n", caret: 3, want: "Ln 1, Col 4"},
+		{value: "中文🙂\r\n\talpha\n", caret: 5, want: "Ln 2, Col 1"},
+		{value: "中文🙂\r\n\talpha\n", caret: 8, want: "Ln 2, Col 4"},
+		{value: "中文🙂\r\n\talpha\n", caret: 12, want: "Ln 3, Col 1"},
+		{value: "中文🙂\r\n\talpha\n", caret: 1, want: "Ln 1, Col 2"},
+		{value: "a\nb", caret: 1, want: "Ln 1, Col 2"},
 	} {
 		model.activeFile().contentSnapshot = snapshotText(fixture.value)
 		model.setEditorValueAndCaret(world, fixture.value, fixture.caret)
@@ -223,14 +223,14 @@ func TestPencodeEditorWidthPercentSettingsAndLayout(t *testing.T) {
 		}
 	}
 	for _, fixture := range []struct {
-		initial int
 		ref     string
+		initial int
 		want    int
 	}{
-		{100, "editor-width-decrease", 95},
-		{100, "editor-width-increase", 100},
-		{20, "editor-width-decrease", 20},
-		{45, "editor-width-increase", 50},
+		{initial: 100, ref: "editor-width-decrease", want: 95},
+		{initial: 100, ref: "editor-width-increase", want: 100},
+		{initial: 20, ref: "editor-width-decrease", want: 20},
+		{initial: 45, ref: "editor-width-increase", want: 50},
 	} {
 		model.settings.EditorWidth = fixture.initial
 		dispatch(fixture.ref)

@@ -14,10 +14,10 @@ import (
 const pencodeRecentProjectLimit = 10
 
 type pencodeRecentProject struct {
-	Path                          string             `json:"path"`
-	Name                          string             `json:"name"`
-	Profile                       connection.Profile `json:"profile"`
+	Path                          string `json:"path"`
+	Name                          string `json:"name"`
 	key, description, removeLabel string
+	Profile                       connection.Profile `json:"profile"`
 }
 
 func (p pencodeRecentProject) same(other pencodeRecentProject) bool {

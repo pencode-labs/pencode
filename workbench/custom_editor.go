@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +21,6 @@ import (
 const pencodeTextEditor = "text"
 
 type pencodeCustomDocument struct {
-	file        *openFile
 	project     *pencodeProject
 	provider    *extensions.Editor
 	process     *extensions.EditorSession
@@ -28,13 +28,15 @@ type pencodeCustomDocument struct {
 	view        *peb.EditorView
 	theme       *pencodeTheme
 	model       *workspaceModel
-	bindings    []peb.EditorBinding
+	file        *openFile
+	images      map[string][]byte
 	links       map[string]string
+	content     string
+	message     string
+	bindings    []peb.EditorBinding
 	queue       [32]peb.EditorEvent
 	head, count int
 	inflight    bool
-	content     string
-	message     string
 	savePending bool
 }
 
@@ -180,7 +182,7 @@ func (model *workspaceModel) customDocument() *pencodeCustomDocument {
 		if document.provider == provider {
 			return document
 		}
-		document.process.Close()
+		document.close()
 	}
 	if model.customDocuments == nil {
 		model.customDocuments = make(map[*openFile]*pencodeCustomDocument)
@@ -259,7 +261,7 @@ func (model *workspaceModel) pollCustomEditors() bool {
 			files = document.project.Files
 		}
 		if files[file.Path] != file || model.fileEditor(file) != document.provider {
-			document.process.Close()
+			document.close()
 			delete(model.customDocuments, file)
 			changed = true
 			continue
@@ -294,18 +296,11 @@ func (model *workspaceModel) pollCustomEditors() bool {
 				document.content = file.content()
 			}
 			if result.Reply.View != nil {
-				if len(result.Assets) != 0 {
-					if model.extensionImages == nil {
-						model.extensionImages = make(map[string][]byte, len(result.Assets))
-					}
-					for source, data := range result.Assets {
-						model.extensionImages[source] = data
-					}
-				}
 				if err := document.setView(result.Reply.View); err != nil {
 					document.fail(err)
 					continue
 				}
+				document.images = model.replaceExtensionImages(document.images, result.Assets)
 			} else if document.definition == nil {
 				document.fail(fmt.Errorf("扩展没有提供 HTML 视图"))
 				continue
@@ -349,6 +344,14 @@ func (model *workspaceModel) pollCustomEditors() bool {
 }
 
 func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
+	var theme *pencodeTheme
+	if document.model != nil {
+		theme = document.model.workbenchTheme
+	}
+	if previous := document.view; previous != nil && document.theme == theme && previous.HTML == view.HTML && previous.CSS == view.CSS && slices.Equal(previous.Events, view.Events) {
+		document.view, document.bindings = view, view.Events
+		return nil
+	}
 	var links map[string]string
 	if err := validateExtensionView(view, func(node *dom.Node, hidden bool) {
 		if node.Data != "a" || hidden {
@@ -367,10 +370,6 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		}
 	}); err != nil {
 		return err
-	}
-	var theme *pencodeTheme
-	if document.model != nil {
-		theme = document.model.workbenchTheme
 	}
 	definition, err := htmlui.DefineScoped(tooltipTemplate(view.HTML, fmt.Sprintf("pencode-extension-editor/%p/", document)), theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
 		Render: func(context htmlui.RenderContext[*pencodeCustomDocument, struct{}], target *htmlui.View) {
@@ -576,9 +575,17 @@ func (model *workspaceModel) toggleEditorSplit() bool {
 	return true
 }
 
+func (document *pencodeCustomDocument) close() {
+	document.process.Close()
+	document.images = document.model.replaceExtensionImages(document.images, nil)
+	document.definition, document.view, document.links = nil, nil, nil
+	document.bindings, document.content = nil, ""
+	clear(document.queue[:])
+}
+
 func (model *workspaceModel) closeCustomEditors() {
 	for file, document := range model.customDocuments {
-		document.process.Close()
+		document.close()
 		delete(model.customDocuments, file)
 	}
 }

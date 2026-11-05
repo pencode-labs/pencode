@@ -10,9 +10,9 @@ import (
 // Each data-pencode-region element must have a data-ref; nested regions belong
 // to their outer region and are replaced with it.
 type pencodeExtensionRegion struct {
-	ref, html  string
 	tree       *dom.Node
 	definition *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
+	ref, html  string
 }
 
 func splitExtensionRegions(source string) (string, []pencodeExtensionRegion, error) {

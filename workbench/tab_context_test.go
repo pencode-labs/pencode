@@ -88,14 +88,14 @@ func TestPencodeTabContextTargetClipboardAndKeyboard(t *testing.T) {
 
 func TestPencodeTabContextCloseActions(t *testing.T) {
 	for _, tc := range []struct {
-		action pencodeCloseAction
 		want   []string
+		action pencodeCloseAction
 	}{
-		{pencodeCloseTab, []string{"a.go", "c.go", "d.go"}},
-		{pencodeCloseOtherTabs, []string{"b.go"}},
-		{pencodeCloseRightTabs, []string{"a.go", "b.go"}},
-		{pencodeCloseSavedTabs, []string{"a.go", "d.go"}},
-		{pencodeCloseAllTabs, nil},
+		{action: pencodeCloseTab, want: []string{"a.go", "c.go", "d.go"}},
+		{action: pencodeCloseOtherTabs, want: []string{"b.go"}},
+		{action: pencodeCloseRightTabs, want: []string{"a.go", "b.go"}},
+		{action: pencodeCloseSavedTabs, want: []string{"a.go", "d.go"}},
+		{action: pencodeCloseAllTabs, want: nil},
 	} {
 		t.Run(fmt.Sprint(tc.action), func(t *testing.T) {
 			project := &pencodeProject{Path: t.TempDir(), Files: make(map[string]*openFile), Tabs: []string{"a.go", "b.go", "c.go", "d.go"}, ActivePath: "c.go"}

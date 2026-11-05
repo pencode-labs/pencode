@@ -19,37 +19,37 @@ type highlightDocument interface {
 }
 
 type pencodeHighlightJob struct {
-	backend           *client.Client
+	theme             *syntax.Theme
 	file              *openFile // Identity only; the worker never dereferences UI state.
 	sourceDoc         *sourceHighlight
-	snapshot          bool
-	lineStyles        bool
+	backend           *client.Client
+	definitions       *syntax.Definitions
+	documentText      piecetree.Snapshot
 	diffBase          string
-	diff              bool
 	path              string
 	source            string
-	documentText      piecetree.Snapshot
-	lines, characters int
-	counted           bool
-	theme             *syntax.Theme
-	definitions       *syntax.Definitions
 	revision          uint64
+	lines, characters int
+	lineStyles        bool
+	counted           bool
+	diff              bool
+	snapshot          bool
 	release           bool
 }
 
 type pencodeHighlightResult struct {
-	job          pencodeHighlightJob
+	err          error
+	diffErr      error
+	lineInfo     string
+	diffInline   sourceInlineDiffer
 	spans        []scene.TextSpan2D
 	lineStarts   []int
 	sourceStyles []string
+	brackets     pencodeBracketBuilder
+	job          pencodeHighlightJob
+	diffView     sourceDiffView
 	lines        int
 	characters   int
-	brackets     pencodeBracketBuilder
-	lineInfo     string
-	err          error
-	diffView     sourceDiffView
-	diffInline   sourceInlineDiffer
-	diffErr      error
 }
 
 func resetPencodeHighlightResult(result *pencodeHighlightResult) {

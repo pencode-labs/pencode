@@ -12,9 +12,9 @@ import (
 )
 
 type sourceOverview struct {
-	styles     []string
-	thumbStyle string
 	dragTab    *sourceTab
+	thumbStyle string
+	styles     []string
 	grab       float32
 }
 

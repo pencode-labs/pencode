@@ -15,13 +15,13 @@ const pencodeTreeOverscan = 8
 // Expanded entry indexes are retained; -1 reserves the inline creation row.
 // HTML components cover only the viewport.
 type pencodeTreeView struct {
+	directory         string
 	rows              []int
 	revision, built   uint64
 	entries, expanded int
 	first, end        int
 	area              ecs.Entity
 	editing           bool
-	directory         string
 }
 
 func (project *pencodeProject) visibleTreeRows(model *workspaceModel) []int {

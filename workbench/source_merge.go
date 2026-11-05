@@ -3,8 +3,8 @@ package workbench
 import "strings"
 
 type sourceConflict struct {
-	Start, End      int
 	Local, Incoming string
+	Start, End      int
 }
 
 // Byte offsets preserve CRLF, trailing newlines and all text outside a conflict.

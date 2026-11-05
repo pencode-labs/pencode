@@ -48,12 +48,12 @@ func (c *Client) connectPort(ctx context.Context, port protocol.Port) (*Process,
 type Forward struct {
 	listener net.Listener
 	ctx      context.Context
-	cancel   context.CancelFunc
-	once     sync.Once
-	workers  sync.WaitGroup
-	done     chan struct{}
-	mu       sync.Mutex
 	err      error
+	cancel   context.CancelFunc
+	done     chan struct{}
+	workers  sync.WaitGroup
+	once     sync.Once
+	mu       sync.Mutex
 }
 
 type ForwardOptions struct {

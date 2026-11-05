@@ -18,15 +18,15 @@ var hoverMarkdownParser = parser.New()
 var hoverMarkdownRenderer = goldmarkhtml.New()
 
 type pencodeHoverJob struct {
-	result          json.RawMessage
-	body, path      string
 	theme           *syntax.Theme
 	definitions     *syntax.Definitions
+	body, path      string
+	result          json.RawMessage
 	revision, token uint64
 }
 type pencodeHoverResult struct {
-	job   pencodeHoverJob
 	nodes []htmlui.VNode
+	job   pencodeHoverJob
 }
 
 func (model *workspaceModel) pollHoverMarkup() bool {

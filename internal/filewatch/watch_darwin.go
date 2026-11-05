@@ -29,26 +29,26 @@ type streamTarget struct {
 }
 type nativeWatcher struct {
 	w       *Watcher
-	mu      sync.Mutex
 	streams map[string]nativeStream
+	mu      sync.Mutex
 }
 
 var fsevents struct {
-	once                            sync.Once
 	err                             error
-	createString                    func(uintptr, string, uint32) uintptr
+	stop, invalidate, releaseStream func(uintptr)
 	createArray                     func(uintptr, *uintptr, int64, uintptr) uintptr
 	release                         func(uintptr)
 	create                          func(uintptr, uintptr, *eventStreamContext, uintptr, uint64, float64, uint32) uintptr
 	setQueue                        func(uintptr, uintptr)
 	start                           func(uintptr) bool
-	stop, invalidate, releaseStream func(uintptr)
+	releaseQueue                    func(uintptr)
+	createString                    func(uintptr, string, uint32) uintptr
 	createQueue                     func(string, uintptr) uintptr
 	syncQueue                       func(uintptr, uintptr, uintptr)
-	releaseQueue                    func(uintptr)
+	targets                         sync.Map
 	callback, barrier               uintptr
 	next                            atomic.Uint64
-	targets                         sync.Map
+	once                            sync.Once
 }
 
 func initializeFSEvents() {

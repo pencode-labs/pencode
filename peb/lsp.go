@@ -5,9 +5,9 @@ package peb
 // JSON options are carried verbatim; the host validates them before activation.
 type LanguageServer struct {
 	ID, Label, LanguageID, Command       string
+	InitializationOptions, Configuration string
 	Args                                 []string
 	Selectors                            []DocumentSelector
-	InitializationOptions, Configuration string
 }
 
 func encodeLanguageServers(e *encoder, servers []LanguageServer) {

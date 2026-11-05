@@ -86,9 +86,9 @@ func TestSourceControlSyncButtonCache(t *testing.T) {
 	m.bottom.active = pencodePanelSourceControl
 	s := m.sourceState()
 	for _, test := range []struct {
+		Label   string
 		Sync    sourceSyncStatus
 		Changes bool
-		Label   string
 		Busy    bool
 		JobKind sourceJobKind
 	}{

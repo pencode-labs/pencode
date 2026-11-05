@@ -20,27 +20,27 @@ var ErrClosed = errors.New("pencode: server connection closed")
 var ErrBusy = errors.New("pencode: request queue is full")
 
 type call struct {
+	err      error
+	payload  *buffer.Buffer
+	done     chan struct{}
+	response []byte
 	id       uint64
 	offset   int
 	kind     protocol.Kind
-	payload  *buffer.Buffer
-	response []byte
-	done     chan struct{}
-	err      error
 }
 type Client struct {
 	conn    io.ReadWriteCloser
-	mu      sync.Mutex
-	next    uint64
+	err     error
 	pending map[uint64]*call
 	queue   chan *call
 	cancels chan uint64
 	done    chan struct{}
 	stopped sync.WaitGroup
-	err     error
+	next    uint64
 	// Upload bytes stay charged while the writer owns them, even after a
 	// caller cancels. Response bytes cover incomplete replies only.
 	uploadBytes, responseBytes int
+	mu                         sync.Mutex
 }
 
 func New(ctx context.Context, conn io.ReadWriteCloser) (*Client, error) {

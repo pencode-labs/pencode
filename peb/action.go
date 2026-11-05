@@ -27,10 +27,10 @@ type Action struct {
 	ID, Text, Tooltip, Icon, Color, IconColor, IconStyle string
 	// Shortcut is a single chord, e.g. "Primary+Shift+B"; empty disables it.
 	Shortcut         string
+	Selectors        []DocumentSelector
 	Location         ActionLocation
 	Disabled, Hidden bool
 	Default          bool
-	Selectors        []DocumentSelector
 }
 
 // Equal compares full descriptions, including document associations.
@@ -135,13 +135,13 @@ func decodeActionContext(d *decoder) ActionContext {
 // ActionPublisher serializes unsolicited updates with request replies. It may
 // be used from background goroutines until the activation context is canceled.
 type ActionPublisher struct {
-	mu     sync.Mutex
-	writer *Writer
-	data   []byte
 	ctx    context.Context
-	ui     bool
-	action ActionContext
+	writer *Writer
 	views  viewStream
+	data   []byte
+	action ActionContext
+	mu     sync.Mutex
+	ui     bool
 }
 
 func (p *ActionPublisher) Update(action Action) error { return p.change(ActionChange{Action: action}) }

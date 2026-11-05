@@ -89,17 +89,17 @@ func (model *workspaceModel) closeQuickOpen(world *module.Content) {
 type pencodeQuickJob struct {
 	backend         *client.Client
 	project         *pencodeProject
-	root, query     string
-	index, revision uint64
 	history         [pencodeQuickHistoryLimit]string
-	historyCount    int
+	root, query     string
 	rules           [128]protocol.PathRule
+	index, revision uint64
+	historyCount    int
 	ruleCount       int
 }
 type pencodeQuickResult struct {
-	job   pencodeQuickJob
-	paths []string
 	err   error
+	paths []string
+	job   pencodeQuickJob
 }
 
 func (model *workspaceModel) pollQuickMatches() bool {

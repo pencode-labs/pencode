@@ -5,9 +5,9 @@ package peb
 // Command follows the same path rules as LanguageServer.Command.
 type DebugAdapter struct {
 	ID, Label, Command string
-	Args               []string
 	// Templates is a debug.json array copied into project configuration on demand.
 	Templates string
+	Args      []string
 }
 
 func encodeDebugAdapters(e *encoder, adapters []DebugAdapter) {

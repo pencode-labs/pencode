@@ -15,10 +15,10 @@ import (
 // path is interpreted on the GUI host.
 type Extension struct {
 	client        *Client
-	Handle        uint64
 	Info          protocol.ExtensionInfo
-	Contributions peb.Contributions
 	Diagnostics   string
+	Contributions peb.Contributions
+	Handle        uint64
 }
 
 type ExtensionCatalog struct {
@@ -290,8 +290,8 @@ func (f extensionFS) ReadFileLimit(name string, limit int64) ([]byte, error) {
 }
 
 type resourceFile struct {
-	bytes.Reader
 	name string
+	bytes.Reader
 }
 
 func (f *resourceFile) Close() error               { return nil }

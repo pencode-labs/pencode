@@ -16,8 +16,8 @@ import (
 
 type signaledWrite struct {
 	net.Conn
-	once    sync.Once
 	entered chan struct{}
+	once    sync.Once
 }
 
 func (s *signaledWrite) Write(p []byte) (int, error) {

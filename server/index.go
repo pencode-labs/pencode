@@ -15,14 +15,14 @@ import (
 )
 
 type serviceIndex struct {
-	mu      sync.Mutex
-	root    string
-	entries []protocol.IndexEntry
-	changed chan struct{}
-	done    bool
 	err     error
+	changed chan struct{}
 	cancel  context.CancelFunc
 	watch   *workspaceWatch
+	root    string
+	entries []protocol.IndexEntry
+	mu      sync.Mutex
+	done    bool
 }
 
 func (p *serviceIndex) signal() { close(p.changed); p.changed = make(chan struct{}) }

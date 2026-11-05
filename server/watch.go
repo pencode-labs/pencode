@@ -19,25 +19,25 @@ const (
 )
 
 type workspaceWatch struct {
+	err         error // Published by closing done.
 	cancel      context.CancelFunc
 	done        chan struct{}
+	watcher     *filewatch.Watcher
+	directories map[string]bool // Value identifies Git metadata directories.
+	files       [128]protocol.FileEvent
+	tree        workspaceTreeChanges
 	journal     fileEventJournal
 	index       uint64 // Most recently started snapshot; guarded by services.mu.
-	err         error  // Published by closing done.
-	watcher     *filewatch.Watcher
-	directories map[string]bool          // Value identifies Git metadata directories.
-	changes     protocol.WorkspaceChange // Owned by the native event loop.
-	files       [128]protocol.FileEvent
 	fileCount   int
+	changes     protocol.WorkspaceChange // Owned by the native event loop.
 	reset       bool
-	tree        workspaceTreeChanges
 }
 
 // Keep bounded directory hints separately from notifications: consuming a watch
 // notification must not discard changes before the next index snapshot starts.
 type workspaceTreeChanges struct {
-	mu sync.Mutex
 	workspaceTreeDelta
+	mu sync.Mutex
 }
 
 type workspaceTreeDelta struct {

@@ -18,13 +18,13 @@ import (
 
 type pencodeFileContext struct {
 	project                           *pencodeProject
+	dialog, name, title, message, err string
 	path                              string
-	directory                         bool
 	depth, index                      int
 	x, y                              float32
-	open, needsFocus                  bool
 	pending                           bool
-	dialog, name, title, message, err string
+	open, needsFocus                  bool
+	directory                         bool
 }
 
 type pencodeFileClipboard struct {

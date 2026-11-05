@@ -13,8 +13,8 @@ type ExtensionManifest struct {
 }
 
 type ExtensionInfo struct {
-	ExtensionManifest
 	Path, Problem string
+	ExtensionManifest
 }
 
 func (i *ExtensionInfo) Label() string {

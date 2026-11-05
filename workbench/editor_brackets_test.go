@@ -72,12 +72,12 @@ func TestPencodeBracketHighlight(t *testing.T) {
 	index := &model.editor.brackets
 	base := []scene.TextSpan2D{{Start: 0, End: len(source), Color: graphics.White}}
 	for _, test := range []struct {
-		caret       int
 		left, right string
+		caret       int
 	}{
-		{3, "(", ")"}, {4, "(", ")"}, {5, "[", "]"}, {6, "[", "]"},
-		{7, "[", "]"}, {8, "(", ")"}, {9, "(", ")"},
-		{12, "{", "}"}, {13, "{", "}"}, {14, "{", "}"},
+		{caret: 3, left: "(", right: ")"}, {caret: 4, left: "(", right: ")"}, {caret: 5, left: "[", right: "]"}, {caret: 6, left: "[", right: "]"},
+		{caret: 7, left: "[", right: "]"}, {caret: 8, left: "(", right: ")"}, {caret: 9, left: "(", right: ")"},
+		{caret: 12, left: "{", right: "}"}, {caret: 13, left: "{", right: "}"}, {caret: 14, left: "{", right: "}"},
 	} {
 		field := engineui.TextField{Value: source, Focused: true, Caret: test.caret, Anchor: test.caret}
 		got := index.highlight(field, &model, base)

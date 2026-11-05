@@ -14,10 +14,10 @@ import (
 var ErrViewBase = errors.New("peb: missing view patch base")
 
 type viewState struct {
-	ui       UI
 	template string
 	regions  []ViewRegion
 	scratch  []ViewRegion
+	ui       UI
 }
 
 type viewStream map[string]*viewState

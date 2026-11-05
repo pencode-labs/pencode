@@ -46,15 +46,15 @@ type Range struct {
 	End   Position `json:"end"`
 }
 type TextEdit struct {
-	Range   Range  `json:"range"`
 	NewText string `json:"newText"`
+	Range   Range  `json:"range"`
 }
 type TextDocumentIdentifier struct {
 	URI URI `json:"uri"`
 }
 type VersionedTextDocumentIdentifier struct {
-	URI     URI  `json:"uri"`
 	Version *int `json:"version"`
+	URI     URI  `json:"uri"`
 }
 type TextDocumentPositionParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
@@ -70,14 +70,14 @@ type LocationLink struct {
 	TargetSelectionRange Range `json:"targetSelectionRange"`
 }
 type Diagnostic struct {
-	Range              Range           `json:"range"`
-	Severity           int             `json:"severity,omitempty"`
-	Code               json.RawMessage `json:"code,omitempty"`
 	Source             string          `json:"source,omitempty"`
 	Message            string          `json:"message"`
+	Code               json.RawMessage `json:"code,omitempty"`
 	Tags               []int           `json:"tags,omitempty"`
 	RelatedInformation json.RawMessage `json:"relatedInformation,omitempty"`
 	Data               json.RawMessage `json:"data,omitempty"`
+	Range              Range           `json:"range"`
+	Severity           int             `json:"severity,omitempty"`
 }
 type PublishDiagnosticsParams struct {
 	URI         URI          `json:"uri"`
@@ -90,17 +90,17 @@ type Command struct {
 	Arguments []json.RawMessage `json:"arguments,omitempty"`
 }
 type CompletionItem struct {
+	TextEdit            *TextEdit       `json:"textEdit,omitempty"`
+	Command             *Command        `json:"command,omitempty"`
 	Label               string          `json:"label"`
-	Kind                int             `json:"kind,omitempty"`
 	SortText            string          `json:"sortText,omitempty"`
 	FilterText          string          `json:"filterText,omitempty"`
 	Detail              string          `json:"detail,omitempty"`
 	InsertText          string          `json:"insertText,omitempty"`
-	InsertTextFormat    int             `json:"insertTextFormat,omitempty"`
-	TextEdit            *TextEdit       `json:"textEdit,omitempty"`
 	AdditionalTextEdits []TextEdit      `json:"additionalTextEdits,omitempty"`
-	Command             *Command        `json:"command,omitempty"`
 	Data                json.RawMessage `json:"data,omitempty"`
+	Kind                int             `json:"kind,omitempty"`
+	InsertTextFormat    int             `json:"insertTextFormat,omitempty"`
 }
 type CodeAction struct {
 	Title    string         `json:"title"`

@@ -12,21 +12,21 @@ const folderSearchPageSize = 12
 
 type folderPreviewSource struct{ path, text string }
 type folderPreviewJob struct {
-	rows         [folderSearchPageSize]folderPreviewSource
 	theme        *syntax.Theme
 	definitions  *syntax.Definitions
+	rows         [folderSearchPageSize]folderPreviewSource
 	revision     uint64
 	first, count int
 }
 type folderPreviewResult struct {
-	job  folderPreviewJob
 	rows [folderSearchPageSize][]syntax.Token
+	job  folderPreviewJob
 }
 type folderSearchHighlight struct {
 	worker  *latestWorker[folderPreviewJob, folderPreviewResult]
 	cancel  context.CancelFunc
-	request folderPreviewJob
 	rows    [folderSearchPageSize][]syntax.Token
+	request folderPreviewJob
 	ready   bool
 }
 

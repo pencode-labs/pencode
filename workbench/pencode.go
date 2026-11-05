@@ -63,216 +63,218 @@ type treeEntry struct {
 }
 
 type openFile struct {
-	document         *client.Document
-	editorView       pencodeEditorView
-	editorSplit      bool
-	editorID         string
-	editorGeneration uint64
-	customEditor     *extensions.Editor
-	Path             string
-	Name             string
-	contentSnapshot  piecetree.Snapshot
-	saveRevision     uint64
-	savedContent     piecetree.Snapshot
+	document        *client.Document
+	customEditor    *extensions.Editor
+	savedContent    piecetree.Snapshot
+	contentSnapshot piecetree.Snapshot
+	editorID        string
+	Path            string
+	Name            string
 	pencodeEditHistory
-	externalChanged bool
-	Dirty           bool
-	Preview         bool
-	highlightSlot   uint8 // Valid only while the bounded cache slot still owns this file.
+	editorView       pencodeEditorView
+	editorGeneration uint64
+	saveRevision     uint64
+	editorSplit      bool
+	externalChanged  bool
+	Dirty            bool
+	Preview          bool
+	highlightSlot    uint8 // Valid only while the bounded cache slot still owns this file.
 }
 
 type pencodeEdit struct {
-	start, oldCaret, newCaret int
 	removed, inserted         string
+	start, oldCaret, newCaret int
 }
 
 type pencodeProject struct {
 	debugBreakpoints        map[string][]pencodeBreakpoint
-	debugBreakpointRevision uint64
-	tree                    pencodeTreeView
-	historyKey              string
-	index                   uint64
-	backend                 *client.Client
-	workspace               protocol.Workspace
-	sourceControl           pencodeSourceControl
-	Path                    string
-	Name                    string
-	Entries                 []treeEntry
-	ExpandedDirs            map[string]bool
-	AllDirectoriesCollapsed bool
-	Collapsed               bool
-	Files                   map[string]*openFile
-	Tabs                    []string
-	ActivePath              string
-	PreviewPath             string
-	Status                  string
-	scan                    *pencodeProjectScan
 	watch                   *pencodeProjectWatch
+	Files                   map[string]*openFile
+	scan                    *pencodeProjectScan
+	backend                 *client.Client
+	ExpandedDirs            map[string]bool
+	Name                    string
+	PreviewPath             string
+	historyKey              string
+	ActivePath              string
+	Path                    string
+	Status                  string
+	workspace               protocol.Workspace
+	Tabs                    []string
+	Entries                 []treeEntry
+	tree                    pencodeTreeView
+	sourceControl           pencodeSourceControl
+	index                   uint64
+	debugBreakpointRevision uint64
+	Collapsed               bool
+	AllDirectoriesCollapsed bool
 	treePending             bool
 }
 
 type workspaceModel struct {
-	refresh                             pencodeRefresh
-	fullRefresh                         bool
-	selectionPrevious                   string
-	fileIO                              *pencodeFileIO
-	fileClose                           pencodeCloseRequest
-	referenceCancel                     context.CancelFunc
-	referenceWorker                     *latestWorker[pencodeReferenceJob, pencodeReferenceResult]
-	referenceRevision, referenceApplied uint64
-	highlightCancel                     context.CancelFunc
-	quickCancel                         context.CancelFunc
+	highlightDue                        time.Time
+	syntaxMemoryDue                     time.Time
+	lastFileClickAt                     time.Time
+	syntaxDefinitions                   *syntax.Definitions
+	terminals                           *pencodeTerminals
+	extensionImages                     map[string]pencodeExtensionImage
 	hoverCancel                         context.CancelFunc
 	hoverWorker                         *latestWorker[pencodeHoverJob, pencodeHoverResult]
 	hoverDocument                       *client.Syntax
-	hoverRevision, hoverApplied         uint64
+	highlightCancel                     context.CancelFunc
+	highlightWorker                     *latestWorker[pencodeHighlightJob, pencodeHighlightResult]
 	backend                             *client.Client
-	sourceControl                       pencodeSourceControl
-	actions                             pencodeActionState
+	files                               map[string]*openFile
+	referenceWorker                     *latestWorker[pencodeReferenceJob, pencodeReferenceResult]
 	output                              *output.Store
-	bottom                              pencodeBottomPanel
-	debug                               pencodeDebugState
+	highlightCache                      *pencodeHighlightCache
+	expandedDirs                        map[string]bool
 	ports                               *pencodePorts
-	portUI                              pencodePortUI
-	terminals                           *pencodeTerminals
-	terminalView                        pencodeTerminalView
+	syntaxTheme                         *syntax.Theme
+	revealProject                       *pencodeProject
+	fileIcons                           *pencodeFileIcons
+	quickWorker                         *latestWorker[pencodeQuickJob, pencodeQuickResult]
 	languages                           *pencodeLanguageState
-	customEditors                       []*extensions.Editor
-	editorGeneration                    uint64
+	workbenchTheme                      *pencodeTheme
 	customDocuments                     map[*openFile]*pencodeCustomDocument
-	customClose                         pencodeCloseRequest
-	editorHeader                        pencodeEditorHeader
+	referenceCancel                     context.CancelFunc
+	findPattern                         *textsearch.Pattern
 	session                             *Session
 	market                              *pencodeMarketplace
 	extensionStates                     map[string]pencodeExtensionState
 	app                                 *module.Host
 	fontResources                       *module.Content
-	root                                ecs.Entity
-	surface                             ecs.Entity
-	tooltip                             pencodeTooltip
-	windowBorder                        ecs.Entity
-	projectPath                         string
-	projectName                         string
-	lastDirectory                       string
-	screen                              pencodeScreen
-	status                              string
-	entries                             []treeEntry
-	expandedDirs                        map[string]bool
-	allDirectoriesCollapsed             bool
-	files                               map[string]*openFile
-	tabs                                []string
-	tabScroll                           pencodeTabScroll
-	tabContext                          pencodeTabContext
-	activePath                          string
-	revealProject                       *pencodeProject
-	revealPath                          string // pending reveal row, empty when nothing is pending
-	highlightScratch                    []sceneapi.TextSpan2D
-	highlightRebaseScratch              []sceneapi.TextSpan2D
-	highlightWorker                     *latestWorker[pencodeHighlightJob, pencodeHighlightResult]
-	highlightRequest                    pencodeHighlightJob
-	highlightRevision                   uint64
-	semanticPaintRevision               uint64
-	highlightCache                      *pencodeHighlightCache
-	syntaxMemoryDue                     time.Time
-	syntaxTheme                         *syntax.Theme
-	syntaxDefinitions                   *syntax.Definitions
-	themes                              []pencodeTheme
-	themeOptions                        []htmlui.VNode
-	themeSourceCSS                      string
-	workbenchTheme                      *pencodeTheme
-	fileIconThemes                      []*pencodeFileIcons
-	fileIcons                           *pencodeFileIcons
-	iconThemeOptions                    []htmlui.VNode
+	fonts                               map[string]pencodeFont
+	defaultFont                         *text.Font
+	fileIO                              *pencodeFileIO
+	quickCancel                         context.CancelFunc
 	extensionIcons                      map[string][]byte
-	extensionImages                     map[string][]byte
+	shortcutLabels                      [pencodeShortcutCount]string
+	shortcutAriaLabels                  [pencodeShortcutCount]string
+	quickMatches                        [8]string
+	highlightedContent                  piecetree.Snapshot
+	findContent                         piecetree.Snapshot
+	replaceQuery                        string
+	shortcutQuery                       string
+	defaultFontID                       string
 	extensionFeedback                   string
-	lineCount                           int
-	characterCount                      int
-	lineInfo                            string
-	editor                              pencodeEditor
-	settings                            pencodeSettings
+	findQuery                           string
+	findCachedQuery                     string
 	settingsPath                        string
-	settingsRemote                      bool
-	settingsOpen                        bool
-	settingsShortcuts                   bool
-	settingsExtensions                  bool
-	settingsExtensionsExpanded          bool
+	activePath                          string
+	defaultUIFontID                     string
+	lineInfo                            string
+	findCountLabel                      string
+	projectName                         string
+	selectionPrevious                   string
+	revealPath                          string // pending reveal row, empty when nothing is pending
+	captureAction                       string
+	highlightedPath                     string
+	keymapName                          string
+	findError                           string
+	settingsFeedback                    string
+	zoomLabel                           string
+	uiFontSizeLabel                     string
+	fontSizeLabel                       string
+	status                              string
+	editorWidthLabel                    string
+	editorStyle                         string
 	settingsExtension                   string
+	themeSourceCSS                      string
+	lastDirectory                       string
+	quickProjectPath                    string
+	sidebarWidthStyle                   string
+	sourceChangesWidthStyle             string
+	quickCachedQuery                    string
+	projectPath                         string
+	quickQuery                          string
+	editorHeader                        pencodeEditorHeader
+	fileClipboard                       pencodeFileClipboard
+	highlightRebaseScratch              []sceneapi.TextSpan2D
+	entries                             []treeEntry
+	findMatches                         []textsearch.Match
+	iconThemeOptions                    []htmlui.VNode
+	fileIconThemes                      []*pencodeFileIcons
+	themeOptions                        []htmlui.VNode
+	themes                              []pencodeTheme
+	uiFontOptions                       []htmlui.VNode
+	customEditors                       []*extensions.Editor
+	projects                            []*pencodeProject
+	highlightScratch                    []sceneapi.TextSpan2D
+	findScope, findCachedScope          pencodeFindScope
 	extensionSettings                   []*pencodeExtensionSettings
 	debugTemplates                      []pencodeDebugTemplate
 	debugTemplateRows                   []pencodeDebugRow
-	sidebarHidden                       bool
-	sidebarWidthStyle                   string
-	resize                              pencodeWorkbenchResize
-	capturingShortcut                   bool
-	captureAction                       string
-	keymapName                          string
-	shortcutQuery                       string
-	settingsFeedback                    string
-	defaultFont                         *text.Font
-	defaultFontID                       string
-	defaultUIFontID                     string
-	fonts                               map[string]pencodeFont
+	tabs                                []string
 	codeFontOptions                     []htmlui.VNode
-	uiFontOptions                       []htmlui.VNode
-	findOpen                            bool
-	replaceOpen                         bool
-	findNeedsFocus                      bool
-	findQuery                           string
-	findCachedQuery                     string
-	replaceQuery                        string
-	findContent                         piecetree.Snapshot
-	findMatches                         []textsearch.Match
-	findOptions                         textsearch.Options
-	findCachedOptions                   textsearch.Options
-	findPattern                         *textsearch.Pattern
-	findError                           string
-	findRevision                        uint64
-	findSelection                       bool
-	findScope, findCachedScope          pencodeFindScope
+	tabScroll                           pencodeTabScroll
+	tooltip                             pencodeTooltip
+	tabContext                          pencodeTabContext
+	highlightRequest                    pencodeHighlightJob
+	settings                            pencodeSettings
+	fileContext                         pencodeFileContext
+	fileDrag                            pencodeFileDrag
+	bottom                              pencodeBottomPanel
+	closing                             pencodeCloseRequest
+	fileClose                           pencodeCloseRequest
+	customClose                         pencodeCloseRequest
+	portUI                              pencodePortUI
+	inputContext                        pencodeInputContext
+	terminalView                        pencodeTerminalView
 	folderSearch                        pencodeFolderSearch
+	actions                             pencodeActionState
+	debug                               pencodeDebugState
+	languageUI                          pencodeLanguageInteraction
+	editor                              pencodeEditor
+	sourceControl                       pencodeSourceControl
+	characterCount                      int
+	activeProjectIndex                  int
+	findRevision                        uint64
+	surface                             ecs.Entity
+	editorGeneration                    uint64
+	semanticPaintRevision               uint64
+	extensionImageRevision              uint64
+	lineCount                           int
 	findIndex                           int
-	findCountLabel                      string
-	quickWorker                         *latestWorker[pencodeQuickJob, pencodeQuickResult]
+	referenceRevision, referenceApplied uint64
+	windowTitlebarHeight                float64
 	quickRevision                       uint64
 	quickSnapshot                       uint64
 	quickApplied                        uint64
-	quickOpen                           bool
-	quickNeedsFocus                     bool
-	quickFocusEditor                    bool
+	lastFileClick                       ecs.Entity
+	highlightRevision                   uint64
 	quickTargetLine                     int
-	quickQuery                          string
-	quickCachedQuery                    string
-	quickProjectPath                    string
-	quickMatches                        [8]string
+	windowBorder                        ecs.Entity
+	hoverRevision, hoverApplied         uint64
+	highlightPaintRevision              uint64
 	quickCount                          int
 	quickIndex                          int
-	editorStyle                         string
-	windowTitlebarHeight                float64
-	editorWidthLabel                    string
-	fontSizeLabel                       string
-	uiFontSizeLabel                     string
-	zoomLabel                           string
-	shortcutLabels                      [pencodeShortcutCount]string
-	shortcutAriaLabels                  [pencodeShortcutCount]string
-	viewportWidth                       float32
+	root                                ecs.Entity
+	resize                              pencodeWorkbenchResize
 	viewportHeight                      float32
-	highlightedPath                     string
-	highlightedContent                  piecetree.Snapshot
+	viewportWidth                       float32
+	findOptions                         textsearch.Options
+	findCachedOptions                   textsearch.Options
+	screen                              pencodeScreen
+	findOpen                            bool
+	allDirectoriesCollapsed             bool
+	replaceOpen                         bool
+	findNeedsFocus                      bool
+	settingsShortcuts                   bool
 	highlighted                         bool
-	highlightPaintRevision              uint64
+	settingsOpen                        bool
 	highlightPending                    bool
-	highlightDue                        time.Time
-	projects                            []*pencodeProject
-	activeProjectIndex                  int
-	lastFileClick                       ecs.Entity
-	lastFileClickAt                     time.Time
-	closing                             pencodeCloseRequest
-	languageUI                          pencodeLanguageInteraction
-	fileContext                         pencodeFileContext
-	inputContext                        pencodeInputContext
-	fileClipboard                       pencodeFileClipboard
-	fileDrag                            pencodeFileDrag
+	settingsRemote                      bool
+	settingsExtensions                  bool
+	quickFocusEditor                    bool
+	quickNeedsFocus                     bool
+	quickOpen                           bool
+	refresh                             pencodeRefresh
+	settingsExtensionsExpanded          bool
+	findSelection                       bool
+	sidebarHidden                       bool
+	capturingShortcut                   bool
+	fullRefresh                         bool
 }
 
 type appProps struct {
@@ -318,11 +320,11 @@ type tabProps struct {
 }
 
 type projectProps struct {
-	TreeID, SummaryID string
 	Model             *workspaceModel
 	Theme             *pencodeTheme
 	Icons             *pencodeFileIcons
 	Project           *pencodeProject
+	TreeID, SummaryID string
 	ProblemRevision   uint64
 }
 
@@ -2572,13 +2574,14 @@ func handlePencodeWindowControl(app *module.Host, id string) {
 type pencodeIconProvider struct {
 	content        *module.Content
 	model          *workspaceModel
-	root           string
 	textures       map[string]*pencodeCachedImage
 	images         map[*graphics.Texture]*pencodeCachedImage
 	oldest, newest *pencodeCachedImage
-	bytes          int
 	theme          *pencodeTheme
+	root           string
+	bytes          int
 	touched        bool
+	imageRevision  uint64
 }
 
 func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, height float32) (*graphics.Texture, bool) {
@@ -2612,7 +2615,7 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, heig
 	preview := false
 	if strings.HasPrefix(asset, "peb://") {
 		if provider.model != nil {
-			data = provider.model.extensionImages[asset]
+			data = provider.model.extensionImages[asset].data
 			preview = data != nil
 			if !preview {
 				data = provider.model.extensionIcons[asset]
@@ -2684,6 +2687,6 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, heig
 	if provider.textures == nil {
 		provider.textures = make(map[string]*pencodeCachedImage)
 	}
-	provider.cacheImage(source, texture, strings.EqualFold(filepath.Ext(asset), ".svg") && !preview)
+	provider.cacheImage(source, texture, strings.EqualFold(filepath.Ext(asset), ".svg") && !preview, preview)
 	return texture, texture != nil
 }

@@ -27,10 +27,10 @@ type pencodeSettingNavProps struct {
 type pencodeSettingProps struct {
 	Model               *workspaceModel
 	Group               *pencodeExtensionSettings
-	Index               int
 	Ref, DescriptionRef string
 	Value               string
 	Options             []htmlui.VNode
+	Index               int
 }
 
 func (m *workspaceModel) importExtensionSettings(id, label string, schema []peb.Setting) {

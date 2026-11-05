@@ -14,8 +14,8 @@ const (
 )
 
 type sourceTreeRow struct {
-	Path  string
 	File  *sourceFile // nil for directories
+	Path  string
 	Depth int
 }
 
@@ -26,8 +26,8 @@ var sourceChangeGroups = [...]struct{ Kind, Label string }{
 type sourceRowRange struct{ First, End int }
 
 type sourceTreeCache struct {
-	rows     []sourceTreeRow
 	files    *sourceFile
+	rows     []sourceTreeRow
 	count    int
 	revision uint64
 }

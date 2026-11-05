@@ -18,33 +18,33 @@ import (
 )
 
 type pencodeDiagnosticRange struct {
-	start, end int
 	message    string
+	start, end int
 	severity   int
 }
 
 type pencodeDiagnosticPaint struct {
-	root                 ecs.Entity
-	quads, labels, waves []ecs.Entity
 	waveTexture          *graphics.Texture
+	file                 *openFile
+	content              piecetree.Snapshot
+	quads, labels, waves []ecs.Entity
 	waveViews            []*graphics.Texture
 	ranges               []pencodeDiagnosticRange
 	underlines           []scene.TextRangeRect2D
-	file                 *openFile
-	content              piecetree.Snapshot
-	revision             uint64
 	key                  pencodeDiagnosticPaintKey
+	root                 ecs.Entity
+	revision             uint64
 }
 
 type pencodeDiagnosticPaintKey struct {
-	layout                   pencodeGutterLayoutKey
 	file                     *openFile
+	layout                   pencodeGutterLayoutKey
 	revision                 uint64
+	stack                    scene.UIStackIndex
+	colors                   [len(pencodeProblemSeverities)]graphics.ColorRGBA
+	color                    graphics.ColorRGBA
 	x, y, width, height      float32
 	spacing, lineHeight, ink float32
-	stack                    scene.UIStackIndex
-	color                    graphics.ColorRGBA
-	colors                   [len(pencodeProblemSeverities)]graphics.ColorRGBA
 }
 
 func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspaceModel) {
@@ -91,7 +91,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 					continue
 				}
 				message := strings.ReplaceAll(strings.ReplaceAll(diagnostic.Message, "\r", " "), "\n", " ")
-				paint.ranges = append(paint.ranges, pencodeDiagnosticRange{start, end, message, severity})
+				paint.ranges = append(paint.ranges, pencodeDiagnosticRange{start: start, end: end, message: message, severity: severity})
 			}
 		}
 		slices.SortFunc(paint.ranges, func(a, b pencodeDiagnosticRange) int {
@@ -117,7 +117,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 	size, _ := world.Get[scene.Size2D](model.editor.control)
 	stack, _ := world.Get[scene.UIStackIndex](model.editor.text)
 	key := pencodeDiagnosticPaintKey{
-		layout: pencodeGutterLayoutKey{text.Text(), text.Font, text.FontSize, text.DPI, text.WrapWidth, text.TabWidth, text.WrapMode},
+		layout: pencodeGutterLayoutKey{value: text.Text(), font: text.Font, fontSize: text.FontSize, dpi: text.DPI, wrapWidth: text.WrapWidth, tabWidth: text.TabWidth, wrapMode: text.WrapMode},
 		file:   file, revision: paint.revision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight,
 		ink: text.InkOffsetY, stack: stack, colors: model.workbenchTheme.diagnosticColors,

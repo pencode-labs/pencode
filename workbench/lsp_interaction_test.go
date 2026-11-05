@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -158,6 +159,10 @@ func TestLanguageAutomaticCompletionAndNativeAcceptance(t *testing.T) {
 }
 
 func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
+	primary := input.KeyLeftControl
+	if runtime.GOOS == "darwin" {
+		primary = input.KeyLeftSuper
+	}
 	app, model, provider, state := languageInteractionFixture(t)
 	world := model.fontResources
 	longSymbol := strings.Repeat("longSymbol", 8)
@@ -219,7 +224,7 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			}
 			rendered, _ := world.Get[scene.Text2D](model.editor.text)
 			originalSpans := slices.Clone(rendered.Spans)
-			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftControl})
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
 			languageInteractionStep(t, app)
 			if !model.languageUI.hover.link {
 				t.Fatal("control hover did not underline a symbol with a definition provider")
@@ -241,14 +246,14 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			}
 			// Releasing Ctrl also restores colors while the pointer is in the tooltip.
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(hoverRect.X+hoverRect.Width/2) * scale, Y: float64(hoverRect.Y+hoverRect.Height/2) * scale})
-			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyLeftControl})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
 			languageInteractionStep(t, app)
 			rendered, _ = world.Get[scene.Text2D](model.editor.text)
 			if model.languageUI.hover.link || !slices.Equal(rendered.Spans, originalSpans) {
 				t.Fatalf("zoom %d %s: releasing Ctrl did not restore the original syntax highlighting", zoom, name)
 			}
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(px) * scale, Y: float64(py) * scale})
-			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyLeftControl})
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
 			languageInteractionStep(t, app)
 			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: float64(px) * scale, Y: float64(py) * scale})
 			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: float64(px) * scale, Y: float64(py) * scale})
@@ -276,7 +281,7 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			if field.Caret != wantCaret || field.Anchor != wantCaret+4 {
 				t.Fatalf("definition navigation did not highlight the first returned location: caret=%d anchor=%d", field.Caret, field.Anchor)
 			}
-			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyLeftControl})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
 			model.dismissLanguagePanel()
 			model.cancelLanguageHover()
 			languageInteractionStep(t, app)

@@ -101,12 +101,12 @@ func TestUICodecsAndFrameRules(t *testing.T) {
 		t.Fatalf("reused codecs allocated %g", n)
 	}
 	for _, test := range []struct {
-		kind  Kind
-		id    uint32
 		size  int
+		id    uint32
+		kind  Kind
 		valid bool
 	}{
-		{UIUpdate, 0, 10, true}, {UIUpdate, 1, 10, false}, {UIRequest, 0, 10, false}, {UIRequest, 2, 10, true}, {UIResponse, 2, 0, true}, {UIResponse, 0, 0, false}, {UIResponse, 2, 1, false},
+		{kind: UIUpdate, id: 0, size: 10, valid: true}, {kind: UIUpdate, id: 1, size: 10, valid: false}, {kind: UIRequest, id: 0, size: 10, valid: false}, {kind: UIRequest, id: 2, size: 10, valid: true}, {kind: UIResponse, id: 2, size: 0, valid: true}, {kind: UIResponse, id: 0, size: 0, valid: false}, {kind: UIResponse, id: 2, size: 1, valid: false},
 	} {
 		if validFrame(test.kind, test.id, test.size) != test.valid {
 			t.Fatal(test)

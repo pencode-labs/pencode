@@ -86,11 +86,6 @@ func (model *workspaceModel) unloadContributions(prefix, sourcePrefix string) {
 			delete(model.extensionIcons, source)
 		}
 	}
-	for source := range model.extensionImages {
-		if strings.HasPrefix(source, sourcePrefix) {
-			delete(model.extensionImages, source)
-		}
-	}
 	if strings.HasPrefix(model.settings.IconTheme, prefix) {
 		model.settings.IconTheme = ""
 		model.fileIcons = nil
@@ -123,9 +118,9 @@ func (model *workspaceModel) unloadContributions(prefix, sourcePrefix string) {
 // Immutable lookup tables keep matching independent of the total rule count.
 // Filename suffixes are tested from the first dot to the last, longest first.
 type pencodeFileIcons struct {
+	names, suffixes, folders map[string]string
 	id, label                string
 	file, folder             string
-	names, suffixes, folders map[string]string
 }
 
 func newPencodeFileIcons(t peb.IconTheme) *pencodeFileIcons {

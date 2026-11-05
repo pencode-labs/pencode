@@ -593,6 +593,9 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		Message: s.CommitMessage, Multiline: s.MessageMultiline, Selected: s.SelectedHash, Busy: s.busy(), Modal: s.modal(), HasMore: s.Snapshot.HasMore,
 		Syncing:         s.Done != nil && s.JobKind == sourceSync,
 		RepositoryError: s.RepositoryError,
+		Repositories:    sourceFirst(s.Repositories), RepositoryCount: len(s.Repositories), Repository: s.Snapshot.Repository.Root,
+		Branch: s.Snapshot.Branch, BranchMenu: s.BranchMenuOpen, RepositoryMenu: s.RepositoryMenuOpen,
+		ChangesWidthStyle: a.sourceChangesWidthStyle, Resizing: a.resize.target == pencodeResizeSourceChanges,
 	}
 	if b.used != 0 && s.panelKey == key {
 		return
@@ -609,8 +612,30 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	if s.modal() {
 		b.attr("disabled", "")
 	}
-	b.open("div", "body", "class", "sc-body")
-	b.open("aside", "changes", "class", "sc-changes", "aria-label", "Repository changes")
+	b.open("div", "body", "id", "sc-body", "class", "sc-body")
+	b.open("aside", "changes", "id", "sc-changes", "class", "sc-changes", "aria-label", "Repository changes")
+	if key.ChangesWidthStyle != "" {
+		b.attr("style", key.ChangesWidthStyle)
+	}
+	b.open("div", "repository-heading", "class", "sc-repository-heading")
+	if len(s.Repositories) > 1 {
+		b.open("button", "repository", "id", "sc-repositories", "type", "button", "class", "sc-branch-button", "title", "Switch Repository: "+s.Snapshot.Repository.Root, "aria-label", "Switch Repository: "+s.Snapshot.Repository.Root, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.RepositoryMenuOpen), "aria-controls", "sc-repository-menu")
+		if s.busy() {
+			b.attr("disabled", "")
+		}
+		a.sourceIcon(b, "icon", "repo", "")
+		b.text("span", "name", sourceRepositoryLabel(a.projectPath, s.Snapshot.Repository.Root), "class", "sc-repository-name")
+		a.sourceIcon(b, "arrow", "chevron-down", "")
+		b.close()
+	}
+	b.open("button", "branch", "id", "sc-branches", "type", "button", "class", "sc-branch-button", "title", "Switch Branch: "+s.Snapshot.Branch, "aria-label", "Switch Branch: "+s.Snapshot.Branch, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.BranchMenuOpen), "aria-controls", "sc-branch-menu")
+	if s.busy() || s.RepositoryError != "" {
+		b.attr("disabled", "")
+	}
+	a.sourceIcon(b, "icon", "git-branch", "")
+	b.text("span", "name", s.Snapshot.Branch, "class", "sc-branch")
+	b.close()
+	b.close()
 	messageTag, messageClass := "input", "sc-message"
 	if s.MessageMultiline {
 		messageTag, messageClass = "textarea", "sc-message sc-message-multiline"
@@ -673,7 +698,12 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	}
 	b.close()
 	b.close()
-	b.open("section", "history", "class", "sc-history", "aria-label", "Source Control Graph")
+	resizeClass := "pencode-sidebar-resize"
+	if key.Resizing {
+		resizeClass += " resizing"
+	}
+	b.text("div", "changes-resize", "", "id", "sc-changes-resize", "class", resizeClass, "role", "separator", "aria-orientation", "vertical", "aria-label", "拖动调整改动列表宽度", "aria-controls", "sc-changes")
+	b.open("section", "history", "id", "sc-history", "class", "sc-history", "aria-label", "Source Control Graph")
 	b.text("h2", "title", "Source Control Graph", "class", "sc-heading")
 	b.open("div", "graph", "id", "sc-graph", "class", "sc-graph")
 	if len(s.Snapshot.Commits) == 0 {
@@ -848,29 +878,12 @@ func (a *workspaceModel) sourceFileTreeRow(b *sourceVNodeView, kind string, row 
 
 func (a *workspaceModel) renderSourceToolbar(b *sourceVNodeView) {
 	s := a.sourceState()
-	key := sourceToolsKey{Theme: a.workbenchTheme, Branch: s.Snapshot.Branch, Busy: s.busy(), BranchMenu: s.BranchMenuOpen, Unavailable: s.RepositoryError != "",
-		Repositories: sourceFirst(s.Repositories), RepositoryCount: len(s.Repositories), Repository: s.Snapshot.Repository.Root, RepositoryMenu: s.RepositoryMenuOpen}
+	key := sourceToolsKey{Theme: a.workbenchTheme, Busy: s.busy(), Unavailable: s.RepositoryError != ""}
 	if b.used != 0 && s.toolsKey == key {
 		return
 	}
 	s.toolsKey = key
 	b.reset()
-	if len(s.Repositories) > 1 {
-		b.open("button", "repository", "id", "sc-repositories", "type", "button", "class", "sc-branch-button", "title", "Switch Repository: "+key.Repository, "aria-label", "Switch Repository: "+key.Repository, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.RepositoryMenuOpen), "aria-controls", "sc-repository-menu")
-		if s.busy() {
-			b.attr("disabled", "")
-		}
-		b.text("span", "name", sourceRepositoryLabel(a.projectPath, key.Repository), "class", "sc-repository-name")
-		a.sourceIcon(b, "arrow", "chevron-down", "")
-		b.close()
-	}
-	b.open("button", "branch", "id", "sc-branches", "type", "button", "class", "sc-branch-button", "title", "Switch Branch: "+s.Snapshot.Branch, "aria-label", "Switch Branch: "+s.Snapshot.Branch, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.BranchMenuOpen), "aria-controls", "sc-branch-menu")
-	if s.busy() || key.Unavailable {
-		b.attr("disabled", "")
-	}
-	a.sourceIcon(b, "icon", "git-branch", "")
-	b.text("span", "name", s.Snapshot.Branch, "class", "sc-branch")
-	b.close()
 	if s.busy() {
 		b.text("span", "busy", "Git…", "role", "status")
 	}

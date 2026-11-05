@@ -30,39 +30,39 @@ type folderSearchJob struct {
 	backend                *client.Client
 	project                *pencodeProject
 	root, directory, query string
-	options                textsearch.Options
-	revision               uint64
 	snapshots              []folderSnapshot
+	revision               uint64
+	options                textsearch.Options
 }
 type folderSearchResult struct {
+	err    error
 	job    folderSearchJob
 	result protocol.SearchResult
-	err    error
 }
 type folderSearchRow struct{ file, match int }
 type pencodeFolderSearch struct {
-	open, replace, needsFocus, busy, replacing bool
-	project                                    *pencodeProject
-	directory, query, replacement, message     string
-	options                                    textsearch.Options
-	revision                                   uint64
-	worker                                     *latestWorker[folderSearchJob, folderSearchResult]
 	cancel                                     context.CancelFunc
-	result                                     protocol.SearchResult
-	rows                                       []folderSearchRow
-	index                                      int
-	view                                       sourceVNodeView
-	preview                                    folderSearchHighlight
+	navigate                                   *openFile
+	worker                                     *latestWorker[folderSearchJob, folderSearchResult]
 	icons                                      *pencodeFileIcons
 	theme                                      *pencodeTheme
-	nodes                                      []html.VNode
+	project                                    *pencodeProject
+	directory, query, replacement, message     string
 	pageLabel                                  string
+	nextPath                                   string
+	rows                                       []folderSearchRow
+	nodes                                      []html.VNode
+	view                                       sourceVNodeView
+	result                                     protocol.SearchResult
+	preview                                    folderSearchHighlight
+	navigateStart, navigateEnd                 int
+	revision                                   uint64
+	index                                      int
+	nextOffset                                 int
+	options                                    textsearch.Options
+	open, replace, needsFocus, busy, replacing bool
 	dirty                                      bool
 	revealResult                               bool
-	nextPath                                   string
-	nextOffset                                 int
-	navigate                                   *openFile
-	navigateStart, navigateEnd                 int
 }
 
 func (m *workspaceModel) openFolderSearch(project *pencodeProject, directory string, replace bool) {
@@ -539,17 +539,17 @@ func (m *workspaceModel) folderSearchKeys(world *module.Content, state *input.St
 }
 
 type folderReplaceTarget struct {
+	err                         error
 	file                        *openFile
 	path, digest, before, after string
 	start, end, count           int
-	err                         error
 	processed                   bool
 }
 type folderReplacePlan struct {
 	query, replacement string
+	targets            []folderReplaceTarget
 	options            textsearch.Options
 	all                bool
-	targets            []folderReplaceTarget
 }
 
 func (m *workspaceModel) replaceFolderSearch(all bool) {

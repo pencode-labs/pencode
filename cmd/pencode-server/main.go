@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/pencode-labs/pencode/internal/environment"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
@@ -15,6 +16,7 @@ import (
 )
 
 func main() {
+	environment.Configure()
 	systemproxy.Configure()
 	listen := flag.String("listen", "", "WebSocket listen address, e.g. 0.0.0.0:8080 (endpoint: /ws); empty uses stdio")
 	token := flag.String("token", "", "Authentication token required with --listen")

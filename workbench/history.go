@@ -19,8 +19,8 @@ func (edit pencodeEdit) bytes() int { return len(edit.removed) + len(edit.insert
 // Both stacks share a byte budget. Undo/redo move ownership without copying
 // strings or charging the same edit twice.
 type pencodeEditHistory struct {
-	buffer       input.TextBuffer
 	undo, redo   []pencodeEdit
+	buffer       input.TextBuffer
 	historyBytes int
 }
 

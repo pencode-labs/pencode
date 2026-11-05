@@ -11,9 +11,9 @@ import (
 type Mod struct {
 	model                 *workspaceModel
 	session               *Session
+	icons                 *pencodeIconProvider
 	screen                pencodeScreen
 	activating, switching bool
-	icons                 *pencodeIconProvider
 	installed             bool
 }
 

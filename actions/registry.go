@@ -13,16 +13,16 @@ import (
 )
 
 type Definition struct {
-	peb.Action
 	Run func(peb.ActionContext) error
+	peb.Action
 }
 
 type Registry struct {
-	mu       sync.Mutex
-	entries  []Definition
 	indices  map[string]int
-	revision uint64
 	wake     func()
+	entries  []Definition
+	revision uint64
+	mu       sync.Mutex
 }
 
 func Validate(a peb.Action) error {

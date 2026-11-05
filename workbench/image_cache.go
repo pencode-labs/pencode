@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"math"
+	"strings"
 
 	"github.com/diiyw/onix/graphics"
 	"github.com/diiyw/onix/scene"
@@ -13,12 +14,12 @@ const (
 )
 
 type pencodeCachedImage struct {
-	source         string
-	texture        *graphics.Texture
-	previous, next *pencodeCachedImage
-	theme          *pencodeTheme
-	bytes          int
-	live, icon     bool
+	texture             *graphics.Texture
+	previous, next      *pencodeCachedImage
+	theme               *pencodeTheme
+	source              string
+	bytes               int
+	live, icon, preview bool
 }
 
 func (p *pencodeIconProvider) iconScale(intrinsicWidth, intrinsicHeight int, width, height float32) int {
@@ -65,13 +66,13 @@ func (p *pencodeIconProvider) touch(image *pencodeCachedImage) {
 	}
 	p.newest = image
 }
-func (p *pencodeIconProvider) cacheImage(source string, texture *graphics.Texture, icon bool) {
+func (p *pencodeIconProvider) cacheImage(source string, texture *graphics.Texture, icon, preview bool) {
 	var old *graphics.Texture
 	if existing := p.textures[source]; existing != nil {
 		old = existing.texture
 		p.removeImage(existing)
 	}
-	image := &pencodeCachedImage{source: source, texture: texture, icon: icon, previous: p.newest}
+	image := &pencodeCachedImage{source: source, texture: texture, icon: icon, preview: preview, previous: p.newest}
 	if p.model != nil {
 		image.theme = p.model.workbenchTheme
 	}
@@ -129,10 +130,11 @@ func (p *pencodeIconProvider) trimImages() {
 		return
 	}
 	theme := p.model.workbenchTheme
-	if !p.touched && p.theme == theme && p.bytes <= pencodeImageCacheBytes && len(p.textures) <= pencodeImageCacheEntries {
+	if !p.touched && p.imageRevision == p.model.extensionImageRevision && p.theme == theme && p.bytes <= pencodeImageCacheBytes && len(p.textures) <= pencodeImageCacheEntries {
 		return
 	}
 	p.theme = theme
+	p.imageRevision = p.model.extensionImageRevision
 	p.touched = false
 	for image := p.oldest; image != nil; image = image.next {
 		image.live = false
@@ -153,7 +155,10 @@ func (p *pencodeIconProvider) trimImages() {
 	}
 	for image := p.oldest; image != nil; {
 		next := image.next
-		if !image.live && (image.theme != theme || p.bytes > pencodeImageCacheBytes || len(p.textures) > pencodeImageCacheEntries) {
+		asset, _, _ := strings.Cut(image.source, "?")
+		orphan := image.preview && p.model.extensionImages[asset].references == 0
+		p.touched = p.touched || orphan && image.live
+		if !image.live && (orphan || image.theme != theme || p.bytes > pencodeImageCacheBytes || len(p.textures) > pencodeImageCacheEntries) {
 			p.removeImage(image)
 		}
 		image = next

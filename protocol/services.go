@@ -56,10 +56,10 @@ const (
 )
 
 type Port struct {
-	Number  uint16
 	Host    string
-	PID     uint32
 	Process string
+	PID     uint32
+	Number  uint16
 }
 
 type IndexEntry struct {
@@ -90,8 +90,8 @@ type FileEvent struct {
 	Directory bool
 }
 type FileChanges struct {
+	Files   []FileEvent
 	Version uint64
 	Changes WorkspaceChange
 	Reset   bool // Reconcile when history or native events overflowed.
-	Files   []FileEvent
 }

@@ -373,6 +373,7 @@
       <section id="bottom-panel" data-ref="bottom-panel" class="pencode-bottom-panel" aria-label="工作区面板" hidden>
         <header class="pencode-panel-toolbar">
           <div class="pencode-panel-tools">
+            <span data-ref="problems-title" class="pencode-panel-title" hidden>Problems</span>
             <div data-ref="source-tools" class="sc-panel-tools" hidden></div>
             <div data-ref="terminal-tools" class="pencode-terminal-tools" hidden>
               <div id="terminal-tabs" data-ref="terminal-tabs" class="pencode-terminal-tabs" role="tablist" aria-label="终端会话"></div>
@@ -384,6 +385,7 @@
               <button id="ports-refresh" data-ref="ports-refresh" class="pencode-icon-button" type="button" title="刷新端口" aria-label="刷新端口"><img data-ref="ports-refresh-icon" alt=""></button>
             </div>
             <div data-ref="output-tools" class="pencode-output-tools" hidden>
+              <span class="pencode-panel-title">Output</span>
               <input id="output-filter" data-ref="output-filter" type="search" placeholder="筛选输出…" aria-label="筛选输出">
               <select id="output-source" data-ref="output-source" aria-label="输出信息源"></select>
               <button data-ref="output-clear" class="pencode-icon-button" type="button" title="清除当前信息源" aria-label="清除当前信息源"><img data-ref="output-clear-icon" src="icons/clear-all.svg" alt=""></button>
@@ -409,7 +411,7 @@
           <div data-ref="problem-list" class="pencode-problem-list" role="list" aria-label="工作区诊断"></div>
         </section>
         <section id="terminal-pane" data-ref="terminal-pane" class="pencode-terminal-pane" role="tabpanel" aria-labelledby="status-terminal" hidden>
-          <textarea id="terminal-content" data-ref="terminal-content" readonly wrap="soft" spellcheck="false" aria-label="终端，Ctrl+Shift+C 复制，Ctrl+Shift+V 粘贴"></textarea>
+          <textarea id="terminal-content" data-ref="terminal-content" readonly wrap="soft" spellcheck="false" aria-label="终端"></textarea>
         </section>
         <section id="ports-pane" data-ref="ports-pane" class="pencode-ports-pane" role="tabpanel" aria-labelledby="status-ports" hidden>
           <div id="ports-table" data-ref="ports-table" class="pencode-ports-table" role="table" aria-label="转发的端口" hidden>
@@ -441,7 +443,7 @@
       </section>
       <footer id="statusbar" class="pencode-statusbar">
         <div data-ref="status-panel-buttons" class="pencode-statusbar-buttons">
-          <button id="status-source-control" data-ref="status-source-control" type="button" aria-controls="bottom-panel" aria-expanded="false"><img data-ref="status-source-icon" src="icons/source-control.svg" alt="">Source Control <span data-ref="status-source-count" class="pencode-problem-count">0</span></button>
+          <button id="status-source-control" data-ref="status-source-control" type="button" aria-controls="bottom-panel" aria-expanded="false">Source Control <span data-ref="status-source-count" class="pencode-problem-count">0</span></button>
           <button id="status-problems" data-ref="status-problems" type="button" aria-controls="bottom-panel" aria-expanded="false">Problems <span data-ref="status-problem-count" class="pencode-problem-count">0</span></button>
           <button id="status-terminal" data-ref="status-terminal" type="button" aria-controls="bottom-panel" aria-expanded="false" title="切换终端 (Ctrl+`)">Terminal</button>
           <button id="status-output" data-ref="status-output" type="button" aria-controls="bottom-panel" aria-expanded="false">Output</button>

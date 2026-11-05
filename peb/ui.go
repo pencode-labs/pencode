@@ -63,25 +63,25 @@ func (p UIPlacement) valid(kind UIKind) bool {
 // EditorTab opens selected. Updates with a View retain selection; a nil View
 // explicitly reveals an existing tab. Closing a tab emits the usual close event.
 type UI struct {
-	ID, Title, Anchor string
-	Kind              UIKind
-	Placement         UIPlacement
+	Patch             *ViewPatch
 	View              *EditorView
+	ID, Title, Anchor string
+	Context           ActionContext
+	Placement         UIPlacement
 	// ViewVersion identifies a complete view or the result of Patch. Patches
 	// replace only existing region contents; structure, CSS or event changes
 	// require a full View. ActionPublisher manages these fields automatically.
 	ViewVersion uint32
-	Patch       *ViewPatch
-	Context     ActionContext
-	Close       bool
-	// CloseOnOutsideClick dismisses a Popup on an outside pointer press.
-	// False keeps it open. ContextMenu always dismisses on outside presses.
-	CloseOnOutsideClick bool
+	Kind        UIKind
 	// AutoCloseMS dismisses a Notification after this many milliseconds. Zero
 	// keeps it open until closed by the user or extension. Updates reset the timer.
 	AutoCloseMS uint32
 	// Severity applies only to Notification. Zero uses the information style.
 	Severity NotificationSeverity
+	Close    bool
+	// CloseOnOutsideClick dismisses a Popup on an outside pointer press.
+	// False keeps it open. ContextMenu always dismisses on outside presses.
+	CloseOnOutsideClick bool
 	// Busy replaces an EditorTab's close icon with a processing animation.
 	Busy bool
 	// Unread marks an EditorTab with completed work that has not been viewed.

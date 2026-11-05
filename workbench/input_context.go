@@ -13,8 +13,8 @@ import (
 
 type pencodeInputContext struct {
 	selection            *pencodeExtensionTextSelection
-	target               ecs.Entity
 	value                string
+	target               ecs.Entity
 	caret, anchor, index int
 	x, y                 float32
 	open, focus, restore bool
@@ -27,11 +27,11 @@ var pencodeInputContextRefs = [...]string{
 
 type pencodeInputContextProps struct {
 	Model    *workspaceModel
-	Open     bool
-	Activate bool
 	Index    int
 	X, Y     float32
 	Enabled  [len(pencodeInputContextRefs)]bool
+	Open     bool
+	Activate bool
 }
 
 func newInputContextDefinition() (*htmlui.Definition[pencodeInputContextProps, struct{}], error) {
@@ -333,6 +333,20 @@ func (m *workspaceModel) syncInputContext(world *module.Content) {
 		if x != c.x || y != c.y {
 			c.x, c.y = x, y
 			markPencodeRootDirtyByModel(world, m)
+		}
+	}
+}
+
+// Menu focus suspends native selection visibility. Keep the existing themed
+// selection parts visible after native layout without routing typing to the field.
+func (m *workspaceModel) syncInputContextSelection(world *module.Content) {
+	c := &m.inputContext
+	if !c.open || c.selection != nil || c.caret == c.anchor {
+		return
+	}
+	for entity, access := range world.Query2[engineui.Relation[engineui.SurfaceStyle], engineui.Part[engineui.SelectionPart]]() {
+		if access.A.Get().Owner == c.target {
+			world.SetIfChanged(entity, scene.Visibility{Visible: true})
 		}
 	}
 }

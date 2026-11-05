@@ -36,6 +36,7 @@ func TestSourceControlRepositoryPathOwnership(t *testing.T) {
 	s.RepositoryRefs = []string{"main", "feature/one", "12345678", "topic"}
 	s.Snapshot.Branch = "main"
 	render := func() {
+		m.renderSourceControl(&s.panelView)
 		m.renderSourceToolbar(&s.toolsView)
 		s.overlayView.reset()
 		m.renderSourceRepositories(&s.overlayView)
@@ -145,6 +146,14 @@ func TestSourceControlRepositoryMenuAndAutomaticSelection(t *testing.T) {
 	}
 	if !slices.Equal(s.RepositoryRefs, []string{"main", hash}) {
 		t.Fatalf("repository HEAD labels = %q", s.RepositoryRefs)
+	}
+	changes := editorContextBounds(t, m, "sc-changes")
+	message := editorContextBounds(t, m, "sc-message")
+	for _, id := range []string{"sc-repositories", "sc-branches"} {
+		button := editorContextBounds(t, m, id)
+		if button.X < changes.X || button.X+button.Width > changes.X+changes.Width || button.Y < changes.Y || button.Y+button.Height > message.Y {
+			t.Fatalf("%s must stay at the top of the changes column: button=%+v changes=%+v message=%+v", id, button, changes, message)
+		}
 	}
 	// Check menu positioning, native click bindings, and keyboard selection.
 	editorContextClick(t, app, m, state, "sc-repositories")

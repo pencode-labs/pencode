@@ -12,12 +12,12 @@ import (
 )
 
 type pencodeTabScroll struct {
-	sourceKey                   string
-	area                        ecs.Entity
 	file                        *openFile
 	extension                   *pencodeExtensionSurface
 	project                     *pencodeProject
 	terminal                    *pencodeTerminal
+	sourceKey                   string
+	area                        ecs.Entity
 	viewportWidth, contentWidth float32
 }
 
@@ -145,19 +145,19 @@ type pencodeCloseTarget struct {
 }
 
 type pencodeCloseRequest struct {
-	editorTabs       []pencodeEditorTab
-	action           pencodeCloseAction
 	project          *pencodeProject
-	path             string
-	targets          []pencodeCloseTarget
-	index            int
-	message          string
-	error            string
-	needsFocus       bool
-	saveID           uint64
-	lifecycle        bool
-	lifecycleToken   uint64
 	lifecyclePending map[string]bool
+	message          string
+	path             string
+	error            string
+	targets          []pencodeCloseTarget
+	editorTabs       []pencodeEditorTab
+	index            int
+	saveID           uint64
+	lifecycleToken   uint64
+	needsFocus       bool
+	lifecycle        bool
+	action           pencodeCloseAction
 }
 
 // Collect the dirty files once. Project/window closure only happens after all

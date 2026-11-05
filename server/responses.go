@@ -15,24 +15,24 @@ const (
 )
 
 type response struct {
-	id     uint64
-	kind   protocol.Kind
 	result *protocol.Encoder
+	id     uint64
 	offset int
+	kind   protocol.Kind
 }
 
 // responses owns queued buffers until their last frame is written. Producers
 // never write to the transport; a slow download cannot hold the request reader.
 // The byte/count budgets apply to queued and currently transmitting responses.
 type responses struct {
+	pool  sync.Pool
 	ctx   context.Context
 	queue chan response
-	pool  sync.Pool
-	mu    sync.Mutex
 	space *sync.Cond
+	live  map[uint64]bool // true means cancelled, only queued responses are kept
 	count int
 	bytes int
-	live  map[uint64]bool // true means cancelled, only queued responses are kept
+	mu    sync.Mutex
 }
 
 func newResponses(ctx context.Context) *responses {

@@ -321,7 +321,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	if model.bottom.active != pencodePanelExtension {
 		t.Fatal("extension panel not selected")
 	}
-	if len(model.extensionImages["peb://ui-fixture/resources/preview.svg"]) == 0 {
+	if len(model.extensionImages["peb://ui-fixture/resources/preview.svg"].data) == 0 {
 		t.Fatal("missing panel image")
 	}
 	panelDefinition := panel.definition
@@ -409,6 +409,9 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	wait(func() bool { return model.actions.ui.panel == nil })
 	if model.bottom.active != pencodePanelClosed {
 		t.Fatal("closed panel remains visible")
+	}
+	if len(model.extensionImages) != 0 || len(panel.images) != 0 {
+		t.Fatal("closed panel retained preview assets")
 	}
 	// Dismissal reports a reason and allows reopening the same ID.
 	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/tools")

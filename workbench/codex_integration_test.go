@@ -267,7 +267,7 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		if pill.Width < 100 || pill.Height < 20 || pill.Y+pill.Height > prompt.Y || pill.Y < 0 {
 			t.Fatalf("live changes pill is not visible above composer: pill=%+v prompt=%+v", pill, prompt)
 		}
-		phase = "open a live file diff preview"
+		phase = "expand a live file diff inline"
 		scale := float64(model.settings.Zoom) / 100
 		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(pill.X+pill.Width/2) * scale, Y: float64(pill.Y+pill.Height/2) * scale})
 		for range 3 {
@@ -287,13 +287,12 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		t.Logf("live diff click: pill=%+v row=%+v pointer=(%v,%v) target=%+v bindings=%+v", pill, row, x, y, model.fontResources.Ref[scene.InputTarget2D](control), surface.bindings)
 		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
 		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
-		wait(func() bool { return model.actions.ui.editor != surface && model.actions.ui.editor != nil })
-		preview := model.actions.ui.editor
-		if !strings.HasPrefix(preview.ui.ID, "diff/") || !strings.Contains(preview.view.HTML, "+new") || !strings.Contains(preview.view.HTML, "-old") || preview.ui.Title != "edited.go · 差异" {
-			t.Fatal("file click did not open the recorded diff in a separate tab", preview.ui, preview.view.HTML)
+		wait(func() bool {
+			return strings.Contains(surface.view.HTML, `class="codex-change-diff"`) && strings.Contains(surface.view.HTML, "+new") && strings.Contains(surface.view.HTML, "-old")
+		})
+		if model.actions.ui.editor != surface || len(model.actions.ui.surfaces) != 1 {
+			t.Fatal("file click must keep the existing chat tab selected")
 		}
-		editorContextClick(t, app, model, state, "file-tab:"+surface.rootID)
-		wait(func() bool { return model.actions.ui.editor == surface })
 		phase = "stream reply with live file changes"
 		surface.send(peb.EditorEvent{Kind: "click", Ref: "accept/100"}, "")
 		wait(func() bool {
@@ -306,9 +305,14 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		wait(func() bool {
 			return !surface.ui.Busy && strings.Contains(surface.view.HTML, "Final reply") && strings.Contains(surface.view.HTML, "已编辑 1 个文件") && !strings.Contains(surface.view.HTML, `class="codex-live-changes"`)
 		})
-		phase = "reopen the completed file diff in the existing tab"
+		phase = "toggle the completed file diff inline"
 		editorContextClick(t, app, model, state, waitControl(surface, "change-file/turn1/0"))
-		wait(func() bool { return model.actions.ui.editor == preview })
+		wait(func() bool { return !strings.Contains(surface.view.HTML, `class="codex-change-diff"`) })
+		editorContextClick(t, app, model, state, waitControl(surface, "change-file/turn1/0"))
+		wait(func() bool { return strings.Contains(surface.view.HTML, `class="codex-change-diff"`) })
+		if model.actions.ui.editor != surface || len(model.actions.ui.surfaces) != 1 {
+			t.Fatal("completed file click opened another tab")
+		}
 		return
 	}
 	if os.Getenv("PENCODE_CODEX_LIFECYCLE") == "1" {

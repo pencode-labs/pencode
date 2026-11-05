@@ -22,24 +22,24 @@ const (
 // Only the foreground model owns project state. The worker transfers entries
 // through two reusable buffers, bounding both memory and work per frame.
 type pencodeTreeBatch struct {
-	index   uint64
+	err     error
 	entries [pencodeTreeBatchSize]treeEntry
+	index   uint64
 	count   int
 	preview bool
 	done    bool
-	err     error
 }
 
 type pencodeProjectScan struct {
 	cancel   context.CancelFunc
 	results  chan *pencodeTreeBatch
 	buffers  chan *pencodeTreeBatch
-	initial  bool
-	staged   bool
 	entries  []treeEntry
 	previous uint64
-	preview  bool
 	loaded   int
+	initial  bool
+	staged   bool
+	preview  bool
 }
 
 func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace, initial bool, previous uint64, wake func(), ready <-chan struct{}) *pencodeProjectScan {

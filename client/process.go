@@ -15,21 +15,21 @@ import (
 // the connection reader. Writes are serialized so concurrent callers cannot
 // interleave the fragments of a logical Write.
 type Process struct {
+	ctx        context.Context
+	closeErr   error
 	logs       *Process
 	client     *Client
-	id         uint64
-	ctx        context.Context
+	done       chan struct{}
 	cancel     context.CancelFunc
-	readMu     sync.Mutex
-	writeMu    sync.Mutex
-	sizeMu     sync.Mutex
-	cols, rows int
 	pending    []byte
-	eof        bool
+	cols, rows int
+	id         uint64
 	once       sync.Once
 	closeOnce  sync.Once
-	closeErr   error
-	done       chan struct{}
+	sizeMu     sync.Mutex
+	writeMu    sync.Mutex
+	readMu     sync.Mutex
+	eof        bool
 }
 
 func (c *Client) openProcess(ctx context.Context, op protocol.Operation, root, name string, args []string, cols, rows int) (*Process, error) {

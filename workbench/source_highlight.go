@@ -13,14 +13,14 @@ import (
 // Comparison documents share the editor's background parser. Only immutable
 // paint data stays with a tab; switching panes never retains additional trees.
 type sourceHighlight struct {
-	source      string
 	theme       *syntax.Theme
 	definitions *syntax.Definitions
-	ready       bool
-	revision    uint64
+	source      string
 	spans       []scene.TextSpan2D
 	styles      []string
 	lineStarts  []int
+	revision    uint64
+	ready       bool
 }
 
 func (t *sourceTab) sourceText(side int) string {

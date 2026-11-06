@@ -109,3 +109,49 @@ func TestInputUndoDoesNotChangeBackgroundFile(t *testing.T) {
 		t.Fatalf("undo routed to wrong document: query=%q file=%q", m.findQuery, m.activeContent())
 	}
 }
+
+func TestCodexComposerPasteAfterModifierRelease(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		primary input.KeyCode
+	}{{"left ctrl", input.KeyLeftControl}, {"right ctrl", input.KeyRightControl}, {"left cmd", input.KeyLeftSuper}, {"right cmd", input.KeyRightSuper}} {
+		t.Run(test.name, func(t *testing.T) {
+			app, m, _, state := languageInteractionFixture(t)
+			w := m.fontResources
+			if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
+				HTML:   `<textarea data-ref="prompt" data-pencode-markdown-links data-pencode-paste-images data-pencode-submit-on-enter="form" style="width:400px;height:100px">甲乙🙂尾</textarea>`,
+				Events: []peb.EditorBinding{{Ref: "prompt", Kind: "input"}},
+			}}); err != nil {
+				t.Fatal(err)
+			}
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
+			control, ok := w.HTMLControl(m.surface, m.actions.ui.editor.prefix+"control-prompt")
+			if !ok || !w.Focus(control) {
+				t.Fatal("cannot focus composer")
+			}
+			field := w.Mut[engineui.TextField](control)
+			field.Anchor, field.Caret = 1, 3
+			state.SetClipboard(nil, func() (string, bool) { return "中\r\ncode()", true })
+			// A quick chord, or a busy frame, can queue both releases before UI editing.
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: test.primary})
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyV})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyV})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: test.primary})
+			languageInteractionStep(t, app)
+			field = w.Mut[engineui.TextField](control)
+			native, _ := w.Get[htmlui.Control](control)
+			if field.Value != "甲中\ncode()尾" || native.Value != field.Value || field.Caret != 9 || field.Anchor != 9 || w.FocusedControl() != control {
+				t.Fatalf("quick paste lost text or selection: field=%+v native=%q", field, native.Value)
+			}
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: test.primary})
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyZ})
+			languageInteractionStep(t, app)
+			field = w.Mut[engineui.TextField](control)
+			if field.Value != "甲乙🙂尾" || field.Anchor != 1 || field.Caret != 3 {
+				t.Fatalf("paste lost undo history: %+v", field)
+			}
+		})
+	}
+}

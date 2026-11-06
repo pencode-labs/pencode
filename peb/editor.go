@@ -40,8 +40,9 @@ type EditorReply struct {
 // resolve against ActionContext.ProjectPath. File links accept :line[:column]
 // and #Lline locations. An explicit click binding takes ownership of the link.
 // Native buttons can use role="link" and data-pencode-href for the same navigation.
-// EditorTab fragments can use data-pencode-layout="fill" to fill the editor
-// without host padding or scrolling. An element with data-ref and
+// EditorTab and Panel fragments can use data-pencode-layout="fill" without host
+// padding or scrolling. A fill Panel supplies its own header; reserve 40px on
+// the header's right for the workbench close button. An element with data-ref and
 // data-pencode-scroll="end" follows new output until the user scrolls up;
 // changing its data-pencode-scroll-key reveals the end of a different transcript.
 // data-pencode-scroll="preserve" retains another scroll area's position while
@@ -51,6 +52,9 @@ type EditorReply struct {
 // Copy retains paragraph breaks, explicit br elements and preformatted text.
 // Other containers with CSS white-space:pre-wrap can opt into preserving source
 // whitespace when copied with data-pencode-preserve-whitespace.
+// A custom editor container with data-ref and data-pencode-searchable enables
+// the host find bar for its rendered text, including highlight and navigation.
+// Find in a rendered view is read-only; replacement applies to source editors.
 // A button with data-ref and data-pencode-copy="text" copies that exact text to
 // the local clipboard on click. An explicit click binding overrides this action.
 // A container with data-ref and data-pencode-region updates its children

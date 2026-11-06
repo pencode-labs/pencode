@@ -31,6 +31,31 @@ func keymapState(binding pencodeKeybinding, goos string) *input.State {
 	state.PressKey(binding.Key)
 	return state
 }
+
+func TestKeymapMatchesModifiersAtKeyPress(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin"} {
+		for _, chord := range []string{"Primary+V", "Primary+Shift+Alt+V"} {
+			binding := pencodeBindingChord(chord)
+			state := keymapState(binding, goos)
+			for _, key := range []input.KeyCode{input.KeyLeftControl, input.KeyLeftSuper, input.KeyLeftShift, input.KeyLeftAlt, input.KeyV} {
+				state.ReleaseKey(key)
+			}
+			if !binding.matches(state, goos) {
+				t.Fatalf("%s on %s lost modifiers after release", chord, goos)
+			}
+			state.EndFrame()
+			state.PressKey(input.KeyV)
+			state.PressKey(input.KeyLeftControl)
+			state.PressKey(input.KeyLeftSuper)
+			state.PressKey(input.KeyLeftShift)
+			state.PressKey(input.KeyLeftAlt)
+			if binding.matches(state, goos) {
+				t.Fatalf("%s on %s used modifiers pressed after V", chord, goos)
+			}
+		}
+	}
+}
+
 func TestKeymapProfilesPersistIndependentOverrides(t *testing.T) {
 	m := &workspaceModel{settings: defaultPencodeSettings()}
 	event := func(ref, value string) {

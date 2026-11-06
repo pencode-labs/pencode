@@ -53,22 +53,13 @@ func (c *Client) CloseIndex(ctx context.Context, id uint64) error {
 	}
 	return d.Done()
 }
-func (c *Client) SearchPaths(ctx context.Context, id uint64, query string, preferred []string, rules ...protocol.PathRule) ([]string, error) {
+func (c *Client) SearchPaths(ctx context.Context, id uint64, query string, preferred []string) ([]string, error) {
 	e := service(protocol.PathSearch, "")
 	e.U64(id)
 	e.String(query)
 	e.U32(uint32(len(preferred)))
 	for _, v := range preferred {
 		e.String(v)
-	}
-	e.U32(uint32(len(rules)))
-	for _, rule := range rules {
-		e.String(rule.Pattern)
-		if rule.Suffix {
-			e.U32(1)
-		} else {
-			e.U32(0)
-		}
 	}
 	d, err := c.execute(ctx, &e)
 	if err != nil {

@@ -29,6 +29,7 @@ type Session struct {
 	recentProjects  *pencodeRecentProjects
 	fonts           map[string]pencodeFont
 	settingsWriters map[*client.Client]*pencodeSettingsWriter
+	stateDirectory  string
 	// Actions accepts native registrations before or after the session starts.
 	Actions actions.Registry
 	Output  output.Store
@@ -47,10 +48,13 @@ func NewSession(backend *client.Client) *Session {
 }
 
 func newSession(backend *client.Client, cacheDirectory, configDirectory string) *Session {
-	return &Session{backend: backend, localBackend: backend, views: make(map[*Mod]struct{}), fonts: make(map[string]pencodeFont), market: &pencodeMarketplace{}, quickHistory: loadPencodeQuickHistory(cacheDirectory), recentProjects: loadPencodeRecentProjects(configDirectory)}
+	return &Session{backend: backend, localBackend: backend, views: make(map[*Mod]struct{}), fonts: make(map[string]pencodeFont), market: &pencodeMarketplace{}, quickHistory: loadPencodeQuickHistory(cacheDirectory), recentProjects: loadPencodeRecentProjects(configDirectory), stateDirectory: configDirectory}
 }
 
 func (s *Session) Close() {
+	if s.active != nil {
+		s.active.model.saveProjectStates()
+	}
 	s.closeSettingsWriters()
 	if s.active != nil {
 		s.active.model.closePorts()
@@ -146,6 +150,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 	}
 	scrollChanged = model.syncExtensionUI(model.fontResources)
 	scrollChanged = model.actions.ui.selection.sync(model.fontResources, model) || scrollChanged
+	scrollChanged = model.syncRenderedFind(model.fontResources) || scrollChanged
 	model.focusFileContext(model.fontResources)
 	model.focusFindInput(model.fontResources, model.surface)
 	model.focusFolderSearch(model.fontResources)

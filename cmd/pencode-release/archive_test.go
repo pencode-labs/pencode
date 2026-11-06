@@ -18,7 +18,7 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 			workspace := t.TempDir()
 			root := filepath.Join(workspace, "pencode")
 			writeTestFile(t, filepath.Join(workspace, "onix", "LICENSE"), "Onix license", 0o644)
-			for _, name := range []string{"LICENSE", "README.md", "README.zh-CN.md", "resources/icons/CODICONS-LICENSE.txt", "resources/icons/LUCIDE-LICENSE.txt"} {
+			for _, name := range []string{"LICENSE", "README.md", "README.zh-CN.md", "resources/icons/CODICONS-LICENSE.txt", "resources/icons/LUCIDE-LICENSE.txt", "workbench/fonts/NERD-FONTS-LICENSE.txt"} {
 				writeTestFile(t, filepath.Join(root, name), name, 0o644)
 			}
 			bundle := filepath.Join(root, "pencode.app")
@@ -110,7 +110,7 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{binary, catalog, data, "pencode/LICENSE", "pencode/README.md", "pencode/README.zh-CN.md", "pencode/licenses/CODICONS-LICENSE.txt", "pencode/licenses/LUCIDE-LICENSE.txt", "pencode/licenses/ONIX-LICENSE.txt"} {
+			for _, name := range []string{binary, catalog, data, "pencode/LICENSE", "pencode/README.md", "pencode/README.zh-CN.md", "pencode/licenses/CODICONS-LICENSE.txt", "pencode/licenses/LUCIDE-LICENSE.txt", "pencode/licenses/NERD-FONTS-LICENSE.txt", "pencode/licenses/ONIX-LICENSE.txt"} {
 				if !seen[name] {
 					t.Errorf("missing %s", name)
 				}

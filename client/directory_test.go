@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/pencode-labs/pencode/protocol"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,7 +22,7 @@ func TestBrowseDirectoryPreservesWorkspaceAndExpandsServerHome(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(w.Path, "main.go"), []byte("package main\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	document, _, err := c.OpenDocument(t.Context(), w.ID, "main.go", true)
+	document, _, err := c.OpenDocument(t.Context(), w.ID, "main.go", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}

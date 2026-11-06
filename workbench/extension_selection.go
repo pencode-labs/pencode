@@ -51,6 +51,10 @@ type pencodeExtensionTextSelection struct {
 // inserting hard newlines at soft wraps. Region trees hold independently
 // updated message contents.
 func (s *pencodeExtensionSurface) selectableText(ref string) string {
+	return s.selectableTextRanges(ref, nil)
+}
+
+func (s *pencodeExtensionSurface) selectableTextRanges(ref string, visit func(*dom.Node, int, int)) string {
 	var b strings.Builder
 	space, breaks := false, 0
 	separate := func(count int) {
@@ -81,7 +85,11 @@ func (s *pencodeExtensionSurface) selectableText(ref string) string {
 		if hidden, _ := node.Attr("aria-hidden"); hidden == "true" {
 			return
 		}
-		if node.Data == "input" || node.Data == "textarea" || node.Data == "img" {
+		if node.Data == "input" || node.Data == "textarea" || node.Data == "select" || node.Data == "img" {
+			return
+		}
+		role, _ := node.Attr("role")
+		if node.Data == "button" && role != "link" {
 			return
 		}
 		nodeRef, _ := node.Attr("data-ref")
@@ -104,6 +112,12 @@ func (s *pencodeExtensionSurface) selectableText(ref string) string {
 				separate(boundary)
 			}
 			if node.Type == dom.TextNode {
+				start := b.Len()
+				defer func() {
+					if visit != nil && b.Len() > start {
+						visit(node, start, b.Len())
+					}
+				}()
 				if pre {
 					flush()
 					b.WriteString(node.Data)
@@ -205,6 +219,10 @@ func extensionTextOrder(world *module.Content, area ecs.Entity, a, b pencodeExte
 // includes code, links and tool output without changing their layout.
 func (s *pencodeExtensionTextSelection) collect(world *module.Content, surface *pencodeExtensionSurface, ref string) {
 	s.content = surface.selectableText(ref)
+	s.collectText(world, surface)
+}
+
+func (s *pencodeExtensionTextSelection) collectText(world *module.Content, surface *pencodeExtensionSurface) {
 	s.view, s.key = surface.view, surface.scrollKey
 	clear(s.spans)
 	s.spans = s.spans[:0]
@@ -222,7 +240,15 @@ func (s *pencodeExtensionTextSelection) collect(world *module.Content, surface *
 		}
 		if link, ok := world.Get[htmlui.ControlText](entity); ok {
 			control, _ := world.Get[htmlui.Control](link.Control)
-			if control.Tag == "input" || control.Tag == "textarea" {
+			if control.Tag == "input" || control.Tag == "textarea" || control.Tag == "select" {
+				continue
+			}
+			// Controls own their gestures. Their labels can be laid out in a
+			// different order from the authored text (e.g. a card's action beside
+			// a two-line title), which would advance matching into later messages.
+			if control.Tag == "button" && !slices.ContainsFunc(surface.focus, func(f pencodeExtensionFocus) bool {
+				return f.id == control.ID && f.selectText
+			}) {
 				continue
 			}
 		}

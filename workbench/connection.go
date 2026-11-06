@@ -258,7 +258,7 @@ func (model *workspaceModel) beginConnection(profile connection.Profile, retry b
 			projects[i].Path = project.Path
 			identities[i].project = project
 			for _, file := range project.Files {
-				projects[i].Files = append(projects[i].Files, connection.File{Path: file.Path, Text: isTextFile(file.Name)})
+				projects[i].Files = append(projects[i].Files, connection.File{Path: file.Path, Mode: file.openMode()})
 				identities[i].files = append(identities[i].files, file)
 			}
 		}
@@ -511,6 +511,8 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 				continue
 			}
 			file.document = state.Document
+			file.unsupported = state.Document == nil
+			file.editorGeneration = 0
 			if state.Disk == file.content() {
 				file.savedContent, file.Dirty = snapshotText(state.Disk), false
 			}

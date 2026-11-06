@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"fmt"
+	"github.com/pencode-labs/pencode/protocol"
 	"io"
 	"net"
 	"os"
@@ -175,7 +176,7 @@ func TestSSHIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	document, _, err := backend.OpenDocument(t.Context(), w.ID, "main.go", true)
+	document, _, err := backend.OpenDocument(t.Context(), w.ID, "main.go", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -178,7 +178,7 @@ func TestCancelledDownloadStopsBetweenFrames(t *testing.T) {
 	defer stopDownload()
 	finished := make(chan error, 1)
 	go func() {
-		_, _, err := c.OpenDocument(downloadCtx, w.ID, "large", true)
+		_, _, err := c.OpenDocument(downloadCtx, w.ID, "large", protocol.DocumentText)
 		finished <- err
 	}()
 	select {
@@ -230,7 +230,7 @@ func TestSlowDocumentDownloadDoesNotBlockMutation(t *testing.T) {
 	largeID := requestCount(c) + 1
 	large := make(chan error, 1)
 	go func() {
-		doc, got, err := c.OpenDocument(ctx, w.ID, "large", true)
+		doc, got, err := c.OpenDocument(ctx, w.ID, "large", protocol.DocumentText)
 		if doc != nil {
 			defer doc.Close()
 		}
@@ -301,7 +301,7 @@ func TestInterruptedLargeDeltaHasNoPartialMutation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(w.Path, "text"), []byte("before"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	doc, _, err := c.OpenDocument(ctx, w.ID, "text", true)
+	doc, _, err := c.OpenDocument(ctx, w.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestWeakNetworkDocumentAndStream(t *testing.T) {
 	if err := os.WriteFile(name, []byte("before"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	doc, _, err := c.OpenDocument(ctx, w.ID, "text", true)
+	doc, _, err := c.OpenDocument(ctx, w.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +413,7 @@ func BenchmarkWeakNetworkDocumentSave(b *testing.B) {
 			if err := os.WriteFile(filepath.Join(w.Path, "text"), nil, 0600); err != nil {
 				b.Fatal(err)
 			}
-			doc, _, err := c.OpenDocument(b.Context(), w.ID, "text", true)
+			doc, _, err := c.OpenDocument(b.Context(), w.ID, "text", protocol.DocumentText)
 			if err != nil {
 				b.Fatal(err)
 			}

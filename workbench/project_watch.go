@@ -2,7 +2,6 @@ package workbench
 
 import (
 	"context"
-	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -246,13 +245,13 @@ func (m *workspaceModel) reloadExternalFiles(project *pencodeProject) {
 			continue
 		}
 		file.externalChanged = false
-		if file.Dirty || !isTextFile(path.Base(name)) {
+		if file.Dirty || !file.text() {
 			continue
 		}
 		if job == nil {
 			job = &fileIOJob{kind: fileReload, project: project, workspace: project.workspace.ID, external: true}
 		}
-		job.reload = append(job.reload, fileReloadResult{file: file, relative: name, before: file.content(), previous: file.document})
+		job.reload = append(job.reload, fileReloadResult{file: file, relative: name, before: file.content(), previous: file.document, mode: file.openMode()})
 	}
 	if job != nil {
 		if err := m.submitFileIO(job); err != nil {

@@ -333,7 +333,10 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 		if result.Repositories != nil {
 			if !slices.Equal(result.Repositories, s.Repositories) {
 				s.Repositories = result.Repositories
-				s.FollowPath = ""
+				if s.RepositoriesLoaded {
+					// Initial discovery must retain an explicitly restored repository.
+					s.FollowPath = ""
+				}
 			}
 			s.RepositoriesLoaded = true
 		}

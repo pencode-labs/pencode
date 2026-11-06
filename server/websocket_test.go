@@ -88,7 +88,7 @@ func TestWebSocketWorkspaceAndReconnect(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		document, text, err := backend.OpenDocument(t.Context(), workspace.ID, "text.txt", true)
+		document, text, err := backend.OpenDocument(t.Context(), workspace.ID, "text.txt", protocol.DocumentTextForced)
 		if err != nil || text != want {
 			t.Fatalf("chunked document: %d bytes, %v", len(text), err)
 		}

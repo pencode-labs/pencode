@@ -26,6 +26,8 @@ const (
 	fileCloseWorkspace
 	fileLanguageEdit
 	fileSearchReplace
+	fileRestore
+	fileReopenText
 )
 const fileIOCapacity = 32
 
@@ -39,12 +41,14 @@ type fileReloadResult struct {
 	file                      *openFile
 	document, previous        *client.Document
 	relative, before, content string
+	mode                      protocol.DocumentMode
 	retired                   bool
 }
 
 // Jobs contain immutable inputs. Project/file pointers are identity tokens;
 // only the foreground may dereference them. The worker owns returned handles.
 type fileIOJob struct {
+	restore                                               *pencodeProjectState
 	err                                                   error
 	ctx                                                   context.Context
 	backend                                               *client.Client
@@ -62,18 +66,23 @@ type fileIOJob struct {
 	workspace, targetWorkspace                            uint64
 	id                                                    uint64
 	preview, reveal, directory, cut, duplicate, clipboard bool
+	mode                                                  protocol.DocumentMode
 	kind                                                  fileIOKind
 	finished                                              bool
 	external                                              bool
 }
 type fileNavigation struct {
-	selection   *lsp.Range
-	searchMatch *protocol.TextMatch
-	encoding    lsp.PositionEncoding
-	query       string
-	digest      string
-	line        int
-	history     bool
+	selection       *lsp.Range
+	searchMatch     *protocol.TextMatch
+	encoding        lsp.PositionEncoding
+	query           string
+	digest          string
+	origin          pencodeNavigationLocation
+	line            int
+	view            pencodeEditorView
+	navigationIndex int
+	history         bool
+	restore         bool
 }
 type fileIOResult struct {
 	err                  error
@@ -172,7 +181,7 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		r.err = j.backend.CloseWorkspace(ctx, j.workspace)
 	case fileOpenWorkspace:
 		r.workspace, r.err = j.backend.OpenWorkspace(j.ctx, j.root)
-	case fileOpen:
+	case fileOpen, fileReopenText:
 		workspace := j.workspace
 		if workspace == 0 {
 			var w protocol.Workspace
@@ -180,7 +189,7 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 			workspace = w.ID
 		}
 		if r.err == nil {
-			r.document, r.content, r.err = j.backend.OpenDocument(j.ctx, workspace, j.relative, isTextFile(j.relative))
+			r.document, r.content, r.err = j.backend.OpenDocument(j.ctx, workspace, j.relative, j.mode)
 		}
 	case fileSave:
 		document := j.document
@@ -191,11 +200,15 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 				return
 			}
 			var saved string
-			document, saved, r.err = j.backend.OpenDocument(j.ctx, workspace.ID, j.relative, true)
+			document, saved, r.err = j.backend.OpenDocument(j.ctx, workspace.ID, j.relative, j.mode)
 			if r.err != nil {
 				return
 			}
 			r.document = document
+			if document == nil {
+				r.err = fmt.Errorf("文件不再是支持的文本文件，请重新打开")
+				return
+			}
 			if !snapshotText(saved).Equal(j.baseline) {
 				r.err = &protocol.Error{Code: protocol.Conflict, Message: "文件已被其他程序修改，请先比较或重新加载"}
 				return
@@ -225,11 +238,19 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 				item.previous.Close()
 			}
 			item.retired = true
-			item.document, item.content, item.err = j.backend.OpenDocument(j.ctx, j.workspace, item.relative, isTextFile(item.relative))
+			item.document, item.content, item.err = j.backend.OpenDocument(j.ctx, j.workspace, item.relative, item.mode)
 			if j.ctx.Err() != nil {
 				r.err = j.ctx.Err()
 				return
 			}
+		}
+	case fileRestore:
+		for _, tab := range j.restore.Tabs {
+			if j.ctx.Err() != nil {
+				break
+			}
+			document, content, err := j.backend.OpenDocument(j.ctx, j.workspace, tab.Path, restoredFileMode(tab))
+			r.reload = append(r.reload, fileReloadResult{relative: tab.Path, document: document, content: content, err: err})
 		}
 	}
 	if r.err == nil && (j.kind == fileRename || j.kind == fileTransfer && j.cut) {
@@ -380,15 +401,22 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 	switch j.kind {
 	case fileOpen:
 		m.acceptFileOpen(r)
+	case fileReopenText:
+		m.acceptTextEditor(r)
 	case fileSave:
 		m.acceptFileSave(r)
 	case fileReload:
 		m.acceptFileReload(r)
+	case fileRestore:
+		m.acceptProjectRestore(r)
 	default:
 		m.acceptResourceIO(r)
 	}
 }
 func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, preview, reveal bool, navigation *fileNavigation) error {
+	if navigation != nil && navigation.origin.path == "" {
+		navigation.origin = m.navigationLocation()
+	}
 	before := m.selectionSnapshot()
 	m.actions.ui.editor = nil
 	if p != nil && !m.projectLive(p) {
@@ -416,13 +444,16 @@ func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, pre
 		m.refreshFileSelection(before)
 		return nil
 	}
-	j := &fileIOJob{kind: fileOpen, project: p, relative: relative, preview: preview, reveal: reveal, navigation: navigation, root: m.projectPath}
+	j := &fileIOJob{kind: fileOpen, mode: protocol.FileMode(relative), project: p, relative: relative, preview: preview, reveal: reveal, navigation: navigation, root: m.projectPath}
 	if p != nil {
 		j.workspace = p.workspace.ID
 		j.root = p.Path
 	}
 	if err := m.submitFileIO(j); err != nil {
 		return err
+	}
+	if p != nil && p.restoring != nil {
+		p.ActivePath = relative
 	}
 	m.setProjectStatus(p, "正在打开 "+path.Base(relative)+"…")
 	return nil
@@ -441,6 +472,12 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 	if j.project != nil {
 		p := j.project
 		if p.Files[j.relative] != nil {
+			selectProjectFile(p, j.relative, j.preview)
+			if j.reveal {
+				m.queueProjectFileReveal(p)
+			}
+			m.syncActiveProjectFields()
+			m.finishFileNavigation(p, p.Files[j.relative], j.navigation)
 			return
 		}
 		if j.preview && p.PreviewPath != "" {
@@ -464,7 +501,7 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 		if m.files[j.relative] != nil {
 			return
 		}
-		f := &openFile{document: r.document, Path: j.relative, Name: path.Base(j.relative), contentSnapshot: snapshotText(r.content), savedContent: snapshotText(r.content)}
+		f := &openFile{document: r.document, Path: j.relative, Name: path.Base(j.relative), contentSnapshot: snapshotText(r.content), savedContent: snapshotText(r.content), unsupported: r.document == nil}
 		r.document = nil
 		m.files[j.relative] = f
 		m.tabs = append(m.tabs, j.relative)
@@ -478,6 +515,21 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 		return
 	}
 	m.actions.ui.editor = nil
+	if n.restore {
+		h := &m.navigation
+		if n.origin.path != "" {
+			h.entries[h.index] = n.origin
+		}
+		h.index = n.navigationIndex
+		f.editorView = n.view
+		m.quickFocusEditor, m.quickTargetLine = false, 0
+		m.editor.needsFocus = true
+		if m.languages != nil {
+			m.languages.panel.navigate = nil
+		}
+		m.folderSearch.navigate = nil
+		return
+	}
 	if n.searchMatch != nil {
 		m.finishSearchNavigation(p, f, n)
 		return
@@ -518,13 +570,18 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 			m.languages.panel.offset = offset
 			m.languages.panel.endOffset = end
 		}
+		view := pencodeEditorView{caret: f.snapshotBuffer().RuneOffset(offset), anchor: f.snapshotBuffer().RuneOffset(end)}
+		m.navigation.record(n.origin, pencodeNavigationLocation{p, f.Path, view})
+	} else if n.line > 0 {
+		caret := pencodeLineCaret(f.content(), n.line)
+		m.navigation.record(n.origin, pencodeNavigationLocation{p, f.Path, pencodeEditorView{caret: caret, anchor: caret}})
 	}
 }
 func (m *workspaceModel) requestFileSave(p *pencodeProject, f *openFile) (*fileIOJob, error) {
 	if f == nil {
 		return nil, fmt.Errorf("没有打开的文件")
 	}
-	if !isTextFile(f.Name) {
+	if !f.text() {
 		return nil, fmt.Errorf("当前编辑工具不支持保存二进制文件")
 	}
 	if m.fileIOMutating(p) {
@@ -543,7 +600,7 @@ func (m *workspaceModel) requestFileSave(p *pencodeProject, f *openFile) (*fileI
 			}
 		}
 	}
-	j := &fileIOJob{kind: fileSave, project: p, file: f, document: f.document, relative: f.Path, root: m.projectPath, text: f.snapshot(), baseline: f.savedContent}
+	j := &fileIOJob{kind: fileSave, mode: f.openMode(), project: p, file: f, document: f.document, relative: f.Path, root: m.projectPath, text: f.snapshot(), baseline: f.savedContent}
 	if p != nil {
 		j.root = p.Path
 		j.workspace = p.workspace.ID
@@ -617,6 +674,8 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		}
 		f.closeDocument()
 		f.document = item.document
+		f.unsupported = item.document == nil
+		f.editorGeneration = 0
 		item.document = nil
 		if r.external && f.content() == item.content {
 			continue
@@ -650,7 +709,7 @@ func (m *workspaceModel) cancelFileOpens() {
 func (m *workspaceModel) cancelFileOpen(p *pencodeProject, relative string) {
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
-			if j.kind == fileOpen && j.project == p && j.relative == relative {
+			if (j.kind == fileOpen || j.kind == fileReopenText) && j.project == p && j.relative == relative {
 				j.cancel()
 			}
 		}
@@ -722,7 +781,7 @@ func (m *workspaceModel) requestFileReload(p *pencodeProject, cleanOnly bool) er
 	job := &fileIOJob{kind: fileReload, project: p, workspace: p.workspace.ID}
 	for _, relative := range p.Tabs {
 		if f := p.Files[relative]; f != nil && (!cleanOnly || !f.Dirty) {
-			job.reload = append(job.reload, fileReloadResult{file: f, relative: relative, before: f.content(), previous: f.document})
+			job.reload = append(job.reload, fileReloadResult{file: f, relative: relative, before: f.content(), previous: f.document, mode: f.openMode()})
 		}
 	}
 	return m.submitFileIO(job)

@@ -37,7 +37,7 @@ File changes use native FSEvents on macOS, recursive `ReadDirectoryChangesW` on 
 - An Onix checkout next to this repository, named `onix`. The current `go.mod` uses `replace github.com/diiyw/onix => ../onix`.
 - The native development libraries required by Onix for desktop builds; see `docs/desktop-builds.md` in the Onix checkout.
 - System `git` for source control and OpenSSH `ssh` for SSH connections. The Go extension installs its tools automatically; other language servers depend on their extensions.
-- Fonts installed on the GUI host. Pencode does not bundle fonts.
+- Text fonts installed on the GUI host. Pencode bundles Symbols Nerd Font Mono as a fallback for shell prompt icons.
 - Image paste on Linux requires `wl-paste` (from `wl-clipboard`) on Wayland or `xclip` on X11. Windows and macOS use native clipboard APIs.
 
 Expected layout:
@@ -148,6 +148,7 @@ Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host
 Bundled extensions include the following; see each extension for its license and build instructions:
 
 - [Codex Agent](https://github.com/pencode-labs/codex): editor chat, streaming replies, approvals, and project conversations through the Codex CLI.
+- [Docker](https://github.com/pencode-labs/docker): container lists, start/stop/restart controls, and automatically refreshed logs from the title bar.
 - [Go language tools](https://github.com/pencode-labs/go): provides Go language and debug support, automatically installing `gopls` and Delve when missing.
 - [Markdown preview](https://github.com/pencode-labs/markdown-preview): read-only preview with native source editing and optional split layout.
 - [Material file icons](https://github.com/pencode-labs/material-icons): a file icon theme.
@@ -186,4 +187,4 @@ Keep changes focused, run checks for the packages you touch, and describe what y
 
 Pencode is licensed under the [MIT License](LICENSE).
 
-Pencode builds on Onix, [textmate-go](https://github.com/eugenioenko/textmate-go), and other Go libraries. TextMate grammar notices are embedded in Onix’s syntax resources. Bundled third-party assets retain their own licenses, including [Codicons](resources/icons/CODICONS-LICENSE.txt), [Lucide](resources/icons/LUCIDE-LICENSE.txt), and [Material file icons](extensions/material-icons/resources/LICENSE.txt). Preserve the corresponding notices when redistributing those assets.
+Pencode builds on Onix, [textmate-go](https://github.com/eugenioenko/textmate-go), and other Go libraries. TextMate grammar notices are embedded in Onix’s syntax resources. Bundled third-party assets retain their own licenses, including [Codicons](resources/icons/CODICONS-LICENSE.txt), [Lucide](resources/icons/LUCIDE-LICENSE.txt), [Symbols Nerd Font Mono](workbench/fonts/NERD-FONTS-LICENSE.txt), and [Material file icons](extensions/material-icons/resources/LICENSE.txt). Preserve the corresponding notices when redistributing those assets.

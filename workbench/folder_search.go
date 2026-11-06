@@ -445,6 +445,7 @@ func (m *workspaceModel) finishSearchNavigation(project *pencodeProject, file *o
 	s := &m.folderSearch
 	s.navigate, s.navigateStart, s.navigateEnd = file, utf8.RuneCountInString(file.content()[:match.Start]), utf8.RuneCountInString(file.content()[:match.End])
 	file.editorView.anchor, file.editorView.caret = s.navigateStart, s.navigateEnd
+	m.navigation.record(n.origin, pencodeNavigationLocation{project, file.Path, file.editorView})
 	m.editor.needsFocus = true
 }
 

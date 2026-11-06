@@ -124,7 +124,7 @@ func (d Dialer) Dial(ctx context.Context, profile Profile, progress func(string)
 
 type File struct {
 	Path string
-	Text bool
+	Mode protocol.DocumentMode
 }
 
 type Project struct {
@@ -156,7 +156,7 @@ func Restore(ctx context.Context, backend *client.Client, projects []Project) []
 		}
 		r.Files = make([]RestoredFile, len(project.Files))
 		for j, file := range project.Files {
-			r.Files[j].Document, r.Files[j].Disk, r.Files[j].Err = backend.OpenDocument(ctx, r.Workspace.ID, file.Path, file.Text)
+			r.Files[j].Document, r.Files[j].Disk, r.Files[j].Err = backend.OpenDocument(ctx, r.Workspace.ID, file.Path, file.Mode)
 		}
 	}
 	return results

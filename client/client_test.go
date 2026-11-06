@@ -53,7 +53,7 @@ func TestChunkedDocumentRoundTrip(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	doc, content, err := c.OpenDocument(ctx, w.ID, "source.go", true)
+	doc, content, err := c.OpenDocument(ctx, w.ID, "source.go", protocol.DocumentText)
 	if err != nil || content != original {
 		t.Fatal(len(content), err)
 	}
@@ -111,7 +111,7 @@ func TestEditingDoesNotWaitForServerAndCoalesces(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	doc, _, err := c.OpenDocument(ctx, w.ID, "text", true)
+	doc, _, err := c.OpenDocument(ctx, w.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}

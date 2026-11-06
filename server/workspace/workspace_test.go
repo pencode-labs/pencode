@@ -33,7 +33,7 @@ func TestSaveEditedChunksAndEmptyDocument(t *testing.T) {
 	s, p := fixture(t)
 	text := strings.Repeat("中🙂\r\n", 10000)
 	write(t, p, "text", text)
-	doc, err := s.OpenDocument(p.ID, "text", true)
+	doc, err := s.OpenDocument(p.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func BenchmarkDocumentSave(b *testing.B) {
 		b.Run(strconv.Itoa(size), func(b *testing.B) {
 			s, p := fixture(b)
 			write(b, p, "text", strings.Repeat("a", size))
-			doc, err := s.OpenDocument(p.ID, "text", true)
+			doc, err := s.OpenDocument(p.ID, "text", protocol.DocumentText)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -91,7 +91,7 @@ func assertCode(t *testing.T, err error, code protocol.Code) {
 func TestVersionedAtomicSaveAndExternalConflict(t *testing.T) {
 	s, p := fixture(t)
 	write(t, p, "main.go", "a中\r\n")
-	d, err := s.OpenDocument(p.ID, "main.go", true)
+	d, err := s.OpenDocument(p.ID, "main.go", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,20 +131,20 @@ func TestVersionedAtomicSaveAndExternalConflict(t *testing.T) {
 func TestRootsBinaryFilesAndLifetime(t *testing.T) {
 	s, p := fixture(t)
 	write(t, p, "image.png", "\x00\xff\xfe")
-	d, err := s.OpenDocument(p.ID, "image.png", false)
+	d, err := s.OpenDocument(p.ID, "image.png", protocol.DocumentFile)
 	if err != nil || d.ID != 0 || d.Content != "" || len(s.documents) != 0 {
 		t.Fatal(d, err)
 	}
 	for _, name := range []string{"../escape", "/etc/passwd", "a/../image.png", "a\\b", "."} {
-		if _, err := s.OpenDocument(p.ID, name, true); err == nil {
+		if _, err := s.OpenDocument(p.ID, name, protocol.DocumentText); err == nil {
 			t.Fatalf("accepted %q", name)
 		}
 	}
-	if _, err := s.OpenDocument(p.ID, "missing", true); !os.IsNotExist(err) {
+	if _, err := s.OpenDocument(p.ID, "missing", protocol.DocumentText); !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 	write(t, p, "text", "hello")
-	d, err = s.OpenDocument(p.ID, "text", true)
+	d, err = s.OpenDocument(p.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestRootsBinaryFilesAndLifetime(t *testing.T) {
 func TestSymlinkAndMovedUnsavedDocument(t *testing.T) {
 	s, p := fixture(t)
 	write(t, p, "original", "saved")
-	d, err := s.OpenDocument(p.ID, "original", true)
+	d, err := s.OpenDocument(p.ID, "original", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestSymlinkAndMovedUnsavedDocument(t *testing.T) {
 	if err := os.Symlink("moved", filepath.Join(p.Path, "link")); err != nil {
 		t.Fatal(err)
 	}
-	linked, err := s.OpenDocument(p.ID, "link", true)
+	linked, err := s.OpenDocument(p.ID, "link", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestSymlinkAndMovedUnsavedDocument(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(p.Path, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.OpenDocument(p.ID, "escape", true); err == nil {
+	if _, err := s.OpenDocument(p.ID, "escape", protocol.DocumentText); err == nil {
 		t.Fatal("read escaped root")
 	}
 }
@@ -216,7 +216,7 @@ func TestSymlinkAndMovedUnsavedDocument(t *testing.T) {
 func TestWarmDocumentChangesDoNotAllocate(t *testing.T) {
 	s, p := fixture(t)
 	write(t, p, "text", "base")
-	d, err := s.OpenDocument(p.ID, "text", true)
+	d, err := s.OpenDocument(p.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}

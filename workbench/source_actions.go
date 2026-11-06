@@ -259,6 +259,8 @@ func (a *workspaceModel) sourceAction(id string) {
 			})
 			break
 		}
+	case id == "sc-discard-all":
+		s.Prompt, s.PromptHash = "discard-all", ""
 	case strings.HasPrefix(id, "sc-discard:"), strings.HasPrefix(id, "sc-discard-folder:"):
 		op, prefix := "discard-file", "sc-discard:"
 		if strings.HasPrefix(id, "sc-discard-folder:") {
@@ -478,8 +480,8 @@ func (a *workspaceModel) confirmSourceOperation() {
 		a.closeSourceTab(hash)
 		return
 	}
-	if op == "discard-file" || op == "discard-folder" {
-		a.discardSourceChanges(op == "discard-folder", hash)
+	if op == "discard-file" || op == "discard-folder" || op == "discard-all" {
+		a.discardSourceChanges(op, hash)
 		return
 	}
 	if op == "local" || op == "incoming" || op == "both" {
@@ -553,26 +555,31 @@ func (a *workspaceModel) confirmSourceOperation() {
 	})
 }
 
-func (a *workspaceModel) discardSourceChanges(folder bool, key string) {
+func (a *workspaceModel) discardSourceChanges(op, key string) {
 	s := a.sourceState()
-	_, encoded, ok := strings.Cut(key, ":")
-	if !ok {
-		return
-	}
-	name, err := url.PathUnescape(encoded)
-	if err != nil {
-		return
-	}
-	var files []sourceFile
-	for _, f := range s.Snapshot.Groups[2] {
-		if folder && !strings.HasPrefix(f.Path, name+"/") || !folder && f.Path != name {
-			continue
+	files := s.Snapshot.Groups[2]
+	if op != "discard-all" {
+		_, encoded, ok := strings.Cut(key, ":")
+		if !ok {
+			return
 		}
+		name, err := url.PathUnescape(encoded)
+		if err != nil {
+			return
+		}
+		folder := op == "discard-folder"
+		files = nil
+		for _, f := range s.Snapshot.Groups[2] {
+			if folder && strings.HasPrefix(f.Path, name+"/") || !folder && f.Path == name {
+				files = append(files, f)
+			}
+		}
+	}
+	for _, f := range files {
 		if a.sourcePathDirty(f.Path) {
 			s.Notice = "请先保存此文件的编辑内容，再放弃修改。"
 			return
 		}
-		files = append(files, f)
 	}
 	if len(files) == 0 {
 		return
@@ -769,8 +776,15 @@ func (a *workspaceModel) sourceFileTree(b *sourceVNodeView, kind, label string, 
 			icon = "chevron-right"
 		}
 		a.sourceIcon(b, "arrow", icon, "")
-		b.text("span", "label", label)
+		b.text("span", "label", label, "class", "sc-group-label")
 		b.close()
+		switch kind {
+		case "changes":
+			a.sourceIconButton(b, "sc-discard-all", "Discard All Changes", "discard", s.busy(), "sc-group-action")
+			a.sourceIconButton(b, "sc-stage-all", "Stage All Changes", "add", s.busy(), "sc-group-action")
+		case "staged":
+			a.sourceIconButton(b, "sc-unstage-all", "Unstage All Changes", "remove", s.busy(), "sc-group-action")
+		}
 		b.close()
 		if collapsed {
 			b.text("ul", "tree", "", "id", treeID, "class", "sc-tree", "aria-label", label, "hidden", "")

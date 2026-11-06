@@ -282,7 +282,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 	}
-	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "globe", "code", "refresh-cw", "close", "discard"} {
+	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo", "repo-pull", "repo-push", "git-merge-abort", "check", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "globe", "code", "refresh-cw", "close", "discard", "debug-start", "debug-stop", "debug-pause"} {
 		if err := addIcon(pencodeIconKey{"icons/" + name + ".svg", "icon.foreground"}); err != nil {
 			return pencodeTheme{}, err
 		}

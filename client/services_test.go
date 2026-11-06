@@ -86,7 +86,7 @@ func TestProcessBackpressureDoesNotBlockSaveAndDisconnectReaps(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	doc, _, err := c.OpenDocument(ctx, w.ID, "main.go", true)
+	doc, _, err := c.OpenDocument(ctx, w.ID, "main.go", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,13 +207,13 @@ func TestServerIndexPagesSearchAndWorkspaceLifetime(t *testing.T) {
 		t.Fatal("history order", paths, err)
 	}
 	for _, name := range paths {
-		if strings.HasSuffix(name, ".png") || strings.Contains(name, "hidden") {
+		if strings.Contains(name, "hidden") {
 			t.Fatal("excluded file", name)
 		}
 	}
-	paths, err = c.SearchPaths(t.Context(), id, "IMAGE", nil, protocol.PathRule{Pattern: ".png", Suffix: true})
+	paths, err = c.SearchPaths(t.Context(), id, "IMAGE", nil)
 	if err != nil || !reflect.DeepEqual(paths, []string{"image.png"}) {
-		t.Fatal("custom editor search", paths, err)
+		t.Fatal("unsupported file search", paths, err)
 	}
 	for _, query := range []string{
 		"file-042.go",

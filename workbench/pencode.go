@@ -74,6 +74,8 @@ type openFile struct {
 	editorView       pencodeEditorView
 	editorGeneration uint64
 	saveRevision     uint64
+	forcedText       bool // Preserve the explicit decoding choice when switching views.
+	unsupported      bool // The file service did not provide a text document.
 	editorSplit      bool
 	externalChanged  bool
 	Dirty            bool
@@ -87,6 +89,7 @@ type pencodeEdit struct {
 }
 
 type pencodeProject struct {
+	restoring               *pencodeProjectState
 	debugBreakpoints        map[string][]pencodeBreakpoint
 	watch                   *pencodeProjectWatch
 	Files                   map[string]*openFile
@@ -154,6 +157,7 @@ type workspaceModel struct {
 	quickMatches                        [8]string
 	highlightedContent                  piecetree.Snapshot
 	findContent                         piecetree.Snapshot
+	findPreview                         *pencodeCustomDocument
 	replaceQuery                        string
 	shortcutQuery                       string
 	defaultFontID                       string
@@ -190,6 +194,7 @@ type workspaceModel struct {
 	quickQuery                          string
 	editorHeader                        pencodeEditorHeader
 	fileClipboard                       pencodeFileClipboard
+	navigation                          pencodeNavigationHistory
 	highlightRebaseScratch              []sceneapi.TextSpan2D
 	entries                             []treeEntry
 	findMatches                         []textsearch.Match
@@ -719,6 +724,9 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("zoom-decrease", htmlui.EventClick)
 	view.Event("zoom-increase", htmlui.EventClick)
 	view.Event("reset-shortcuts", htmlui.EventClick)
+	if model.findOpen && model.activeFile() != nil {
+		model.refreshFindMatches()
+	}
 	view.Event("find-query", htmlui.EventInput)
 	view.Event("replace-query", htmlui.EventInput)
 	view.Event("find-previous", htmlui.EventClick)
@@ -735,6 +743,13 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Attr("find-query", "value", model.findQuery)
 	view.Attr("replace-query", "value", model.replaceQuery)
 	renderReplaceToggle(view, "find-toggle-replace", model.replaceOpen)
+	for _, ref := range [...]string{"find-toggle-replace", "find-selection"} {
+		if model.renderedFind() != nil {
+			view.Attr(ref, "hidden", "")
+		} else {
+			view.RemoveAttr(ref, "hidden")
+		}
+	}
 	view.Text("find-error", model.findError)
 	if model.findError == "" {
 		view.Attr("find-error", "hidden", "")
@@ -793,7 +808,6 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Attr("reset-shortcuts", "hidden", "")
 	}
 	if model.findOpen && model.activeFile() != nil {
-		model.refreshFindMatches()
 		view.RemoveAttr("find-bar", "hidden")
 	} else {
 		view.Attr("find-bar", "hidden", "")
@@ -1059,7 +1073,7 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 	case "editor-split":
 		model.toggleEditorSplit()
 		markPencodeRootDirty(context, model)
-	case "editor-text":
+	case "editor-text", "editor-open-text":
 		model.selectEditor(pencodeTextEditor)
 		markPencodeRootDirty(context, model)
 	case "window-close":
@@ -1367,6 +1381,7 @@ func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace p
 	model.screen = pencodeWorkspace
 	model.resetHighlight()
 	model.syncActiveProjectFields()
+	model.restoreProjectState(project)
 	return
 }
 
@@ -1405,7 +1420,7 @@ func (model *workspaceModel) syncActiveProjectFields() {
 		model.syncExtensionProject(previous)
 		return
 	}
-	if (model.projectPath != project.Path || model.activePath != project.ActivePath) &&
+	if !project.tree.restore && (model.projectPath != project.Path || model.activePath != project.ActivePath) &&
 		(model.revealProject != project || model.revealPath != project.ActivePath) {
 		model.queueProjectFileReveal(project)
 	}
@@ -1529,6 +1544,7 @@ func (model *workspaceModel) discardProject(project *pencodeProject) {
 	if index < 0 {
 		return
 	}
+	model.saveProjectState(project)
 	model.notifyProjectClosed(project.Path)
 	model.cancelProjectFileIO(project)
 	if model.debug.project == project || model.debug.configProject == project {
@@ -1697,6 +1713,7 @@ func (model *workspaceModel) revealProjectActiveFile(project *pencodeProject) {
 
 // Queue navigation without changing status or allocating row IDs before layout.
 func (model *workspaceModel) queueProjectFileReveal(project *pencodeProject) {
+	project.tree.restore = false
 	file := project.Files[project.ActivePath]
 	if file == nil {
 		model.revealProject, model.revealPath = nil, ""
@@ -1832,7 +1849,7 @@ func (model *workspaceModel) reloadProjectFromDisk(project *pencodeProject) {
 
 func skipProjectEntry(name string) bool {
 	switch name {
-	case ".git", "dist", "node_modules":
+	case ".DS_Store", ".git", "dist", "node_modules":
 		return true
 	default:
 		return false
@@ -1857,7 +1874,7 @@ func acceptProjectFile(project *pencodeProject, relative string, preview bool, d
 	}
 	project.sourceControl.Active = ""
 	project.sourceControl.Selection++
-	file := &openFile{document: document, Path: relative, Name: path.Base(relative), contentSnapshot: snapshotText(content), Preview: preview}
+	file := &openFile{document: document, Path: relative, Name: path.Base(relative), contentSnapshot: snapshotText(content), unsupported: document == nil, Preview: preview}
 	file.savedContent = file.snapshot()
 	project.Files[relative] = file
 	replaced := false
@@ -2059,7 +2076,7 @@ func (model *workspaceModel) applyFileContent(file *openFile, project *pencodePr
 	return model.applyFileSnapshot(file, project, snapshotText(value), recordHistory)
 }
 func (model *workspaceModel) applyFileSnapshot(file *openFile, project *pencodeProject, value piecetree.Snapshot, recordHistory bool) bool {
-	if file == nil || !isTextFile(file.Name) || file.snapshot().Equal(value) {
+	if file == nil || !file.text() || file.snapshot().Equal(value) {
 		return false
 	}
 	start, oldSuffix, newSuffix, prefixRunes, changed := file.buffer.SnapshotChangedRange(file.snapshot(), value)

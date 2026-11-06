@@ -68,11 +68,6 @@ type IndexEntry struct {
 	Directory  bool
 }
 
-type PathRule struct {
-	Pattern string
-	Suffix  bool
-}
-
 // FileOperation is shared by every native watcher and file-service consumer.
 type FileOperation uint8
 

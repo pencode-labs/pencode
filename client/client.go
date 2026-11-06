@@ -321,15 +321,11 @@ func (c *Client) CloseWorkspace(ctx context.Context, id uint64) error {
 	_, err := c.request(ctx, protocol.WorkspaceClose, e.Buffer)
 	return err
 }
-func (c *Client) OpenDocument(ctx context.Context, workspace uint64, path string, text bool) (*Document, string, error) {
+func (c *Client) OpenDocument(ctx context.Context, workspace uint64, path string, mode protocol.DocumentMode) (*Document, string, error) {
 	e := protocol.Encoder{}
 	e.U64(workspace)
 	e.String(path)
-	if text {
-		e.U32(1)
-	} else {
-		e.U32(0)
-	}
+	e.U32(uint32(mode))
 	p, err := c.request(ctx, protocol.DocumentOpen, e.Buffer)
 	if err != nil {
 		return nil, "", err
@@ -339,7 +335,7 @@ func (c *Client) OpenDocument(ctx context.Context, workspace uint64, path string
 	if err := d.Done(); err != nil {
 		return nil, "", err
 	}
-	if !text {
+	if id == 0 {
 		return nil, content, nil
 	}
 	return newDocument(c, id, version, content), content, nil

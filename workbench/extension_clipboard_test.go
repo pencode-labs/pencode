@@ -33,6 +33,9 @@ func TestExtensionImagePasteIsOptInAndPreservesText(t *testing.T) {
 		state.PressKey(input.KeyLeftControl)
 	}
 	state.PressKey(input.KeyV)
+	state.ReleaseKey(input.KeyV)
+	state.ReleaseKey(input.KeyLeftControl)
+	state.ReleaseKey(input.KeyLeftSuper)
 	reads := 0
 	readImage := func() ([]byte, error) { reads++; return []byte("png"), nil }
 	control, _ := w.HTMLControl(m.surface, s.focus[1].id)

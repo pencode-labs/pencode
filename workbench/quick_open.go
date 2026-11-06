@@ -11,8 +11,6 @@ import (
 	"github.com/diiyw/onix/ui"
 	htmlui "github.com/diiyw/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
-	"github.com/pencode-labs/pencode/peb"
-	"github.com/pencode-labs/pencode/protocol"
 )
 
 var pencodeQuickRowRefs = [...]string{
@@ -91,10 +89,8 @@ type pencodeQuickJob struct {
 	project         *pencodeProject
 	history         [pencodeQuickHistoryLimit]string
 	root, query     string
-	rules           [128]protocol.PathRule
 	index, revision uint64
 	historyCount    int
-	ruleCount       int
 }
 type pencodeQuickResult struct {
 	err   error
@@ -150,7 +146,7 @@ func (model *workspaceModel) refreshQuickMatches() {
 			ctx, cancel := context.WithTimeout(workerCtx, 10*time.Second)
 			defer cancel()
 			query, _ := pencodeQuickLocation(job.query)
-			result.paths, result.err = job.backend.SearchPaths(ctx, job.index, query, job.history[:job.historyCount], job.rules[:job.ruleCount]...)
+			result.paths, result.err = job.backend.SearchPaths(ctx, job.index, query, job.history[:job.historyCount])
 			return true
 		}, func(result *pencodeQuickResult) { *result = pencodeQuickResult{} }, nil, model.backgroundWake())
 	}
@@ -163,15 +159,6 @@ func (model *workspaceModel) refreshQuickMatches() {
 				job.history[job.historyCount] = entry.path
 				job.historyCount++
 			}
-		}
-	}
-	for _, editor := range model.customEditors {
-		for _, rule := range editor.Selectors {
-			if job.ruleCount == len(job.rules) {
-				break
-			}
-			job.rules[job.ruleCount] = protocol.PathRule{Pattern: rule.Pattern, Suffix: rule.Match == peb.FileSuffix}
-			job.ruleCount++
 		}
 	}
 	model.quickCachedQuery, model.quickProjectPath = model.quickQuery, project.Path

@@ -31,6 +31,7 @@ type pencodeCustomDocument struct {
 	file        *openFile
 	images      map[string][]byte
 	links       map[string]string
+	find        *pencodeRenderedFind
 	content     string
 	message     string
 	bindings    []peb.EditorBinding
@@ -77,7 +78,7 @@ func (model *workspaceModel) fileEditor(file *openFile) *extensions.Editor {
 			file.customEditor = editor
 			return editor
 		}
-		if file.editorID == "" && (editor.Default || !isTextFile(file.Name)) && match > score {
+		if file.editorID == "" && (editor.Default || !file.text()) && match > score {
 			file.customEditor, score = editor, match
 		}
 	}
@@ -89,21 +90,11 @@ func (model *workspaceModel) activeCustomEditor() *extensions.Editor {
 }
 func (model *workspaceModel) textEditorActive() bool {
 	file := model.activeFile()
-	return !model.sourceState().visible() && file != nil && isTextFile(file.Name) && (model.fileEditor(file) == nil || file.editorSplit)
+	return !model.sourceState().visible() && file != nil && file.text() && (model.fileEditor(file) == nil || file.editorSplit)
 }
 
-func (model *workspaceModel) canOpenFile(name string) bool {
-	if isTextFile(name) {
-		return true
-	}
-	name = path.Base(name)
-	for _, editor := range model.customEditors {
-		if !editor.Hidden && !editor.Disabled && editorMatch(&editor.Action, name) != 0 {
-			return true
-		}
-	}
-	return false
-}
+// Every resource can open a tab; unsupported types show an explicit text choice.
+func (model *workspaceModel) canOpenFile(name string) bool { return name != "" }
 
 func (model *workspaceModel) importEditors(editors []extensions.Editor) {
 	for i := range editors {
@@ -226,12 +217,15 @@ func (document *pencodeCustomDocument) dispatch() {
 	if document.project != nil {
 		root = document.project.Path
 	}
-	message := peb.EditorMessage{Editor: document.provider.LocalID, Path: path.Join(strings.ReplaceAll(root, "\\", "/"), document.file.Path), Content: document.file.content(), Binary: !isTextFile(document.file.Name), Event: document.queue[document.head]}
+	message := peb.EditorMessage{Editor: document.provider.LocalID, Path: path.Join(strings.ReplaceAll(root, "\\", "/"), document.file.Path), Content: document.file.content(), Binary: !document.file.text(), Event: document.queue[document.head]}
+	if message.Binary {
+		message.Content = ""
+	}
 	if !document.process.Submit(message) {
 		document.fail(fmt.Errorf("编辑工具已停止"))
 		return
 	}
-	document.content = message.Content
+	document.content = document.file.content()
 	document.inflight = true
 	document.queue[document.head] = peb.EditorEvent{}
 	document.head = (document.head + 1) % len(document.queue)
@@ -283,12 +277,12 @@ func (model *workspaceModel) pollCustomEditors() bool {
 			}
 			// Undo/reload may have replaced the snapshot during this exchange.
 			// Discard stale changes and send the current host document next.
-			if result.Message.Content != file.content() {
+			if !result.Message.Binary && result.Message.Content != file.content() {
 				document.dispatch()
 				continue
 			}
 			if result.Reply.Content != nil {
-				if !isTextFile(file.Name) {
+				if !file.text() {
 					document.fail(fmt.Errorf("当前仅支持文本文件内容修改"))
 					continue
 				}
@@ -353,7 +347,17 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		return nil
 	}
 	var links map[string]string
-	if err := validateExtensionView(view, func(node *dom.Node, hidden bool) {
+	var searchable *dom.Node
+	template := *view
+	if strings.Contains(view.HTML, "data-pencode-searchable") {
+		template.HTML = renderedFindTemplate(view.HTML, fmt.Sprintf("pencode-extension-editor/%p/find/", document))
+	}
+	if err := validateExtensionView(&template, func(node *dom.Node, hidden bool) {
+		if _, ok := node.Attr("data-pencode-searchable"); ok && !hidden && searchable == nil {
+			if ref, _ := node.Attr("data-ref"); ref != "" {
+				searchable = node
+			}
+		}
 		if node.Data != "a" || hidden {
 			return
 		}
@@ -371,7 +375,7 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	}); err != nil {
 		return err
 	}
-	definition, err := htmlui.DefineScoped(tooltipTemplate(view.HTML, fmt.Sprintf("pencode-extension-editor/%p/", document)), theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
+	definition, err := htmlui.DefineScoped(tooltipTemplate(template.HTML, fmt.Sprintf("pencode-extension-editor/%p/", document)), theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
 		Render: func(context htmlui.RenderContext[*pencodeCustomDocument, struct{}], target *htmlui.View) {
 			for _, event := range (*context.Props).bindings {
 				target.Event(event.Ref, htmlui.EventKind(event.Kind))
@@ -399,6 +403,14 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	}
 	document.definition, document.bindings, document.links = definition, view.Events, links
 	document.view, document.theme = view, theme
+	if searchable != nil {
+		if document.find == nil {
+			document.find = &pencodeRenderedFind{}
+		}
+		document.find.setTree(searchable)
+	} else {
+		document.find = nil
+	}
 	return nil
 }
 
@@ -453,6 +465,7 @@ func (document *pencodeCustomDocument) openLink(href string) {
 func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 	view.RemoveAttr("editor-body", "data-editor-split")
 	view.Attr("editor-split", "hidden", "")
+	view.Attr("editor-open-text", "hidden", "")
 	if model.sourceState().visible() {
 		view.Attr("custom-editor", "hidden", "")
 		view.Attr("editor-tools", "hidden", "")
@@ -473,7 +486,7 @@ func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 	view.Attr("editor-text-icon", "src", model.themedIcon("icons/code.svg", "icon.foreground"))
 	selected := model.fileEditor(file)
 	view.Attr("editor-text", "aria-pressed", strconv.FormatBool(selected == nil))
-	split := file.editorSplit && selected != nil && isTextFile(file.Name)
+	split := file.editorSplit && selected != nil && file.text()
 	view.Attr("editor-split", "aria-pressed", strconv.FormatBool(split))
 	if split {
 		view.Attr("editor-body", "data-editor-split", "")
@@ -485,9 +498,11 @@ func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 	} else {
 		view.Attr("editor-tools", "hidden", "")
 	}
-	if available && isTextFile(file.Name) {
+	if available {
 		view.RemoveAttr("editor-text", "hidden")
-		view.RemoveAttr("editor-split", "hidden")
+		if file.text() {
+			view.RemoveAttr("editor-split", "hidden")
+		}
 	} else {
 		view.Attr("editor-text", "hidden", "")
 		view.Attr("editor-split", "hidden", "")
@@ -498,7 +513,11 @@ func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 		return
 	}
 	view.RemoveAttr("custom-editor", "hidden")
-	message := "没有可用的编辑工具，请安装支持此文件类型的扩展"
+	message := "此文件是二进制文件、使用不支持的文本编码，或没有匹配的编辑器。是否使用代码编辑器打开？"
+	if document == nil {
+		view.RemoveAttr("editor-open-text", "hidden")
+		view.Event("editor-open-text", htmlui.EventClick)
+	}
 	if document != nil {
 		if err := document.syncTheme(); err != nil {
 			document.fail(err)
@@ -525,7 +544,14 @@ func (model *workspaceModel) selectEditor(id string) bool {
 		model.setActiveStatus("请等待编辑工具完成操作")
 		return false
 	}
-	if id == pencodeTextEditor && isTextFile(file.Name) {
+	if id == pencodeTextEditor {
+		if !file.text() {
+			if err := model.requestTextEditor(file); err != nil {
+				model.setActiveStatus(err.Error())
+				return false
+			}
+			return true
+		}
 		file.editorID, file.editorSplit = id, false
 	} else {
 		found := false
@@ -539,6 +565,13 @@ func (model *workspaceModel) selectEditor(id string) bool {
 			return false
 		}
 		file.editorID = id
+		if model.fileIO != nil {
+			for _, job := range model.fileIO.pending {
+				if job.kind == fileReopenText && job.file == file {
+					job.cancel()
+				}
+			}
+		}
 	}
 	file.editorGeneration = 0
 	model.findOpen, model.replaceOpen = false, false
@@ -549,7 +582,7 @@ func (model *workspaceModel) selectEditor(id string) bool {
 // Splitting keeps the native source on the left and the selected view on the right.
 func (model *workspaceModel) toggleEditorSplit() bool {
 	file := model.activeFile()
-	if file == nil || !isTextFile(file.Name) || model.sourceState().visible() {
+	if file == nil || !file.text() || model.sourceState().visible() {
 		return false
 	}
 	if file.editorSplit {
@@ -576,10 +609,14 @@ func (model *workspaceModel) toggleEditorSplit() bool {
 }
 
 func (document *pencodeCustomDocument) close() {
+	if document.model.findPreview == document {
+		document.model.findPreview = nil
+	}
 	document.process.Close()
 	document.images = document.model.replaceExtensionImages(document.images, nil)
 	document.definition, document.view, document.links = nil, nil, nil
 	document.bindings, document.content = nil, ""
+	document.find = nil
 	clear(document.queue[:])
 }
 

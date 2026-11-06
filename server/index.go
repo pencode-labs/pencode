@@ -147,7 +147,7 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 		}
 		name := child.Name()
 		switch name {
-		case ".git", "dist", "node_modules":
+		case ".DS_Store", ".git", "dist", "node_modules":
 			continue
 		}
 		for offset < len(previous) && compareIndexNames(previous[offset].Name, previous[offset].Directory, name, child.IsDir()) < 0 {
@@ -330,18 +330,6 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 			preferred[i] = d.String()
 		}
 
-		ruleCount := d.U32()
-		if ruleCount > 128 {
-			return protocol.ErrProtocol
-		}
-		rules := make([]protocol.PathRule, ruleCount)
-		for i := range rules {
-			pattern, suffix := d.String(), d.U32()
-			if suffix > 1 {
-				return protocol.ErrProtocol
-			}
-			rules[i] = protocol.PathRule{Pattern: pattern, Suffix: suffix != 0}
-		}
 		if err := d.Done(); err != nil {
 			return err
 		}
@@ -356,18 +344,6 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 		}
 		for _, entry := range p.entries {
 			if entry.Directory || query != "" && !containsFold(entry.Path, query) {
-				continue
-			}
-			openable := protocol.IsTextFile(entry.Path)
-			if !openable {
-				for _, rule := range rules {
-					if rule.Suffix && strings.HasSuffix(entry.Name, rule.Pattern) || !rule.Suffix && entry.Name == rule.Pattern {
-						openable = true
-						break
-					}
-				}
-			}
-			if !openable {
 				continue
 			}
 			rank, known := history[entry.Path]

@@ -9,6 +9,7 @@ import (
 
 	"github.com/diiyw/onix/module"
 	"github.com/pencode-labs/pencode/lsp"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 // Plans own immutable snapshots until the foreground validates every target.
@@ -144,7 +145,10 @@ func executeLanguageEdit(j *fileIOJob) error {
 				workspace = w.ID
 			}
 			var err error
-			t.document, t.before, err = j.backend.OpenDocument(j.ctx, workspace, t.relative, true)
+			t.document, t.before, err = j.backend.OpenDocument(j.ctx, workspace, t.relative, protocol.DocumentText)
+			if err == nil && t.document == nil {
+				return fmt.Errorf("文件不是支持的文本文件：%s", t.relative)
+			}
 			if err != nil {
 				return err
 			}

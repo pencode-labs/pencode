@@ -21,6 +21,8 @@ type pencodeTreeView struct {
 	entries, expanded int
 	first, end        int
 	area              ecs.Entity
+	position          float32
+	restore           bool
 	editing           bool
 }
 
@@ -59,6 +61,9 @@ func (project *pencodeProject) treeRange(world *module.Content, model *workspace
 	height, position := float32(900), float32(0)
 	if scroll := world.Ref[scene.UIScroll](project.tree.area); scroll != nil {
 		height, position = scroll.ViewportSize.Y(), scroll.Position.Y()
+	}
+	if project.tree.restore && project.scan == nil {
+		position = min(0, max(project.tree.position, -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)))
 	}
 	c := &model.fileContext
 	editing := c.project == project && c.inline()
@@ -113,6 +118,19 @@ func (model *workspaceModel) syncTreeScroll(world *module.Content) {
 		project := props.Project
 		if node, ok := world.HTMLNode(model.surface, props.TreeID); ok {
 			project.tree.area, _ = node.ScrollContainer()
+		}
+		if scroll := world.Mut[scene.UIScroll](project.tree.area); scroll != nil {
+			if project.tree.restore {
+				// Wait for indexing and layout before the scroll system can clamp
+				// the saved position against the complete content height.
+				if project.scan == nil && scroll.ViewportSize.Y() > 0 && scroll.ContentSize.Y() >= float32(len(project.visibleTreeRows(model))*pencodeTreeRowHeight) {
+					scroll.Position[1] = min(0, max(project.tree.position, -max(0, scroll.ContentSize.Y()-scroll.ViewportSize.Y())))
+					scroll.Momentum[1] = 0
+					project.tree.restore = false
+				}
+			} else {
+				project.tree.position = scroll.Position.Y()
+			}
 		}
 		first, end := project.treeRange(world, model)
 		if first != project.tree.first || end != project.tree.end {

@@ -73,6 +73,9 @@ func writeDistribution(destination, artifact, project string) (resultErr error) 
 			return err
 		}
 	}
+	if err := addFile(filepath.Join(project, "workbench", "fonts", "NERD-FONTS-LICENSE.txt"), "pencode/licenses/NERD-FONTS-LICENSE.txt", add); err != nil {
+		return err
+	}
 	return addFile(filepath.Join(project, "..", "onix", "LICENSE"), "pencode/licenses/ONIX-LICENSE.txt", add)
 }
 

@@ -87,6 +87,28 @@ func TestSourceChangesResize(t *testing.T) {
 			if next := editorContextBounds(t, m, "sc-changes"); next.Width != 190 {
 				t.Fatalf("changes minimum width: %+v", next)
 			}
+			pane := editorContextBounds(t, m, "sc-changes")
+			for _, action := range [][2]string{{"changes", "sc-discard-all"}, {"changes", "sc-stage-all"}, {"staged", "sc-unstage-all"}} {
+				toggle := editorContextBounds(t, m, "sc-group:"+action[0])
+				button := editorContextBounds(t, m, action[1])
+				if button.Width != 22 || button.Height != 22 || button.X < toggle.X+toggle.Width-1 || button.X+button.Width > pane.X+pane.Width-8 {
+					t.Fatalf("bulk action %s overlaps the toggle or leaves the narrow pane: button=%+v toggle=%+v pane=%+v", action[1], button, toggle, pane)
+				}
+			}
+			button := editorContextBounds(t, m, "sc-discard-all")
+			x, y := float64(button.X+button.Width/2)*scale, float64(button.Y+button.Height/2)*scale
+			toggle := editorContextBounds(t, m, "sc-group:changes")
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(toggle.X+toggle.Width/2) * scale, Y: y})
+			languageInteractionStep(t, app)
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: y})
+			languageInteractionStep(t, app)
+			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			if s := m.sourceState(); s.Prompt != "discard-all" || s.Collapsed["group:changes"] {
+				t.Fatal("bulk discard click toggled the group or failed to open confirmation")
+			}
+			m.sourceAction("sc-prompt-cancel")
 			// The cached panel and a rebuilt panel must retain the chosen width.
 			message, _ := world.HTMLNode(m.surface, "sc-message")
 			for _, panel := range []pencodePanel{pencodePanelOutput, pencodePanelSourceControl} {

@@ -186,14 +186,14 @@ func dispatch(s *workspace.Store, f protocol.Frame, e *protocol.Encoder) error {
 		}
 		return s.CloseProject(id)
 	case protocol.DocumentOpen:
-		id, name, text := d.U64(), d.String(), d.U32()
+		id, name, mode := d.U64(), d.String(), protocol.DocumentMode(d.U32())
 		if err := d.Done(); err != nil {
 			return err
 		}
-		if text > 1 {
+		if mode > protocol.DocumentTextForced {
 			return protocol.ErrProtocol
 		}
-		doc, err := s.OpenDocument(id, name, text == 1)
+		doc, err := s.OpenDocument(id, name, mode)
 		if err != nil {
 			return err
 		}

@@ -200,8 +200,8 @@ func TestPencodeEditorAssociationsAndBinarySave(t *testing.T) {
 	if model.fileEditor(file) != nil {
 		t.Fatal("explicit text editor was overridden")
 	}
-	if !model.canOpenFile("image.png") || model.canOpenFile("image.pdf") {
-		t.Fatal("binary associations are incorrect")
+	if !model.canOpenFile("image.png") || !model.canOpenFile("image.pdf") {
+		t.Fatal("unsupported files must open a confirmation tab")
 	}
 	directory := t.TempDir()
 	binary := []byte{0, 255, 254, 42}
@@ -219,7 +219,7 @@ func TestPencodeEditorAssociationsAndBinarySave(t *testing.T) {
 		t.Fatal("binary file changed")
 	}
 	model.removeEditors("extensions/test/")
-	if model.canOpenFile("image.png") {
+	if model.fileEditor(&openFile{Name: "image.png"}) != nil {
 		t.Fatal("removed editor retained its association")
 	}
 }

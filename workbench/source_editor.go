@@ -257,6 +257,8 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 			message = "放弃此文件的未暂存修改？此操作无法撤销。"
 		case "discard-folder":
 			message = "放弃此文件夹下所有文件的未暂存修改？此操作无法撤销。"
+		case "discard-all":
+			message = "放弃所有未暂存修改并删除未跟踪文件？此操作无法撤销。"
 		case "local":
 			message = "使用本地完整文件替换合并结果？结果仍需保存并暂存。"
 		case "incoming":

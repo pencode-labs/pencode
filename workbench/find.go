@@ -44,14 +44,27 @@ func toggleSearchOption(options *textsearch.Options, index int) {
 }
 
 func (model *workspaceModel) openFind(replace bool) {
-	if !model.textEditorActive() {
+	previous := model.findPreview
+	findFocused := model.findOpen && (pencodeControlFocused(model.fontResources, model.surface, "find-query") || pencodeControlFocused(model.fontResources, model.surface, "replace-query"))
+	model.findPreview = nil
+	if document := model.customDocuments[model.activeFile()]; document != nil && document.find != nil &&
+		(!model.textEditorActive() || findFocused && previous == document || !findFocused && model.fontResources != nil && model.fontResources.FocusedControl() != model.editor.control) {
+		model.findPreview = document
+	}
+	if !model.textEditorActive() && model.renderedFind() == nil {
 		return
 	}
 	model.findOpen = true
-	model.replaceOpen = replace
+	model.replaceOpen = replace && model.renderedFind() == nil
 	model.findNeedsFocus = true
 	model.settingsOpen = false
 	model.quickOpen = false
+	if model.renderedFind() != nil {
+		model.findSelection = false
+		model.refreshFindMatches()
+		model.selectFindMatch(model.fontResources)
+		return
+	}
 	if model.findScope.file != model.activeFile() {
 		model.findScope = pencodeFindScope{}
 		model.findSelection = false
@@ -73,6 +86,10 @@ func (model *workspaceModel) openFind(replace bool) {
 }
 
 func (model *workspaceModel) findFromCaret(world *module.Content) {
+	if model.renderedFind() != nil {
+		model.selectFindMatch(world)
+		return
+	}
 	if world != nil && len(model.findMatches) > 0 {
 		if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
 			offset := model.activeFile().snapshotBuffer().ByteOffset(min(field.Anchor, field.Caret))
@@ -90,13 +107,20 @@ func (model *workspaceModel) closeFind(world *module.Content) {
 	model.findOpen = false
 	model.replaceOpen = false
 	model.findNeedsFocus = false
-	if world != nil && world.IsAlive(model.editor.control) {
+	if preview := model.renderedFind(); preview != nil && world != nil {
+		preview.focus(world)
+	} else if world != nil && world.IsAlive(model.editor.control) {
 		world.Focus(model.editor.control)
 	}
 }
 
 func (model *workspaceModel) refreshFindMatches() {
 	content := model.activeSnapshot()
+	preview := model.renderedFind()
+	if preview != nil {
+		content = preview.content
+		model.findSelection, model.replaceOpen = false, false
+	}
 	if model.findSelection && model.findScope.file != model.activeFile() {
 		model.findSelection = false
 	}
@@ -121,7 +145,11 @@ func (model *workspaceModel) refreshFindMatches() {
 		clear(model.findMatches)
 		model.findMatches = model.findMatches[:0]
 	} else {
-		model.findMatches = model.scopedFindMatches(content.String(), model.findMatches, pencodeFindMatchLimit)
+		if preview != nil {
+			model.findMatches = model.findPattern.FindAll(content.String(), model.findMatches, pencodeFindMatchLimit)
+		} else {
+			model.findMatches = model.scopedFindMatches(content.String(), model.findMatches, pencodeFindMatchLimit)
+		}
 	}
 	model.findRevision++
 	if len(model.findMatches) == 0 {
@@ -146,6 +174,10 @@ func (model *workspaceModel) updateFindCountLabel() {
 }
 
 func (model *workspaceModel) selectFindMatch(world *module.Content) {
+	if preview := model.renderedFind(); preview != nil {
+		preview.reveal = true
+		return
+	}
 	if len(model.findMatches) == 0 || world == nil || !world.IsAlive(model.editor.control) {
 		return
 	}
@@ -194,6 +226,9 @@ func (model *workspaceModel) advanceFind(world *module.Content, step int) {
 }
 
 func (model *workspaceModel) replaceFindMatch(world *module.Content, all bool) {
+	if model.renderedFind() != nil {
+		return
+	}
 	model.refreshFindMatches()
 	if len(model.findMatches) == 0 || model.findQuery == "" {
 		return
@@ -235,6 +270,9 @@ func (model *workspaceModel) replaceFindMatch(world *module.Content, all bool) {
 func (model *workspaceModel) handleFindEvent(context *module.ContentEventContext[appProps, appState]) bool {
 	switch context.Ref {
 	case "find-selection":
+		if model.renderedFind() != nil {
+			return true
+		}
 		if model.findSelection {
 			model.findSelection = false
 		} else {
@@ -248,7 +286,7 @@ func (model *workspaceModel) handleFindEvent(context *module.ContentEventContext
 	case "find-preserve":
 		model.findOptions.PreserveCase = !model.findOptions.PreserveCase
 	case "find-toggle-replace":
-		model.replaceOpen = !model.replaceOpen
+		model.replaceOpen = !model.replaceOpen && model.renderedFind() == nil
 	case "find-case", "find-word", "find-regex":
 		switch context.Ref {
 		case "find-case":

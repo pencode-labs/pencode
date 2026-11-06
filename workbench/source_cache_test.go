@@ -58,6 +58,11 @@ func TestSourceControlRenderCache(t *testing.T) {
 	if slices.Contains(s.panelView.clicks, stage) || !slices.Contains(s.panelView.clicks, "sc-group:changes") {
 		t.Fatal("collapsed changes group retained its children or lost its toggle")
 	}
+	for _, action := range []string{"sc-stage-all", "sc-discard-all"} {
+		if !slices.Contains(s.panelView.clicks, action) {
+			t.Fatalf("collapsed changes group lost bulk action %s", action)
+		}
+	}
 	m.sourceAction("sc-group:changes")
 	render()
 	if !slices.Contains(s.panelView.clicks, stage) {

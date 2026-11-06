@@ -687,7 +687,7 @@ func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurface
 			s := c.Props.Surface
 			view.Attr("surface", "id", s.rootID)
 			view.Attr("content", "id", s.contentID)
-			if s.fill && s.ui.Kind == peb.EditorTab {
+			if s.fill && (s.ui.Kind == peb.EditorTab || s.ui.Kind == peb.Panel) {
 				view.Attr("content", "class", "pencode-extension-content pencode-extension-fill")
 			}
 			view.Attr("surface", "aria-label", s.ui.Title)
@@ -709,6 +709,11 @@ func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurface
 				view.Attr("header", "hidden", "")
 			case peb.Popup:
 				role, class = "dialog", "pencode-extension-popup"
+			case peb.Panel:
+				if s.fill {
+					class += " pencode-extension-panel-fill"
+					view.Attr("header", "hidden", "")
+				}
 			case peb.Notification:
 				role, class = "status", "pencode-extension-notification pencode-notification-info"
 				icon, foreground, label, live := "icons/info.svg", "notificationsInfoIcon.foreground", "信息", "polite"

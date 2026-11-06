@@ -92,12 +92,12 @@ func (model *workspaceModel) loadFont(id string) bool {
 	if err != nil {
 		return false
 	}
-	f.regular = text.NewFont(face)
+	f.regular = newPencodeTextFont(face)
 	if f.boldSource.Path == f.source.Path && f.boldSource.Index == f.source.Index {
 		f.bold = f.regular
 	} else if f.boldSource.Path != "" {
 		if face, err := f.boldSource.Load(); err == nil {
-			f.bold = text.NewFont(face)
+			f.bold = newPencodeTextFont(face)
 		}
 	}
 	model.fonts[id] = f
@@ -151,6 +151,9 @@ func (model *workspaceModel) resolveDefaultFont(goos string) string {
 }
 
 func (model *workspaceModel) initializeFonts() error {
+	if _, err := pencodeSymbols(); err != nil {
+		return err
+	}
 	if model.fonts == nil {
 		model.fonts = make(map[string]pencodeFont)
 	}
@@ -290,7 +293,7 @@ func (model *workspaceModel) importFonts(fonts []extensions.Font) {
 		if f := wrappers[face]; f != nil {
 			return f
 		}
-		f := text.NewFont(face)
+		f := newPencodeTextFont(face)
 		wrappers[face] = f
 		return f
 	}

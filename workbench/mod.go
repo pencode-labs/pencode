@@ -269,6 +269,9 @@ func (m *Mod) OnMessage(c *module.Context, message module.Message) error {
 	return nil
 }
 func (m *Mod) Destroy(c *module.Context) error {
+	if m.session.active == m {
+		m.model.saveProjectStates()
+	}
 	if m.installed {
 		m.installed = false
 		delete(m.session.views, m)

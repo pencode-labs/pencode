@@ -18,7 +18,7 @@ type pencodeFindPaint struct {
 
 func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 	text := world.Mut[scene.Text2D](m.editor.text)
-	if !m.findOpen || m.settingsOpen || !m.textEditorActive() || text == nil || m.workbenchTheme == nil || text.Text() != m.activeSnapshot() {
+	if !m.findOpen || m.settingsOpen || !m.textEditorActive() || m.renderedFind() != nil || text == nil || m.workbenchTheme == nil || text.Text() != m.activeSnapshot() {
 		paint.hide(world)
 		return
 	}

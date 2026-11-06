@@ -7,7 +7,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 10 |
+| 4 | 2 | 协议版本，当前 11 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -24,7 +24,7 @@ v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整
 | WorkspaceOpen | path:string | id:u64, path:string, name:string |
 | WorkspaceClose | id:u64 | 空 |
 | DirectoryRead | workspace:u64, path:string | count:u32, {name:string, mode:u32}[] |
-| DocumentOpen | workspace:u64, path:string, text:u32 | id:u64, version:u64, content:string |
+| DocumentOpen | workspace:u64, path:string, mode:u32 | id:u64, version:u64, content:string |
 | DocumentChange | id:u64, baseVersion:u64, start:u32, end:u32, text:string | version:u64 |
 | DocumentSave | id:u64, version:u64 | 空 |
 | DocumentClose | id:u64 | 空 |
@@ -34,7 +34,7 @@ v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整
 | ResourceRename | workspace:u64, from:string, to:string | 空 |
 | ResourceTransfer | source:u64, target:u64, from:string, directory:string, flags:u32 | destination:string |
 
-text/directory 只接受 0/1；ResourceTransfer flags 的 bit 0 表示移动，bit 1 表示碰撞时生成副本名称。DocumentMove 在文件系统移动完成后重定位打开的文档，保留其未保存缓冲和磁盘基线。二进制文件打开只校验普通文件，返回零文档 ID 和空内容。
+directory 只接受 0/1；DocumentOpen mode 接受 0（路径）、1（检查文本）、2（用户确认以文本打开）；ResourceTransfer flags 的 bit 0 表示移动，bit 1 表示碰撞时生成副本名称。DocumentMove 在文件系统移动完成后重定位打开的文档，保留其未保存缓冲和磁盘基线。二进制文件打开只校验普通文件，返回零文档 ID 和空内容。
 
 路径相对于工作区，采用 `/`，禁止绝对路径、`..`、反斜杠和 NUL；DirectoryRead 额外允许 `.`。工作区根目录由服务端规范化并通过 os.Root 持有；WorkspaceOpen 的 `~` 和 `~/...` 在服务端展开，绝不使用 GUI 的 home。文档初始版本为 1，每个有效 Change 递增一次；范围为 UTF-8 字节边界。每份 GUI 增量作为一个 DocumentChange 发送，可包含多个 Data 帧，只在完整请求到达后原子应用并确认一次版本；合并 GUI 编辑时不得跳过版本确认。文档预算为单份小于 64 MiB、每连接文本总量 128 MiB、128 个文档及 32 个工作区；这些是文本预算，不等于进程 RSS 上限。
 
@@ -74,7 +74,7 @@ IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功�
 | IndexOpen | previous:u64（0：完整扫描；非零：基于该索引校准，保留其查询句柄直到 IndexClose） | index:u64 |
 | IndexNext | index:u64, offset:u32 | done:u32, warning:string, count:u32, {path:string, name:string, depth:u32, directory:u32}[] |
 | IndexClose | index:u64 | 空 |
-| PathSearch | index:u64, query:string, preferred:string[], rules:{pattern:string, suffix:u32}[] | paths:string[] |
+| PathSearch | index:u64, query:string, preferred:string[] | paths:string[] |
 | SyntaxAnalyze | parser:u64, baseVersion:u64, filename:string, start:u32, end:u32, insert:string | version:u64, language:string, captures（见下） |
 | SyntaxRelease | parser:u64 | 空 |
 | ExtensionList | 空 | directory:string, count:u32, ExtensionInfo[] |
@@ -103,7 +103,7 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 
 转发状态仅保留在当前会话内。临时断线重连保留当前会话的端口、实际本地端口、标签、协议与可见性；重新打开工作区时重新检测监听端口。连接断开、切换工作区或退出时关闭本地监听及活跃 TCP 连接。Ports 表头固定，只有端口列表纵向滚动。
 
-索引每页最多 256 项，每工作区最多 262144 项，目录深度最多 256；不递归符号链接，跳过 `.git`、`dist`、`node_modules`。同根的新索引替换旧扫描。PathSearch 按历史顺序优先、随后按树顺序返回最多 128 个可打开文件，支持不区分大小写的子串和自定义编辑器规则；扫描期间可以查询已索引部分。
+索引每页最多 256 项，每工作区最多 262144 项，目录深度最多 256；不递归符号链接，跳过 `.git`、`dist`、`node_modules`。同根的新索引替换旧扫描。PathSearch 按历史顺序优先、随后按树顺序返回最多 128 个文件（包括需确认打开的未知或二进制类型），支持不区分大小写的子串；扫描期间可以查询已索引部分。
 
 解析会话由客户端分配 ID，每连接最多 8 个，初始 baseVersion 为 0。增量范围采用 UTF-8 字节边界；结果只包含语言和 capture，不含颜色、字体、HTML、ECS 或 GPU 数据。captures 编码为 `prefix:u32, removed:u32, inserted:u32 + {start:u32, end:u32, captureID:u32, [name:string, scopes:string]}[inserted]`。保留上次结果的前 prefix 项，将之后的 removed 项替换为传回的 inserted 项，并将剩余后缀的起止位置加上本次源码字节长度变化。服务端比较解析后的真实 capture，允许多行注释等语法变化扩大替换范围；初次返回完整列表。名称表在解析会话内保留，captureID 从零递增；ID 首次出现时紧跟类别名称和空格分隔的完整 TextMate scope 栈，后续复用 ID。释放会话后清空 capture 和名称表。本地按主题和 capture 映射着色，主题切换不发送解析请求。
 
@@ -114,3 +114,5 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 资源单份最大 32 MiB，一个扩展最多缓存 64 MiB，连接内扩展缓存合计最多 128 MiB。ExtensionResources 的 limit 是每份资源的字节限制，最多请求 4096 条不重复路径；返回请求的有序前缀，响应目标大小为 16 MiB，单份超过此值时单独返回。客户端继续请求剩余路径直到取完。GUI 缓存已验证的图片；每视图最多 64 张，单张 4 MiB、总计 8 MiB / 4 MP，每边不超过 2048 像素。自定义编辑器 SVG 按原始尺寸栅格化，避免图标采样倍率扩大图片预算。
 
 ExtensionLanguageProcess 的 root 必须是本连接工作区，可执行程序中的相对路径由服务端基于已发布的扩展目录解析，cwd 为工作区。action 进程允许空 root，生命周期属于连接。
+
+DocumentOpen 的 mode：`0` 仅检查文件路径，供二进制查看器使用；`1` 检查文本内容，遇到 NUL 或无效 UTF-8 时返回空文档（id=0）；`2` 表示用户明确选择代码编辑器，读取内容并将无效 UTF-8 替换为 U+FFFD。路径查看器和未确认的文件不会创建文本模型。

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"github.com/pencode-labs/pencode/protocol"
 	"io"
 	"net"
 	"os"
@@ -26,7 +27,7 @@ func TestDocumentSaveSnapshotRetainsNewerEdits(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	doc, _, err := c.OpenDocument(ctx, w.ID, "text", true)
+	doc, _, err := c.OpenDocument(ctx, w.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +98,7 @@ func TestDocumentReleaseDoesNotWaitForTransport(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(w.Path, "text"), []byte("disk"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	doc, _, err := c.OpenDocument(t.Context(), w.ID, "text", true)
+	doc, _, err := c.OpenDocument(t.Context(), w.ID, "text", protocol.DocumentText)
 	if err != nil {
 		t.Fatal(err)
 	}

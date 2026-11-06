@@ -37,7 +37,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 - 在本仓库旁准备名为 `onix` 的 Onix 源码目录。当前 `go.mod` 使用 `replace github.com/diiyw/onix => ../onix`。
 - Onix 桌面构建所需的平台原生开发库，具体见 Onix 源码中的 `docs/desktop-builds.md`。
 - Git 功能需要系统 `git`，SSH 连接需要 OpenSSH `ssh`。Go 扩展会自动安装所需工具；其他语言服务器由对应扩展决定。
-- GUI 所在设备需安装可用字体，Pencode 不随程序打包字体。
+- GUI 所在设备需安装可用的文本字体。Pencode 内置 Symbols Nerd Font Mono，为 Shell 提示符图标提供字形回退。
 - Linux 图片粘贴需要 Wayland 下的 `wl-paste`（由 `wl-clipboard` 提供）或 X11 下的 `xclip`；Windows 和 macOS 使用原生剪贴板 API。
 
 预期目录布局：
@@ -139,6 +139,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 仓库包含以下扩展，各扩展目录提供对应许可证和构建说明：
 
+- [Docker 管理器](https://github.com/pencode-labs/docker)：从右上角管理容器列表，启动、停止、重启容器并查看自动刷新的日志。
 - [Go 语言工具](https://github.com/pencode-labs/go)：提供 Go 语言和调试支持，缺少 `gopls`、Delve 时自动安装。
 - [Markdown 预览](https://github.com/pencode-labs/markdown-preview)：只读预览，支持与宿主源码编辑器双栏显示。
 - [Material 文件图标](https://github.com/pencode-labs/material-icons)：文件图标主题。
@@ -177,4 +178,4 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 Pencode 使用 [MIT 许可证](LICENSE)。
 
-项目基于 Onix、[textmate-go](https://github.com/eugenioenko/textmate-go) 等 Go 库构建。TextMate grammar 的第三方声明随 Onix 语法资源一起嵌入。随仓库分发的第三方资源保留各自许可证，包括 [Codicons](resources/icons/CODICONS-LICENSE.txt)、[Lucide](resources/icons/LUCIDE-LICENSE.txt) 和 [Material 文件图标](extensions/material-icons/resources/LICENSE.txt)。再分发这些资源时，请保留对应声明。
+项目基于 Onix、[textmate-go](https://github.com/eugenioenko/textmate-go) 等 Go 库构建。TextMate grammar 的第三方声明随 Onix 语法资源一起嵌入。随仓库分发的第三方资源保留各自许可证，包括 [Codicons](resources/icons/CODICONS-LICENSE.txt)、[Lucide](resources/icons/LUCIDE-LICENSE.txt)、[Symbols Nerd Font Mono](workbench/fonts/NERD-FONTS-LICENSE.txt) 和 [Material 文件图标](extensions/material-icons/resources/LICENSE.txt)。再分发这些资源时，请保留对应声明。

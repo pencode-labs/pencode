@@ -43,6 +43,8 @@ var pencodeExtraShortcuts = []pencodeCommandBinding{
 	{"editor-copy", "复制", "editor", "Primary+C"},
 	{"editor-paste", "粘贴", "editor", "Primary+V"},
 	{"editor-select-all", "全选", "editor", "Primary+A"},
+	{"editor-go-back", "返回上次位置", "editor", "Primary+Left"},
+	{"editor-go-forward", "前往下次位置", "editor", "Primary+Right"},
 	{"debug-start", "启动调试 / 继续", "global", "F5"},
 	{"debug-stop", "停止调试", "global", "Shift+F5"},
 	{"debug-breakpoint", "切换断点", "global", "F9"},

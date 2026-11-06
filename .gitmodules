@@ -22,3 +22,7 @@
 	path = extensions/php
 	url = git@github.com:pencode-labs/php.git
 	branch = main
+[submodule "extensions/docker"]
+	path = extensions/docker
+	url = git@github.com:pencode-labs/docker.git
+	branch = main

@@ -104,7 +104,7 @@ func openPencodeDocument(backend *client.Client, root, relative string) (*client
 	if err != nil {
 		return nil, "", err
 	}
-	return backend.OpenDocument(ctx, w.ID, relative, isTextFile(relative))
+	return backend.OpenDocument(ctx, w.ID, relative, protocol.FileMode(relative))
 }
 
 func (p *pencodeProject) openDocument(relative string) (*client.Document, string, error) {
@@ -113,5 +113,5 @@ func (p *pencodeProject) openDocument(relative string) (*client.Document, string
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return p.backend.OpenDocument(ctx, p.workspace.ID, relative, isTextFile(relative))
+	return p.backend.OpenDocument(ctx, p.workspace.ID, relative, protocol.FileMode(relative))
 }

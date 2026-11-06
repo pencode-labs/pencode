@@ -245,10 +245,11 @@ func (binding pencodeKeybinding) matches(state *input.State, goos string) bool {
 	if binding.Key == 0 || state == nil || !state.KeyPressed(binding.Key) {
 		return false
 	}
-	control := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
-	super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
-	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
-	alt := state.KeyHeld(input.KeyLeftAlt) || state.KeyHeld(input.KeyRightAlt)
+	modifiers := state.KeyModifiers(binding.Key)
+	control := modifiers&input.ModifierControl != 0
+	super := modifiers&input.ModifierSuper != 0
+	shift := modifiers&input.ModifierShift != 0
+	alt := modifiers&input.ModifierAlt != 0
 	wantControl := binding.Control || binding.Primary && goos != "darwin"
 	wantSuper := binding.Super || binding.Primary && goos == "darwin"
 	return control == wantControl && super == wantSuper && shift == binding.Shift && alt == binding.Alt
@@ -676,7 +677,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			return true
 		}
 	}
-	if model.textEditorActive() {
+	if model.textEditorActive() || model.renderedFind() != nil {
 		if model.commandMatches("find-previous", state, goos) {
 			model.advanceFind(world, -1)
 			return true
@@ -690,7 +691,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		model.openFolderSearch(model.activeProjectState(), "", model.commandMatches("folder-replace", state, goos))
 		return true
 	}
-	if model.editorClipboardShortcut(world, state, goos) {
+	if model.editorNavigationShortcut(world, state, goos) || model.editorClipboardShortcut(world, state, goos) {
 		return true
 	}
 	if model.handleLanguageKeys(world, state) {

@@ -368,7 +368,7 @@ func (model *workspaceModel) syncLanguageDocuments() {
 	}
 	visit := func(root string, project *pencodeProject, files map[string]*openFile) {
 		for _, file := range files {
-			if !isTextFile(file.Name) {
+			if !file.text() {
 				continue
 			}
 			doc := state.documents[file]

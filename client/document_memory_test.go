@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/pencode-labs/pencode/protocol"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -29,7 +30,7 @@ func TestUneditedDocumentsMemoryBudget(t *testing.T) {
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	for i, name := range names {
-		doc, _, err := c.OpenDocument(t.Context(), w.ID, name, true)
+		doc, _, err := c.OpenDocument(t.Context(), w.ID, name, protocol.DocumentText)
 		if err != nil {
 			t.Fatal(err)
 		}

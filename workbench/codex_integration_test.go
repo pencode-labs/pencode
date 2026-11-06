@@ -4,7 +4,12 @@ package workbench
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"math"
 	"net"
 	"os"
@@ -29,6 +34,19 @@ import (
 
 func TestCodexStatusBarOpensWorkspaceWhenCLIUnavailable(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", filepath.Join(t.TempDir(), "missing-codex"))
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexPastedImageThumbnailPreviewAndRemove(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", filepath.Join(t.TempDir(), "missing-codex"))
+	t.Setenv("PENCODE_CODEX_IMAGE_PREVIEW", "1")
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexSentImageOpensPreview(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
+	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
+	t.Setenv("PENCODE_CODEX_SENT_IMAGE", "1")
 	testCodexStatusBarWorkspace(t, "")
 }
 
@@ -249,6 +267,162 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			return ok
 		})
 		return id
+	}
+	if os.Getenv("PENCODE_CODEX_VIEWED_IMAGE") != "" {
+		phase = "open image viewing history"
+		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
+		editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
+		wait(func() bool { return strings.Contains(surface.view.HTML, "已查看 2 张图像") })
+		if strings.Contains(surface.view.HTML, `data-ref="view-image/`) {
+			t.Fatal("viewed images must start collapsed")
+		}
+		phase = "expand viewed images"
+		editorContextClick(t, app, model, state, waitControl(surface, "activity/view-one"))
+		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="view-image/view-two"`) })
+		openID := waitControl(surface, "view-image/view-one")
+		bounds := editorContextBounds(t, model, openID)
+		if bounds.Width != 80 || bounds.Height != 80 {
+			t.Fatalf("viewed thumbnail has invalid bounds: %+v", bounds)
+		}
+		phase = "open viewed image preview"
+		editorContextClick(t, app, model, state, openID)
+		wait(func() bool {
+			return model.actions.ui.overlay != nil && model.actions.ui.overlay.ui.ID == "image-preview"
+		})
+		if len(model.actions.ui.overlay.images) == 0 {
+			t.Fatal("viewed image preview has no image assets")
+		}
+		phase = "close preview and collapse viewed images"
+		editorContextClick(t, app, model, state, model.actions.ui.overlay.closeID)
+		wait(func() bool { return model.actions.ui.overlay == nil })
+		editorContextClick(t, app, model, state, waitControl(surface, "activity/view-one"))
+		wait(func() bool { return !strings.Contains(surface.view.HTML, `data-ref="view-image/`) })
+		return
+	}
+	if os.Getenv("PENCODE_CODEX_IMAGE_PREVIEW") == "1" || os.Getenv("PENCODE_CODEX_SENT_IMAGE") == "1" {
+		if os.Getenv("PENCODE_CODEX_SENT_IMAGE") == "1" {
+			phase = "open saved conversation"
+			wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
+			editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
+			wait(func() bool { return strings.Contains(surface.view.HTML, "Stored conversation") })
+		}
+		phase = "paste image"
+		image := image.NewNRGBA(image.Rect(0, 0, 320, 200))
+		image.SetNRGBA(0, 0, color.NRGBA{R: 255, A: 255})
+		var data bytes.Buffer
+		if err := png.Encode(&data, image); err != nil {
+			t.Fatal(err)
+		}
+		surface.send(peb.EditorEvent{Kind: "paste", Ref: "prompt", InputType: "image/png", Data: "data:image/png;base64," + base64.StdEncoding.EncodeToString(data.Bytes()), Value: "保留草稿"}, "")
+		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="preview-image/0"`) })
+		openID := waitControl(surface, "preview-image/0")
+		removeID := waitControl(surface, "remove-image/0")
+		thumb := editorContextBounds(t, model, openID)
+		remove := editorContextBounds(t, model, removeID)
+		if thumb.Width < 70 || thumb.Height < 54 || remove.Width < 16 || remove.Height < 16 || remove.X < thumb.X || remove.X+remove.Width > thumb.X+thumb.Width {
+			t.Fatalf("thumbnail or remove control has invalid bounds: thumbnail=%+v remove=%+v", thumb, remove)
+		}
+		icon := editorContextBounds(t, model, "pencode-extension-codex-remove-image-icon-0")
+		if math.Abs(float64(icon.X+icon.Width/2-remove.X-remove.Width/2)) > .5 || math.Abs(float64(icon.Y+icon.Height/2-remove.Y-remove.Height/2)) > .5 {
+			t.Fatalf("remove icon is not centered: icon=%+v button=%+v", icon, remove)
+		}
+		checkImage := func(s *pencodeExtensionSurface, width, height int) {
+			t.Helper()
+			provider := model.session.active.icons
+			for source := range s.images {
+				if !strings.Contains(source, "/inline/") {
+					continue
+				}
+				texture, ok := provider.ResolveHTMLImage(source, 0, 0)
+				if !ok || texture.LogicalWidth() != width || texture.LogicalHeight() != height {
+					t.Fatal("image texture was not loaded at the expected size", source)
+				}
+				for _, access := range app.World.Query[scene.Sprite2D]().All {
+					if access.Ref().Texture == texture {
+						return
+					}
+				}
+				for _, access := range app.World.Query[scene.SpriteLayers2D]().All {
+					for _, layer := range access.Ref().Layers {
+						if layer.Visible && layer.Sprite.Texture == texture && layer.Sprite.Width > 0 && layer.Sprite.Height > 0 {
+							return
+						}
+					}
+				}
+				t.Fatal("image texture has no rendered image")
+			}
+			t.Fatal("inline image asset was not published")
+		}
+		checkImage(surface, 160, 100)
+		phase = "open centered image preview"
+		editorContextClick(t, app, model, state, openID)
+		wait(func() bool {
+			return model.actions.ui.overlay != nil && model.actions.ui.overlay.ui.ID == "image-preview"
+		})
+		preview := model.actions.ui.overlay
+		for range 3 {
+			languageInteractionStep(t, app)
+		}
+		checkImage(preview, 320, 200)
+		bounds := editorContextBounds(t, model, preview.rootID)
+		viewport, _ := app.World.GetResource[scene.ViewportSize]()
+		if math.Abs(float64(bounds.X+bounds.Width/2)-float64(viewport.Width)/2) > 2 || math.Abs(float64(bounds.Y+bounds.Height/2)-float64(viewport.Height)/2) > 2 {
+			t.Fatalf("image preview is not centered: bounds=%+v viewport=%+v", bounds, viewport)
+		}
+		phase = "close image preview"
+		editorContextClick(t, app, model, state, preview.closeID)
+		wait(func() bool { return model.actions.ui.overlay == nil })
+		if !strings.Contains(surface.view.HTML, `data-ref="preview-image/0"`) {
+			t.Fatal("closing preview removed the attachment")
+		}
+		if os.Getenv("PENCODE_CODEX_SENT_IMAGE") == "1" {
+			phase = "send image and display above the message"
+			editorContextClick(t, app, model, state, waitControl(surface, "send"))
+			wait(func() bool {
+				return strings.Contains(surface.view.HTML, `data-ref="preview-message-image/0/user"`) && strings.Contains(surface.view.HTML, `data-ref="accept/100"`)
+			})
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
+			if strings.Contains(surface.view.HTML, `data-ref="preview-image/0"`) {
+				t.Fatal("successful send retained the draft image")
+			}
+			openID = waitControl(surface, "preview-message-image/0/user")
+			thumb = editorContextBounds(t, model, openID)
+			if thumb.Width != 80 || thumb.Height != 80 {
+				t.Fatalf("sent thumbnail has invalid bounds: %+v", thumb)
+			}
+			checkImage(surface, 160, 100)
+			phase = "open sent image preview"
+			// The transcript has scrolled; click the painted control's position.
+			control, _ := model.fontResources.HTMLControl(model.surface, openID)
+			transform := model.fontResources.Ref[scene.UIGlobalTransform](control)
+			x := float64(transform.Matrix[12] + transform.Matrix[0]*thumb.Width/2)
+			y := float64(transform.Matrix[13] + transform.Matrix[5]*thumb.Height/2)
+			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			wait(func() bool {
+				return model.actions.ui.overlay != nil && model.actions.ui.overlay.ui.ID == "image-preview"
+			})
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
+			checkImage(model.actions.ui.overlay, 320, 200)
+			return
+		}
+		phase = "remove image"
+		editorContextClick(t, app, model, state, removeID)
+		wait(func() bool { return !strings.Contains(surface.view.HTML, `data-ref="preview-image/0"`) })
+		if !strings.Contains(surface.view.HTML, "保留草稿</textarea>") {
+			t.Fatal("removing the image lost the draft")
+		}
+		for source := range model.extensionImages {
+			if strings.Contains(source, "/inline/") {
+				t.Fatal("removing the last image retained its asset", source)
+			}
+		}
+		return
 	}
 	if gate := os.Getenv("PENCODE_CODEX_LIVE_CHANGES_GATE"); gate != "" {
 		phase = "open saved conversation"

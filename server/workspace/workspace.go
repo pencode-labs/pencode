@@ -3,6 +3,7 @@
 package workspace
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
@@ -132,24 +133,49 @@ func openFile(root *os.Root, name string, text bool) (*os.File, fs.FileInfo, err
 	return f, info, nil
 }
 
-func read(root *os.Root, name string, text bool) (string, [sha256.Size]byte, error) {
-	f, info, err := openFile(root, name, text)
+var errUnsupportedText = errors.New("binary or unsupported text encoding")
+
+func read(root *os.Root, name string, mode protocol.DocumentMode) (string, [sha256.Size]byte, error) {
+	f, info, err := openFile(root, name, mode != protocol.DocumentFile)
 	if err != nil {
 		return "", [sha256.Size]byte{}, err
 	}
 	defer f.Close()
-	if !text {
+	if mode == protocol.DocumentFile {
 		return "", [sha256.Size]byte{}, nil
 	}
 	buffer := fileBuffers.Get().(*fileBuffer)
 	defer fileBuffers.Put(buffer)
+	// Reject common binary formats before allocating a file-sized string.
+	if mode == protocol.DocumentText {
+		n, err := f.ReadAt(buffer.data[:512], 0)
+		if err != nil && err != io.EOF {
+			return "", [sha256.Size]byte{}, err
+		}
+		if bytes.IndexByte(buffer.data[:n], 0) >= 0 {
+			return "", [sha256.Size]byte{}, errUnsupportedText
+		}
+	}
 	var b strings.Builder
 	b.Grow(int(info.Size()))
 	digest, err := buffer.read(f, &b)
-	return b.String(), digest, err
+	if err != nil {
+		return "", digest, err
+	}
+	content := b.String()
+	if mode == protocol.DocumentText && (strings.IndexByte(content, 0) >= 0 || !utf8.ValidString(content)) {
+		return "", digest, errUnsupportedText
+	}
+	if mode == protocol.DocumentTextForced {
+		content = strings.ToValidUTF8(content, "\uFFFD")
+		if len(content) > protocol.MaxMessage-1024 {
+			return "", digest, failure(protocol.Invalid, "解码后的文本超过文档预算")
+		}
+	}
+	return content, digest, nil
 }
 
-func (s *Store) OpenDocument(projectID uint64, name string, text bool) (protocol.Document, error) {
+func (s *Store) OpenDocument(projectID uint64, name string, mode protocol.DocumentMode) (protocol.Document, error) {
 	p := s.projects[projectID]
 	if p == nil {
 		return protocol.Document{}, failure(protocol.NotFound, "工作区已关闭")
@@ -157,14 +183,20 @@ func (s *Store) OpenDocument(projectID uint64, name string, text bool) (protocol
 	if !validPath(name) {
 		return protocol.Document{}, failure(protocol.Invalid, "无效的工作区资源路径")
 	}
-	if text && len(s.documents) >= 128 {
+	if mode > protocol.DocumentTextForced {
+		return protocol.Document{}, protocol.ErrProtocol
+	}
+	if mode != protocol.DocumentFile && len(s.documents) >= 128 {
 		return protocol.Document{}, failure(protocol.Busy, "打开文档数量超过连接预算")
 	}
-	content, digest, err := read(p.root, name, text)
+	content, digest, err := read(p.root, name, mode)
+	if err == errUnsupportedText {
+		return protocol.Document{}, nil
+	}
 	if err != nil {
 		return protocol.Document{}, err
 	}
-	if !text {
+	if mode == protocol.DocumentFile {
 		return protocol.Document{}, nil
 	}
 	if s.bytes+len(content) > 128<<20 {
@@ -291,7 +323,7 @@ func (s *Store) Move(id, projectID uint64, name string) error {
 	if !validPath(name) {
 		return failure(protocol.Invalid, "无效的工作区资源路径")
 	}
-	_, _, err := read(p.root, name, false)
+	_, _, err := read(p.root, name, protocol.DocumentFile)
 	if err != nil {
 		return err
 	}

@@ -130,7 +130,7 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 			}
 			return nil
 		}
-		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || !protocol.IsTextFile(name) {
+		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() || protocol.IsBinaryFile(name) {
 			return nil
 		}
 		content, opened := documents[name]
@@ -173,7 +173,7 @@ func (s *services) searchText(ctx context.Context, root string, d *protocol.Deco
 			break
 		}
 		if directory == "." || strings.HasPrefix(name, directory+"/") {
-			if protocol.IsTextFile(path.Base(name)) {
+			if !protocol.IsBinaryFile(path.Base(name)) {
 				add(name, content)
 			}
 		}

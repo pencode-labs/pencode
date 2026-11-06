@@ -410,6 +410,9 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 }
 
 func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventContext[appProps, appState]) bool {
+	if model.handleUpdateEvent(context.Ref) {
+		return true
+	}
 	model.ensureSettings()
 	if model.handleKeymapEvent(context) {
 		return true
@@ -418,6 +421,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		if context.Ref == definition.ref {
 			model.settingsOpen = true
 			model.settingsShortcuts = true
+			model.settingsAbout = false
 			model.settingsExtensions = false
 			model.capturingShortcut = true
 			model.captureAction = definition.id
@@ -441,6 +445,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		model.capturingShortcut = false
 		return true
 	case "settings-extensions-nav":
+		model.settingsAbout = false
 		model.settingsExtensionsExpanded = !model.settingsExtensionsExpanded
 		model.settingsExtensions, model.settingsShortcuts, model.capturingShortcut = true, false, false
 		model.settingsFeedback = ""
@@ -448,9 +453,10 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 	case "reset-extension-settings":
 		model.resetExtensionSettings()
 		return true
-	case "settings-appearance-nav", "settings-shortcuts-nav":
+	case "settings-appearance-nav", "settings-shortcuts-nav", "settings-about-nav":
 		model.settingsExtensions = false
 		model.settingsShortcuts = context.Ref == "settings-shortcuts-nav"
+		model.settingsAbout = context.Ref == "settings-about-nav"
 		model.capturingShortcut = false
 		model.settingsFeedback = ""
 		return true

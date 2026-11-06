@@ -78,6 +78,8 @@ make run
 
 推送 `v*` tag 会触发[桌面发布工作流](.github/workflows/release.yml)，分别构建 Linux、Windows、macOS 的 amd64 和 arm64 版本，校验后将六个分发包及 `SHA256SUMS` 上传到 GitHub Release。发布前请将仓库的 Actions 变量 `ONIX_REF` 设置为兼容的 Onix commit 或 tag，默认使用 `main`。手动运行工作流只生成可下载的构建产物，不创建 Release。构建依赖 Onix 文档列出的原生开发库；Windows 使用 MinGW-w64（LLVM MinGW 支持 arm64）。macOS 应用使用临时签名，尚未配置 Developer ID 签名和公证。
 
+设置 → 关于提供“检查更新”“下载更新”和“安装并重启”。程序读取 GitHub tag 对应的 Release，按本机系统与架构选择发行包，校验 SHA-256 后暂存完整包；重启沿用未保存文件确认流程，替换或启动进程失败时恢复旧包。正式版跳过预发行版。自动更新要求保留含 `pencode-version` 的完整发行目录，并对其父目录有写权限；旧发行包需先手动升级一次。
+
 WebSocket 直连时，先在远端启动服务：
 
 ```sh

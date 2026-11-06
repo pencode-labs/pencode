@@ -242,7 +242,11 @@ func (model *workspaceModel) collectCloseTargets(project *pencodeProject) {
 }
 
 func (model *workspaceModel) requestWindowClose() bool {
-	return model.beginClose(pencodeCloseWindow, nil, "")
+	ready := model.beginClose(pencodeCloseWindow, nil, "")
+	if ready && model.session != nil && model.session.updates != nil && model.session.updates.requested {
+		model.session.updates.approved = true
+	}
+	return ready
 }
 
 func (model *workspaceModel) showCloseTarget() {
@@ -258,6 +262,9 @@ func (model *workspaceModel) showCloseTarget() {
 }
 
 func (model *workspaceModel) clearCloseRequest() {
+	if model.session != nil && model.session.updates != nil {
+		model.session.updates.requested = false
+	}
 	targets := model.closing.targets
 	clear(targets)
 	model.closing = pencodeCloseRequest{targets: targets[:0]}
@@ -297,6 +304,9 @@ func (model *workspaceModel) finishClose() {
 	request := &model.closing
 	action, project, relative := request.action, request.project, request.path
 	editorTabs := request.editorTabs
+	if action == pencodeCloseWindow && model.session != nil && model.session.updates != nil && model.session.updates.requested {
+		model.session.updates.approved = true
+	}
 	model.clearCloseRequest()
 	if editorTabs != nil {
 		model.finishEditorClose(editorTabs)

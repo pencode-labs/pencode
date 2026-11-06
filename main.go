@@ -13,6 +13,7 @@ import (
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/internal/environment"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
+	"github.com/pencode-labs/pencode/internal/updater"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
 	"github.com/pencode-labs/pencode/transport"
@@ -20,6 +21,13 @@ import (
 )
 
 func main() {
+	if handled, err := updater.RunHelper(); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	environment.Configure()
 	if handled, err := remote.RunAskpass(); handled {
 		if err != nil {
@@ -74,7 +82,12 @@ func main() {
 		panic(err)
 	}
 	session := workbench.NewSession(backend)
-	defer session.Close()
+	defer func() {
+		session.Close()
+		if err := session.FinishUpdate(); err != nil {
+			fmt.Fprintln(os.Stderr, "启动更新失败：", err)
+		}
+	}()
 	dialer := connection.DefaultDialer(executable, session.Output.Channel("SSH"))
 	if serverDirectory != "" {
 		dialer.SSH.ServerDirectory = serverDirectory

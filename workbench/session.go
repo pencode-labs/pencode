@@ -18,6 +18,7 @@ import (
 // Session keeps the foreground model available while preloaded views own their
 // HTML, editor entities and resource readers independently.
 type Session struct {
+	updates         *pencodeUpdates
 	quickHistory    *pencodeQuickHistory
 	localBackend    *client.Client
 	connection      *pencodeConnection

@@ -69,7 +69,7 @@ func release(output, version string) error {
 	}
 	name := fmt.Sprintf("pencode-%s-%s-%s%s", version, runtime.GOOS, runtime.GOARCH, extension)
 	destination := filepath.Join(output, name)
-	if err := writeDistribution(destination, artifact, project); err != nil {
+	if err := writeDistribution(destination, artifact, project, version); err != nil {
 		return err
 	}
 	file, err := os.Open(destination)

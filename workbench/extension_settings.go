@@ -165,6 +165,7 @@ func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencod
 		HandleEvent: func(c *module.ContentEventContext[pencodeSettingNavProps, struct{}]) {
 			m := c.Props.Model
 			m.settingsExtensions, m.settingsShortcuts, m.capturingShortcut = true, false, false
+			m.settingsAbout = false
 			m.settingsExtension, m.settingsFeedback = c.Props.Group.id, ""
 			markPencodeRootDirtyByModel(c.World, m)
 		},

@@ -136,6 +136,9 @@ func (m *Mod) Enter(c *module.Context, _ module.SceneStartup) error {
 func (m *Mod) Resume(c *module.Context, v module.SceneStartup) error { return m.Enter(c, v) }
 
 func (m *Mod) Update(c *module.Context, _ module.Tick) error {
+	if m.model.pollUpdates() {
+		markPencodeRootDirtyByModel(c.Content(), m.model)
+	}
 	if m.model.pollSettingsWrites() {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}

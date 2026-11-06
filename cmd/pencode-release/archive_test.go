@@ -90,7 +90,7 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 				extension = format
 			}
 			output := filepath.Join(root, "distribution"+extension)
-			if err := writeDistribution(output, artifact, root); err != nil {
+			if err := writeDistribution(output, artifact, root, "v1.0.0"); err != nil {
 				t.Fatal(err)
 			}
 			seen := map[string]bool{}
@@ -103,6 +103,9 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 				if expected, ok := payloads[header.Name]; ok && string(content) != expected {
 					t.Errorf("%s: payload changed", header.Name)
 				}
+				if header.Name == "pencode/pencode-version" && string(content) != "v1.0.0\n" {
+					t.Errorf("release version: %q", content)
+				}
 				if header.Name == binary && (format != ".app" || runtime.GOOS != "windows") && header.Mode&0o111 == 0 {
 					t.Error("executable mode lost")
 				}
@@ -110,7 +113,7 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{binary, catalog, data, "pencode/LICENSE", "pencode/README.md", "pencode/README.zh-CN.md", "pencode/licenses/CODICONS-LICENSE.txt", "pencode/licenses/LUCIDE-LICENSE.txt", "pencode/licenses/NERD-FONTS-LICENSE.txt", "pencode/licenses/ONIX-LICENSE.txt"} {
+			for _, name := range []string{binary, catalog, data, "pencode/pencode-version", "pencode/LICENSE", "pencode/README.md", "pencode/README.zh-CN.md", "pencode/licenses/CODICONS-LICENSE.txt", "pencode/licenses/LUCIDE-LICENSE.txt", "pencode/licenses/NERD-FONTS-LICENSE.txt", "pencode/licenses/ONIX-LICENSE.txt"} {
 				if !seen[name] {
 					t.Errorf("missing %s", name)
 				}
@@ -123,7 +126,7 @@ func TestDistributionFailureKeepsExistingArchive(t *testing.T) {
 	root := t.TempDir()
 	output := filepath.Join(root, "release.tar.gz")
 	writeTestFile(t, output, "previous release", 0o644)
-	if err := writeDistribution(output, filepath.Join(root, "missing.app"), root); err == nil {
+	if err := writeDistribution(output, filepath.Join(root, "missing.app"), root, "v1.0.0"); err == nil {
 		t.Fatal("missing artifact accepted")
 	}
 	content, err := os.ReadFile(output)

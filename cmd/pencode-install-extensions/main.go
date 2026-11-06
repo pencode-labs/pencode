@@ -3,6 +3,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -112,13 +113,36 @@ func install(goCommand, source, directory, sdk string) error {
 		return err
 	}
 	target := filepath.Join(directory, manifest.ID)
-	if err := os.RemoveAll(target); err != nil {
-		return err
-	}
-	if err := os.Rename(stage, target); err != nil {
+	if err := replaceExtension(stage, target); err != nil {
 		return err
 	}
 	fmt.Println("Installed", manifest.ID, "in", target)
+	return nil
+}
+
+func replaceExtension(stage, target string) error {
+	backup, err := os.MkdirTemp(filepath.Dir(target), "_install-previous-")
+	if err != nil {
+		return err
+	}
+	previous := filepath.Join(backup, "extension")
+	if err := os.Rename(target, previous); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(backup)
+		return fmt.Errorf("move existing extension aside (close pencode if it is in use): %w", err)
+	}
+	if err := os.Rename(stage, target); err != nil {
+		if _, statErr := os.Stat(previous); statErr == nil {
+			if rollbackErr := os.Rename(previous, target); rollbackErr != nil {
+				return errors.Join(err, fmt.Errorf("restore extension from %s: %w", previous, rollbackErr))
+			}
+		}
+		_ = os.Remove(backup)
+		return err
+	}
+	// Windows may retain the running executable until its process exits.
+	if err := os.RemoveAll(backup); err != nil {
+		fmt.Fprintln(os.Stderr, "Installed extension; previous files remain in", backup, "(remove after closing pencode):", err)
+	}
 	return nil
 }
 

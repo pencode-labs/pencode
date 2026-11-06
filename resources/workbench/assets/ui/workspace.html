@@ -115,6 +115,7 @@
         <button id="settings-shortcuts-nav" data-ref="settings-shortcuts-nav" class="pencode-settings-nav-item" type="button">快捷键</button>
         <button id="settings-extensions-nav" data-ref="settings-extensions-nav" class="pencode-settings-nav-item" type="button" aria-expanded="false" aria-controls="settings-extension-list"><img data-ref="settings-extensions-toggle" class="pencode-settings-toggle" src="icons/chevron-right.svg" alt="">扩展</button>
         <div id="settings-extension-list" data-ref="settings-extension-list"></div>
+        <button id="settings-about-nav" data-ref="settings-about-nav" class="pencode-settings-nav-item" type="button">关于</button>
       </nav>
       <div id="settings-main" class="pencode-settings-main">
         <header class="pencode-settings-main-header">
@@ -172,6 +173,15 @@
               <span data-ref="zoom-value" class="pencode-settings-value"></span>
               <button data-ref="zoom-increase" type="button" title="放大界面" aria-label="放大界面">+</button>
             </div>
+          </div>
+        </section>
+        <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
+          <div class="pencode-settings-row"><span>Pencode 版本</span><span data-ref="update-version" class="pencode-settings-value"></span></div>
+          <p data-ref="update-status" class="pencode-setting-description" role="status" aria-live="polite"></p>
+          <div class="pencode-settings-row">
+            <button data-ref="check-update" class="pencode-settings-reset" type="button">检查更新</button>
+            <button data-ref="download-update" class="pencode-settings-reset" type="button" disabled>下载更新</button>
+            <button data-ref="restart-update" class="pencode-settings-reset" type="button" disabled>安装并重启</button>
           </div>
         </section>
         <section id="settings-extensions-pane" data-ref="settings-extensions-pane" aria-label="扩展设置" hidden>

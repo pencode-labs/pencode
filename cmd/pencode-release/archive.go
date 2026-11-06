@@ -16,7 +16,7 @@ import (
 
 // Reuse the engine's packaged output, retaining its binary catalog, resource
 // packages, platform icons, executable modes and macOS app signature.
-func writeDistribution(destination, artifact, project string) (resultErr error) {
+func writeDistribution(destination, artifact, project, version string) (resultErr error) {
 	file, err := os.CreateTemp(filepath.Dir(destination), ".pencode-release-*")
 	if err != nil {
 		return err
@@ -66,6 +66,9 @@ func writeDistribution(destination, artifact, project string) (resultErr error) 
 		if err := addFile(filepath.Join(project, name), path.Join("pencode", name), add); err != nil {
 			return err
 		}
+	}
+	if err := add(&tar.Header{Name: "pencode/pencode-version", Mode: 0o644, Size: int64(len(version) + 1)}, strings.NewReader(version+"\n")); err != nil {
+		return err
 	}
 	// Keep icon notices readable without an Onix package reader.
 	for _, name := range []string{"CODICONS-LICENSE.txt", "LUCIDE-LICENSE.txt"} {

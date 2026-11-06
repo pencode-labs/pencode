@@ -10,6 +10,7 @@ require (
 	github.com/ebitengine/purego v0.11.2
 	github.com/go-gl/mathgl v1.2.0
 	github.com/yuin/goldmark/v2 v2.1.9
+	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 )

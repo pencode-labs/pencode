@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,89 @@ import (
 	"github.com/pencode-labs/pencode/peb"
 	"github.com/pencode-labs/pencode/server/extensionhost"
 )
+
+func TestReplaceRunningExtension(t *testing.T) {
+	if os.Getenv("PENCODE_INSTALL_TEST_HELPER") == "1" {
+		fmt.Println("ready")
+		var input [1]byte
+		_, _ = os.Stdin.Read(input[:])
+		os.Exit(0)
+	}
+	directory := t.TempDir()
+	target := filepath.Join(directory, "test")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(target, executable("test", runtime.GOOS))
+	if err := os.WriteFile(binary, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(binary, "-test.run=^TestReplaceRunningExtension$")
+	command.Env = append(os.Environ(), "PENCODE_INSTALL_TEST_HELPER=1")
+	input, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = input.Close()
+		if err := command.Wait(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if line, err := bufio.NewReader(output).ReadString('\n'); err != nil || line != "ready\n" {
+		t.Fatalf("start extension: %q, %v", line, err)
+	}
+	stage := filepath.Join(directory, "_install-new")
+	if err := os.Mkdir(stage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, filepath.Base(binary)), []byte("new build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceExtension(stage, target); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(binary); err != nil || string(data) != "new build" {
+		t.Fatalf("replacement: %q, %v", data, err)
+	}
+}
+
+func TestReplaceExtensionRollback(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "test")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(target, "original")
+	if err := os.WriteFile(binary, []byte("old build"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceExtension(filepath.Join(directory, "missing"), target); err == nil {
+		t.Fatal("replacement succeeded without a staged build")
+	}
+	if data, err := os.ReadFile(binary); err != nil || string(data) != "old build" {
+		t.Fatalf("rollback: %q, %v", data, err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("backup directories remain: %v, %v", entries, err)
+	}
+}
 
 func TestInstallReplacesExtension(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "extension source")

@@ -78,6 +78,8 @@ Build a desktop distribution for the current host with `make release VERSION=v0.
 
 Pushing a `v*` tag triggers [the desktop release workflow](.github/workflows/release.yml), which builds Linux, Windows and macOS for both amd64 and arm64, verifies checksums, and uploads six distributions plus `SHA256SUMS` to the GitHub Release. Set the repository Actions variable `ONIX_REF` to the compatible Onix commit or tag before releasing; it defaults to `main`. Manual workflow runs build downloadable artifacts without publishing a release. Builds need the native libraries described by Onix; Windows uses MinGW-w64 (LLVM MinGW also supports arm64). macOS bundles receive ad-hoc signatures; Developer ID signing and notarization are not configured.
 
+Settings → About includes Check for updates, Download update, and Install and restart. Updates resolve GitHub tags to published releases, select the current OS/architecture, and verify SHA-256 before staging the entire package. Restart follows the unsaved-file confirmation flow; replacement or process-launch failure restores the previous package. Stable installations skip prereleases. Automatic updating requires a complete distribution containing `pencode-version` and write access to its parent directory; older distributions need one manual upgrade first.
+
 For a direct WebSocket connection, start the server on the remote host:
 
 ```sh

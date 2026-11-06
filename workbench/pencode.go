@@ -266,6 +266,7 @@ type workspaceModel struct {
 	replaceOpen                         bool
 	findNeedsFocus                      bool
 	settingsShortcuts                   bool
+	settingsAbout                       bool
 	highlighted                         bool
 	settingsOpen                        bool
 	highlightPending                    bool
@@ -629,6 +630,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderExtensionSettings(view, settingNav, settingRow)
 					context.Props.Model.renderShortcutSettings(view, shortcutRow)
+					context.Props.Model.renderUpdates(view)
 				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderInputContext(view, inputContextDefinition)

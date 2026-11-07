@@ -54,6 +54,17 @@ func TestNativeInstaller(t *testing.T) {
 	if info, err := os.Stat(destination); err != nil || info.Size() == 0 {
 		t.Fatalf("installer missing or empty: %v", err)
 	}
+	if runtime.GOOS == "darwin" {
+		bundle := filepath.Join(payload, "pencode.app")
+		for _, name := range []string{"pencode-version", "LICENSE", "README.md", "README.zh-CN.md", "licenses/ONIX-LICENSE.txt"} {
+			if _, err := os.Stat(filepath.Join(bundle, "Contents", "Resources", name)); err != nil {
+				t.Fatalf("missing bundle resource %s: %v", name, err)
+			}
+		}
+		if output, err := exec.Command("codesign", "--verify", "--strict", bundle).CombinedOutput(); err != nil {
+			t.Fatalf("verify macOS signature: %v: %s", err, output)
+		}
+	}
 	if runtime.GOOS == "linux" {
 		listing, err := exec.Command("dpkg-deb", "--contents", destination).CombinedOutput()
 		if err != nil {

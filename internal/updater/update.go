@@ -47,8 +47,12 @@ func Installation(executable string) (root, version string, err error) {
 		return "", "", err
 	}
 	dir := filepath.Dir(executable)
+	versionPath := VersionFile
+	if runtime.GOOS == "darwin" {
+		versionPath = filepath.Join("Resources", VersionFile)
+	}
 	for range 5 {
-		data, readErr := os.ReadFile(filepath.Join(dir, VersionFile))
+		data, readErr := os.ReadFile(filepath.Join(dir, versionPath))
 		if readErr == nil {
 			return dir, strings.TrimSpace(string(data)), nil
 		}

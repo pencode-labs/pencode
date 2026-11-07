@@ -63,9 +63,13 @@ func buildInstaller(stage, destination, project, version string) error {
 			filepath.Join(project, "packaging", "windows.iss"))
 	case "darwin":
 		bundle := filepath.Join(payload, "pencode.app")
-		// Keep metadata inside the application so /Applications has a normal .app.
+		// Contents is reserved for signed code; data belongs in Resources.
+		resources := filepath.Join(bundle, "Contents", "Resources")
+		if err := os.MkdirAll(resources, 0o755); err != nil {
+			return err
+		}
 		for _, name := range []string{"pencode-version", "LICENSE", "README.md", "README.zh-CN.md", "licenses"} {
-			if err := os.Rename(filepath.Join(payload, name), filepath.Join(bundle, "Contents", name)); err != nil {
+			if err := os.Rename(filepath.Join(payload, name), filepath.Join(resources, name)); err != nil {
 				return err
 			}
 		}

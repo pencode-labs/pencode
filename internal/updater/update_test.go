@@ -14,6 +14,44 @@ import (
 	"testing"
 )
 
+func TestInstallationFindsVersion(t *testing.T) {
+	root := t.TempDir()
+	binary := filepath.Join(root, "pencode")
+	metadata := root
+	if runtime.GOOS == "darwin" {
+		root = filepath.Join(root, "pencode.app", "Contents")
+		binary = filepath.Join(root, "MacOS", "pencode")
+		metadata = filepath.Join(root, "Resources")
+	}
+	for _, directory := range []string{filepath.Dir(binary), metadata} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(binary, []byte("executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(metadata, VersionFile), []byte("v1.2.3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// macOS temporary directories may themselves be symlinks.
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, version, err := Installation(binary)
+	if err != nil || got != root || version != "v1.2.3" {
+		t.Fatalf("installation = %q, %q, %v; want %q, v1.2.3", got, version, err, root)
+	}
+	resolved, err := filepath.EvalSymlinks(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if relative, err := filepath.Rel(got, resolved); err != nil || !filepath.IsLocal(relative) {
+		t.Fatalf("executable is outside installation: %s, %v", relative, err)
+	}
+}
+
 func TestVersionOrder(t *testing.T) {
 	for _, v := range []string{"v1.2.3", "1.2.3", "v2026.11.6", "v1.2.3-rc.1"} {
 		if !validVersion(v) {

@@ -55,21 +55,28 @@ func release(output, version string) error {
 	if err != nil {
 		return err
 	}
-	if runtime.GOOS == "darwin" {
-		if err := configureMacOSBundle(artifact); err != nil {
-			return err
-		}
+	output, err = filepath.Abs(output)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(output, 0o755); err != nil {
 		return err
 	}
-	extension := ".tar.gz"
-	if runtime.GOOS == "windows" {
-		extension = ".zip"
+	stage, err := os.MkdirTemp(output, ".pencode-installer-*")
+	if err != nil {
+		return err
 	}
-	name := fmt.Sprintf("pencode-%s-%s-%s%s", version, runtime.GOOS, runtime.GOARCH, extension)
+	defer os.RemoveAll(stage)
+	if err := stageDistribution(stage, artifact, project, version); err != nil {
+		return err
+	}
+	name := fmt.Sprintf("pencode-%s-%s-%s%s", version, runtime.GOOS, runtime.GOARCH, installerExtension(runtime.GOOS))
 	destination := filepath.Join(output, name)
-	if err := writeDistribution(destination, artifact, project, version); err != nil {
+	built := filepath.Join(stage, name)
+	if err := buildInstaller(stage, built, project, version); err != nil {
+		return err
+	}
+	if err := os.Rename(built, destination); err != nil {
 		return err
 	}
 	file, err := os.Open(destination)

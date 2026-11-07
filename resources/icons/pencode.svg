@@ -1,9 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1280" viewBox="0 0 1280 1280">
-  <title>Pencode</title>
-  <g transform="translate(3 22)">
-    <rect x="0" y="-22" width="1280" height="1280" rx="300" fill="#1c1d1d" />
-    <path fill="#8ace41"
-      d="M438 305H795C895 305 948 395 948 500C948 605 869 688 753 688H524V901C524 920 513 935 494 935H409C390 935 377 922 377 903V364C377 331 405 305 438 305Z" />
-    <path fill="#1c1d1d" d="M524 423H715C768 423 798 452 798 500C798 548 768 577 715 577H524Z" />
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Pencode</title>
+  <desc id="desc">A minimal code-editor app icon: a bright green custom letter P with a code prompt inside, on a deep graphite background.</desc>
+  <rect width="512" height="512" rx="108" fill="#111518"/>
+  <path fill="#78F05A" fill-rule="evenodd" d="M126 404V108h157c88 0 135 48 135 125 0 78-51 127-136 127h-83v44H126Zm73-109h82c43 0 65-21 65-62 0-40-22-61-65-61h-82v123Z"/>
+  <path d="m224 205 28 28-28 28" fill="none" stroke="#DCE7DF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M270 261h30" fill="none" stroke="#78F05A" stroke-width="13" stroke-linecap="round"/>
 </svg>

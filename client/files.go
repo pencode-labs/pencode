@@ -56,6 +56,26 @@ func (c *Client) Transfer(ctx context.Context, source, target uint64, from, dire
 	return name, d.Done()
 }
 
+// Import copies a native file on the server host into a workspace.
+func (c *Client) Import(ctx context.Context, target uint64, source, directory string, overwrite bool) (string, error) {
+	e := protocol.Encoder{}
+	e.U64(target)
+	e.String(source)
+	e.String(directory)
+	if overwrite {
+		e.U32(1)
+	} else {
+		e.U32(0)
+	}
+	p, err := c.request(ctx, protocol.ResourceImport, e.Buffer)
+	if err != nil {
+		return "", err
+	}
+	d := protocol.Decoder{Buffer: p}
+	name := d.String()
+	return name, d.Done()
+}
+
 func (c *Client) readFile(ctx context.Context, root, name string, links bool, limit int) ([]byte, error) {
 	e := service(protocol.FileRead, root)
 	e.String(name)

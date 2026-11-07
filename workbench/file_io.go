@@ -22,6 +22,7 @@ const (
 	fileRemove
 	fileRename
 	fileTransfer
+	fileImport
 	fileReload
 	fileCloseWorkspace
 	fileLanguageEdit
@@ -63,6 +64,7 @@ type fileIOJob struct {
 	root, relative, destination, content                  string
 	moves                                                 []fileMove
 	reload                                                []fileReloadResult
+	imports                                               []string
 	workspace, targetWorkspace                            uint64
 	id                                                    uint64
 	preview, reveal, directory, cut, duplicate, clipboard bool
@@ -70,6 +72,7 @@ type fileIOJob struct {
 	kind                                                  fileIOKind
 	finished                                              bool
 	external                                              bool
+	overwrite                                             bool
 }
 type fileNavigation struct {
 	selection       *lsp.Range
@@ -92,6 +95,7 @@ type fileIOResult struct {
 	workspace            protocol.Workspace
 	content, destination string
 	reload               []fileReloadResult
+	importIndex          int
 	external             bool
 }
 
@@ -225,6 +229,14 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		r.err = j.backend.Rename(j.ctx, j.workspace, j.relative, j.destination)
 	case fileTransfer:
 		r.destination, r.err = j.backend.Transfer(j.ctx, j.workspace, j.targetWorkspace, j.relative, j.destination, j.cut, j.duplicate)
+	case fileImport:
+		for i, source := range j.imports {
+			r.importIndex = i
+			r.destination, r.err = j.backend.Import(j.ctx, j.workspace, source, j.destination, j.overwrite && i == 0)
+			if r.err != nil {
+				break
+			}
+		}
 	case fileLanguageEdit:
 		r.err = executeLanguageEdit(j)
 	case fileSearchReplace:
@@ -318,7 +330,7 @@ func (m *workspaceModel) cancelProjectFileIO(p *pencodeProject) {
 func (m *workspaceModel) fileIOMutating(p *pencodeProject) bool {
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
-			if (j.project == p || j.target == p) && (j.kind >= fileCreate && j.kind <= fileTransfer || j.kind == fileSearchReplace) {
+			if (j.project == p || j.target == p) && (j.kind >= fileCreate && j.kind <= fileImport || j.kind == fileSearchReplace) {
 				return true
 			}
 		}
@@ -735,7 +747,7 @@ func (m *workspaceModel) queueWorkspaceRelease(backend *client.Client, workspace
 func (m *workspaceModel) fileCloseBlocked(action pencodeCloseAction, p *pencodeProject) bool {
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
-			if j.kind >= fileCreate && j.kind <= fileTransfer && (action == pencodeCloseWindow || j.project == p || j.target == p) {
+			if j.kind >= fileCreate && j.kind <= fileImport && (action == pencodeCloseWindow || j.project == p || j.target == p) {
 				return true
 			}
 		}

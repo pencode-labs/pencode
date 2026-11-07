@@ -276,6 +276,19 @@ func dispatch(s *workspace.Store, f protocol.Frame, e *protocol.Encoder) error {
 			return err
 		}
 		e.String(name)
+	case protocol.ResourceImport:
+		target, source, directory, overwrite := d.U64(), d.String(), d.String(), d.U32()
+		if err := d.Done(); err != nil {
+			return err
+		}
+		if overwrite > 1 {
+			return protocol.ErrProtocol
+		}
+		name, err := s.Import(target, source, directory, overwrite != 0)
+		if err != nil {
+			return err
+		}
+		e.String(name)
 	default:
 		return protocol.ErrProtocol
 	}

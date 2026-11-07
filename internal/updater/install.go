@@ -8,14 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"time"
 )
 
 type installPlan struct {
 	Root       string
 	Executable string
 	Directory  string
+	Installer  string
 	Args       []string
 	PID        int
 }
@@ -35,6 +36,11 @@ func Launch(stage string) error {
 		return err
 	}
 	plan := installPlan{Root: root, Executable: executable, Directory: dir, Args: os.Args[1:], PID: os.Getpid()}
+	name, err := os.ReadFile(filepath.Join(stage, "installer"))
+	if err != nil {
+		return err
+	}
+	plan.Installer = string(name)
 	data, err := json.Marshal(plan)
 	if err != nil {
 		return err
@@ -91,7 +97,9 @@ func RunHelper() (bool, error) {
 }
 
 func install(stage string, p installPlan) error {
-	if !filepath.IsAbs(p.Root) || filepath.Dir(stage) != filepath.Dir(p.Root) || !strings.HasPrefix(filepath.Base(stage), ".pencode-update-") {
+	if !filepath.IsAbs(p.Root) || !strings.HasPrefix(filepath.Base(stage), ".pencode-update-") ||
+		!filepath.IsLocal(p.Installer) || filepath.Base(p.Installer) != p.Installer ||
+		!strings.HasSuffix(p.Installer, installerExtension(runtime.GOOS)) {
 		return errors.New("invalid update installation path")
 	}
 	root, _, err := Installation(p.Executable)
@@ -119,44 +127,31 @@ func install(stage string, p installPlan) error {
 		}
 		return cmd.Process.Release()
 	}
-	return replaceInstallation(stage, p.Root, restart)
-}
-
-func replaceInstallation(stage, root string, restart func() error) error {
-	backup := filepath.Join(stage, "previous")
-	// Antivirus and child processes can briefly retain Windows file handles.
-	for attempt := 0; ; attempt++ {
-		err := os.Rename(root, backup)
-		if err == nil {
-			break
-		}
-		if attempt == 119 {
-			return errors.Join(fmt.Errorf("replace installation: %w", err), restart())
-		}
-		time.Sleep(500 * time.Millisecond)
+	command, err := installerCommand(runtime.GOOS, filepath.Join(stage, p.Installer), p.Root)
+	if err != nil {
+		return errors.Join(err, restart())
 	}
-	if err := os.Rename(filepath.Join(stage, "pencode"), root); err != nil {
-		rollback := os.Rename(backup, root)
-		if rollback == nil {
-			_ = restart()
-		}
-		return errors.Join(err, rollback)
+	// Native installers own registration, elevation and uninstall metadata.
+	// Restart the previous installation too if the user cancels the wizard.
+	if err := command.Run(); err != nil {
+		return errors.Join(fmt.Errorf("run installer: %w", err), restart())
 	}
 	if err := restart(); err != nil {
-		moveErr := os.Rename(root, filepath.Join(stage, "failed"))
-		if moveErr != nil {
-			return errors.Join(err, moveErr)
-		}
-		rollback := os.Rename(backup, root)
-		if rollback == nil {
-			_ = restart()
-		}
-		return errors.Join(err, rollback)
-	}
-	if err := os.RemoveAll(backup); err != nil {
 		return err
 	}
-	// On Windows the running helper itself is released when this process exits.
 	_ = os.RemoveAll(stage)
 	return nil
+}
+
+func installerCommand(platform, installer, root string) (*exec.Cmd, error) {
+	switch platform {
+	case "windows":
+		return exec.Command(installer, "/DIR="+root, "/SILENT", "/NORESTART", "/NORESTARTAPPLICATIONS"), nil
+	case "darwin":
+		return exec.Command("/usr/bin/open", "-W", "-a", "Installer", installer), nil
+	case "linux":
+		return exec.Command("pkexec", "/usr/bin/apt-get", "install", "--yes", installer), nil
+	default:
+		return nil, fmt.Errorf("unsupported installer platform %s", platform)
+	}
 }

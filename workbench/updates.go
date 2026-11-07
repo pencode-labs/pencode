@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	htmlui "github.com/diiyw/onix/ui/html"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/internal/updater"
 )
 
@@ -122,7 +122,7 @@ func (m *workspaceModel) pollUpdates() bool {
 		u.release, u.stage = r.release, r.stage
 		switch {
 		case r.stage != "":
-			u.message = "更新已就绪，重启后完成安装"
+			u.message = "安装包已校验，安装并重启将打开系统安装程序"
 		case r.release.Tag != "":
 			u.message = "发现新版本：" + r.release.Tag
 		default:

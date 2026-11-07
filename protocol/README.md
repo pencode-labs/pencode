@@ -1,4 +1,4 @@
-# Pencode CS v9
+# Pencode CS v12
 
 GUI 和无头服务通过有序双向字节流通信。本地传输是子进程管道，远端传输是 OpenSSH 加密的 stdin/stdout；不监听或转发服务端端口，协议与具体传输无关。所有整数采用小端编码；不传递 Go 指针或渲染对象。旧版本不兼容。
 
@@ -7,7 +7,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 11 |
+| 4 | 2 | 协议版本，当前 12 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -33,8 +33,11 @@ v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整
 | ResourceRemove | workspace:u64, path:string | 空 |
 | ResourceRename | workspace:u64, from:string, to:string | 空 |
 | ResourceTransfer | source:u64, target:u64, from:string, directory:string, flags:u32 | destination:string |
+| ResourceImport | target:u64, source:string, directory:string, overwrite:u32 | destination:string |
 
 directory 只接受 0/1；DocumentOpen mode 接受 0（路径）、1（检查文本）、2（用户确认以文本打开）；ResourceTransfer flags 的 bit 0 表示移动，bit 1 表示碰撞时生成副本名称。DocumentMove 在文件系统移动完成后重定位打开的文档，保留其未保存缓冲和磁盘基线。二进制文件打开只校验普通文件，返回零文档 ID 和空内容。
+
+v12 新增 ResourceImport：source 是服务端主机的绝对原生路径，directory 是目标工作区内的目录，overwrite 只接受 0/1。未确认覆盖时遇到同名资源返回 Conflict；确认后目录合并，同名文件替换。GUI 只在本地工作区将系统剪贴板文件传给此请求，远端工作区不能使用本机路径。GUI 与 server 必须同时更新。
 
 路径相对于工作区，采用 `/`，禁止绝对路径、`..`、反斜杠和 NUL；DirectoryRead 额外允许 `.`。工作区根目录由服务端规范化并通过 os.Root 持有；WorkspaceOpen 的 `~` 和 `~/...` 在服务端展开，绝不使用 GUI 的 home。文档初始版本为 1，每个有效 Change 递增一次；范围为 UTF-8 字节边界。每份 GUI 增量作为一个 DocumentChange 发送，可包含多个 Data 帧，只在完整请求到达后原子应用并确认一次版本；合并 GUI 编辑时不得跳过版本确认。文档预算为单份小于 64 MiB、每连接文本总量 128 MiB、128 个文档及 32 个工作区；这些是文本预算，不等于进程 RSS 上限。
 

@@ -1,9 +1,16 @@
 package workbench
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/pencode-labs/pencode/internal/clipboard"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 func pencodeResourceContains(parent, name string) bool {
@@ -24,6 +31,17 @@ func (model *workspaceModel) applyFileDialog() error {
 	project := c.project
 	if project == nil || model.projectIndex(project.Path) < 0 {
 		return fmt.Errorf("项目已关闭")
+	}
+	if c.dialog == "overwrite" {
+		j := c.transfer
+		if j == nil || !model.projectLive(j.project) || j.target != nil && !model.projectLive(j.target) {
+			return fmt.Errorf("项目已关闭")
+		}
+		if model.resourceBusy(project, path.Join(j.destination, filepath.Base(j.imports[0]))) {
+			return fmt.Errorf("请等待编辑工具完成操作")
+		}
+		return model.submitResourceIO(&fileIOJob{kind: fileImport, project: project,
+			destination: j.destination, imports: j.imports, overwrite: true})
 	}
 	if c.dialog == "delete" {
 		if c.path == "" {
@@ -174,6 +192,25 @@ func (model *workspaceModel) pasteProjectResource(project *pencodeProject, direc
 	return model.transferProjectResource(model.fileClipboard, project, directory, true)
 }
 
+func (model *workspaceModel) pasteFileClipboard(project *pencodeProject, directory string) error {
+	if !clipboard.HasFiles() {
+		return model.pasteProjectResource(project, directory)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	files, err := clipboard.ReadFiles(ctx)
+	if err != nil {
+		return fmt.Errorf("无法读取剪贴板文件：%w", err)
+	}
+	if len(files) != 0 {
+		if model.remoteWorkspace() {
+			return fmt.Errorf("外部文件粘贴仅支持本地工作区")
+		}
+		return model.submitResourceIO(&fileIOJob{kind: fileImport, project: project, destination: directory, imports: files})
+	}
+	return model.pasteProjectResource(project, directory)
+}
+
 // Dragging uses the same transfer as paste, but preserves the clipboard and
 // rejects collisions instead of inventing a different resource name.
 func (model *workspaceModel) moveProjectResource(source *pencodeProject, relative string, target *pencodeProject, directory string) error {
@@ -221,6 +258,23 @@ func (model *workspaceModel) submitResourceIO(j *fileIOJob) error {
 
 func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 	j := r.job
+	if j.kind == fileImport {
+		completed := len(j.imports)
+		if r.err != nil {
+			completed = r.importIndex
+		}
+		for _, file := range j.project.Files {
+			if file.Dirty {
+				continue
+			}
+			for _, source := range j.imports[:completed] {
+				if pencodeResourceContains(path.Join(j.destination, filepath.Base(source)), file.Path) {
+					file.externalChanged = true
+					break
+				}
+			}
+		}
+	}
 	if c := &model.fileContext; j.kind == fileCreate && c.pending && c.project == j.project {
 		if r.err != nil {
 			c.pending, c.needsFocus, c.err = false, true, r.err.Error()
@@ -230,6 +284,15 @@ func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 	}
 	if r.err != nil {
 		model.refreshResourceProject(j.project)
+		var conflict *protocol.Error
+		if j.kind == fileImport && errors.As(r.err, &conflict) && conflict.Code == protocol.Conflict {
+			next := *j
+			next.imports = j.imports[r.importIndex:]
+			name := filepath.Base(next.imports[0])
+			model.fileContext = pencodeFileContext{project: j.project, transfer: &next, dialog: "overwrite", title: "覆盖文件？", needsFocus: true,
+				message: fmt.Sprintf("“%s”已存在，是否覆盖？文件夹将合并，并覆盖其中的同名文件。未保存的编辑会保留。", path.Join(j.destination, name))}
+			return
+		}
 		model.setProjectStatus(j.project, r.err.Error())
 		return
 	}
@@ -269,10 +332,13 @@ func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 	for parent := path.Dir(j.destination); parent != "."; parent = path.Dir(parent) {
 		target.ExpandedDirs[parent] = true
 	}
-	if j.kind == fileTransfer && j.destination != "" && j.destination != "." {
+	if (j.kind == fileTransfer || j.kind == fileImport) && j.destination != "" && j.destination != "." {
 		target.ExpandedDirs[j.destination] = true
 	}
 	model.refreshResourceProject(target)
+	if j.kind == fileImport {
+		model.reloadExternalFiles(target)
+	}
 	for _, err := range r.moveErrors {
 		model.setProjectStatus(target, "资源已移动，文档重新连接失败："+err.Error())
 		break

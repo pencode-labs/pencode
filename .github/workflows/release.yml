@@ -1,4 +1,4 @@
-name: Release desktop distributions
+name: Release desktop installers
 
 on:
   push:
@@ -74,8 +74,19 @@ jobs:
           $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           "CC=$bin/gcc.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "CXX=$bin/g++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Test distribution packaging
-        run: go test -mod=readonly ./cmd/pencode-release
+      - name: Install Windows installer compiler
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $setup = "$env:RUNNER_TEMP/innosetup.exe"
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe' -OutFile $setup
+          if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash -ne '8A5A6711C3766A6E5FB74F280BA0E3551E719CE94538D901FDBD1F8F9920B3F0') { throw 'Inno Setup checksum mismatch' }
+          $compilerDir = "$env:RUNNER_TEMP/inno-setup"
+          $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/NOICONS', '/TASKS=""', "/DIR=`"$compilerDir`"" -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          "ISCC=$compilerDir/ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Test installer packaging and updates
+        run: go test -mod=readonly ./cmd/pencode-release ./internal/updater
       - name: Build release distribution
         # The same entry point as make release; no GNU make dependency on Windows.
         run: go run ./cmd/pencode-release -output dist -version "$RELEASE_VERSION"
@@ -85,8 +96,9 @@ jobs:
         with:
           name: pencode-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            pencode/dist/pencode-*.tar.gz
-            pencode/dist/pencode-*.zip
+            pencode/dist/pencode-*.deb
+            pencode/dist/pencode-*.pkg
+            pencode/dist/pencode-*.exe
             pencode/dist/pencode-*.sha256
           if-no-files-found: error
 
@@ -112,11 +124,11 @@ jobs:
           cat ./*.sha256 > SHA256SUMS
           sha256sum --check SHA256SUMS
           if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_VERSION" ./*.tar.gz ./*.zip SHA256SUMS --clobber
+            gh release upload "$RELEASE_VERSION" ./*.deb ./*.pkg ./*.exe SHA256SUMS --clobber
           else
             flags=(--verify-tag --generate-notes)
             if [[ "${RELEASE_VERSION#v}" == *-* ]]; then
               flags+=(--prerelease)
             fi
-            gh release create "$RELEASE_VERSION" ./*.tar.gz ./*.zip SHA256SUMS "${flags[@]}"
+            gh release create "$RELEASE_VERSION" ./*.deb ./*.pkg ./*.exe SHA256SUMS "${flags[@]}"
           fi

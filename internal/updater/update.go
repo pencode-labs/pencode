@@ -1,4 +1,4 @@
-// Package updater downloads verified desktop distributions into a sibling staging directory.
+// Package updater downloads verified native installers into a temporary directory.
 package updater
 
 import (
@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/mod/semver"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 )
 
 const VersionFile = "pencode-version"
@@ -138,10 +139,7 @@ func (c Client) release(ctx context.Context, tag string) (Release, error) {
 	if release.Draft {
 		return Release{}, nil
 	}
-	ext := ".tar.gz"
-	if runtime.GOOS == "windows" {
-		ext = ".zip"
-	}
+	ext := installerExtension(runtime.GOOS)
 	r := Release{Tag: tag, Name: "pencode-" + tag + "-" + runtime.GOOS + "-" + runtime.GOARCH + ext}
 	for _, asset := range release.Assets {
 		if asset.Name == r.Name {
@@ -157,9 +155,27 @@ func (c Client) release(ctx context.Context, tag string) (Release, error) {
 	return r, nil
 }
 
-// Stage checks the archive digest before extracting any files. It never touches the running installation.
+func installerExtension(platform string) string {
+	switch platform {
+	case "windows":
+		return ".exe"
+	case "darwin":
+		return ".pkg"
+	default:
+		return ".deb"
+	}
+}
+
+// Stage checks the installer digest without touching the running installation.
 func (c Client) Stage(ctx context.Context, root, executable string, r Release) (stage string, err error) {
-	stage, err = os.MkdirTemp(filepath.Dir(root), ".pencode-update-*")
+	if !filepath.IsLocal(r.Name) || filepath.Base(r.Name) != r.Name || !strings.HasSuffix(r.Name, installerExtension(runtime.GOOS)) {
+		return "", errors.New("安装包名称或格式无效")
+	}
+	rel, err := filepath.Rel(root, executable)
+	if err != nil || !filepath.IsLocal(rel) {
+		return "", errors.New("程序路径不在安装目录内")
+	}
+	stage, err = os.MkdirTemp("", ".pencode-update-*")
 	if err != nil {
 		return "", err
 	}
@@ -206,26 +222,8 @@ func (c Client) Stage(ctx context.Context, root, executable string, r Release) (
 	if n > 1<<30 || !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), expected) {
 		return stage, errors.New("发行包 SHA-256 校验失败")
 	}
-	if err = extract(archive, stage); err != nil {
+	if err = os.WriteFile(filepath.Join(stage, "installer"), []byte(r.Name), 0o600); err != nil {
 		return stage, err
-	}
-	rel, err := filepath.Rel(root, executable)
-	if err != nil || !filepath.IsLocal(rel) {
-		return stage, errors.New("程序路径不在安装目录内")
-	}
-	info, err := os.Stat(filepath.Join(stage, "pencode", rel))
-	if err != nil {
-		return stage, err
-	}
-	if !info.Mode().IsRegular() {
-		return stage, errors.New("发行包缺少可执行程序")
-	}
-	data, err = os.ReadFile(filepath.Join(stage, "pencode", VersionFile))
-	if err != nil {
-		return stage, err
-	}
-	if strings.TrimSpace(string(data)) != r.Tag {
-		return stage, errors.New("发行包版本与 tag 不一致")
 	}
 	return stage, nil
 }

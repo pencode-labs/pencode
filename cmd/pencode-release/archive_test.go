@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -85,28 +86,36 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			extension := ".tar.gz"
-			if format == ".zip" {
-				extension = format
-			}
-			output := filepath.Join(root, "distribution"+extension)
-			if err := writeDistribution(output, artifact, root, "v1.0.0"); err != nil {
+			output := filepath.Join(root, "distribution")
+			if err := stageDistribution(output, artifact, root, "v1.0.0"); err != nil {
 				t.Fatal(err)
 			}
 			seen := map[string]bool{}
-			if err := copyArtifact(output, func(header *tar.Header, source io.Reader) error {
-				seen[header.Name] = true
-				content, err := io.ReadAll(source)
+			if err := filepath.WalkDir(output, func(file string, entry fs.DirEntry, err error) error {
+				if err != nil || entry.IsDir() {
+					return err
+				}
+				rel, err := filepath.Rel(output, file)
 				if err != nil {
 					return err
 				}
-				if expected, ok := payloads[header.Name]; ok && string(content) != expected {
-					t.Errorf("%s: payload changed", header.Name)
+				name := filepath.ToSlash(rel)
+				seen[name] = true
+				content, err := os.ReadFile(file)
+				if err != nil {
+					return err
 				}
-				if header.Name == "pencode/pencode-version" && string(content) != "v1.0.0\n" {
+				if expected, ok := payloads[name]; ok && string(content) != expected {
+					t.Errorf("%s: payload changed", name)
+				}
+				if name == "pencode/pencode-version" && string(content) != "v1.0.0\n" {
 					t.Errorf("release version: %q", content)
 				}
-				if header.Name == binary && (format != ".app" || runtime.GOOS != "windows") && header.Mode&0o111 == 0 {
+				info, err := entry.Info()
+				if err != nil {
+					return err
+				}
+				if name == binary && runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 					t.Error("executable mode lost")
 				}
 				return nil
@@ -122,20 +131,11 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 	}
 }
 
-func TestDistributionFailureKeepsExistingArchive(t *testing.T) {
+func TestDistributionRejectsMissingArtifact(t *testing.T) {
 	root := t.TempDir()
-	output := filepath.Join(root, "release.tar.gz")
-	writeTestFile(t, output, "previous release", 0o644)
-	if err := writeDistribution(output, filepath.Join(root, "missing.app"), root, "v1.0.0"); err == nil {
+	output := filepath.Join(root, "stage")
+	if err := stageDistribution(output, filepath.Join(root, "missing.app"), root, "v1.0.0"); err == nil {
 		t.Fatal("missing artifact accepted")
-	}
-	content, err := os.ReadFile(output)
-	if err != nil || string(content) != "previous release" {
-		t.Fatalf("previous archive lost: %q, %v", content, err)
-	}
-	staging, err := filepath.Glob(filepath.Join(root, ".pencode-release-*"))
-	if err != nil || len(staging) != 0 {
-		t.Fatalf("staging files remain: %v, %v", staging, err)
 	}
 }
 

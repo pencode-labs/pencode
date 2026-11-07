@@ -5,60 +5,47 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // Reuse the engine's packaged output, retaining its binary catalog, resource
 // packages, platform icons, executable modes and macOS app signature.
-func writeDistribution(destination, artifact, project, version string) (resultErr error) {
-	file, err := os.CreateTemp(filepath.Dir(destination), ".pencode-release-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file.Name())
-	if err := file.Chmod(0o644); err != nil {
+func stageDistribution(destination, artifact, project, version string) error {
+	add := func(header *tar.Header, source io.Reader) error {
+		name := filepath.FromSlash(header.Name)
+		if !filepath.IsLocal(name) || (name != "pencode" && !strings.HasPrefix(name, "pencode"+string(filepath.Separator))) {
+			return fmt.Errorf("invalid artifact path %q", header.Name)
+		}
+		target := filepath.Join(destination, name)
+		if header.FileInfo().IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		if header.Typeflag == tar.TypeSymlink {
+			resolved := path.Join(path.Dir(header.Name), header.Linkname)
+			if path.IsAbs(header.Linkname) || !strings.HasPrefix(resolved, "pencode/") {
+				return fmt.Errorf("invalid artifact symlink %q", header.Name)
+			}
+			return os.Symlink(header.Linkname, target)
+		}
+		if !header.FileInfo().Mode().IsRegular() {
+			return fmt.Errorf("unsupported artifact entry %q", header.Name)
+		}
+		file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, header.FileInfo().Mode().Perm())
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(file, source)
 		return errors.Join(err, file.Close())
 	}
-	var add func(*tar.Header, io.Reader) error
-	var closeArchive func() error
-	if strings.HasSuffix(destination, ".zip") {
-		writer := zip.NewWriter(file)
-		add = func(header *tar.Header, source io.Reader) error {
-			entry := &zip.FileHeader{Name: header.Name, Method: zip.Deflate}
-			entry.SetMode(header.FileInfo().Mode())
-			entry.SetModTime(header.ModTime)
-			target, err := writer.CreateHeader(entry)
-			if err != nil {
-				return err
-			}
-			_, err = io.Copy(target, source)
-			return err
-		}
-		closeArchive = writer.Close
-	} else {
-		compressed := gzip.NewWriter(file)
-		writer := tar.NewWriter(compressed)
-		add = func(header *tar.Header, source io.Reader) error {
-			if err := writer.WriteHeader(header); err != nil {
-				return err
-			}
-			_, err := io.Copy(writer, source)
-			return err
-		}
-		closeArchive = func() error { return errors.Join(writer.Close(), compressed.Close()) }
-	}
-	defer func() {
-		resultErr = errors.Join(resultErr, closeArchive(), file.Close())
-		if resultErr == nil {
-			resultErr = os.Rename(file.Name(), destination)
-		}
-	}()
 	if err := copyArtifact(artifact, add); err != nil {
 		return err
 	}
@@ -160,7 +147,6 @@ func addFile(source, name string, add func(*tar.Header, io.Reader) error) error 
 		return err
 	}
 	header.Name = name
-	header.ModTime = time.Unix(0, 0)
 	if !info.Mode().IsRegular() {
 		return add(header, strings.NewReader(""))
 	}

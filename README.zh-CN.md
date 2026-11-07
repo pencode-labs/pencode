@@ -74,11 +74,11 @@ make run
 
 可运行 `make install-server` 仅编译安装本机服务端。离线 SSH 引导所需的服务端可在仓库根目录运行 `go run ./cmd/pencode-build-servers` 构建，默认生成 Linux/macOS 的 amd64、arm64 程序，位于 `resources/servers/<os>-<arch>/pencode-server`。
 
-运行 `make release VERSION=v0.1.0` 构建当前主机平台的桌面分发包（版本默认 `dev`，可用 `DIST_DIR` 指定输出目录）。构建复用 Onix 的 release 流程，将模块执行计划和资源编译为 `catalog.bin` 与 `.dat` 包，再使用 `onix_release` 编译程序。Windows 输出 `dist/pencode-<版本>-windows-<架构>.zip`；Linux 和 macOS 输出 `dist/pencode-<版本>-<系统>-<架构>.tar.gz`，其中 macOS 的系统名为 `darwin`。每个压缩包附带 `.sha256` 校验文件，包含许可证、图标声明及中英文 README。完整解压后，Linux 运行 `pencode/pencode`，Windows 运行 `pencode/pencode.exe`，macOS 打开 `pencode/pencode.app`。资源相对可执行文件定位，启动时不限制工作目录。扩展需通过扩展管理器另行安装；分发包不包含离线 SSH 服务端程序。
+运行 `make release VERSION=v0.1.0` 构建当前主机平台的原生安装包（版本默认 `dev`，可用 `DIST_DIR` 指定输出目录）。构建复用 Onix 的 release 流程，将模块执行计划和资源编译为 `catalog.bin` 与 `.dat` 包，再使用 `onix_release` 编译程序。Windows 输出 `dist/pencode-<版本>-windows-<架构>.exe`，macOS 输出 `dist/pencode-<版本>-darwin-<架构>.pkg`，Linux 输出 `dist/pencode-<版本>-linux-<架构>.deb`，每个安装包附带 `.sha256` 校验文件。Windows 使用 Inno Setup 7（可用 `ISCC` 指定编译器），显示安装目录选择页，默认安装到 `%LOCALAPPDATA%\Programs\Pencode`，并注册快捷方式与卸载程序。macOS 使用 `productbuild` 将 `pencode.app` 安装到 `/Applications`。Debian/Ubuntu 使用 `dpkg-deb`，安装到 `/opt/pencode`，提供 `pencode` 命令和应用菜单入口。所有安装包包含许可证、图标声明及中英文 README。扩展需另行安装；安装包不包含离线 SSH 服务端程序。
 
-推送 `v*` tag 会触发[桌面发布工作流](.github/workflows/release.yml)，分别构建 Linux、Windows、macOS 的 amd64 和 arm64 版本，校验后将六个分发包及 `SHA256SUMS` 上传到 GitHub Release。发布前请将仓库的 Actions 变量 `ONIX_REF` 设置为兼容的 Onix commit 或 tag，默认使用 `main`。手动运行工作流只生成可下载的构建产物，不创建 Release。构建依赖 Onix 文档列出的原生开发库；Windows 使用 MinGW-w64（LLVM MinGW 支持 arm64）。macOS 应用使用临时签名，尚未配置 Developer ID 签名和公证。
+推送 `v*` tag 会触发[桌面发布工作流](.github/workflows/release.yml)，分别构建 Linux、Windows、macOS 的 amd64 和 arm64 版本，校验后将六个原生安装包及 `SHA256SUMS` 上传到 GitHub Release。发布前请将仓库的 Actions 变量 `ONIX_REF` 设置为兼容的 Onix commit 或 tag，默认使用 `main`。手动运行工作流只生成可下载的构建产物，不创建 Release。构建依赖 Onix 文档列出的原生开发库；Windows 使用 MinGW-w64（LLVM MinGW 支持 arm64）。macOS 应用使用临时签名，尚未配置 Developer ID 签名和公证。
 
-设置 → 关于提供“检查更新”“下载更新”和“安装并重启”。程序读取 GitHub tag 对应的 Release，按本机系统与架构选择发行包，校验 SHA-256 后暂存完整包；重启沿用未保存文件确认流程，替换或启动进程失败时恢复旧包。正式版跳过预发行版。自动更新要求保留含 `pencode-version` 的完整发行目录，并对其父目录有写权限；旧发行包需先手动升级一次。
+设置 → 关于提供“检查更新”“下载更新”和“安装并重启”。程序读取 GitHub tag 对应的 Release，按本机系统与架构选择原生安装包，校验 SHA-256 后暂存到临时目录。重启沿用未保存文件确认流程；编辑器退出后，由辅助进程运行系统安装程序并重新启动 Pencode，取消安装或安装失败时也会尝试启动已安装的编辑器。Windows 更新沿用原安装路径；macOS 打开 Installer；Debian/Ubuntu 通过 `pkexec` 与 `apt-get` 请求系统授权安装。软件注册和卸载信息由原生安装程序维护。正式版跳过预发行版。更新检测要求安装目录中包含 `pencode-version`；现有压缩包发行版需手动安装一次新版安装包以切换更新流程。
 
 WebSocket 直连时，先在远端启动服务：
 

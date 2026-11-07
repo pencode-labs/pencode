@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-gl/mathgl/mgl32"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
-	"github.com/go-gl/mathgl/mgl32"
 	"github.com/pencode-labs/pencode/configuration"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -697,7 +697,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		model.openFolderSearch(model.activeProjectState(), "", model.commandMatches("folder-replace", state, goos))
 		return true
 	}
-	if model.editorNavigationShortcut(world, state, goos) || model.editorClipboardShortcut(world, state, goos) {
+	if model.fileTreePasteShortcut(world, state, goos) || model.editorNavigationShortcut(world, state, goos) || model.editorClipboardShortcut(world, state, goos) {
 		return true
 	}
 	if model.handleLanguageKeys(world, state) {

@@ -14,10 +14,12 @@ import (
 	"github.com/onix-engine/onix/scene"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
+	"github.com/pencode-labs/pencode/internal/clipboard"
 )
 
 type pencodeFileContext struct {
 	project                           *pencodeProject
+	transfer                          *fileIOJob
 	dialog, name, title, message, err string
 	path                              string
 	depth, index                      int
@@ -25,6 +27,7 @@ type pencodeFileContext struct {
 	pending                           bool
 	open, needsFocus                  bool
 	directory                         bool
+	externalFiles                     bool
 }
 
 type pencodeFileClipboard struct {
@@ -113,9 +116,13 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 	view.Text("file-dialog-message", c.message)
 	view.Text("file-dialog-error", c.err)
 	view.Attr("file-dialog-name", "value", c.name)
-	if c.dialog == "delete" {
+	if c.dialog == "delete" || c.dialog == "overwrite" {
 		view.Attr("file-dialog-name", "hidden", "")
-		view.Text("file-dialog-submit", "删除")
+		label := "删除"
+		if c.dialog == "overwrite" {
+			label = "覆盖"
+		}
+		view.Text("file-dialog-submit", label)
 	} else {
 		view.RemoveAttr("file-dialog-name", "hidden")
 		view.Text("file-dialog-submit", "确定")
@@ -138,7 +145,7 @@ func (model *workspaceModel) fileContextEnabled(ref string) bool {
 	case "file-context-rename", "file-context-delete", "file-context-cut", "file-context-copy":
 		return c.path != ""
 	case "file-context-paste":
-		return model.fileClipboard.project != nil && model.fileClipboard.path != ""
+		return c.externalFiles || model.fileClipboard.project != nil && model.fileClipboard.path != ""
 	case "file-context-reveal":
 		return !model.remoteWorkspace()
 	}
@@ -201,7 +208,8 @@ func (model *workspaceModel) updateFileContext(world *module.Content, state *inp
 	}
 	bounds, _ := root.Bounds()
 	*c = pencodeFileContext{project: project, path: relative, directory: directory, depth: depth, open: true,
-		x: max(4, min(x-bounds.X, bounds.Width-276)), y: max(4, min(y-bounds.Y, bounds.Height-395))}
+		externalFiles: clipboard.HasFiles(),
+		x:             max(4, min(x-bounds.X, bounds.Width-276)), y: max(4, min(y-bounds.Y, bounds.Height-395))}
 	model.lastFileClick = 0
 	return true
 }
@@ -277,11 +285,11 @@ func (model *workspaceModel) focusFileContext(world *module.Content) {
 	if c.inline() {
 		ref = "file-tree-name"
 	}
-	if c.dialog == "delete" {
+	if c.dialog == "delete" || c.dialog == "overwrite" {
 		ref = "file-dialog-cancel"
 	}
 	if control, ok := world.HTMLControl(model.surface, ref); ok {
-		if c.dialog != "delete" {
+		if c.dialog != "delete" && c.dialog != "overwrite" {
 			if _, ready := world.Get[engineui.TextField](control); !ready {
 				if model.app != nil && model.app.WakeAt != nil {
 					model.app.WakeAt(time.Now())
@@ -306,7 +314,7 @@ func (model *workspaceModel) handleFileContextKeys(world *module.Content, state 
 		return true
 	}
 	if c.dialog != "" {
-		if c.dialog != "delete" && model.uiKey(state, input.KeyEnter) {
+		if c.dialog != "delete" && c.dialog != "overwrite" && model.uiKey(state, input.KeyEnter) {
 			model.submitFileDialog(world)
 			return true
 		}
@@ -428,9 +436,15 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 			model.setProjectStatus(project, "无法写入剪贴板")
 		}
 	case "cut", "copy":
+		// Taking an internal copy replaces any older native file clipboard.
+		state, _ := world.Resource[*input.State]()
+		if !state.SetClipboardText(filepath.Join(project.Path, filepath.FromSlash(relative))) {
+			model.setProjectStatus(project, "无法写入剪贴板")
+		}
 		model.fileClipboard = pencodeFileClipboard{project, relative, action == "cut"}
+		c.externalFiles = false
 	case "paste":
-		if err := model.pasteProjectResource(project, model.fileContextDirectory()); err != nil {
+		if err := model.pasteFileClipboard(project, model.fileContextDirectory()); err != nil {
 			model.setProjectStatus(project, err.Error())
 		}
 		setPencodeEditorValue(world, model.surface, model.activeContent())
@@ -438,6 +452,42 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 		model.startProjectScan(project, false)
 	}
 	return true
+}
+
+// Only inspect the tree when its paste binding is pressed; idle frames do not
+// query the native clipboard or allocate temporary row lists.
+func (model *workspaceModel) fileTreePasteShortcut(world *module.Content, state *input.State, goos string) bool {
+	if world == nil || model.sidebarHidden || model.settingsOpen || model.quickOpen || !model.commandMatches("file-context-paste", state, goos) {
+		return false
+	}
+	focused := world.FocusedControl()
+	for _, access := range world.Query[htmlui.Component[treeProps, struct{}]]() {
+		props := access.Get().Props
+		if props.Model != model || props.Editing {
+			continue
+		}
+		if control, ok := world.HTMLControl(model.surface, props.RowID); ok && control == focused {
+			model.fileContext = pencodeFileContext{project: props.Project, path: props.Path, directory: props.IsDir,
+				open: true, externalFiles: clipboard.HasFiles()}
+			model.handleFileContextEvent(world, "file-context-paste", "")
+			model.fileContext.open = false
+			return true
+		}
+	}
+	for _, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {
+		props := access.Get().Props
+		if props.Model != model {
+			continue
+		}
+		if control, ok := world.HTMLControl(model.surface, props.SummaryID); ok && control == focused {
+			model.fileContext = pencodeFileContext{project: props.Project, directory: true,
+				open: true, externalFiles: clipboard.HasFiles()}
+			model.handleFileContextEvent(world, "file-context-paste", "")
+			model.fileContext.open = false
+			return true
+		}
+	}
+	return false
 }
 
 func fileManagerLabel(goos string) string {

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Version    = 11
+	Version    = 12
 	HeaderSize = 24
 	MaxPayload = 64 << 10
 	MaxMessage = 64 << 20
@@ -35,6 +35,7 @@ const (
 	ResourceRemove
 	ResourceRename
 	ResourceTransfer
+	ResourceImport
 	Service
 	Cancel
 	Reply

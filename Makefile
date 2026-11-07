@@ -26,6 +26,6 @@ install-server:
 install-extensions:
 	$(GO) run ./cmd/pencode-install-extensions -go "$(GO)" -directory "$(EXTENSIONS_DIR)"
 
-# Build with Onix's release resource pipeline, then compress the distribution.
+# Build with Onix's release resource pipeline, then create a native installer.
 release:
 	$(GO) run ./cmd/pencode-release -output "$(DIST_DIR)" -version "$(VERSION)"

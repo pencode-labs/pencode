@@ -1,8 +1,14 @@
-name: Release desktop installers
+name: Release desktop installers and servers
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+    paths:
+      - '.github/workflows/release.yml'
+      - 'cmd/pencode-release/**'
+      - 'cmd/pencode-server/**'
+      - 'packaging/**'
   workflow_dispatch:
 
 permissions:
@@ -86,11 +92,31 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
           "ISCC=$compilerDir/ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Test installer packaging and updates
-        run: go test -mod=readonly ./cmd/pencode-release ./internal/updater
+        shell: bash
+        run: |
+          set +e
+          go test -v -mod=readonly ./cmd/pencode-release ./internal/updater 2>&1 | tee "$RUNNER_TEMP/packaging-tests.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$status" != 0 ]]; then
+            awk '/--- FAIL:|\.go:[0-9]+:/ {gsub(/%/, "%25"); gsub(/\r/, "%0D"); print "::error::" $0}' "$RUNNER_TEMP/packaging-tests.log"
+          fi
+          exit "$status"
       - name: Build release distribution
         # The same entry point as make release; no GNU make dependency on Windows.
         run: go run ./cmd/pencode-release -output dist -version "$RELEASE_VERSION"
         shell: bash
+      - name: Build standalone server
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $name = "pencode-server-$env:RELEASE_VERSION-${{ matrix.os }}-${{ matrix.arch }}"
+          if ('${{ matrix.os }}' -eq 'windows') { $name += '.exe' }
+          go build -mod=readonly -trimpath '-ldflags=-s -w -buildid=' -o "dist/$name" ./cmd/pencode-server
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $digest = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$digest  $name`n" | Set-Content -LiteralPath "dist/$name.sha256" -NoNewline -Encoding utf8
       - name: Upload distribution
         uses: actions/upload-artifact@v4
         with:
@@ -99,6 +125,7 @@ jobs:
             pencode/dist/pencode-*.deb
             pencode/dist/pencode-*.pkg
             pencode/dist/pencode-*.exe
+            pencode/dist/pencode-server-*
             pencode/dist/pencode-*.sha256
           if-no-files-found: error
 
@@ -123,12 +150,20 @@ jobs:
           cd dist
           cat ./*.sha256 > SHA256SUMS
           sha256sum --check SHA256SUMS
+          assets=()
+          while read -r digest name; do
+            assets+=("$name")
+          done < SHA256SUMS
+          if [[ "${#assets[@]}" != 12 ]]; then
+            echo 'Expected six desktop installers and six standalone servers' >&2
+            exit 1
+          fi
           if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_VERSION" ./*.deb ./*.pkg ./*.exe SHA256SUMS --clobber
+            gh release upload "$RELEASE_VERSION" "${assets[@]}" SHA256SUMS --clobber
           else
             flags=(--verify-tag --generate-notes)
             if [[ "${RELEASE_VERSION#v}" == *-* ]]; then
               flags+=(--prerelease)
             fi
-            gh release create "$RELEASE_VERSION" ./*.deb ./*.pkg ./*.exe SHA256SUMS "${flags[@]}"
+            gh release create "$RELEASE_VERSION" "${assets[@]}" SHA256SUMS "${flags[@]}"
           fi

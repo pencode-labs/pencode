@@ -99,7 +99,11 @@ jobs:
           status=${PIPESTATUS[0]}
           set -e
           if [[ "$status" != 0 ]]; then
-            awk '/--- FAIL:|\.go:[0-9]+:/ {gsub(/%/, "%25"); gsub(/\r/, "%0D"); print "::error::" $0}' "$RUNNER_TEMP/packaging-tests.log"
+            output=$(cat "$RUNNER_TEMP/packaging-tests.log")
+            output=${output//'%'/'%25'}
+            output=${output//$'\r'/'%0D'}
+            output=${output//$'\n'/'%0A'}
+            echo "::error title=Installer packaging tests::$output"
           fi
           exit "$status"
       - name: Build release distribution

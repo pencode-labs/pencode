@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -86,7 +87,27 @@ func Open(root *os.Root, directory string, manifest Manifest, stderr io.Writer) 
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("extension entry is not a regular file")
 	}
-	return transport.StartPeerIn(directory, filepath.Join(directory, filepath.FromSlash(manifest.Entry)), stderr, manifest.Args...)
+	command := filepath.Join(directory, filepath.FromSlash(manifest.Entry))
+	args := manifest.Args
+	if manifest.JavaScript() {
+		runtime, err := JavaScriptRuntime()
+		if err != nil {
+			return nil, err
+		}
+		args = append([]string{command}, args...)
+		command = runtime
+	}
+	return transport.StartPeerIn(directory, command, stderr, args...)
+}
+
+// JavaScriptRuntime resolves tools in the workspace server's environment.
+func JavaScriptRuntime() (string, error) {
+	for _, name := range [...]string{"node", "bun"} {
+		if command, err := exec.LookPath(name); err == nil {
+			return command, nil
+		}
+	}
+	return "", fmt.Errorf("JavaScript 扩展需要工作区主机安装 Node.js 或 Bun，并加入 PATH")
 }
 
 func exchange(p io.ReadWriter) (peb.Contributions, error) {

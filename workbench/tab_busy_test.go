@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/scene"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/scene"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 func TestTabBusyDotsAnimateWithoutAllocations(t *testing.T) {

@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 func TestPencodeTabsPreserveEditorView(t *testing.T) {

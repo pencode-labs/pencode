@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

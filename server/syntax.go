@@ -2,15 +2,17 @@ package server
 
 import (
 	"context"
+	"strings"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
 type syntaxSession struct {
 	captures map[syntax.Capture]uint32
-	source   string
+	source   piecetree.Snapshot
 	previous []syntax.Capture
 	document syntax.Document
 	version  uint64
@@ -51,10 +53,13 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 	if version != p.version {
 		return &protocol.Error{Code: protocol.VersionMismatch, Message: "syntax version mismatch"}
 	}
-	if start < 0 || start > end || end > len(p.source) || !utf8.ValidString(text) || start > 0 && start < len(p.source) && !utf8.RuneStart(p.source[start]) || end < len(p.source) && !utf8.RuneStart(p.source[end]) || len(p.source)-(end-start)+len(text) > protocol.MaxMessage-1024 {
+	if start < 0 || start > end || end > p.source.Len() || !utf8.ValidString(text) || start > 0 && start < p.source.Len() && !utf8.RuneStart(p.source.ByteAt(start)) || end < p.source.Len() && !utf8.RuneStart(p.source.ByteAt(end)) || p.source.Len()-(end-start)+len(text) > protocol.MaxMessage-1024 {
 		return protocol.ErrProtocol
 	}
-	source := p.source[:start] + text + p.source[end:]
+	source := p.source.Replace(start, end, text)
+	if p.source.Len() > 64<<10 && source.Len() < p.source.Len()/4 {
+		source = piecetree.FromString(strings.Clone(source.String()))
+	}
 	if err := p.document.UpdateRange(path, source, start, end, start+len(text)); err != nil {
 		return err
 	}
@@ -63,7 +68,7 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 		delete(s.syntax, id)
 		return err
 	}
-	shift := len(source) - len(p.source)
+	shift := source.Len() - p.source.Len()
 	p.source = source
 	p.version++
 	e.U64(p.version)
@@ -88,7 +93,14 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 			e.String(token.Scopes)
 		}
 	}
+	old := len(p.previous)
 	p.previous = append(p.previous[:0], captures...)
+	if len(p.previous) < old {
+		clear(p.previous[len(p.previous):old])
+	}
+	if cap(p.previous) > max(4096, len(captures)*4) {
+		p.previous = append([]syntax.Capture(nil), p.previous...)
+	}
 	return nil
 }
 

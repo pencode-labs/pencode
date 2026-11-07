@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

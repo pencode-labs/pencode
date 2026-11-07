@@ -1,6 +1,6 @@
 package workbench
 
-import "github.com/diiyw/onix/scene"
+import "github.com/onix-engine/onix/scene"
 
 func (tab *sourceTab) initializeDiffView(view sourceDiffView) {
 	tab.applyDiffView(view)

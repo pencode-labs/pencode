@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/peb"
 )

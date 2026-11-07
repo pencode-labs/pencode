@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 func sourceChangesApp(t testing.TB, count int) (*onix.App, *workspaceModel) {

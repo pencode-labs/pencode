@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
 )
 
 func TestPencodeIdleKeepsActiveLexicalState(t *testing.T) {

@@ -1,9 +1,9 @@
 package workbench
 
 import (
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 // Cache paint spans and bracket offsets, never per-tab trees. Brackets count

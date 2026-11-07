@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/scene"
 )
 
 // Session metadata contains no document contents or running process state.

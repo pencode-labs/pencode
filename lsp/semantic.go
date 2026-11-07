@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 var SemanticTokenTypes = []string{"namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator", "decorator"}

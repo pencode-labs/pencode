@@ -76,6 +76,7 @@ func (m *workspaceModel) acceptTextEditor(r *fileIOResult) {
 	m.highlightCache.remove(f)
 	if m.activeFile() == f {
 		m.findOpen, m.replaceOpen = false, false
+		m.clearFindCache()
 		m.resetHighlight()
 	}
 	m.setProjectStatus(j.project, "")

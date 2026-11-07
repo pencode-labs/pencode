@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
 )
 
 func TestPencodeTabContextTargetClipboardAndKeyboard(t *testing.T) {

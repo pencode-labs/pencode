@@ -7,8 +7,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
 )
 
 func TestSourceInlineChanges(t *testing.T) {

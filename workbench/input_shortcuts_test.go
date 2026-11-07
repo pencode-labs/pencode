@@ -4,9 +4,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/diiyw/onix/input"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/input"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

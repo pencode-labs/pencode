@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/html/dom"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/output"
 	"github.com/pencode-labs/pencode/peb"
@@ -57,7 +57,7 @@ type pencodeExtensionFocus struct {
 	selectText  bool
 }
 type pencodeExtensionIcon struct {
-	ref, source, foreground string
+	ref, source, foreground, copyRef string
 }
 type pencodeExtensionFocusTarget struct {
 	ref, target string
@@ -71,6 +71,7 @@ type pencodeExtensionSurface struct {
 	expiresAt                      time.Time
 	tree                           *dom.Node
 	model                          *workspaceModel
+	document                       *pencodeCustomDocument
 	session                        *extensions.ActionSession
 	output                         *output.Channel
 	images                         map[string][]byte
@@ -86,6 +87,7 @@ type pencodeExtensionSurface struct {
 	scrollKey                      string
 	prefix, rootID, closeID, style string
 	pointerFocus                   string
+	copiedRef                      string
 	invocation                     pencodeExtensionInvocation
 	regionSplitter                 peb.ViewRegionSplitter
 	regions                        []pencodeExtensionRegion
@@ -377,7 +379,13 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 						break
 					}
 				}
-				icons = append(icons, pencodeExtensionIcon{ref: ref, source: source, foreground: foreground})
+				copyRef := ""
+				if parent := node.Parent; parent != nil {
+					if _, ok := parent.Attr("data-pencode-copy"); ok {
+						copyRef, _ = parent.Attr("data-ref")
+					}
+				}
+				icons = append(icons, pencodeExtensionIcon{ref: ref, source: source, foreground: foreground, copyRef: copyRef})
 			}
 		}
 		if layout, _ := node.Attr("data-pencode-layout"); layout == "fill" && !hidden {
@@ -484,7 +492,11 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				target.Attr(state.ref, "aria-expanded", state.value)
 			}
 			for _, icon := range surface.icons {
-				target.Attr(icon.ref, "src", surface.model.themedIcon(icon.source, icon.foreground))
+				source := icon.source
+				if icon.copyRef != "" && icon.copyRef == surface.copiedRef {
+					source = "icons/check.svg"
+				}
+				target.Attr(icon.ref, "src", surface.model.themedIcon(source, icon.foreground))
 			}
 			for _, region := range surface.selectables {
 				target.Attr(region.ref, "id", region.id)
@@ -531,7 +543,10 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				}
 				if value, ok := surface.copies[c.Ref]; ok {
 					if state, ok := surface.model.fontResources.Resource[*input.State](); ok {
-						state.SetClipboardText(value)
+						if state.SetClipboardText(value) && surface.copiedRef != c.Ref {
+							surface.copiedRef = c.Ref
+							markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
+						}
 					}
 					return
 				}
@@ -666,6 +681,10 @@ func (s *pencodeExtensionSurface) scrollTarget() string {
 }
 
 func (s *pencodeExtensionSurface) live() bool {
+	if d := s.document; d != nil {
+		return d.selection == s && d.definition != nil && s.model.customDocuments[s.model.activeFile()] == d &&
+			s.model.fileEditor(d.file) == d.provider && !s.model.sourceState().visible() && s.model.actions.ui.editor == nil
+	}
 	state := &s.model.actions.ui
 	if s.ui.Kind == peb.EditorTab {
 		return state.editor == s

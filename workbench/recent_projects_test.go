@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	htmlui "github.com/diiyw/onix/ui/html"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/remote"

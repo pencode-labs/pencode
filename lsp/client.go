@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 type Options struct {

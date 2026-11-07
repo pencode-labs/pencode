@@ -34,7 +34,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 ### 环境要求与当前限制
 
 - Go **1.27.0 或更新版本**。
-- 在本仓库旁准备名为 `onix` 的 Onix 源码目录。当前 `go.mod` 使用 `replace github.com/diiyw/onix => ../onix`。
+- 在本仓库旁准备名为 `onix` 的 Onix 源码目录。当前 `go.mod` 使用 `replace github.com/onix-engine/onix => ../onix`。
 - Onix 桌面构建所需的平台原生开发库，具体见 Onix 源码中的 `docs/desktop-builds.md`。
 - Git 功能需要系统 `git`，SSH 连接需要 OpenSSH `ssh`。Go 扩展会自动安装所需工具；其他语言服务器由对应扩展决定。
 - GUI 所在设备需安装可用的文本字体。Pencode 内置 Symbols Nerd Font Mono，为 Shell 提示符图标提供字形回退。
@@ -56,7 +56,7 @@ cd pencode
 go mod tidy
 ```
 
-请使用提供 `github.com/diiyw/onix/html/{css,dom,layout,style}` 公开包的 Onix 源码版本。工作台及其测试已使用这些 API，可以作为独立模块构建：
+请使用提供 `github.com/onix-engine/onix/html/{css,dom,layout,style}` 公开包的 Onix 源码版本。工作台及其测试已使用这些 API，可以作为独立模块构建：
 
 ```sh
 go build ./...
@@ -135,7 +135,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 ## 扩展
 
-扩展是独立可执行程序，通过 stdin/stdout 上的二进制协议 **peb v13** 与服务端通信，日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
+扩展是原生可执行程序或由 TypeScript 编译的 JavaScript，通过 stdin/stdout 上的二进制协议 **peb v18** 与服务端通信，日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
 
 扩展安装在服务端的 `~/.pencode/extensions/<扩展 ID>/`，包含可执行文件和 `resources/extension.json` 清单。可通过扩展管理器的本地目录安装流程注册扩展。
 
@@ -143,18 +143,21 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 - [Docker 管理器](https://github.com/pencode-labs/docker)：从右上角管理容器列表，启动、停止、重启容器并查看自动刷新的日志。
 - [Go 语言工具](https://github.com/pencode-labs/go)：提供 Go 语言和调试支持，缺少 `gopls`、Delve 时自动安装。
+- [Office Viewer](extensions/office-viewer/README.md)：TypeScript 插件，本地只读预览 Word `.docx`、Excel `.xlsx` 和 PowerPoint `.pptx`。
 - [Markdown 预览](https://github.com/pencode-labs/markdown-preview)：只读预览，支持与宿主源码编辑器双栏显示。
 - [Material 文件图标](https://github.com/pencode-labs/material-icons)：文件图标主题。
 - [PHP](extensions/php/README.md)：从 Zed PHP 扩展移植，支持 PHP/Blade 语言服务、工具自动安装和 Xdebug 调试适配器。
 - [扩展 UI](https://github.com/pencode-labs/ui-demo)：工作台按钮、弹窗、菜单、浮窗与面板。
 
-已有检出可运行 `git submodule update --init --recursive` 初始化子模块。每个扩展都有独立的 Go 模块与构建说明。例如，在主仓库根目录构建 Go 语言工具：
+已有检出可运行 `git submodule update --init --recursive` 初始化子模块。Go 扩展使用独立 Go 模块，TS 扩展使用独立 npm 包，各目录提供构建说明。例如，在主仓库根目录构建 Go 语言工具：
 
 ```sh
 (cd extensions/go && go build -o bin/go .)
 ```
 
-当前扩展协议为 peb v13（CS v9），旧扩展需要使用当前 SDK 重新构建。
+当前扩展协议为 peb v18（CS v11），旧扩展需要使用当前 SDK 重新构建。
+
+JavaScript 入口按 `.js`、`.mjs`、`.cjs` 后缀识别，自动使用工作区主机 PATH 中的 Node.js，没有时使用 Bun。运行时不调用包管理器；TS 需要先编译并打包依赖。参见 [TS SDK](peb/ts/README.md)。`make install-extensions` 使用 npm（没有时使用 Bun）按锁文件安装构建依赖、运行 build，并安装输出目录、资源和 package.json；`.js` 的 ESM/CJS 类型随 package.json 保留，各平台入口不添加 `.exe`。
 
 ## 文档
 

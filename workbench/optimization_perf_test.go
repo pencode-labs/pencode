@@ -9,8 +9,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/scene"
-	onixtext "github.com/diiyw/onix/text"
+	"github.com/onix-engine/onix/scene"
+	onixtext "github.com/onix-engine/onix/text"
 )
 
 var perfTab *sourceTab

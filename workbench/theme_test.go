@@ -7,14 +7,14 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/html/css"
-	"github.com/diiyw/onix/html/dom"
-	"github.com/diiyw/onix/html/style"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/html/css"
+	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/html/style"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 func pencodeComputedTheme(t *testing.T, theme pencodeTheme, page string) map[string]*style.ComputedStyle {

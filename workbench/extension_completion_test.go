@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

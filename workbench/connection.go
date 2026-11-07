@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/configuration"
 	"github.com/pencode-labs/pencode/connection"

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
 	"github.com/pencode-labs/pencode/lsp"
 )
 

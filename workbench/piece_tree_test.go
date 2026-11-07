@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/input"
+	"github.com/onix-engine/onix/input"
 )
 
 func TestPencodePieceTreeNativeEditHistory(t *testing.T) {

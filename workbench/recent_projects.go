@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/diiyw/onix/module"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/module"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/protocol"
 )

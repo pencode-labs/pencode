@@ -4,10 +4,10 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	engineui "github.com/onix-engine/onix/ui"
 )
 
 // Comparison documents share the editor's background parser. Only immutable

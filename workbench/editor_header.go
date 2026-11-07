@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	htmlui "github.com/diiyw/onix/ui/html"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 type pencodeEditorHeader struct {

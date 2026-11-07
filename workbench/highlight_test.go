@@ -10,13 +10,13 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	"github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/lsp"
 )
 

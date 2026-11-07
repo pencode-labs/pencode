@@ -3,11 +3,11 @@ package workbench
 import (
 	"testing"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

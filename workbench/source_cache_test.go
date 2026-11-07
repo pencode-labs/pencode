@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ui/html"
 )
 
 func TestSourceControlRenderCache(t *testing.T) {

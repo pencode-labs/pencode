@@ -1,7 +1,8 @@
 package client
 
 import (
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/protocol"
 	"reflect"
 	"strings"
@@ -42,10 +43,35 @@ func TestRemoteSyntaxCaptureEditsMatchFullParse(t *testing.T) {
 	}
 }
 
+func TestRemoteSyntaxKeepsEditedSnapshotUnmaterialized(t *testing.T) {
+	c, _ := peer(t, nil)
+	remote := c.NewSyntax(t.Context())
+	defer remote.Close()
+	base := "package demo\n" + strings.Repeat("var value = 42 // 中🙂\n", 10000)
+	first := piecetree.FromString(base)
+	if err := remote.Update("main.go", first); err != nil {
+		t.Fatal(err)
+	}
+	offset := strings.Index(base, "42")
+	next := first.Replace(offset, offset+2, "123")
+	if err := remote.Update("main.go", next); err != nil {
+		t.Fatal(err)
+	}
+	if next.Materialized() || first.ByteAt(offset) != '4' {
+		t.Fatal("remote synchronization materialized or changed a snapshot")
+	}
+	if err := remote.Update("main.go", "package demo\n"); err != nil {
+		t.Fatal(err)
+	}
+	if cap(remote.captures) > 4096 {
+		t.Fatal("short document retained the old capture capacity")
+	}
+}
+
 func TestSyntaxRejectsMalformedCaptureDelta(t *testing.T) {
 	for _, kind := range []string{"prefix", "removed", "count", "capture-id", "reversed", "outside", "overlap", "suffix-shift", "truncated", "trailing"} {
 		t.Run(kind, func(t *testing.T) {
-			session := Syntax{source: "abcd", captures: []syntax.Token{{Start: 0, End: 1, Capture: "a"}, {Start: 2, End: 3, Capture: "a"}}, names: []syntax.Capture{{Capture: "a"}}}
+			session := Syntax{source: piecetree.FromString("abcd"), captures: []syntax.Token{{Start: 0, End: 1, Capture: "a"}, {Start: 2, End: 3, Capture: "a"}}, names: []syntax.Capture{{Capture: "a"}}}
 			prefix, removed, count := uint32(0), uint32(2), uint32(1)
 			start, end, id := uint32(0), uint32(1), uint32(0)
 			source := "abcd"
@@ -93,7 +119,7 @@ func TestSyntaxRejectsMalformedCaptureDelta(t *testing.T) {
 
 func BenchmarkSyntaxCaptureDeltaApply(b *testing.B) {
 	source := strings.Repeat("word ", 10000)
-	session := Syntax{source: source, captures: make([]syntax.Token, 10000), names: []syntax.Capture{{Capture: "variable"}}}
+	session := Syntax{source: piecetree.FromString(source), captures: make([]syntax.Token, 10000), names: []syntax.Capture{{Capture: "variable"}}}
 	for i := range session.captures {
 		session.captures[i] = syntax.Token{Start: i * 5, End: i*5 + 4, Capture: "variable"}
 	}

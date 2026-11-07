@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/lsp"
 )
 

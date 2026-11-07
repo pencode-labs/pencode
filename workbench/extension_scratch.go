@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/diiyw/onix/html/dom"
+	"github.com/onix-engine/onix/html/dom"
 )
 
 // Only validation and region lookup storage is pooled; published DOM trees and

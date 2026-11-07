@@ -1,6 +1,6 @@
 package workbench
 
-import "github.com/diiyw/onix/ui/html"
+import "github.com/onix-engine/onix/ui/html"
 
 // sourceVNodeView retains VNode slices for each group. It builds typed nodes,
 // never markup; user values reach the DOM as text or attribute values.

@@ -4,10 +4,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	"github.com/diiyw/onix/text/piecetree"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text/piecetree"
+	engineui "github.com/onix-engine/onix/ui"
 )
 
 // Entries follow source order; Pair indexes the matching entry, or is -1.
@@ -80,7 +80,8 @@ type pencodeBracketBuilder struct {
 	token int
 }
 
-func (builder *pencodeBracketBuilder) add(source string, tokens []syntax.Token, offset int, character rune) {
+func (builder *pencodeBracketBuilder) add[V piecetree.Value](value V, tokens []syntax.Token, offset int, character rune) {
+	source := piecetree.Text(value)
 	if character != '(' && character != ')' && character != '[' && character != ']' && character != '{' && character != '}' {
 		return
 	}
@@ -100,7 +101,7 @@ func (builder *pencodeBracketBuilder) add(source string, tokens []syntax.Token, 
 		return
 	}
 	last := builder.stack[len(builder.stack)-1]
-	if pencodeBracketMate(source[builder.items[last].Offset]) != byte(character) {
+	if pencodeBracketMate(source.ByteAt(builder.items[last].Offset)) != byte(character) {
 		// Do not create crossing pairs in incomplete or malformed code.
 		builder.stack = builder.stack[:0]
 		return

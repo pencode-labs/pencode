@@ -3,10 +3,10 @@ package workbench
 import (
 	"strings"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/text/piecetree"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/text/piecetree"
+	engineui "github.com/onix-engine/onix/ui"
 )
 
 const (

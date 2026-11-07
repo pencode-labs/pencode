@@ -6,10 +6,10 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	engineui "github.com/onix-engine/onix/ui"
 )
 
 func TestPencodeBracketIndex(t *testing.T) {

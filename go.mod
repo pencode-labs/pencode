@@ -2,13 +2,13 @@ module github.com/pencode-labs/pencode
 
 go 1.27.0
 
-replace github.com/diiyw/onix => ../onix
+replace github.com/onix-engine/onix => ../onix
 
 require (
 	github.com/coder/websocket v1.8.15
-	github.com/diiyw/onix v0.0.0-00010101000000-000000000000
 	github.com/ebitengine/purego v0.11.2
 	github.com/go-gl/mathgl v1.2.0
+	github.com/onix-engine/onix v0.0.0-00010101000000-000000000000
 	github.com/yuin/goldmark/v2 v2.1.9
 	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.61.0

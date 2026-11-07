@@ -3,7 +3,7 @@ package workbench
 import (
 	"testing"
 
-	"github.com/diiyw/onix/font"
+	"github.com/onix-engine/onix/font"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/terminal"
 )

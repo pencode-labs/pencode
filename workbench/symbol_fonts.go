@@ -4,8 +4,8 @@ import (
 	_ "embed"
 	"sync"
 
-	"github.com/diiyw/onix/font"
-	"github.com/diiyw/onix/text"
+	"github.com/onix-engine/onix/font"
+	"github.com/onix-engine/onix/text"
 )
 
 //go:embed fonts/SymbolsNerdFontMono-Regular.ttf

@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/project"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/project"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/internal/environment"

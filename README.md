@@ -34,7 +34,7 @@ File changes use native FSEvents on macOS, recursive `ReadDirectoryChangesW` on 
 ### Requirements and current limitations
 
 - Go **1.27.0 or newer**.
-- An Onix checkout next to this repository, named `onix`. The current `go.mod` uses `replace github.com/diiyw/onix => ../onix`.
+- An Onix checkout next to this repository, named `onix`. The current `go.mod` uses `replace github.com/onix-engine/onix => ../onix`.
 - The native development libraries required by Onix for desktop builds; see `docs/desktop-builds.md` in the Onix checkout.
 - System `git` for source control and OpenSSH `ssh` for SSH connections. The Go extension installs its tools automatically; other language servers depend on their extensions.
 - Text fonts installed on the GUI host. Pencode bundles Symbols Nerd Font Mono as a fallback for shell prompt icons.
@@ -56,7 +56,7 @@ cd pencode
 go mod tidy
 ```
 
-Use an Onix checkout that provides the public `github.com/diiyw/onix/html/{css,dom,layout,style}` packages. The workbench and its tests use these APIs and can build as an independent module:
+Use an Onix checkout that provides the public `github.com/onix-engine/onix/html/{css,dom,layout,style}` packages. The workbench and its tests use these APIs and can build as an independent module:
 
 ```sh
 go build ./...
@@ -143,7 +143,7 @@ For remote workspaces, settings and extensions belong to the workspace host; sys
 
 ## Extensions
 
-Extensions are executable programs communicating with the server through **peb v13**, a binary protocol over stdin/stdout. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
+Extensions are native executables or JavaScript bundles compiled from TypeScript, communicating with the server through **peb v18**, a binary protocol over stdin/stdout. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
 
 Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host and include an executable and a `resources/extension.json` manifest. Use the extension manager's local-directory installation flow to register one.
 
@@ -152,18 +152,21 @@ Bundled extensions include the following; see each extension for its license and
 - [Codex Agent](https://github.com/pencode-labs/codex): editor chat, streaming replies, approvals, and project conversations through the Codex CLI.
 - [Docker](https://github.com/pencode-labs/docker): container lists, start/stop/restart controls, and automatically refreshed logs from the title bar.
 - [Go language tools](https://github.com/pencode-labs/go): provides Go language and debug support, automatically installing `gopls` and Delve when missing.
+- [Office Viewer](extensions/office-viewer/README.md): a TypeScript extension for local read-only Word `.docx`, Excel `.xlsx`, and PowerPoint `.pptx` previews.
 - [Markdown preview](https://github.com/pencode-labs/markdown-preview): read-only preview with native source editing and optional split layout.
 - [Material file icons](https://github.com/pencode-labs/material-icons): a file icon theme.
 - [PHP](https://github.com/pencode-labs/php): PHP/Blade language servers with automatic installation and an Xdebug adapter, ported from the Zed PHP extension.
 - [Extension UI](https://github.com/pencode-labs/ui-demo): actions, dialogs, menus, popups, and panels.
 
-For an existing checkout, initialize the submodules with `git submodule update --init --recursive`. Each extension has its own Go module and build instructions. For example, build Go language tools from the repository root with:
+For an existing checkout, initialize the submodules with `git submodule update --init --recursive`. Go extensions have independent Go modules; TypeScript extensions have independent npm packages. Each directory includes build instructions. For example, build Go language tools from the repository root with:
 
 ```sh
 (cd extensions/go && go build -o bin/go .)
 ```
 
-The current extension protocol is peb v13 (CS v9). Older extensions must be rebuilt with the current SDK.
+The current extension protocol is peb v18 (CS v11). Older extensions must be rebuilt with the current SDK.
+
+The workspace host recognizes `.js`, `.mjs`, and `.cjs` entries and launches them with Node.js from its PATH, falling back to Bun. Runtime loading never invokes a package manager; compile TypeScript and bundle dependencies first. See the [TypeScript SDK](peb/ts/README.md). `make install-extensions` uses npm (or Bun) with the lockfile, runs the package build, and installs its output directory, resources and package.json. The package metadata preserves ESM/CJS behavior for `.js`; JavaScript entries keep the same name on every platform.
 
 ## Documentation
 

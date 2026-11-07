@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/textchange"
 )

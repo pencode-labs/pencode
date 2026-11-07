@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/diiyw/onix/font"
-	"github.com/diiyw/onix/images/svg"
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/font"
+	"github.com/onix-engine/onix/images/svg"
+	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/output"
 	"github.com/pencode-labs/pencode/peb"

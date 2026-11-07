@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/diiyw/onix/input"
+	"github.com/onix-engine/onix/input"
 )
 
 func TestWorkbenchResize(t *testing.T) {

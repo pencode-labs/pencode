@@ -11,11 +11,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	"github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
+	"github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/textsearch"
@@ -81,6 +81,7 @@ func (m *workspaceModel) openFolderSearch(project *pencodeProject, directory str
 	s.open, s.replace, s.needsFocus = true, replace, true
 	s.project, s.directory = project, directory
 	m.quickOpen, m.settingsOpen, m.findOpen = false, false, false
+	m.clearFindCache()
 	m.languageUI.contextOpen = false
 	m.fileContext.open = false
 	m.startFolderSearch()

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 // SyncDocument sends didOpen once, then full or incremental changes according

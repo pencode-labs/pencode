@@ -3,9 +3,9 @@ package workbench
 import (
 	"runtime"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	engineui "github.com/onix-engine/onix/ui"
 )
 
 var pencodeEditorClipboardCommands = [...]struct{ id, ref string }{

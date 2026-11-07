@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/input"
+	"github.com/onix-engine/onix/input"
 	"github.com/pencode-labs/pencode/lsp"
 )
 

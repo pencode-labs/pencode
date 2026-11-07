@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/html/style"
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/html/style"
+	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	engineui "github.com/diiyw/onix/ui"
+	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/protocol"
 )
 

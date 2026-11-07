@@ -4,10 +4,10 @@ import (
 	"math"
 	"testing"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/input"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/input"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 func editorContextBounds(t *testing.T, model *workspaceModel, ref string) htmlui.Rect {

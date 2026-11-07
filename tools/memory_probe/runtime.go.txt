@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/diiyw/onix/resource"
+	"github.com/onix-engine/onix/resource"
 )
 
 func init() {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -194,5 +195,65 @@ func TestExecutablePlatforms(t *testing.T) {
 				t.Errorf("executable(%q, %q) = %q, want %q", entry, goos, got, want)
 			}
 		}
+	}
+}
+
+func TestInstallJavaScriptExtension(t *testing.T) {
+	if _, err := exec.LookPath("npm"); err != nil {
+		t.Skip("npm required for JavaScript build test")
+	}
+	source := filepath.Join(t.TempDir(), "javascript source")
+	if err := os.MkdirAll(filepath.Join(source, "resources"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"resources/extension.json": `{"id":"js-test","entry":"dist/main.js","args":["hello"]}`,
+		"LICENSE":                  "fixture license",
+		"package.json":             `{"name":"fixture","version":"1.0.0","type":"module","scripts":{"build":"node build.mjs"}}`,
+		"package-lock.json":        `{"name":"fixture","version":"1.0.0","lockfileVersion":3,"packages":{"":{"name":"fixture","version":"1.0.0"}}}`,
+		"build.mjs":                `import {mkdirSync,writeFileSync} from 'node:fs'; mkdirSync('dist',{recursive:true}); writeFileSync('dist/main.js',"import {basename} from 'node:path'; process.stdout.write(basename(process.cwd())+':'+process.argv[2]);"); writeFileSync('dist/asset.txt','bundled asset');`,
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(source, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	directory := t.TempDir()
+	if err := install("go", source, directory, "../.."); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(directory, "js-test")
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	peer, err := extensionhost.Open(root, target, extensionhost.Manifest{Entry: "dist/main.js", Args: []string{"hello"}}, os.Stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	output, err := io.ReadAll(peer)
+	if err != nil || string(output) != "js-test:hello" {
+		t.Fatalf("JavaScript output: %q, %v", output, err)
+	}
+	for _, name := range []string{"package.json", "dist/asset.txt", "LICENSE", "resources/extension.json"} {
+		if _, err := os.Stat(filepath.Join(target, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"node_modules", "build.mjs", "package-lock.json"} {
+		if _, err := os.Stat(filepath.Join(target, name)); !os.IsNotExist(err) {
+			t.Fatalf("installed build input %s: %v", name, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(source, "build.mjs"), []byte("throw new Error('failed build')"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := install("go", source, directory, "../.."); err == nil {
+		t.Fatal("accepted failed JS build")
+	}
+	if _, err := os.Stat(filepath.Join(target, "dist/main.js")); err != nil {
+		t.Fatal("failed JS build removed previous installation")
 	}
 }

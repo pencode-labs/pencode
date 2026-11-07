@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
 )
 
 func fileDragPoint(t *testing.T, model *workspaceModel, ref string) (float64, float64) {

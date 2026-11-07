@@ -1,4 +1,4 @@
-// Package extensionhost owns native extension discovery, registration and files.
+// Package extensionhost owns extension discovery, registration and files.
 // It deliberately has no dependency on the GUI or the client package.
 package extensionhost
 

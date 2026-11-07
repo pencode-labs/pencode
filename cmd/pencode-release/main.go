@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/diiyw/onix/editor"
+	"github.com/onix-engine/onix/editor"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 )
 

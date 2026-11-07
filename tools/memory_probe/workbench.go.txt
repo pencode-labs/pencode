@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/render"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/render"
 )
 
 type memoryProbeRequest struct {

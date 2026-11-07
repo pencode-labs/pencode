@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/input"
+	"github.com/onix-engine/onix/input"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/configuration"
 	"github.com/pencode-labs/pencode/connection"

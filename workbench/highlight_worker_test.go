@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
 )
 
 func settlePencodeHighlight(t testing.TB, model *workspaceModel) {

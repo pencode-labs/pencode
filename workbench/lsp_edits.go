@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/diiyw/onix/module"
+	"github.com/onix-engine/onix/module"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/protocol"
 )

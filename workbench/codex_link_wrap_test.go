@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/font"
-	"github.com/diiyw/onix/html/css"
-	"github.com/diiyw/onix/html/dom"
-	"github.com/diiyw/onix/html/layout"
-	"github.com/diiyw/onix/html/style"
+	"github.com/onix-engine/onix/font"
+	"github.com/onix-engine/onix/html/css"
+	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/style"
 )
 
 func TestCodexLongLinksWrapInsideUserBubble(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/scene"
 )
 
 func TestPencodeEditorCentersFontMetricsInRows(t *testing.T) {

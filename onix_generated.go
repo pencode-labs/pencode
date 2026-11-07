@@ -2,14 +2,14 @@
 package main
 
 import (
-	onix "github.com/diiyw/onix"
-	graphics "github.com/diiyw/onix/graphics"
-	ontex "github.com/diiyw/onix/graphics/codec/ontex"
-	graphicssvg "github.com/diiyw/onix/graphics/codec/svg"
-	module "github.com/diiyw/onix/module"
-	project "github.com/diiyw/onix/project"
-	windowsvg "github.com/diiyw/onix/window/codec/svg"
-	filedialog "github.com/diiyw/onix/window/filedialog"
+	onix "github.com/onix-engine/onix"
+	graphics "github.com/onix-engine/onix/graphics"
+	ontex "github.com/onix-engine/onix/graphics/codec/ontex"
+	graphicssvg "github.com/onix-engine/onix/graphics/codec/svg"
+	module "github.com/onix-engine/onix/module"
+	project "github.com/onix-engine/onix/project"
+	windowsvg "github.com/onix-engine/onix/window/codec/svg"
+	filedialog "github.com/onix-engine/onix/window/filedialog"
 	iofs "io/fs"
 )
 

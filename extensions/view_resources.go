@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"strings"
 
-	imagespng "github.com/diiyw/onix/images/png"
-	"github.com/diiyw/onix/images/svg"
-	imageswebp "github.com/diiyw/onix/images/webp"
+	imagespng "github.com/onix-engine/onix/images/png"
+	"github.com/onix-engine/onix/images/svg"
+	imageswebp "github.com/onix-engine/onix/images/webp"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/peb"
 	"golang.org/x/net/html"

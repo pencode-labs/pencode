@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/scene"
 )
 
 const (

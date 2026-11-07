@@ -7,12 +7,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	"github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/text/piecetree"
+	engineui "github.com/onix-engine/onix/ui"
+	"github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/textsearch"
 )
 
@@ -77,7 +78,7 @@ func (model *workspaceModel) openFind(replace bool) {
 			buffer := model.activeFile().snapshotBuffer()
 			start, end := buffer.ByteOffset(min(field.Caret, field.Anchor)), buffer.ByteOffset(max(field.Caret, field.Anchor))
 			if selected := model.activeSnapshot().Slice(start, end); !strings.ContainsAny(selected, "\r\n") {
-				model.findQuery = selected
+				model.findQuery = strings.Clone(selected)
 			}
 		}
 	}
@@ -111,6 +112,28 @@ func (model *workspaceModel) closeFind(world *module.Content) {
 		preview.focus(world)
 	} else if world != nil && world.IsAlive(model.editor.control) {
 		world.Focus(model.editor.control)
+	}
+	model.clearFindCache()
+}
+
+func (model *workspaceModel) clearFindCache() {
+	model.findContent = piecetree.Snapshot{}
+	model.findPreview = nil
+	model.findScope, model.findCachedScope = pencodeFindScope{}, pencodeFindScope{}
+	model.findSelection = false
+	clear(model.findMatches)
+	if cap(model.findMatches) > 256 {
+		model.findMatches = nil
+	} else {
+		model.findMatches = model.findMatches[:0]
+	}
+	model.findCountLabel = ""
+	model.findRevision++
+}
+
+func (model *workspaceModel) releaseFileFind(file *openFile) {
+	if model.findContent == file.snapshot() || model.findScope.file == file || model.findCachedScope.file == file || model.findPreview == model.customDocuments[file] && model.findPreview != nil {
+		model.clearFindCache()
 	}
 }
 
@@ -146,9 +169,9 @@ func (model *workspaceModel) refreshFindMatches() {
 		model.findMatches = model.findMatches[:0]
 	} else {
 		if preview != nil {
-			model.findMatches = model.findPattern.FindAll(content.String(), model.findMatches, pencodeFindMatchLimit)
+			model.findMatches = model.findPattern.FindSnapshot(content, model.findMatches, 0, content.Len(), pencodeFindMatchLimit)
 		} else {
-			model.findMatches = model.scopedFindMatches(content.String(), model.findMatches, pencodeFindMatchLimit)
+			model.findMatches = model.scopedFindMatches(content, model.findMatches, pencodeFindMatchLimit)
 		}
 	}
 	model.findRevision++

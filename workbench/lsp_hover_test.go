@@ -7,10 +7,10 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 func hoverNodeText(nodes []htmlui.VNode) string {
@@ -170,7 +170,7 @@ func testLanguageHoverRenderedBounds(t *testing.T, indent, zoom, width, lines in
 	}{
 		{kind: "markdown", value: "```go\nfunc Before(u time.Time) bool\n```\nBefore reports whether t is before u."},
 		{kind: "markdown", value: "```go\nfunc Before(progress func(string), format string, " + strings.Repeat("argument string, ", 30) + "args ...any)\n```", fullWidth: true},
-		{kind: "markdown", value: "```go\nfunc Before(u time.Time) bool\n```\nWakeAt schedules one update at the earliest requested deadline. It can be called from another goroutine; ECS writes must stay on the app's loop thread.\n\n[(onix.App).WakeAt on pkg.go.dev](https://pkg.go.dev/github.com/diiyw/onix#App.WakeAt)"},
+		{kind: "markdown", value: "```go\nfunc Before(u time.Time) bool\n```\nWakeAt schedules one update at the earliest requested deadline. It can be called from another goroutine; ECS writes must stay on the app's loop thread.\n\n[(onix.App).WakeAt on pkg.go.dev](https://pkg.go.dev/github.com/onix-engine/onix#App.WakeAt)"},
 		{kind: "markdown", value: "```go\nfunc Before(u time.Time) bool\n```\n" + strings.Repeat("Documentation.\n\n", 10), lines: 10},
 		{kind: "markdown", value: "```go\nfunc Before(u time.Time) bool\n```\n" + strings.Repeat("Documentation.\n\n", 100), lines: 100},
 		{kind: "plaintext", value: "a short explanation"},

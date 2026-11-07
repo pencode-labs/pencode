@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/diiyw/onix/input"
+	"github.com/onix-engine/onix/input"
 )
 
 func TestSourceControlRepositoryPathOwnership(t *testing.T) {

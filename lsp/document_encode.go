@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 // Document notifications encode pieces directly into the buffer owned by the

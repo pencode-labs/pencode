@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/protocol"
 	"strings"
 	"testing"

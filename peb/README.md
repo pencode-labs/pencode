@@ -223,6 +223,10 @@ peb.Contributions{
 
 字体 ID 在宿主中为 `extensions/<扩展 ID>/<字体 ID>`，保存在 `codeFont` / `uiFont` 设置中。尚未完成注册或加载失败时使用当前平台的系统默认等宽字体；注册完成后恢复选择。禁用、卸载时移除字体选项、回退系统默认字体并释放字形缓存。扩展包应随字体附上相应许可证。
 
+## TypeScript 扩展
+
+[peb/ts](ts/README.md) 提供与当前 v18 线格式一致的 TypeScript SDK，包括帧、全部消息 codec 和 serveExtension。TS 插件将 SDK 与业务依赖打包为 `.js`、`.mjs` 或 `.cjs` 入口，工作区主机自动使用 Node.js（优先）或 Bun 启动。无需可执行权限，原生入口保持直接启动。参见 [Office Viewer](../extensions/office-viewer/README.md) 示例。
+
 ## Go 扩展
 
 使用 `github.com/pencode-labs/pencode/peb`：

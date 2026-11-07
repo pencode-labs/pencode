@@ -4,7 +4,7 @@ import (
 	"html"
 	"testing"
 
-	htmlui "github.com/diiyw/onix/ui/html"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -34,9 +34,21 @@ func TestExtensionCopyButtonUsesLocalClipboardAndRegionUpdates(t *testing.T) {
 		t.Fatal("copy action ignored opt-in, disabled/hidden controls or explicit bindings", s.copies)
 	}
 	editorContextClick(t, app, m, state, s.prefix+"control-copy")
+	if s.copiedRef != "copy" {
+		t.Fatal("successful copy did not enable check icon", s.copiedRef)
+	}
 	if copied != original {
 		t.Fatalf("copied %q, want exact source %q", copied, original)
 	}
+	s.copiedRef = ""
+	state.SetClipboard(func(string) bool { return false }, nil)
+	propsFailed := pencodeExtensionSurfaceProps{Surface: s}
+	failed := htmlui.ComponentEventContext[pencodeExtensionSurfaceProps, struct{}]{Props: &propsFailed, Ref: "copy", Event: htmlui.Event{Kind: htmlui.EventClick}}
+	s.definition.Behavior.HandleEvent(&failed)
+	if s.copiedRef != "" {
+		t.Fatal("failed copy enabled check icon")
+	}
+	state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
 	show("changed\nmessage")
 	s = m.actions.ui.editor
 	props := pencodeExtensionSurfaceProps{Surface: s}

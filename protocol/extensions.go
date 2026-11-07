@@ -1,5 +1,7 @@
 package protocol
 
+import "path"
+
 // ExtensionManifest is installed on the server at resources/extension.json.
 type ExtensionManifest struct {
 	ID          string   `json:"id"`
@@ -15,6 +17,16 @@ type ExtensionManifest struct {
 type ExtensionInfo struct {
 	Path, Problem string
 	ExtensionManifest
+}
+
+// JavaScript distinguishes bundled TypeScript/JavaScript entries from native
+// executables. Runtime lookup belongs to the workspace host, never the GUI.
+func (m ExtensionManifest) JavaScript() bool {
+	switch path.Ext(m.Entry) {
+	case ".js", ".mjs", ".cjs":
+		return true
+	}
+	return false
 }
 
 func (i *ExtensionInfo) Label() string {

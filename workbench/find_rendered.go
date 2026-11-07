@@ -8,13 +8,13 @@ import (
 
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/html/dom"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/text/piecetree"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/text/piecetree"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	nethtml "golang.org/x/net/html"
 )
 
@@ -51,7 +51,7 @@ func renderedFindTemplate(source, prefix string) string {
 				switch attr.Key {
 				case "id":
 					id = attr.Val
-				case "data-pencode-searchable":
+				case "data-pencode-searchable", "data-pencode-selectable":
 					searchable = true
 				case "tabindex":
 					tabindex = true
@@ -193,18 +193,24 @@ func (f *pencodeRenderedFind) bind(world *module.Content, m *workspaceModel) boo
 	surface := pencodeExtensionSurface{tree: f.tree, model: m}
 	f.text.content = f.content.String()
 	f.text.collectText(world, &surface)
+	f.mapSpans(world, m, &f.text)
+	f.dirty = false
+	return true
+}
+
+func (f *pencodeRenderedFind) mapSpans(world *module.Content, m *workspaceModel, selection *pencodeExtensionTextSelection) {
 	cursor, used := 0, 0
 	content := f.content.String()
-	for _, span := range f.text.spans {
+	for _, span := range selection.spans {
 		for j := cursor; j < len(f.chunks); j++ {
 			chunk := &f.chunks[j]
 			bounds, ok := renderedChunkBounds(world, m, chunk.node)
-			if !ok || span.y+span.height <= bounds.Y || span.y >= bounds.Y+bounds.Height {
+			if !ok || span.y+span.height <= bounds.Y || span.y >= bounds.Y+bounds.Height || span.x < bounds.X || span.x >= bounds.X+bounds.Width {
 				continue
 			}
 			start := chunk.start
 			if used > 0 {
-				previous := f.text.spans[used-1]
+				previous := selection.spans[used-1]
 				start = max(start, previous.offset+len(previous.value))
 			}
 			if start > chunk.end {
@@ -212,17 +218,15 @@ func (f *pencodeRenderedFind) bind(world *module.Content, m *workspaceModel) boo
 			}
 			if index := strings.Index(content[start:chunk.end], span.value); index >= 0 {
 				span.offset = start + index
-				f.text.spans[used] = span
+				selection.spans[used] = span
 				used++
 				cursor = j
 				break
 			}
 		}
 	}
-	clear(f.text.spans[used:])
-	f.text.spans = f.text.spans[:used]
-	f.dirty = false
-	return true
+	clear(selection.spans[used:])
+	selection.spans = selection.spans[:used]
 }
 
 func (f *pencodeRenderedFind) revealChunk(world *module.Content, m *workspaceModel, offset int) bool {
@@ -234,13 +238,17 @@ func (f *pencodeRenderedFind) revealChunk(world *module.Content, m *workspaceMod
 	if !ok {
 		return false
 	}
-	scroll := world.Mut[scene.UIScroll](f.text.area)
-	transform := world.Ref[scene.UIGlobalTransform](f.text.area)
-	y := (bounds.Y - transform.Matrix[13]) / transform.Matrix[5]
-	previous := scroll.Position[1]
-	scroll.Position[1] = max(-max(0, scroll.ContentSize[1]-scroll.ViewportSize[1]), min(0, previous-y+scroll.ViewportSize[1]/2))
-	scroll.Momentum[1] = 0
-	return previous != scroll.Position[1]
+	area := f.text.area
+	for node := f.chunks[index].node; node != nil; node = node.Parent {
+		id, _ := node.Attr("id")
+		if retained, ok := world.HTMLNode(m.surface, id); ok {
+			if scroll, ok := retained.ScrollContainer(); ok {
+				area = scroll
+				break
+			}
+		}
+	}
+	return revealRenderedTarget(world, area, f.text.area, [2]float32{bounds.X + bounds.Width/2, bounds.Y + bounds.Height/2})
 }
 
 func (f *pencodeRenderedFind) point(offset int) pencodeExtensionTextPoint {
@@ -271,7 +279,11 @@ func (f *pencodeRenderedFind) revealMatch(world *module.Content, start, end int)
 		}
 	}
 	target := [2]float32{transform.Matrix[12] + (x+width/2)*transform.Matrix[0], transform.Matrix[13] + (y+height/2)*transform.Matrix[5]}
-	for entity := span.entity; entity != 0; {
+	return revealRenderedTarget(world, span.entity, f.text.area, target)
+}
+
+func revealRenderedTarget(world *module.Content, first, last ecs.Entity, target [2]float32) (changed bool) {
+	for entity := first; entity != 0; {
 		if scroll := world.Mut[scene.UIScroll](entity); scroll != nil {
 			position := world.Ref[scene.UIGlobalTransform](entity)
 			if position != nil {
@@ -292,7 +304,7 @@ func (f *pencodeRenderedFind) revealMatch(world *module.Content, start, end int)
 				}
 			}
 		}
-		if entity == f.text.area {
+		if entity == last {
 			break
 		}
 		parent, ok := world.Get[scene.Parent](entity)

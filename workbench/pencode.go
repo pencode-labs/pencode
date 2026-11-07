@@ -14,24 +14,24 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/graphics/codec/jpeg"
-	ontex "github.com/diiyw/onix/graphics/codec/ontex"
-	"github.com/diiyw/onix/graphics/codec/png"
-	graphicssvg "github.com/diiyw/onix/graphics/codec/svg"
-	"github.com/diiyw/onix/graphics/codec/webp"
-	onixsvg "github.com/diiyw/onix/images/svg"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/resource"
-	sceneapi "github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	"github.com/diiyw/onix/text"
-	"github.com/diiyw/onix/text/piecetree"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
-	"github.com/diiyw/onix/window"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/graphics/codec/jpeg"
+	ontex "github.com/onix-engine/onix/graphics/codec/ontex"
+	"github.com/onix-engine/onix/graphics/codec/png"
+	graphicssvg "github.com/onix-engine/onix/graphics/codec/svg"
+	"github.com/onix-engine/onix/graphics/codec/webp"
+	onixsvg "github.com/onix-engine/onix/images/svg"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/resource"
+	sceneapi "github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text"
+	"github.com/onix-engine/onix/text/piecetree"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
+	"github.com/onix-engine/onix/window"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/output"
@@ -1562,6 +1562,7 @@ func (model *workspaceModel) discardProject(project *pencodeProject) {
 			continue
 		}
 		model.highlightCache.remove(file)
+		model.releaseFileFind(file)
 		file.closeDocument()
 		*file = openFile{}
 	}
@@ -1999,6 +2000,7 @@ func (model *workspaceModel) discardProjectTab(project *pencodeProject, relative
 		}
 		if file := project.Files[relative]; file != nil {
 			model.highlightCache.remove(file)
+			model.releaseFileFind(file)
 			file.closeDocument()
 			*file = openFile{}
 		}
@@ -2052,6 +2054,7 @@ func (model *workspaceModel) discardTab(relative string) {
 		}
 		if file := model.files[relative]; file != nil {
 			model.highlightCache.remove(file)
+			model.releaseFileFind(file)
 			file.closeDocument()
 			*file = openFile{}
 		}

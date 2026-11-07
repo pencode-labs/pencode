@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 func BenchmarkSnapshotDocumentSync(b *testing.B) {

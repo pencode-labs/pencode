@@ -3,8 +3,8 @@ package workbench
 import (
 	"time"
 
-	"github.com/diiyw/onix/module"
-	html "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/module"
+	html "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
 )
 

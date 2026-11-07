@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/scene"
 )
 
 func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {

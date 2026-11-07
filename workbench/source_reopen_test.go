@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/scene"
 )
 
 func TestSourceDiffReopenRevalidatesContentsAndRetainsPaint(t *testing.T) {

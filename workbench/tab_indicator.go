@@ -1,6 +1,6 @@
 package workbench
 
-import htmlui "github.com/diiyw/onix/ui/html"
+import htmlui "github.com/onix-engine/onix/ui/html"
 
 var tabBusyIndicator = [...]htmlui.VNode{{
 	Key: 2, Tag: "span", Attributes: []htmlui.VNodeAttribute{{Name: "class", Value: "pencode-tab-busy-icon"}, {Name: "aria-hidden", Value: "true"}},

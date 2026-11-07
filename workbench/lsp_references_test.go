@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/lsp"
 )
 

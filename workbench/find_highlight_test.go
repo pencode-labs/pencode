@@ -5,9 +5,9 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
 )
 
 func TestFindHighlightBackgroundAndCurrentBorder(t *testing.T) {

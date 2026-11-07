@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/scene"
 )
 
 func BenchmarkPencodeSourceChangesScroll(b *testing.B) {

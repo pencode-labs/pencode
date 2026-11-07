@@ -1,6 +1,6 @@
 package main
 
-import "github.com/diiyw/onix/module"
+import "github.com/onix-engine/onix/module"
 
 type SceneWorkspace struct{}
 

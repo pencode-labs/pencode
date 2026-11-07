@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/diiyw/onix/images/svg"
+	"github.com/onix-engine/onix/images/svg"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/output"

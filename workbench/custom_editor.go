@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/html/dom"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/html/dom"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
@@ -32,6 +32,7 @@ type pencodeCustomDocument struct {
 	images      map[string][]byte
 	links       map[string]string
 	find        *pencodeRenderedFind
+	selection   *pencodeExtensionSurface
 	content     string
 	message     string
 	bindings    []peb.EditorBinding
@@ -347,12 +348,29 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		return nil
 	}
 	var links map[string]string
-	var searchable *dom.Node
+	var searchable, tree *dom.Node
+	var selectables []pencodeExtensionSelectable
+	var focus []pencodeExtensionFocus
 	template := *view
-	if strings.Contains(view.HTML, "data-pencode-searchable") {
+	if strings.Contains(view.HTML, "data-pencode-searchable") || strings.Contains(view.HTML, "data-pencode-selectable") {
 		template.HTML = renderedFindTemplate(view.HTML, fmt.Sprintf("pencode-extension-editor/%p/find/", document))
 	}
 	if err := validateExtensionView(&template, func(node *dom.Node, hidden bool) {
+		if node.Parent == nil {
+			tree = node
+		}
+		if !hidden {
+			ref, _ := node.Attr("data-ref")
+			id, _ := node.Attr("id")
+			if _, ok := node.Attr("data-pencode-selectable"); ok && ref != "" {
+				selectables = append(selectables, pencodeExtensionSelectable{ref: ref, id: id})
+			}
+			switch node.Data {
+			case "button", "input", "textarea", "select", "a":
+				role, _ := node.Attr("role")
+				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, selectText: node.Data == "a" || role == "link"})
+			}
+		}
 		if _, ok := node.Attr("data-pencode-searchable"); ok && !hidden && searchable == nil {
 			if ref, _ := node.Attr("data-ref"); ref != "" {
 				searchable = node
@@ -400,6 +418,18 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	})
 	if err != nil {
 		return err
+	}
+	if len(selectables) > 0 {
+		if document.selection == nil {
+			document.selection = &pencodeExtensionSurface{model: document.model, document: document}
+		}
+		if document.view != nil && document.view.HTML != view.HTML && document.model.actions.ui.selection.surface == document.selection {
+			document.model.actions.ui.selection.surface = nil
+		}
+		document.selection.tree, document.selection.view = tree, view
+		document.selection.selectables, document.selection.focus = selectables, focus
+	} else {
+		document.selection = nil
 	}
 	document.definition, document.bindings, document.links = definition, view.Events, links
 	document.view, document.theme = view, theme
@@ -575,6 +605,7 @@ func (model *workspaceModel) selectEditor(id string) bool {
 	}
 	file.editorGeneration = 0
 	model.findOpen, model.replaceOpen = false, false
+	model.clearFindCache()
 	model.resetHighlight()
 	return true
 }
@@ -616,7 +647,7 @@ func (document *pencodeCustomDocument) close() {
 	document.images = document.model.replaceExtensionImages(document.images, nil)
 	document.definition, document.view, document.links = nil, nil, nil
 	document.bindings, document.content = nil, ""
-	document.find = nil
+	document.find, document.selection = nil, nil
 	clear(document.queue[:])
 }
 

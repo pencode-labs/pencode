@@ -6,7 +6,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/protocol"

@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/input"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/input"
+	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/terminal"
 )
 
@@ -169,6 +169,24 @@ func TestPencodeTerminalPaintAndIdleAllocation(t *testing.T) {
 	}
 }
 
+func TestPencodeTerminalClearPreservesPrompt(t *testing.T) {
+	item := &pencodeTerminal{screen: terminal.NewScreen(32, 4), scroll: 2}
+	model := &workspaceModel{terminals: &pencodeTerminals{active: item}}
+	item.screen.Feed([]byte("history\r\nold\r\noutput\r\n\r\nPS C:\\project> draft"))
+	x, y := item.screen.Cursor()
+	model.terminalAction(nil, "terminal-clear", "")
+	model.prepareTerminalView()
+	if !strings.Contains(model.terminalView.value, "PS C:\\project> draft") {
+		t.Fatal("clear erased the prompt or pending input")
+	}
+	if strings.Contains(model.terminalView.value, "output") || strings.Contains(model.terminalView.value, "old") || len(item.screen.History) != 0 || item.scroll != 0 {
+		t.Fatal("clear retained previous output, history, or scroll offset")
+	}
+	if cx, cy := item.screen.Cursor(); cx != x || cy != y {
+		t.Fatal("clear moved the application cursor")
+	}
+}
+
 func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		t.Skip("POSIX shell interaction")
@@ -248,13 +266,14 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	languageInteractionStep(t, app)
 	waitFor(func() bool { return strings.Contains(model.terminalView.value, "PASTE_OK") })
 
+	first.screen.Feed([]byte("\r\nPROMPT> "))
 	openMenu()
 	editorContextClick(t, app, model, state, "terminal-clear")
 	languageInteractionStep(t, app)
 	if strings.Contains(model.terminalView.value, "PASTE_OK") || len(first.screen.History) != 0 {
 		t.Fatal("context clear retained screen/history")
 	}
-	first.screen.Feed([]byte("CLEAR_SHORTCUT"))
+	first.screen.Feed([]byte("CLEAR_SHORTCUT\r\nPROMPT> "))
 	markPencodeRootDirtyByModel(world, model)
 	languageInteractionStep(t, app)
 	openMenu()

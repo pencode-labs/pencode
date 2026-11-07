@@ -7,12 +7,12 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/text/piecetree"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/text/piecetree"
+	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

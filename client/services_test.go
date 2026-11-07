@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/server"
 )

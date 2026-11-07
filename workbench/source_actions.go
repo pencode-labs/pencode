@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/input"
+	"github.com/onix-engine/onix/input"
 )
 
 func (a *workspaceModel) sourceClick(id string, now time.Time) {
@@ -85,6 +85,7 @@ func (a *workspaceModel) sourceAction(id string) {
 		}
 		a.bottom.active = pencodePanelSourceControl
 		a.findOpen, a.quickOpen = false, false
+		a.clearFindCache()
 		a.dismissLanguageContext()
 		a.dismissLanguagePanel()
 		if a.fontResources != nil {

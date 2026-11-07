@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 )
 
@@ -72,6 +72,7 @@ func (model *workspaceModel) openQuickOpen() {
 		model.session.connection.open, model.session.connection.formOpen = false, false
 	}
 	model.findOpen = false
+	model.clearFindCache()
 	model.findNeedsFocus = false
 	model.refreshQuickMatches()
 }

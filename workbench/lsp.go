@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/lsp"
 )

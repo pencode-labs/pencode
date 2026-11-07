@@ -53,9 +53,6 @@ func installAll(goCommand, directory string) error {
 }
 
 func install(goCommand, source, directory, sdk string) error {
-	if _, err := os.Stat(filepath.Join(source, "go.mod")); err != nil {
-		return fmt.Errorf("independent go.mod required: %w", err)
-	}
 	data, err := os.ReadFile(filepath.Join(source, "resources", "extension.json"))
 	if err != nil {
 		return err
@@ -67,7 +64,9 @@ func install(goCommand, source, directory, sdk string) error {
 	if !extensionhost.ValidID(manifest.ID) || !extensionhost.ValidResourcePath(manifest.Entry, false) {
 		return fmt.Errorf("invalid extension ID or entry")
 	}
-	manifest.Entry = executable(manifest.Entry, runtime.GOOS)
+	if !manifest.JavaScript() {
+		manifest.Entry = executable(manifest.Entry, runtime.GOOS)
+	}
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return err
 	}
@@ -90,19 +89,7 @@ func install(goCommand, source, directory, sdk string) error {
 	if err := os.WriteFile(filepath.Join(stage, "LICENSE"), license, 0o644); err != nil {
 		return err
 	}
-	command := exec.Command(goCommand, "build", "-mod=readonly", "-o", filepath.Join(stage, filepath.FromSlash(manifest.Entry)), ".")
-	command.Dir = source
-	buildDirectory, err := os.MkdirTemp("", "pencode-extension-build-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(buildDirectory)
-	command.Env, err = extensionbuild.Environment(buildDirectory, sdk, source)
-	if err != nil {
-		return err
-	}
-	command.Stdout, command.Stderr = os.Stdout, os.Stderr
-	if err := command.Run(); err != nil {
+	if err := build(goCommand, source, stage, sdk, manifest); err != nil {
 		return err
 	}
 	data, err = json.MarshalIndent(manifest, "", "  ")
@@ -144,6 +131,69 @@ func replaceExtension(stage, target string) error {
 		fmt.Fprintln(os.Stderr, "Installed extension; previous files remain in", backup, "(remove after closing pencode):", err)
 	}
 	return nil
+}
+
+func build(goCommand, source, stage, sdk string, manifest extensionhost.Manifest) error {
+	if manifest.JavaScript() {
+		// JavaScript packages bundle their dependencies beside the entry. Only
+		// this output directory is installed, never node_modules or TS sources.
+		output := filepath.Dir(filepath.FromSlash(manifest.Entry))
+		if output == "." || output == "resources" || strings.HasPrefix(filepath.ToSlash(output), "resources/") {
+			return fmt.Errorf("JavaScript extension entry must use a separate output directory, e.g. dist/main.mjs")
+		}
+		manager, err := exec.LookPath("npm")
+		installArgs := []string{"ci", "--no-audit", "--no-fund"}
+		buildArgs := []string{"run", "build"}
+		if err != nil {
+			manager, err = exec.LookPath("bun")
+			installArgs = []string{"install", "--frozen-lockfile"}
+			buildArgs = []string{"--bun", "run", "build"}
+		}
+		if err != nil {
+			return fmt.Errorf("building JavaScript extensions requires npm or Bun on the build host")
+		}
+		for _, args := range [][]string{installArgs, buildArgs} {
+			command := exec.Command(manager, args...)
+			command.Dir = source
+			command.Stdout, command.Stderr = os.Stdout, os.Stderr
+			if err := command.Run(); err != nil {
+				return err
+			}
+		}
+		entry, err := os.Stat(filepath.Join(source, filepath.FromSlash(manifest.Entry)))
+		if err != nil {
+			return err
+		}
+		if !entry.Mode().IsRegular() {
+			return fmt.Errorf("JavaScript extension entry is not a regular file")
+		}
+		// Preserve type:module for .js entries. Runtime dependencies still need
+		// to be bundled; installing a package never runs a package manager.
+		data, err := os.ReadFile(filepath.Join(source, "package.json"))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(stage, "package.json"), data, 0o644); err != nil {
+			return err
+		}
+		return os.CopyFS(filepath.Join(stage, output), os.DirFS(filepath.Join(source, output)))
+	}
+	if _, err := os.Stat(filepath.Join(source, "go.mod")); err != nil {
+		return fmt.Errorf("independent go.mod required: %w", err)
+	}
+	buildDirectory, err := os.MkdirTemp("", "pencode-extension-build-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(buildDirectory)
+	command := exec.Command(goCommand, "build", "-mod=readonly", "-o", filepath.Join(stage, filepath.FromSlash(manifest.Entry)), ".")
+	command.Dir = source
+	command.Env, err = extensionbuild.Environment(buildDirectory, sdk, source)
+	if err != nil {
+		return err
+	}
+	command.Stdout, command.Stderr = os.Stdout, os.Stderr
+	return command.Run()
 }
 
 func executable(entry, goos string) string {

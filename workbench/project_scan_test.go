@@ -12,7 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/diiyw/onix"
+	"github.com/onix-engine/onix"
 )
 
 type pencodeScanTestFS struct {

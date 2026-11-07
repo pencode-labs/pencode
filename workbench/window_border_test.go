@@ -3,8 +3,8 @@ package workbench
 import (
 	"testing"
 
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/scene"
 )
 
 func TestPencodeWindowBorderIgnoresZoomAndTracksResize(t *testing.T) {

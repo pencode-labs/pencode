@@ -26,3 +26,7 @@
 	path = extensions/docker
 	url = git@github.com:pencode-labs/docker.git
 	branch = main
+[submodule "extensions/office-viewer"]
+	path = extensions/office-viewer
+	url = git@github.com:pencode-labs/office-viewer.git
+	branch = main

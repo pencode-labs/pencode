@@ -4,7 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 type snapshotHighlightDocument struct {
@@ -13,7 +14,7 @@ type snapshotHighlightDocument struct {
 	hadState bool
 }
 
-func (d *snapshotHighlightDocument) Update(path, source string) error {
+func (d *snapshotHighlightDocument) UpdateSnapshot(path string, source piecetree.Snapshot) error {
 	d.hadState = len(d.Captures()) != 0
 	return d.Document.Update(path, source)
 }

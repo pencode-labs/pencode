@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"slices"
 	"strconv"
 	"unicode"
 	"unicode/utf8"
@@ -19,6 +20,29 @@ type Cell struct {
 	Width                    uint8
 	Combining                [3]rune
 }
+
+// Scrollback keeps common cells inline and stores combining marks only where
+// present. The live screen retains its directly editable Cell representation.
+type historyCell struct {
+	Rune                   rune
+	Foreground, Background Color
+	Width, attributes      uint8
+}
+
+func compactCell(c Cell) historyCell {
+	var attributes uint8
+	if c.Bold {
+		attributes |= 1
+	}
+	if c.Inverse {
+		attributes |= 2
+	}
+	if c.Underline {
+		attributes |= 4
+	}
+	return historyCell{c.Rune, c.Foreground, c.Background, c.Width, attributes}
+}
+
 type cursor struct {
 	x, y  int
 	style Cell
@@ -30,7 +54,9 @@ type Screen struct {
 	Title                                            string
 	reply                                            []byte
 	Cells                                            []Cell
-	History                                          []Cell
+	historyCombining                                 map[int][3]rune
+	History                                          []historyCell
+	historyRow                                       []Cell
 	primary                                          []Cell
 	params                                           [32]int
 	primaryCursor                                    cursor
@@ -66,11 +92,17 @@ func NewScreen(cols, rows int) *Screen {
 	return s
 }
 
-// HistoryRow returns a chronological row from the bounded scrollback ring.
+// HistoryRow borrows a decoded chronological row until the next HistoryRow or
+// Resize call. Reading a warm row does not allocate.
 func (s *Screen) HistoryRow(index int) []Cell {
 	rows := len(s.History) / s.Cols
 	start := ((s.historyHead + index) % rows) * s.Cols
-	return s.History[start : start+s.Cols]
+	s.historyRow = slices.Grow(s.historyRow[:0], s.Cols)[:s.Cols]
+	for col, c := range s.History[start : start+s.Cols] {
+		s.historyRow[col] = Cell{Rune: c.Rune, Foreground: c.Foreground, Background: c.Background, Width: c.Width,
+			Bold: c.attributes&1 != 0, Inverse: c.attributes&2 != 0, Underline: c.attributes&4 != 0, Combining: s.historyCombining[start+col]}
+	}
+	return s.historyRow
 }
 func (s *Screen) Cursor() (int, int) { return s.x, s.y }
 func (s *Screen) Alternate() bool    { return s.alternate }
@@ -108,12 +140,26 @@ func (s *Screen) Resize(cols, rows int) {
 	}
 	if oldCols != 0 && oldCols != cols && len(s.History) > 0 {
 		count := len(s.History) / oldCols
-		history := make([]Cell, count*cols)
-		s.fill(history)
+		history := make([]historyCell, count*cols)
+		blank := compactCell(s.blank())
+		for i := range history {
+			history[i] = blank
+		}
+		var combining map[int][3]rune
 		for row := 0; row < count; row++ {
-			copy(history[row*cols:row*cols+min(cols, oldCols)], s.HistoryRow(row)[:min(cols, oldCols)])
+			for col, c := range s.HistoryRow(row)[:min(cols, oldCols)] {
+				index := row*cols + col
+				history[index] = compactCell(c)
+				if c.Combining != [3]rune{} {
+					if combining == nil {
+						combining = make(map[int][3]rune)
+					}
+					combining[index] = c.Combining
+				}
+			}
 		}
 		s.History = history
+		s.historyCombining = combining
 		s.historyHead = 0
 	}
 	s.Cols, s.Rows = cols, rows
@@ -128,14 +174,57 @@ func (s *Screen) Clear() {
 	s.Revision++
 }
 
+// ClearOutput removes scrollback and all rows except the current input line.
+// Keep the cursor coordinates in sync with applications such as Windows ConPTY,
+// which can continue rendering with absolute cursor positions after a UI clear.
+func (s *Screen) ClearOutput() {
+	if s.alternate {
+		return
+	}
+	s.fill(s.Cells[:s.y*s.Cols])
+	s.fill(s.Cells[(s.y+1)*s.Cols:])
+	s.clearHistory()
+	s.Revision++
+}
+
 func (s *Screen) clearHistory() {
 	// Keep a small warm ring, but release large scrollback on an explicit clear.
 	if cap(s.History) > 8<<10 {
 		s.History = nil
+		s.historyCombining = nil
 	} else {
 		s.History = s.History[:0]
+		clear(s.historyCombining)
 	}
 	s.historyHead = 0
+}
+
+func (s *Screen) appendHistory(line []Cell) {
+	start := len(s.History)
+	if start < s.HistoryLimit*s.Cols {
+		if start+s.Cols > cap(s.History) {
+			capacity := min(s.HistoryLimit*s.Cols, max(start+s.Cols, cap(s.History)*2))
+			history := make([]historyCell, start, capacity)
+			copy(history, s.History)
+			s.History = history
+		}
+		s.History = s.History[:start+s.Cols]
+	} else {
+		start = s.historyHead * s.Cols
+		s.historyHead = (s.historyHead + 1) % s.HistoryLimit
+	}
+	for col, c := range line {
+		index := start + col
+		s.History[index] = compactCell(c)
+		if c.Combining != [3]rune{} {
+			if s.historyCombining == nil {
+				s.historyCombining = make(map[int][3]rune)
+			}
+			s.historyCombining[index] = c.Combining
+		} else if len(s.historyCombining) != 0 {
+			delete(s.historyCombining, index)
+		}
+	}
 }
 func (s *Screen) scroll(n int) {
 	n = max(-(s.bottom - s.top + 1), min(n, s.bottom-s.top+1))
@@ -144,12 +233,7 @@ func (s *Screen) scroll(n int) {
 		if !s.alternate && s.top == 0 && s.bottom == s.Rows-1 && s.HistoryLimit > 0 {
 			for row := 0; row < n; row++ {
 				line := s.Cells[(s.top+row)*s.Cols : (s.top+row+1)*s.Cols]
-				if len(s.History) < s.HistoryLimit*s.Cols {
-					s.History = append(s.History, line...)
-				} else {
-					copy(s.History[s.historyHead*s.Cols:(s.historyHead+1)*s.Cols], line)
-					s.historyHead = (s.historyHead + 1) % s.HistoryLimit
-				}
+				s.appendHistory(line)
 				s.Scrolled++
 			}
 		}

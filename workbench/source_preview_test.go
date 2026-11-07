@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/input"
+	"github.com/onix-engine/onix/input"
 )
 
 func TestSourceDiffPreviewInteraction(t *testing.T) {

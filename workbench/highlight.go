@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/syntax"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/syntax"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/configuration"
 )
 

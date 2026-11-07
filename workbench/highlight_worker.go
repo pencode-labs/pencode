@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unsafe"
 
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/syntax"
-	"github.com/diiyw/onix/text/piecetree"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/syntax"
+	"github.com/onix-engine/onix/text/piecetree"
+	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/client"
 )
 
 type highlightDocument interface {
-	Update(string, string) error
+	UpdateSnapshot(string, piecetree.Snapshot) error
 	Tokens(*syntax.Theme, *syntax.Definitions) []syntax.Token
 	Close()
 }
@@ -64,6 +65,27 @@ func resetPencodeHighlightResult(result *pencodeHighlightResult) {
 	result.diffView.Rows = result.diffView.Rows[:0]
 	result.diffView.changes = result.diffView.changes[:0]
 	result.diffView.Blocks = result.diffView.Blocks[:0]
+	// Bound both exchanged result buffers, including storage returned by a tab.
+	diffBytes := cap(result.diffView.Rows)*int(unsafe.Sizeof(sourceDiffRow{})) + cap(result.diffView.changes)*int(unsafe.Sizeof(sourceInlineChange{})) + cap(result.diffView.Blocks)*int(unsafe.Sizeof(sourceDiffBlock{}))
+	for _, layout := range result.diffView.Layouts {
+		diffBytes += cap(layout.Offsets) * int(unsafe.Sizeof(int(0)))
+	}
+	if diffBytes > 1<<20 {
+		result.diffView = sourceDiffView{}
+	}
+	inline := &result.diffInline
+	clear(inline.changes)
+	inline.changes = inline.changes[:0]
+	inlineBytes := cap(inline.matches)*4 + cap(inline.changes)*int(unsafe.Sizeof(sourceInlineChange{}))
+	for _, runes := range inline.runes {
+		inlineBytes += cap(runes) * int(unsafe.Sizeof(sourceInlineRune{}))
+	}
+	if inlineBytes > 1<<20 {
+		*inline = sourceInlineDiffer{}
+	}
+	if cap(lineStarts) > pencodeHighlightCacheSpareLimit {
+		lineStarts = nil
+	}
 	brackets := pencodeBracketBuilder{items: result.brackets.items[:0], stack: result.brackets.stack[:0]}
 	if cap(spans)+cap(brackets.items)+cap(brackets.stack) > pencodeHighlightCacheSpanLimit {
 		spans = nil
@@ -80,8 +102,9 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		*result = pencodeHighlightResult{}
 		return false
 	}
-	if job.file != nil {
-		job.source = job.documentText.String()
+	source := job.documentText
+	if job.file == nil {
+		source = snapshotText(job.source)
 	}
 	result.job = job
 	if job.snapshot {
@@ -90,7 +113,7 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		document.Close()
 		defer document.Close()
 	}
-	result.err = document.Update(job.path, job.source)
+	result.err = document.UpdateSnapshot(job.path, source)
 	var tokens []syntax.Token
 	if result.err == nil {
 		tokens = document.Tokens(job.theme, job.definitions)
@@ -98,13 +121,13 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 	if job.counted && job.sourceDoc == nil {
 		result.lines, result.characters = job.lines, job.characters
 		if result.err == nil {
-			for offset := 0; offset < len(job.source); {
-				next := strings.IndexAny(job.source[offset:], "()[]{}")
+			for offset := 0; offset < source.Len(); {
+				next := indexSnapshotBracket(source, offset)
 				if next < 0 {
 					break
 				}
 				offset += next
-				result.brackets.add(job.source, tokens, offset, rune(job.source[offset]))
+				result.brackets.add(source, tokens, offset, rune(source.ByteAt(offset)))
 				offset++
 			}
 		}
@@ -113,22 +136,28 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		if job.lineStyles {
 			result.lineStarts = append(result.lineStarts, 0)
 		}
-		for offset, character := range job.source {
-			if job.sourceDoc == nil && result.err == nil {
-				result.brackets.add(job.source, tokens, offset, character)
-			}
-			result.characters++
-			if character == '\n' {
-				result.lines++
-				if job.lineStyles {
-					result.lineStarts = append(result.lineStarts, offset+1)
+		offset := 0
+		for part := range source.Chunks(0, source.Len()) {
+			for local, character := range part {
+				position := offset + local
+				if job.sourceDoc == nil && result.err == nil {
+					result.brackets.add(source, tokens, position, character)
+				}
+				result.characters++
+				if character == '\n' {
+					result.lines++
+					if job.lineStyles {
+						result.lineStarts = append(result.lineStarts, position+1)
+					}
 				}
 			}
+			offset += len(part)
 		}
 
 	}
 	result.lineInfo = fmt.Sprintf("行 %d · %d 字符", result.lines, result.characters)
 	if job.diff {
+		job.source = source.String()
 		var patch []byte
 		patch, result.diffErr = job.backend.Diff(context.Background(), job.diffBase, job.source)
 		if result.diffErr == nil {
@@ -249,4 +278,15 @@ func (model *workspaceModel) closeHighlightWorker() {
 		model.highlightWorker = nil
 	}
 	model.highlightRequest = pencodeHighlightJob{}
+}
+
+func indexSnapshotBracket(source piecetree.Snapshot, offset int) int {
+	start := offset
+	for part := range source.Chunks(offset, source.Len()) {
+		if index := strings.IndexAny(part, "()[]{}"); index >= 0 {
+			return offset - start + index
+		}
+		offset += len(part)
+	}
+	return -1
 }

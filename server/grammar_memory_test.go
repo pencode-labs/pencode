@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/diiyw/onix/syntax"
+	"github.com/onix-engine/onix/syntax"
 )
 
 func TestSyntaxGrammarEvictionKeepsActiveDocumentValid(t *testing.T) {

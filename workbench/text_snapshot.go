@@ -1,8 +1,8 @@
 package workbench
 
 import (
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/text/piecetree"
 )
 
 func snapshotText(value string) piecetree.Snapshot { return piecetree.FromString(value) }

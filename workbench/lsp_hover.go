@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/diiyw/onix/syntax"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/syntax"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/yuin/goldmark/v2/parser"
 	goldmarkhtml "github.com/yuin/goldmark/v2/renderer/html"
 	"golang.org/x/net/html"

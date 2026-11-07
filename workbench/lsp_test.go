@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/scene"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/lsp"

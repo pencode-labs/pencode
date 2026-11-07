@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
 
 	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/peb"

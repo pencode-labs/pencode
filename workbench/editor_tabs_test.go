@@ -5,9 +5,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

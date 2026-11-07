@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/project"
-	"github.com/diiyw/onix/resource"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/project"
+	"github.com/onix-engine/onix/resource"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/ui"
 )
 
 // Load the launcher without a native window or a preinstalled workspace view.

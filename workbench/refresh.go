@@ -1,9 +1,9 @@
 package workbench
 
 import (
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/module"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/module"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
 )
 

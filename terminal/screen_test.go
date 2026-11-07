@@ -153,8 +153,63 @@ func TestScreenHistoryRingAndGraphics(t *testing.T) {
 	}
 }
 
+func TestScreenClearOutputPreservesInput(t *testing.T) {
+	s := NewScreen(24, 4)
+	for range 10 {
+		s.Feed([]byte("old output\r\n"))
+	}
+	s.Feed([]byte("\x1b[2;1H\x1b[32mPS C:\\项目> e\u0301中\x1b[0m\x1b[2D\x1b7"))
+	var line [24]Cell
+	copy(line[:], s.Cells[s.Cols:2*s.Cols])
+	x, y := s.Cursor()
+	saved, style, revision := s.saved, s.style, s.Revision
+	s.ClearOutput()
+	if cx, cy := s.Cursor(); cx != x || cy != y || s.saved != saved || s.style != style {
+		t.Fatal("clear changed application cursor or rendition state")
+	}
+	if len(s.History) != 0 || s.historyHead != 0 || s.Revision <= revision {
+		t.Fatal("clear retained history or failed to invalidate the screen")
+	}
+	for row := range s.Rows {
+		for col := range s.Cols {
+			want := s.blank()
+			if row == y {
+				want = line[col]
+			}
+			if got := s.Cells[row*s.Cols+col]; got != want {
+				t.Fatalf("cell %d,%d: %+v, want %+v", col, row, got, want)
+			}
+		}
+	}
+	// ConPTY can resume with absolute cursor positioning rather than a redraw.
+	s.Feed([]byte("\x1b[2;24HX\x1b[6n"))
+	if s.Cells[2*s.Cols-1].Rune != 'X' || s.Cells[s.Cols] != line[0] || string(s.Replies()) != "\x1b[2;24R" {
+		t.Fatal("absolute output after clear lost the prompt or cursor position")
+	}
+}
+
+func TestScreenClearOutputPreservesWrapAndAlternateScreen(t *testing.T) {
+	s := NewScreen(4, 2)
+	s.Feed([]byte("old\r\nabcd"))
+	s.ClearOutput()
+	s.Feed([]byte("X"))
+	if screenLine(s, 0) != "abcd" || screenLine(s, 1) != "X   " {
+		t.Fatal("clear cancelled pending wrap")
+	}
+	s.Feed([]byte("\x1b[?1049hTUI"))
+	revision, history := s.Revision, len(s.History)
+	s.ClearOutput()
+	if screenLine(s, 0) != "TUI " || s.Revision != revision || len(s.History) != history {
+		t.Fatal("UI clear changed the alternate screen or primary history")
+	}
+	s.Feed([]byte("\x1b[?1049l\x1bc"))
+	if screenLine(s, 0) != "    " || screenLine(s, 1) != "    " || len(s.History) != 0 {
+		t.Fatal("terminal reset retained the input line")
+	}
+}
+
 func TestScreenClearReleasesLargeHistory(t *testing.T) {
-	for _, escape := range []bool{false, true} {
+	for _, method := range []string{"reset", "output", "escape"} {
 		s := NewScreen(120, 24)
 		line := []byte("line\r\n")
 		for range 2200 {
@@ -164,9 +219,12 @@ func TestScreenClearReleasesLargeHistory(t *testing.T) {
 			t.Fatal("fixture did not wrap the scrollback ring")
 		}
 		revision := s.Revision
-		if escape {
+		switch method {
+		case "escape":
 			s.Feed([]byte("\x1b[3J"))
-		} else {
+		case "output":
+			s.ClearOutput()
+		default:
 			s.Clear()
 		}
 		if len(s.History) != 0 || cap(s.History) != 0 || s.historyHead != 0 || s.Revision <= revision {
@@ -181,7 +239,11 @@ func TestScreenClearReleasesLargeHistory(t *testing.T) {
 		}
 		// Small histories stay reusable even when an application clears them often.
 		if n := testing.AllocsPerRun(100, func() {
-			s.Clear()
+			if method == "output" {
+				s.ClearOutput()
+			} else {
+				s.Clear()
+			}
 			s.Feed(line)
 		}); n != 0 {
 			t.Fatalf("warm clear/scroll allocated %g times", n)

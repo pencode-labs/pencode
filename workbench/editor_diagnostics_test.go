@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/render"
-	"github.com/diiyw/onix/scene"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/render"
+	"github.com/onix-engine/onix/scene"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/lsp"
 )
 

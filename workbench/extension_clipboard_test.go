@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/diiyw/onix/input"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/input"
+	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )

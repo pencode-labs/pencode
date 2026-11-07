@@ -4,10 +4,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 type pencodeTerminalContext struct {
@@ -48,7 +48,7 @@ func (m *workspaceModel) terminalAction(state *input.State, ref, selection strin
 			m.writeTerminal(item, []byte(value))
 		}
 	case "terminal-clear":
-		item.screen.Clear()
+		item.screen.ClearOutput()
 		item.scroll = 0
 		markPencodeRootDirtyByModel(m.fontResources, m)
 	}

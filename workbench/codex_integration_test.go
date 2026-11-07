@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/internal/extensionbuild"
@@ -34,6 +34,13 @@ import (
 
 func TestCodexStatusBarOpensWorkspaceWhenCLIUnavailable(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", filepath.Join(t.TempDir(), "missing-codex"))
+	testCodexStatusBarWorkspace(t, "")
+}
+
+func TestCodexAsyncQuestionOffersNativeChoices(t *testing.T) {
+	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
+	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
+	t.Setenv("PENCODE_CODEX_ASYNC_QUESTION", "1")
 	testCodexStatusBarWorkspace(t, "")
 }
 
@@ -267,6 +274,46 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			return ok
 		})
 		return id
+	}
+	if os.Getenv("PENCODE_CODEX_ASYNC_QUESTION") == "1" {
+		phase = "ask a structured async question"
+		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
+		editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
+		wait(func() bool { return strings.Contains(surface.view.HTML, "Stored conversation") })
+		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "你 ask 工具问我一个问题"}, "")
+		editorContextClick(t, app, model, state, waitControl(surface, "send"))
+		wait(func() bool {
+			return !surface.ui.Busy && strings.Contains(surface.view.HTML, `class="codex-question-card"`)
+		})
+		ref := ""
+		for _, binding := range surface.view.Events {
+			if strings.HasPrefix(binding.Ref, "question-") && strings.HasSuffix(binding.Ref, "/select/1") {
+				ref = strings.TrimSuffix(binding.Ref, "select/1")
+				break
+			}
+		}
+		if ref == "" {
+			t.Fatal("completed ask did not expose selectable controls")
+		}
+		choice := editorContextBounds(t, model, waitControl(surface, ref+"select/1"))
+		prompt := editorContextBounds(t, model, waitControl(surface, "prompt"))
+		if choice.Height < 20 || choice.Y < 0 || choice.Y+choice.Height > prompt.Y {
+			t.Fatalf("async choice is not visible above composer: choice=%+v prompt=%+v", choice, prompt)
+		}
+		phase = "retain draft alongside async question"
+		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "保留草稿"}, "")
+		phase = "select an async answer using native button"
+		editorContextClick(t, app, model, state, waitControl(surface, ref+"select/1"))
+		wait(func() bool { return strings.Contains(surface.view.HTML, `aria-pressed="true"`) })
+		phase = "submit an async answer using native button"
+		editorContextClick(t, app, model, state, waitControl(surface, ref+"next"))
+		wait(func() bool {
+			return !surface.ui.Busy && strings.Contains(surface.view.HTML, "收到回答：") && !strings.Contains(surface.view.HTML, `class="codex-question-card"`)
+		})
+		if !strings.Contains(surface.view.HTML, "实现一个功能") || !strings.Contains(surface.view.HTML, ">保留草稿</textarea>") {
+			t.Fatal("native answer did not reach the model or preserve composer draft")
+		}
+		return
 	}
 	if os.Getenv("PENCODE_CODEX_VIEWED_IMAGE") != "" {
 		phase = "open image viewing history"

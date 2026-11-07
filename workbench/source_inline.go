@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
 )
 
 // Ranges use line-local UTF-8 byte offsets, independently of syntax spans.

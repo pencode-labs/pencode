@@ -5,9 +5,9 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
 )
 
 func TestPencodeDoubleClickSelectsToken(t *testing.T) {
@@ -20,7 +20,7 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 	for _, camera := range app.World.Query[scene.Camera]().All {
 		camera.Mut().UpdateViewport(1440, 900)
 	}
-	value := "package demo\nvar foo_bar42 = 中文变量_2\n" + strings.Repeat("// wrapped text ", 40) + strings.Repeat("\n// scroll", 50) + "\nvar path = \"github.com/diiyw/onix/scene\"\nvar message = \"你好 世界\"\nvar result = foo_bar42 + 中文变量_2\n"
+	value := "package demo\nvar foo_bar42 = 中文变量_2\n" + strings.Repeat("// wrapped text ", 40) + strings.Repeat("\n// scroll", 50) + "\nvar path = \"github.com/onix-engine/onix/scene\"\nvar message = \"你好 世界\"\nvar result = foo_bar42 + 中文变量_2\n"
 	model.updateActiveContent(value)
 	model.setEditorValueAndCaret(world, value, 0)
 	markPencodeRootDirtyByModel(world, model)
@@ -28,7 +28,7 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 	for _, zoom := range []int{100, 150, 70} {
 		model.setZoom(world, zoom)
 		languageInteractionStep(t, app)
-		for _, token := range []string{"foo_bar42", "中文变量_2", "github.com/diiyw/onix/scene", "你好 世界", "+"} {
+		for _, token := range []string{"foo_bar42", "中文变量_2", "github.com/onix-engine/onix/scene", "你好 世界", "+"} {
 			startByte := strings.LastIndex(value, token)
 			start := utf8.RuneCountInString(value[:startByte])
 			end := start + utf8.RuneCountInString(token)

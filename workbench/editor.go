@@ -4,14 +4,14 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/graphics"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/text"
-	"github.com/diiyw/onix/text/piecetree"
-	engineui "github.com/diiyw/onix/ui"
-	"github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/text"
+	"github.com/onix-engine/onix/text/piecetree"
+	engineui "github.com/onix-engine/onix/ui"
+	"github.com/onix-engine/onix/ui/html"
 )
 
 type pencodeEditor struct {

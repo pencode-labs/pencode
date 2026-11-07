@@ -9,13 +9,13 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/html/dom"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
 )
 
@@ -45,6 +45,7 @@ type pencodeExtensionTextSelection struct {
 	lastEntity        ecs.Entity
 	lastX, lastY      float32
 	dragging, dragged bool
+	all               bool
 }
 
 // Read the authored text to retain spaces omitted by paint fragments and avoid
@@ -218,6 +219,14 @@ func extensionTextOrder(world *module.Content, area ecs.Entity, a, b pencodeExte
 // Collect the rendered runs, so copying follows the visible Markdown text and
 // includes code, links and tool output without changing their layout.
 func (s *pencodeExtensionTextSelection) collect(world *module.Content, surface *pencodeExtensionSurface, ref string) {
+	if d := surface.document; d != nil && d.find != nil {
+		if searchable, _ := d.find.tree.Attr("data-ref"); searchable == ref {
+			s.content = d.find.content.String()
+			s.collectText(world, surface)
+			d.find.mapSpans(world, surface.model, s)
+			return
+		}
+	}
 	s.content = surface.selectableText(ref)
 	s.collectText(world, surface)
 }
@@ -384,12 +393,10 @@ func (s *pencodeExtensionTextSelection) refresh(world *module.Content) bool {
 		if region.id != s.region {
 			continue
 		}
-		if node, ok := world.HTMLNode(s.surface.model.surface, region.id); ok {
-			if area, ok := node.ScrollContainer(); ok {
-				s.area = area
-				s.collect(world, s.surface, region.ref)
-				found = len(s.spans) > 0
-			}
+		if area, ok := s.surface.selectionArea(world, region.id); ok {
+			s.area = area
+			s.collect(world, s.surface, region.ref)
+			found = len(s.spans) > 0
 		}
 		break
 	}
@@ -433,7 +440,7 @@ func (s *pencodeExtensionTextSelection) text() string {
 	first, last := s.spans[a.span], s.spans[b.span]
 	left, _ := pencodeSelectionBytes(first.value, a.rune, a.rune)
 	_, right := pencodeSelectionBytes(last.value, b.rune, b.rune)
-	if a.span == 0 && left == 0 && b.span == len(s.spans)-1 && right == len(last.value) {
+	if s.all {
 		return s.content
 	}
 	return s.content[first.offset+left : last.offset+right]
@@ -443,6 +450,7 @@ func (s *pencodeExtensionTextSelection) selectAll() {
 	if len(s.spans) == 0 {
 		return
 	}
+	s.all = true
 	s.anchor = pencodeExtensionTextPoint{}
 	last := len(s.spans) - 1
 	s.caret = pencodeExtensionTextPoint{last, utf8.RuneCountInString(s.spans[last].value)}
@@ -498,6 +506,56 @@ func (s *pencodeExtensionSurface) textSelectionBlocked(world *module.Content, x,
 	return false
 }
 
+func (s *pencodeExtensionSurface) selectionArea(world *module.Content, id string) (ecs.Entity, bool) {
+	if node, ok := world.HTMLNode(s.model.surface, id); ok {
+		if area, ok := node.ScrollContainer(); ok {
+			return area, true
+		}
+	}
+	if s.document != nil {
+		if node, ok := world.HTMLNode(s.model.surface, "custom-editor"); ok {
+			return node.ScrollContainer()
+		}
+	}
+	return 0, false
+}
+
+func (s *pencodeExtensionTextSelection) begin(world *module.Content, surface *pencodeExtensionSurface, x, y float32) bool {
+	if !surface.live() || len(surface.selectables) == 0 {
+		return false
+	}
+	if surface.textSelectionBlocked(world, x, y) {
+		s.lastClick = time.Time{}
+		return false
+	}
+	for _, region := range surface.selectables {
+		area, ok := surface.selectionArea(world, region.id)
+		if !ok {
+			continue
+		}
+		zoom := max(float32(surface.model.settings.Zoom)/100, .01)
+		if !surface.model.pointerInsideRefs(world, x/zoom, y/zoom, []string{region.id}) {
+			continue
+		}
+		s.area, s.region = area, region.id
+		s.collect(world, surface, region.ref)
+		point, ok := s.hit(world, x, y, false)
+		if !ok {
+			continue
+		}
+		s.all = false
+		s.surface, s.anchor, s.caret, s.dragging = surface, point, point, true
+		if s.spans[point.span].entity == s.lastEntity && time.Since(s.lastClick) < 500*time.Millisecond && math.Abs(float64(x-s.lastX)) < 4 && math.Abs(float64(y-s.lastY)) < 4 {
+			text := world.Mut[scene.Text2D](s.spans[point.span].entity)
+			token := engineui.CodeTokenAt(text.Text(), point.rune)
+			s.anchor.rune, s.caret.rune, s.dragging, s.dragged = token.RuneStart, token.RuneEnd, false, true
+		}
+		s.lastClick, s.lastEntity, s.lastX, s.lastY = time.Now(), s.spans[point.span].entity, x, y
+		return true
+	}
+	return false
+}
+
 func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *input.State) bool {
 	s := &m.actions.ui.selection
 	if m.closing.action != pencodeCloseNone || m.fileContext.dialog != "" || m.actions.ui.overlay != nil {
@@ -506,43 +564,14 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 	pointer := state.Pointer()
 	if state.PointerPressed() {
 		s.surface, s.dragging, s.dragged = nil, false, false
-	selectRegion:
-		for _, surface := range m.actions.ui.surfaces {
-			if !surface.live() || len(surface.selectables) == 0 {
-				continue
-			}
-			if surface.textSelectionBlocked(world, pointer.PressX, pointer.PressY) {
-				s.lastClick = time.Time{}
-				break
-			}
-			for _, region := range surface.selectables {
-				id := region.id
-				node, ok := world.HTMLNode(m.surface, id)
-				if !ok {
-					continue
+		if document := m.customDocuments[m.activeFile()]; document != nil && document.selection != nil {
+			s.begin(world, document.selection, pointer.PressX, pointer.PressY)
+		}
+		if s.surface == nil {
+			for _, surface := range m.actions.ui.surfaces {
+				if s.begin(world, surface, pointer.PressX, pointer.PressY) {
+					break
 				}
-				area, ok := node.ScrollContainer()
-				if !ok {
-					continue
-				}
-				zoom := max(float32(m.settings.Zoom)/100, .01)
-				if !m.pointerInsideRefs(world, pointer.PressX/zoom, pointer.PressY/zoom, []string{id}) {
-					continue
-				}
-				s.area, s.region = area, id
-				s.collect(world, surface, region.ref)
-				point, ok := s.hit(world, pointer.PressX, pointer.PressY, false)
-				if !ok {
-					continue
-				}
-				s.surface, s.anchor, s.caret, s.dragging = surface, point, point, true
-				if s.spans[point.span].entity == s.lastEntity && time.Since(s.lastClick) < 500*time.Millisecond && math.Abs(float64(pointer.PressX-s.lastX)) < 4 && math.Abs(float64(pointer.PressY-s.lastY)) < 4 {
-					text := world.Mut[scene.Text2D](s.spans[point.span].entity)
-					token := engineui.CodeTokenAt(text.Text(), point.rune)
-					s.anchor.rune, s.caret.rune, s.dragging, s.dragged = token.RuneStart, token.RuneEnd, false, true
-				}
-				s.lastClick, s.lastEntity, s.lastX, s.lastY = time.Now(), s.spans[point.span].entity, pointer.PressX, pointer.PressY
-				break selectRegion
 			}
 		}
 	}

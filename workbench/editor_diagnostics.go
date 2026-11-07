@@ -7,13 +7,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/diiyw/onix/ecs"
-	"github.com/diiyw/onix/graphics"
-	graphicssvg "github.com/diiyw/onix/graphics/codec/svg"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/render"
-	"github.com/diiyw/onix/scene"
-	"github.com/diiyw/onix/text/piecetree"
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/graphics"
+	graphicssvg "github.com/onix-engine/onix/graphics/codec/svg"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/render"
+	"github.com/onix-engine/onix/scene"
+	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/lsp"
 )
 

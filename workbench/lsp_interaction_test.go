@@ -12,11 +12,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/diiyw/onix"
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/scene"
-	engineui "github.com/diiyw/onix/ui"
-	htmlui "github.com/diiyw/onix/ui/html"
+	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/peb"
@@ -166,7 +166,7 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 	app, model, provider, state := languageInteractionFixture(t)
 	world := model.fontResources
 	longSymbol := strings.Repeat("longSymbol", 8)
-	value := "package demo\n\tvar 中文变量 = 1\n" + strings.Repeat("// wrapped text ", 30) + "\n\tvar wrappedSymbol = 中文变量\n" + strings.Repeat(" ", 65) + "edgeSymbol\nvar " + longSymbol + " = 1\nvar path = \"github.com/diiyw/onix/scene\"\n"
+	value := "package demo\n\tvar 中文变量 = 1\n" + strings.Repeat("// wrapped text ", 30) + "\n\tvar wrappedSymbol = 中文变量\n" + strings.Repeat(" ", 65) + "edgeSymbol\nvar " + longSymbol + " = 1\nvar path = \"github.com/onix-engine/onix/scene\"\n"
 	model.updateActiveContent(value)
 	// Compare Ctrl styling against final tokens, not a debounced edit preview.
 	model.highlightDue = time.Time{}
@@ -177,7 +177,7 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 	for _, zoom := range []int{100, 150, 70} {
 		model.setZoom(world, zoom)
 		languageInteractionStep(t, app)
-		for _, name := range []string{"中文变量", "wrappedSymbol", "edgeSymbol", longSymbol, "github.com/diiyw/onix/scene"} {
+		for _, name := range []string{"中文变量", "wrappedSymbol", "edgeSymbol", longSymbol, "github.com/onix-engine/onix/scene"} {
 			index := strings.LastIndex(value, name)
 			caret := utf8.RuneCountInString(value[:index]) + utf8.RuneCountInString(name)/2
 			model.setEditorValueAndCaret(world, value, caret)
@@ -295,7 +295,7 @@ func TestLanguageStringHoverCoversContents(t *testing.T) {
 	for _, zoom := range []int{100, 150, 70} {
 		model.setZoom(world, zoom)
 		for _, literal := range []string{
-			`"github.com/diiyw/onix/scene"`,
+			`"github.com/onix-engine/onix/scene"`,
 			`" 你好 世界🙂/path "`,
 			`"hello \"world\"/path"`,
 			"`first/path\n你好 世界/scene`",

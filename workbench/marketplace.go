@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/diiyw/onix/module"
-	htmlui "github.com/diiyw/onix/ui/html"
-	"github.com/diiyw/onix/window"
+	"github.com/onix-engine/onix/module"
+	htmlui "github.com/onix-engine/onix/ui/html"
+	"github.com/onix-engine/onix/window"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/output"
 )
@@ -279,6 +279,7 @@ func (model *workspaceModel) handleMarketplaceEvent(c *module.ContentEventContex
 		m.open = !m.open
 		if m.open {
 			model.settingsOpen, model.quickOpen, model.findOpen, model.capturingShortcut = false, false, false, false
+			model.clearFindCache()
 			if model.session != nil && model.session.connection != nil {
 				model.session.connection.open, model.session.connection.formOpen = false, false
 			}

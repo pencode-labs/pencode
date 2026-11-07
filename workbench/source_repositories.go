@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/diiyw/onix/input"
-	"github.com/diiyw/onix/module"
-	"github.com/diiyw/onix/scene"
+	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
 )
 
 // Retain drafts and comparisons per repository. Background jobs finish before a

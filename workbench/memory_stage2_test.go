@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/diiyw/onix/module"
+	"github.com/onix-engine/onix/module"
 	"github.com/pencode-labs/pencode/configuration"
 	"github.com/pencode-labs/pencode/extensions"
 )

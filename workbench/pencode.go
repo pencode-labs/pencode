@@ -34,6 +34,7 @@ import (
 	"github.com/onix-engine/onix/window"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/localization"
 	"github.com/pencode-labs/pencode/output"
 	"github.com/pencode-labs/pencode/peb"
 	"github.com/pencode-labs/pencode/protocol"
@@ -70,17 +71,20 @@ type openFile struct {
 	editorID        string
 	Path            string
 	Name            string
+	pageLabel       string
 	pencodeEditHistory
-	editorView       pencodeEditorView
-	editorGeneration uint64
-	saveRevision     uint64
-	forcedText       bool // Preserve the explicit decoding choice when switching views.
-	unsupported      bool // The file service did not provide a text document.
-	editorSplit      bool
-	externalChanged  bool
-	Dirty            bool
-	Preview          bool
-	highlightSlot    uint8 // Valid only while the bounded cache slot still owns this file.
+	editorView             pencodeEditorView
+	editorGeneration       uint64
+	saveRevision           uint64
+	page                   protocol.DocumentPage
+	pageLoading, pageDirty bool
+	forcedText             bool // Preserve the explicit decoding choice when switching views.
+	unsupported            bool // The file service did not provide a text document.
+	editorSplit            bool
+	externalChanged        bool
+	Dirty                  bool
+	Preview                bool
+	highlightSlot          uint8 // Valid only while the bounded cache slot still owns this file.
 }
 
 type pencodeEdit struct {
@@ -115,6 +119,9 @@ type pencodeProject struct {
 }
 
 type workspaceModel struct {
+	locale                              localization.Pack
+	languagePacks                       []pencodeLanguagePack
+	languageOptions                     []htmlui.VNode
 	highlightDue                        time.Time
 	syntaxMemoryDue                     time.Time
 	lastFileClickAt                     time.Time
@@ -395,8 +402,11 @@ func seedPencodeViewport(world *module.Content, app *module.Host) {
 }
 
 func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefinitions, error) {
+	page, translations, err := localizedPencodeTemplate(page)
+	if err != nil {
+		return nil, err
+	}
 	definitions := &pencodeDefinitions{}
-	var err error
 	definitions.tree, err = content.Define[treeProps, struct{}](
 		htmlui.NewTemplate(`<button data-ref="row" class="pencode-tree-row" type="button"><img data-ref="arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt=""><img data-ref="icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tree-name"></span></button>`), "",
 		module.ContentBehavior[treeProps, struct{}]{
@@ -449,6 +459,9 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if props == nil || props.Model == nil || props.Project == nil {
 					return
 				}
+				view.Attr("close", "title", props.Model.tr("关闭项目"))
+				view.Attr("close", "aria-label", props.Model.tr("关闭项目"))
+				view.Attr("tree", "aria-label", props.Model.tr("项目目录"))
 				className := "pencode-project"
 				if props.Model.activeProjectState() == props.Project {
 					className += " active"
@@ -511,12 +524,12 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if props.Dirty {
 					className += " dirty"
 					view.RemoveAttr("dot", "hidden")
-					view.Attr("select", "aria-label", props.Name+"（未保存）")
-					view.Attr("close", "title", "未保存，点击关闭")
+					view.Attr("select", "aria-label", props.Name+props.Model.tr("（未保存）"))
+					view.Attr("close", "title", props.Model.tr("未保存，点击关闭"))
 				} else {
 					view.Attr("dot", "hidden", "")
 					view.Attr("select", "aria-label", props.Name)
-					view.Attr("close", "title", "关闭文件")
+					view.Attr("close", "title", props.Model.tr("关闭文件"))
 				}
 				closeID := props.Path
 				if props.Project != nil {
@@ -537,15 +550,15 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				view.Attr("icon", "src", props.Model.themedIcon(icon, iconForeground))
 				if props.Unread {
-					view.Attr("select", "aria-label", props.Name+"（已完成，尚未查看）")
+					view.Attr("select", "aria-label", props.Name+props.Model.tr("（已完成，尚未查看）"))
 				}
 				if props.Busy {
-					view.Attr("close", "title", "关闭标签页并在后台运行")
+					view.Attr("close", "title", props.Model.tr("关闭标签页并在后台运行"))
 				}
 				renderTabIndicator(view, props, iconForeground)
 				view.Attr("tab", "aria-busy", boolAttribute(props.Busy))
 				view.Attr("select", "aria-selected", boolAttribute(props.Active))
-				view.Attr("close", "aria-label", "关闭 "+props.Name)
+				view.Attr("close", "aria-label", props.Model.tr("关闭 ")+props.Name)
 				view.Text("name", props.Name)
 				nameClass := "pencode-tab-name"
 				if props.HasErrors {
@@ -623,6 +636,9 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if context.Props != nil && context.Props.Model != nil && context.Props.Model.patchWorkbench(context, view) {
 					return
 				}
+				if context.Props != nil && context.Props.Model != nil {
+					renderPencodeTranslations(context.Props.Model, view, translations)
+				}
 				renderPencodeRoot(context, view, definitions.project, definitions.tab, definitions.market, definitions.connect, definitions.action)
 				if context.Props != nil && context.Props.Model != nil && context.Props.Screen == pencodeLauncher {
 					context.Props.Model.renderRecentProjects(view, recentDefinition)
@@ -695,7 +711,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Attr("quick-open-query", "value", model.quickQuery)
 	if model.activeProjectState() == nil && len(model.entries) == 0 {
 		view.Attr("quick-open-query", "disabled", "")
-		view.Attr("open-quick-search", "title", "请先打开项目目录")
+		view.Attr("open-quick-search", "title", model.tr("请先打开项目目录"))
 	} else {
 		view.RemoveAttr("quick-open-query", "disabled")
 		view.Attr("open-quick-search", "title", model.shortcutAriaLabels[pencodeShortcutQuickOpen])
@@ -709,6 +725,10 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("reveal-active-file", htmlui.EventClick)
 	view.Event("reload-from-disk", htmlui.EventClick)
 	view.Event("editor", htmlui.EventInput)
+	view.Event("editor-page-position", htmlui.EventChange)
+	for _, ref := range [...]string{"editor-page-first", "editor-page-prev", "editor-page-next", "editor-page-last"} {
+		view.Event(ref, htmlui.EventClick)
+	}
 	view.Event("open-settings", htmlui.EventClick)
 	view.Event("close-settings", htmlui.EventClick)
 	view.Event("settings-appearance-nav", htmlui.EventClick)
@@ -791,7 +811,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.RemoveAttr("settings-feedback", "hidden")
 	}
 	if model.settingsShortcuts {
-		view.Text("settings-page-title", "快捷键")
+		view.Text("settings-page-title", model.tr("快捷键"))
 		view.Attr("settings-appearance-nav", "class", "pencode-settings-nav-item")
 		view.RemoveAttr("settings-appearance-nav", "aria-current")
 		view.Attr("settings-shortcuts-nav", "class", "pencode-settings-nav-item active")
@@ -800,7 +820,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.RemoveAttr("settings-shortcuts-pane", "hidden")
 		view.RemoveAttr("reset-shortcuts", "hidden")
 	} else {
-		view.Text("settings-page-title", "外观")
+		view.Text("settings-page-title", model.tr("外观"))
 		view.Attr("settings-appearance-nav", "class", "pencode-settings-nav-item active")
 		view.Attr("settings-appearance-nav", "aria-current", "page")
 		view.Attr("settings-shortcuts-nav", "class", "pencode-settings-nav-item")
@@ -989,7 +1009,13 @@ func renderPencodeHighlight(model *workspaceModel) {
 		model.editor.brackets.set(file.snapshot(), cached.brackets)
 		model.highlightPaintRevision++
 		model.highlightedPath, model.highlightedContent, model.highlighted = file.Path, file.snapshot(), true
-		model.lineCount, model.characterCount, model.lineInfo = cached.lines, cached.characters, cached.lineInfo
+		model.lineCount, model.characterCount = cached.lines, cached.characters
+		format := model.tr("行 %d · %d 字符")
+		if cached.lineInfoFormat != format {
+			cached.lineInfo = fmt.Sprintf(format, cached.lines, cached.characters)
+			cached.lineInfoFormat = format
+		}
+		model.lineInfo = cached.lineInfo
 		return
 	}
 	if model.highlightPending {
@@ -1068,6 +1094,15 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		return
 	}
 	if model.handleMarketplaceEvent(context) {
+		markPencodeRootDirty(context, model)
+		return
+	}
+	if context.Ref == "editor-page-position" {
+		model.jumpFilePage(context.Event.Value)
+		markPencodeRootDirty(context, model)
+		return
+	}
+	if model.handleFilePage(context.Ref) {
 		markPencodeRootDirty(context, model)
 		return
 	}
@@ -1323,13 +1358,13 @@ func (model *workspaceModel) chooseProject() {
 	}
 	if model == nil || model.app == nil || model.app.Context == nil {
 		if model != nil {
-			model.status = "文件对话框不可用"
+			model.status = model.tr("文件对话框不可用")
 		}
 		return
 	}
-	directory, err := model.app.OpenFolder(window.FileDialogOptions{Title: "打开项目目录", DefaultPath: model.lastDirectory})
+	directory, err := model.app.OpenFolder(window.FileDialogOptions{Title: model.tr("打开项目目录"), DefaultPath: model.lastDirectory})
 	if err != nil {
-		model.setActiveStatus(fmt.Sprintf("打开项目失败：%v", err))
+		model.setActiveStatus(fmt.Sprintf(model.tr("打开项目失败：%v"), err))
 		return
 	}
 	if directory == "" {
@@ -1343,18 +1378,18 @@ func (model *workspaceModel) chooseProject() {
 
 func (model *workspaceModel) loadProject(directory string) error {
 	if model == nil {
-		return fmt.Errorf("项目工作区不可用")
+		return fmt.Errorf("%s", model.tr("项目工作区不可用"))
 	}
 	if model.backend == nil {
-		return fmt.Errorf("工作区服务未连接")
+		return fmt.Errorf("%s", model.tr("工作区服务未连接"))
 	}
 	if model.session != nil && model.session.connection != nil && model.session.connection.restoring {
-		return fmt.Errorf("连接恢复中，请稍后打开项目；未保存内容仍可继续编辑")
+		return fmt.Errorf("%s", model.tr("连接恢复中，请稍后打开项目；未保存内容仍可继续编辑"))
 	}
 	if err := model.submitFileIO(&fileIOJob{kind: fileOpenWorkspace, root: directory}); err != nil {
 		return err
 	}
-	model.status = "正在打开项目…"
+	model.status = model.tr("正在打开项目…")
 	return nil
 }
 
@@ -1656,7 +1691,7 @@ func (model *workspaceModel) collapseDirectories() {
 	}
 	model.allDirectoriesCollapsed = true
 	clear(model.expandedDirs)
-	model.status = "已折叠所有目录"
+	model.status = model.tr("已折叠所有目录")
 }
 
 func (model *workspaceModel) collapseProjectDirectories(project *pencodeProject) {
@@ -1666,7 +1701,7 @@ func (model *workspaceModel) collapseProjectDirectories(project *pencodeProject)
 	project.AllDirectoriesCollapsed = true
 	clear(project.ExpandedDirs)
 	project.tree.revision++
-	model.setProjectStatus(project, "已折叠所有目录")
+	model.setProjectStatus(project, model.tr("已折叠所有目录"))
 	model.syncActiveProjectFields()
 }
 
@@ -1680,7 +1715,7 @@ func (model *workspaceModel) revealActiveFile() {
 	}
 	file := model.activeFile()
 	if file == nil {
-		model.status = "没有打开的文件"
+		model.status = model.tr("没有打开的文件")
 		return
 	}
 	relative := path.Dir(file.Path)
@@ -1697,7 +1732,7 @@ func (model *workspaceModel) revealActiveFile() {
 			relative = next
 		}
 	}
-	model.status = fmt.Sprintf("已定位 %s", file.Name)
+	model.status = fmt.Sprintf(model.tr("已定位 %s"), file.Name)
 }
 
 func (model *workspaceModel) revealProjectActiveFile(project *pencodeProject) {
@@ -1706,11 +1741,11 @@ func (model *workspaceModel) revealProjectActiveFile(project *pencodeProject) {
 	}
 	file := project.Files[project.ActivePath]
 	if file == nil {
-		model.setProjectStatus(project, "没有打开的文件")
+		model.setProjectStatus(project, model.tr("没有打开的文件"))
 		return
 	}
 	model.queueProjectFileReveal(project)
-	model.setProjectStatus(project, fmt.Sprintf("已定位 %s", file.Name))
+	model.setProjectStatus(project, fmt.Sprintf(model.tr("已定位 %s"), file.Name))
 	model.syncActiveProjectFields()
 }
 
@@ -1832,14 +1867,14 @@ func (model *workspaceModel) reloadFromDisk() {
 		return
 	}
 	if model != nil {
-		model.status = "没有打开的项目"
+		model.status = model.tr("没有打开的项目")
 	}
 }
 
 func (model *workspaceModel) reloadProjectFromDisk(project *pencodeProject) {
 	if model == nil || project == nil || project.Path == "" {
 		if model != nil {
-			model.status = "没有打开的项目"
+			model.status = model.tr("没有打开的项目")
 		}
 		return
 	}
@@ -1879,6 +1914,7 @@ func acceptProjectFile(project *pencodeProject, relative string, preview bool, d
 	project.sourceControl.Selection++
 	file := &openFile{document: document, Path: relative, Name: path.Base(relative), contentSnapshot: snapshotText(content), unsupported: document == nil, Preview: preview}
 	file.savedContent = file.snapshot()
+	file.initPage()
 	project.Files[relative] = file
 	replaced := false
 	if preview && project.PreviewPath != "" {
@@ -2081,7 +2117,7 @@ func (model *workspaceModel) applyFileContent(file *openFile, project *pencodePr
 	return model.applyFileSnapshot(file, project, snapshotText(value), recordHistory)
 }
 func (model *workspaceModel) applyFileSnapshot(file *openFile, project *pencodeProject, value piecetree.Snapshot, recordHistory bool) bool {
-	if file == nil || !file.text() || file.snapshot().Equal(value) {
+	if file == nil || !file.text() || file.pageLoading || file.snapshot().Equal(value) {
 		return false
 	}
 	start, oldSuffix, newSuffix, prefixRunes, changed := file.buffer.SnapshotChangedRange(file.snapshot(), value)
@@ -2111,10 +2147,14 @@ func (model *workspaceModel) applyFileSnapshot(file *openFile, project *pencodeP
 	if file.document != nil {
 		file.document.Update(file.snapshot(), value, start, oldSuffix, newSuffix)
 	}
+	if file.page.Paged {
+		file.page.Size = file.page.Size - uint64(file.snapshot().Len()) + uint64(value.Len())
+	}
 	file.contentSnapshot = value
+	file.updatePageLabel()
 	model.rebaseDebugBreakpoints(project, file, value, start, oldSuffix, newSuffix)
 	model.rebaseFindScope(file, start, oldSuffix, newSuffix)
-	file.Dirty = !file.snapshot().Equal(file.savedContent)
+	file.Dirty = file.pageDirty || !file.snapshot().Equal(file.savedContent)
 	if project != nil {
 		pinProjectFile(project, file.Path)
 	}
@@ -2146,7 +2186,7 @@ func (model *workspaceModel) rebaseHighlight(oldContent, content piecetree.Snaps
 			model.lineCount++
 		}
 	}
-	model.lineInfo = fmt.Sprintf("行 %d · %d 字符", model.lineCount, model.characterCount)
+	model.lineInfo = fmt.Sprintf(model.tr("行 %d · %d 字符"), model.lineCount, model.characterCount)
 
 	spans := rebasePencodeSpans(model.highlightRebaseScratch[:0], model.highlightScratch, prefix, oldSuffix, newSuffix)
 	model.highlightRebaseScratch, model.highlightScratch = model.highlightScratch[:0], spans
@@ -2328,6 +2368,7 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 		markPencodeRootDirtyByModel(context.World, model)
 	}
 	model.updateTabWheel(context.World, state)
+	model.updateFilePageWheel(context.World, state)
 	changed := model.updateWorkbenchResize(context.World, state)
 	if model.updateDebugPointer(context.World, state) {
 		changed = true
@@ -2372,7 +2413,7 @@ func (model *workspaceModel) saveActiveFile() {
 	}
 	file := model.activeFile()
 	if file == nil {
-		model.setActiveStatus("没有打开的文件")
+		model.setActiveStatus(model.tr("没有打开的文件"))
 		return
 	}
 	if document := model.customDocuments[file]; document != nil && document.busy() {

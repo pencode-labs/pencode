@@ -200,12 +200,24 @@ func dispatch(s *workspace.Store, f protocol.Frame, e *protocol.Encoder) error {
 		e.U64(doc.ID)
 		e.U64(doc.Version)
 		e.String(doc.Content)
-	case protocol.DocumentChange:
-		id, version, start, end, text := d.U64(), d.U64(), d.U32(), d.U32(), d.String()
+		e.DocumentPage(doc.Page)
+	case protocol.DocumentRead:
+		id, version, offset := d.U64(), d.U64(), d.U64()
 		if err := d.Done(); err != nil {
 			return err
 		}
-		version, err := s.Change(id, version, start, end, text)
+		doc, err := s.ReadDocument(id, version, offset)
+		if err != nil {
+			return err
+		}
+		e.String(doc.Content)
+		e.DocumentPage(doc.Page)
+	case protocol.DocumentChange:
+		id, version, offset, start, end, text := d.U64(), d.U64(), d.U64(), d.U32(), d.U32(), d.String()
+		if err := d.Done(); err != nil {
+			return err
+		}
+		version, err := s.Change(id, version, offset, start, end, text)
 		if err != nil {
 			return err
 		}

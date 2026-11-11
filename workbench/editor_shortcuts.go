@@ -14,7 +14,7 @@ var pencodeEditorClipboardCommands = [...]struct{ id, ref string }{
 }
 
 func (m *workspaceModel) editorClipboardShortcut(world *module.Content, state *input.State, goos string) bool {
-	if world == nil || !m.textEditorActive() || m.settingsOpen || m.quickOpen || m.findOpen {
+	if world == nil || !m.textEditorActive() || m.settingsOpen || m.quickOpen {
 		return false
 	}
 	field, ok := world.Get[engineui.TextField](m.editor.control)

@@ -140,12 +140,12 @@ func (model *workspaceModel) prepareReferencePreviews(groups map[lsp.URI]int) {
 		relative, err := filepath.Rel(root, filename)
 		if err != nil || !filepath.IsLocal(relative) {
 			for j := range group.rows {
-				group.rows[j].label = "无法读取源码"
+				group.rows[j].label = model.tr("无法读取源码")
 			}
 			continue
 		}
 		for j := range group.rows {
-			group.rows[j].label = "正在加载源码…"
+			group.rows[j].label = model.tr("正在加载源码…")
 		}
 		pending = append(pending, pencodeReferencePreview{group: i, root: root, path: filepath.ToSlash(relative), rows: slices.Clone(group.rows)})
 	}

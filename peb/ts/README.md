@@ -1,8 +1,8 @@
-# PEB v18 TypeScript SDK
+# PEB v19 TypeScript SDK
 
 Node.js 22+ / Bun 的扩展 SDK，与 `peb` Go 包使用相同的二进制帧、字段顺序、大小限制和 UTF-8 编码。标准输出只用于协议，日志使用 `console.error`。不使用 JSON-RPC。
 
-`src/index.ts` 导出全部 v18 消息的 codec、类型、枚举、`Reader`、`Writer`、`Encoder`、`Decoder`、`serveExtension` 和 `Publisher`。通过 `encode(codec, value, encoder?)` / `decode(codec, buffer)` 使用底层消息；编码参数可以省略零值字段，解码结果始终具有完整字段。`view: null` 保留 DOM，`content: null` 保留文档；`content: ''` 清空文档。
+`src/index.ts` 导出全部 v19 消息的 codec、类型、枚举、`Reader`、`Writer`、`Encoder`、`Decoder`、`serveExtension` 和 `Publisher`。通过 `encode(codec, value, encoder?)` / `decode(codec, buffer)` 使用底层消息；编码参数可以省略零值字段，解码结果始终具有完整字段。`view: null` 保留 DOM，`content: null` 保留文档；`content: ''` 清空文档。
 
 ```ts
 import { ActionLocation, Match, serveExtension } from '@pencode/peb';
@@ -37,3 +37,5 @@ npm test
 ```
 
 跨语言测试从当前 Go SDK 生成所有消息的 fixture，再由 TS 解码、重编码并逐字节比较；另覆盖任意拆包、粘包、截断、错误版本和实际服务会话。
+
+语言包通过 `languagePacks: [{ id, label, path }]` 注册，使用 PEB v19 的 `LanguagePacks` 能力；格式与 Go 相同。参见[语言包文档与示例](../../docs/localization.zh-CN.md)。

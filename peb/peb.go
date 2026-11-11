@@ -1,4 +1,4 @@
-// Package peb implements Pencode Extension Binary protocol version 18.
+// Package peb implements Pencode Extension Binary protocol version 19.
 // Frames and payloads use little endian integers; stdout is reserved for frames.
 package peb
 
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version    = 18
+	Version    = 19
 	HeaderSize = 16
 	MaxPayload = 4 << 20
 	MaxString  = 64 << 10
@@ -55,7 +55,8 @@ const (
 	ExtensionUI
 	DebugAdapters
 	ExtensionSettings
-	Capabilities = FileIcons | EditorThemes | CustomEditors | Fonts | LanguageServers | Actions | ExtensionUI | DebugAdapters | ExtensionSettings
+	LanguagePacks
+	Capabilities = FileIcons | EditorThemes | CustomEditors | Fonts | LanguageServers | Actions | ExtensionUI | DebugAdapters | ExtensionSettings | LanguagePacks
 )
 
 var ErrProtocol = errors.New("peb: invalid protocol message")
@@ -189,7 +190,12 @@ type IconTheme struct {
 	ID, Label string
 	Rules     []IconRule
 }
+
+// LanguagePack points to a JSON language pack under resources/.
+type LanguagePack struct{ ID, Label, Path string }
+
 type Contributions struct {
+	LanguagePacks   []LanguagePack
 	Actions         []Action
 	Themes          []Theme
 	IconThemes      []IconTheme
@@ -338,6 +344,12 @@ func EncodeContributions(dst []byte, v Contributions) ([]byte, error) {
 	e.number(boolNumber(v.ActionService))
 	encodeDebugAdapters(&e, v.DebugAdapters)
 	encodeSettings(&e, v.Settings)
+	e.count(len(v.LanguagePacks))
+	for _, pack := range v.LanguagePacks {
+		e.str(pack.ID)
+		e.str(pack.Label)
+		e.str(pack.Path)
+	}
 	return e.data, e.err
 }
 
@@ -379,6 +391,12 @@ func DecodeContributions(data []byte) (Contributions, error) {
 	v.ActionService = d.boolean()
 	v.DebugAdapters = decodeDebugAdapters(&d)
 	v.Settings = decodeSettings(&d)
+	if n := d.count(); n != 0 {
+		v.LanguagePacks = make([]LanguagePack, n)
+	}
+	for i := range v.LanguagePacks {
+		v.LanguagePacks[i] = LanguagePack{d.str(), d.str(), d.str()}
+	}
 	return v, d.done()
 }
 
@@ -438,6 +456,7 @@ func ServeExtension(input io.Reader, output io.Writer, contributions Contributio
 		len(contributions.Fonts) > 0 && hello.Capabilities&Fonts == 0 ||
 		len(contributions.LanguageServers) > 0 && hello.Capabilities&LanguageServers == 0 ||
 		len(contributions.DebugAdapters) > 0 && hello.Capabilities&DebugAdapters == 0 ||
+		len(contributions.LanguagePacks) > 0 && hello.Capabilities&LanguagePacks == 0 ||
 		len(contributions.Settings) > 0 && hello.Capabilities&ExtensionSettings == 0 ||
 		(contributions.ActionService || len(contributions.Actions) > 0) && hello.Capabilities&Actions == 0 ||
 		hasActions && handlers.Action == nil ||

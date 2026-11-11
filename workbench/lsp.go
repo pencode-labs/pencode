@@ -368,7 +368,7 @@ func (model *workspaceModel) syncLanguageDocuments() {
 	}
 	visit := func(root string, project *pencodeProject, files map[string]*openFile) {
 		for _, file := range files {
-			if !file.text() {
+			if !file.text() || file.page.Paged {
 				continue
 			}
 			doc := state.documents[file]
@@ -495,7 +495,7 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 			switch event.method {
 			case "ready":
 				event.session.client = event.client
-				model.logOutput("Language Server: "+event.session.server.Label, "语言服务已启动")
+				model.logOutput("Language Server: "+event.session.server.Label, model.tr("语言服务已启动"))
 				model.syncLanguageDocuments()
 			case "failed":
 				event.session.failed = true

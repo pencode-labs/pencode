@@ -51,6 +51,11 @@ func newInputContextDefinition() (*htmlui.Definition[pencodeInputContextProps, s
 				return
 			}
 			view.RemoveAttr("input-context", "hidden")
+			view.Attr("input-context", "aria-label", p.Model.tr("文本操作"))
+			labels := [...]string{"剪切", "复制", "粘贴", "删除", "全选"}
+			for i, ref := range pencodeInputContextRefs {
+				view.Text(ref, p.Model.tr(labels[i]))
+			}
 			view.Attr("input-context", "style", languagePopupStyle(p.X, p.Y))
 			for i, ref := range pencodeInputContextRefs {
 				view.Event(ref, htmlui.EventClick)
@@ -208,7 +213,7 @@ func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 		switch ref {
 		case "input-context-copy":
 			state, _ := world.GetResource[*input.State]()
-			state.SetClipboardText(c.selection.text())
+			c.selection.copy(state)
 		case "input-context-select-all":
 			c.selection.selectAll()
 		default:

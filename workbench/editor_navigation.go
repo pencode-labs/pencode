@@ -110,7 +110,7 @@ func (m *workspaceModel) navigateEditorHistory(step int) {
 }
 
 func (m *workspaceModel) editorNavigationShortcut(world *module.Content, state *input.State, goos string) bool {
-	if world == nil || !m.textEditorActive() || m.settingsOpen || m.quickOpen || m.findOpen || state.Composing() {
+	if world == nil || !m.textEditorActive() || m.settingsOpen || m.quickOpen || state.Composing() {
 		return false
 	}
 	field, ok := world.Get[engineui.TextField](m.editor.control)

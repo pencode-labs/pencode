@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-export const Version = 18;
+export const Version = 19;
 export const HeaderSize = 16;
 export const MaxPayload = 4 << 20;
 export const MaxString = 64 << 10;

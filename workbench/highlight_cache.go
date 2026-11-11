@@ -15,17 +15,18 @@ const (
 )
 
 type pencodeHighlightCacheEntry struct {
-	file        *openFile
-	theme       *syntax.Theme
-	definitions *syntax.Definitions
-	source      piecetree.Snapshot
-	path        string // Set only while a replaced preview has no live file.
-	lineInfo    string
-	spans       []scene.TextSpan2D
-	brackets    []pencodeBracket
-	lines       int
-	characters  int
-	valid       bool
+	file           *openFile
+	theme          *syntax.Theme
+	definitions    *syntax.Definitions
+	source         piecetree.Snapshot
+	path           string // Set only while a replaced preview has no live file.
+	lineInfoFormat string
+	lineInfo       string
+	spans          []scene.TextSpan2D
+	brackets       []pencodeBracket
+	lines          int
+	characters     int
+	valid          bool
 }
 
 // Replaced previews keep only bounded paint data, never documents or trees.

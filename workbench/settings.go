@@ -94,6 +94,7 @@ type pencodeSettings struct {
 	Extensions  map[string]peb.SettingValues            `json:"extensions,omitempty"`
 	CodeFont    string                                  `json:"codeFont"`
 	UIFont      string                                  `json:"uiFont"`
+	Language    string                                  `json:"language"`
 	Theme       string                                  `json:"theme"`
 	IconTheme   string                                  `json:"iconTheme"`
 	Keymap      string                                  `json:"keymap"`
@@ -108,7 +109,7 @@ func defaultPencodeSettings() pencodeSettings {
 		FontSize: pencodeDefaultFontSize, UIFontSize: pencodeDefaultUIFontSize,
 		EditorWidth: pencodeDefaultEditorWidth,
 		CodeFont:    defaultPencodeFont(runtime.GOOS), UIFont: defaultUIFontSelection(), Zoom: pencodeDefaultZoom,
-		Theme: "monokai", Keymap: "default",
+		Theme: "monokai", Keymap: "default", Language: "zh-CN",
 	}
 	settings.Bindings = make(map[string]pencodeKeybinding, len(pencodeShortcutDefinitions))
 	for action, definition := range pencodeShortcutDefinitions {
@@ -178,6 +179,9 @@ func parsePencodeSettings(data []byte) pencodeSettings {
 	if saved.Theme != "" {
 		settings.Theme = saved.Theme
 	}
+	if saved.Language != "" {
+		settings.Language = saved.Language
+	}
 	settings.Extensions = saved.Extensions
 	settings.IconTheme = saved.IconTheme
 	if saved.Keymap != "" {
@@ -217,7 +221,7 @@ func (model *workspaceModel) refreshSettingsLabels() {
 	model.zoomLabel = strconv.Itoa(model.settings.Zoom) + "%"
 	for action, definition := range pencodeShortcutDefinitions {
 		model.shortcutLabels[action] = model.settings.Bindings[definition.id].label(runtime.GOOS)
-		model.shortcutAriaLabels[action] = definition.name + "：" + model.shortcutLabels[action]
+		model.shortcutAriaLabels[action] = model.tr(definition.name) + ": " + model.shortcutLabels[action]
 	}
 }
 
@@ -227,7 +231,7 @@ func (model *workspaceModel) saveSettings() {
 		return
 	}
 	if model.settingsPath == "" {
-		model.settingsFeedback = "无法确定设置文件位置"
+		model.settingsFeedback = model.tr("无法确定设置文件位置")
 		return
 	}
 	data, err := json.MarshalIndent(model.settings, "", "  ")
@@ -235,7 +239,7 @@ func (model *workspaceModel) saveSettings() {
 		err = configuration.Save(context.Background(), filepath.Dir(model.settingsPath), append(data, '\n'))
 	}
 	if err != nil {
-		model.settingsFeedback = fmt.Sprintf("保存设置失败：%v", err)
+		model.settingsFeedback = fmt.Sprintf(model.tr("保存设置失败：%v"), err)
 	} else {
 		model.settingsFeedback = ""
 	}
@@ -430,6 +434,8 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		}
 	}
 	switch context.Ref {
+	case "language-select":
+		return model.changeLanguage(context.Event.Value)
 	case "open-settings":
 		if model.market != nil {
 			model.market.open = false
@@ -628,7 +634,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			return true
 		}
 		if conflict := model.shortcutConflict(model.captureAction, binding, goos); conflict != "" {
-			model.settingsFeedback = "快捷键已用于" + conflict
+			model.settingsFeedback = model.tr("快捷键已用于") + conflict
 			return true
 		}
 		model.settings.Bindings[model.captureAction] = binding
@@ -659,8 +665,12 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			return true
 		}
 	}
+	if model.languageUI.contextOpen && model.handleLanguageKeys(world, state) {
+		return true
+	}
 	if model.findOpen {
-		if option := model.searchOptionKey(state); option >= 0 {
+		findFocused := model.findInputFocused(world)
+		if option := model.searchOptionKey(state); option >= 0 && findFocused {
 			toggleSearchOption(&model.findOptions, option)
 			model.refreshFindMatches()
 			model.findFromCaret(world)
@@ -670,7 +680,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			model.closeFind(world)
 			return true
 		}
-		if (model.uiKey(state, input.KeyEnter) || model.commandMatches("search-previous", state, goos) || model.commandMatches("search-replace-all", state, goos)) && (pencodeControlFocused(world, model.surface, "find-query") || pencodeControlFocused(world, model.surface, "replace-query")) {
+		if (model.uiKey(state, input.KeyEnter) || model.commandMatches("search-previous", state, goos) || model.commandMatches("search-replace-all", state, goos)) && findFocused {
 			if pencodeControlFocused(world, model.surface, "replace-query") {
 				model.replaceFindMatch(world, model.commandMatches("search-replace-all", state, goos))
 				return true

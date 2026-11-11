@@ -31,21 +31,23 @@ type pencodeExtensionTextSpan struct {
 type pencodeExtensionTextPoint struct{ span, rune int }
 
 type pencodeExtensionTextSelection struct {
-	lastClick         time.Time
-	surface           *pencodeExtensionSurface
-	view              *peb.EditorView
-	content           string
-	region            string
-	key               string
-	quads             []ecs.Entity
-	spans             []pencodeExtensionTextSpan
-	anchor, caret     pencodeExtensionTextPoint
-	area              ecs.Entity
-	focusTarget       ecs.Entity
-	lastEntity        ecs.Entity
-	lastX, lastY      float32
-	dragging, dragged bool
-	all               bool
+	lastClick                 time.Time
+	surface                   *pencodeExtensionSurface
+	grid                      *pencodeVirtualGrid
+	view                      *peb.EditorView
+	content                   string
+	region                    string
+	key                       string
+	quads                     []ecs.Entity
+	spans                     []pencodeExtensionTextSpan
+	anchor, caret             pencodeExtensionTextPoint
+	anchorOffset, caretOffset int
+	area                      ecs.Entity
+	focusTarget               ecs.Entity
+	lastEntity                ecs.Entity
+	lastX, lastY              float32
+	dragging, dragged         bool
+	all                       bool
 }
 
 // Read the authored text to retain spaces omitted by paint fragments and avoid
@@ -219,9 +221,10 @@ func extensionTextOrder(world *module.Content, area ecs.Entity, a, b pencodeExte
 // Collect the rendered runs, so copying follows the visible Markdown text and
 // includes code, links and tool output without changing their layout.
 func (s *pencodeExtensionTextSelection) collect(world *module.Content, surface *pencodeExtensionSurface, ref string) {
+	s.grid = nil
 	if d := surface.document; d != nil && d.find != nil {
 		if searchable, _ := d.find.tree.Attr("data-ref"); searchable == ref {
-			s.content = d.find.content.String()
+			s.content, s.grid = d.find.content.String(), d.find.grid
 			s.collectText(world, surface)
 			d.find.mapSpans(world, surface.model, s)
 			return
@@ -275,6 +278,9 @@ func (s *pencodeExtensionTextSelection) collectText(world *module.Content, surfa
 		}
 		slices.SortFunc(s.spans[start:end], func(a, b pencodeExtensionTextSpan) int { return cmp.Compare(a.x, b.x) })
 		start = end
+	}
+	if s.grid != nil {
+		return
 	}
 	cursor, used := 0, 0
 	for _, span := range s.spans {
@@ -341,7 +347,13 @@ func (s *pencodeExtensionTextSelection) ordered() (pencodeExtensionTextPoint, pe
 }
 
 func (s *pencodeExtensionTextSelection) valid(world *module.Content) bool {
-	if s.surface == nil || !s.surface.live() || !world.IsAlive(s.area) {
+	if s.surface == nil || !s.surface.live() {
+		return false
+	}
+	if s.grid != nil {
+		return s.surface.document != nil && s.surface.document.grid == s.grid
+	}
+	if !world.IsAlive(s.area) {
 		return false
 	}
 	a, b := s.ordered()
@@ -377,6 +389,19 @@ func (s *pencodeExtensionTextSelection) point(offset int) pencodeExtensionTextPo
 // the selected text. Rebind endpoints after layout, retaining their byte
 // positions across edits outside the selected range.
 func (s *pencodeExtensionTextSelection) refresh(world *module.Content) bool {
+	if s.grid != nil {
+		if !s.valid(world) {
+			return false
+		}
+		area, ok := s.surface.selectionArea(world, s.region)
+		if !ok {
+			return false
+		}
+		s.area = area
+		ref, _ := s.surface.document.find.tree.Attr("data-ref")
+		s.collect(world, s.surface, ref)
+		return true
+	}
 	if s.surface == nil || !s.surface.live() || s.key != s.surface.scrollKey || len(s.spans) == 0 {
 		return false
 	}
@@ -432,7 +457,17 @@ func (s *pencodeExtensionTextSelection) refresh(world *module.Content) bool {
 	return s.valid(world)
 }
 
+func (s *pencodeExtensionTextSelection) selected() bool {
+	if s.grid != nil {
+		return s.anchorOffset != s.caretOffset
+	}
+	return s.anchor != s.caret
+}
+
 func (s *pencodeExtensionTextSelection) text() string {
+	if s.grid != nil {
+		return s.grid.copyText(min(s.anchorOffset, s.caretOffset), max(s.anchorOffset, s.caretOffset), s.all)
+	}
 	if len(s.spans) == 0 || s.anchor == s.caret {
 		return ""
 	}
@@ -447,6 +482,14 @@ func (s *pencodeExtensionTextSelection) text() string {
 }
 
 func (s *pencodeExtensionTextSelection) selectAll() {
+	if s.grid != nil {
+		s.all = true
+		if s.grid.remote != nil && !s.grid.remote.complete {
+			s.surface.document.requestGrid(true)
+		}
+		s.anchorOffset, s.caretOffset = 0, len(s.content)
+		return
+	}
 	if len(s.spans) == 0 {
 		return
 	}
@@ -550,6 +593,9 @@ func (s *pencodeExtensionTextSelection) begin(world *module.Content, surface *pe
 			token := engineui.CodeTokenAt(text.Text(), point.rune)
 			s.anchor.rune, s.caret.rune, s.dragging, s.dragged = token.RuneStart, token.RuneEnd, false, true
 		}
+		if s.grid != nil {
+			s.anchorOffset, s.caretOffset = s.offset(s.anchor), s.offset(s.caret)
+		}
 		s.lastClick, s.lastEntity, s.lastX, s.lastY = time.Now(), s.spans[point.span].entity, x, y
 		return true
 	}
@@ -563,7 +609,7 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 	}
 	pointer := state.Pointer()
 	if state.PointerPressed() {
-		s.surface, s.dragging, s.dragged = nil, false, false
+		s.surface, s.grid, s.dragging, s.dragged = nil, nil, false, false
 		if document := m.customDocuments[m.activeFile()]; document != nil && document.selection != nil {
 			s.begin(world, document.selection, pointer.PressX, pointer.PressY)
 		}
@@ -576,7 +622,7 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 		}
 	}
 	if !s.valid(world) {
-		s.surface, s.content, s.dragging = nil, "", false
+		s.surface, s.grid, s.content, s.dragging = nil, nil, "", false
 		clear(s.spans)
 		s.spans = s.spans[:0]
 		return false
@@ -587,8 +633,11 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 		if s.dragged || dx*dx+dy*dy >= 16 {
 			if point, ok := s.hit(world, pointer.X, pointer.Y, true); ok {
 				s.caret = point
+				if s.grid != nil {
+					s.caretOffset = s.offset(point)
+				}
 			}
-			s.dragged = s.dragged || s.anchor != s.caret
+			s.dragged = s.dragged || s.selected()
 		}
 		if s.dragged {
 			s.lastClick = time.Time{}
@@ -598,7 +647,7 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 			s.dragging = false
 		}
 	}
-	if state.MousePressed(input.MouseRight) && s.anchor != s.caret {
+	if state.MousePressed(input.MouseRight) && s.selected() {
 		zoom := max(float32(m.settings.Zoom)/100, .01)
 		if !m.pointerInsideRefs(world, pointer.X/zoom, pointer.Y/zoom, []string{s.region}) {
 			return false
@@ -619,8 +668,8 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 			return false
 		}
 	}
-	if m.commandMatches("editor-copy", state, runtime.GOOS) && s.anchor != s.caret {
-		state.SetClipboardText(s.text())
+	if m.commandMatches("editor-copy", state, runtime.GOOS) && s.selected() {
+		s.copy(state)
 		return true
 	}
 	if m.commandMatches("editor-select-all", state, runtime.GOOS) {
@@ -628,7 +677,7 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 		return true
 	}
 	if m.uiKey(state, input.KeyEscape) {
-		s.surface = nil
+		s.surface, s.grid = nil, nil
 		return true
 	}
 	return false
@@ -639,23 +688,34 @@ func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *
 func (s *pencodeExtensionTextSelection) sync(world *module.Content, m *workspaceModel) (changed bool) {
 	used := 0
 	if !s.refresh(world) {
-		s.surface, s.content, s.view, s.dragging = nil, "", nil, false
+		s.surface, s.grid, s.content, s.view, s.dragging = nil, nil, "", nil, false
 		clear(s.spans)
 		s.spans = s.spans[:0]
 	}
-	if s.surface != nil && s.anchor != s.caret {
+	if s.surface != nil && s.selected() {
 		a, b := s.ordered()
+		if s.grid != nil {
+			a, b = pencodeExtensionTextPoint{}, pencodeExtensionTextPoint{span: len(s.spans) - 1}
+		}
 		color := pencodeSyntaxColor(m.syntaxTheme.Color("editor.selectionBackground"))
 		color.A = min(color.A, .55)
 		for i := a.span; i <= b.span; i++ {
 			span := s.spans[i]
 			text := world.Mut[scene.Text2D](span.entity)
 			start, end := 0, utf8.RuneCountInString(span.value)
-			if i == a.span {
-				start = a.rune
-			}
-			if i == b.span {
-				end = b.rune
+			if s.grid != nil {
+				left, right := max(span.offset, min(s.anchorOffset, s.caretOffset)), min(span.offset+len(span.value), max(s.anchorOffset, s.caretOffset))
+				if left >= right {
+					continue
+				}
+				start, end = utf8.RuneCountInString(span.value[:left-span.offset]), utf8.RuneCountInString(span.value[:right-span.offset])
+			} else {
+				if i == a.span {
+					start = a.rune
+				}
+				if i == b.span {
+					end = b.rune
+				}
 			}
 			transform := world.Ref[scene.UIGlobalTransform](span.entity)
 			clip, clipped := transform.ClipRect()

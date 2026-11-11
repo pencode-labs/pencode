@@ -61,7 +61,7 @@ func (m *workspaceModel) rebuildDebugTemplateRows() {
 	for i, template := range m.debugTemplates {
 		m.debugTemplateRows = append(m.debugTemplateRows, pencodeDebugRow{ref: "debug-template:" + strconv.Itoa(i), slot: "debug-template-menu", label: template.label})
 	}
-	m.debugTemplateRows = append(m.debugTemplateRows, pencodeDebugRow{ref: "debug-template:edit", slot: "debug-template-menu", label: "手动编辑配置…"})
+	m.debugTemplateRows = append(m.debugTemplateRows, pencodeDebugRow{ref: "debug-template:edit", slot: "debug-template-menu", label: m.tr("手动编辑配置…")})
 }
 
 func (m *workspaceModel) toggleDebugTemplateMenu(world *module.Content) {
@@ -191,7 +191,7 @@ func (m *workspaceModel) addDebugTemplate(index int) {
 			return
 		}
 		if f.Dirty {
-			m.debug.message = "请先保存调试配置，再添加启动器"
+			m.debug.message = m.tr("请先保存调试配置，再添加启动器")
 			return
 		}
 		content, err := appendDebugTemplate([]byte(f.content()), template)

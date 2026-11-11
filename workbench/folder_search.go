@@ -40,6 +40,11 @@ type folderSearchResult struct {
 	result protocol.SearchResult
 }
 type folderSearchRow struct{ file, match int }
+type folderSearchBinding struct {
+	handler html.ClickHandler
+	node    html.Node
+	index   int
+}
 type pencodeFolderSearch struct {
 	cancel                                     context.CancelFunc
 	navigate                                   *openFile
@@ -50,6 +55,7 @@ type pencodeFolderSearch struct {
 	directory, query, replacement, message     string
 	pageLabel                                  string
 	nextPath                                   string
+	bindings                                   [folderSearchPageSize]folderSearchBinding
 	rows                                       []folderSearchRow
 	nodes                                      []html.VNode
 	view                                       sourceVNodeView
@@ -118,7 +124,7 @@ func (m *workspaceModel) startFolderSearch() {
 	s.result = protocol.SearchResult{}
 	s.rows, s.dirty = s.rows[:0], true
 	if s.query == "" {
-		s.message = "输入文本以搜索此文件夹"
+		s.message = m.tr("输入文本以搜索此文件夹")
 		return
 	}
 	if _, err := textsearch.Compile(s.query, s.options); err != nil {
@@ -126,7 +132,7 @@ func (m *workspaceModel) startFolderSearch() {
 		return
 	}
 	if !m.projectLive(s.project) || !m.backendConnected() {
-		s.message = "工作区服务未连接或项目已关闭"
+		s.message = m.tr("工作区服务未连接或项目已关闭")
 		return
 	}
 	if s.worker == nil {
@@ -148,7 +154,7 @@ func (m *workspaceModel) startFolderSearch() {
 			job.snapshots = append(job.snapshots, folderSnapshot{f, name, f.content()})
 		}
 	}
-	s.busy, s.message = true, "正在搜索…"
+	s.busy, s.message = true, m.tr("正在搜索…")
 	s.worker.submit(job)
 }
 
@@ -340,13 +346,44 @@ func (m *workspaceModel) renderFolderSearch(view *html.View) {
 			view.RemoveAttr(ref, "disabled")
 		}
 	}
-	for _, ref := range s.view.clicks {
-		view.Event(ref, html.EventClick)
+}
+
+func (m *workspaceModel) bindFolderSearchResults(world *module.Content) {
+	s := &m.folderSearch
+	if !s.open {
+		for i := range s.bindings {
+			s.bindings[i].node = html.Node{}
+		}
+		return
+	}
+	bound := false
+	for i, ref := range s.view.clicks {
+		binding := &s.bindings[i]
+		node, ok := world.HTMLNode(m.surface, ref)
+		if !ok || binding.node == node {
+			continue
+		}
+		binding.index, _ = strconv.Atoi(strings.TrimPrefix(ref, "folder-search-result-"))
+		if binding.handler == nil {
+			binding.handler = func(*html.PointerEvent) {
+				m.openFolderSearchMatch(world, binding.index)
+				markPencodeRootDirtyByModel(world, m)
+			}
+		}
+		binding.node = node
+		node.OnClick(binding.handler)
+		bound = true
+	}
+	if bound {
+		if err := world.SyncHTML(); err != nil {
+			m.setActiveStatus(err.Error())
+		}
 	}
 }
 
 func (m *workspaceModel) focusFolderSearch(world *module.Content) {
 	s := &m.folderSearch
+	m.bindFolderSearchResults(world)
 	m.revealFolderSearchResult(world)
 	if s.navigate != nil && !s.open && m.editor.file == s.navigate && m.activeFile() == s.navigate && world.Focus(m.editor.control) {
 		if field := world.Mut[engineui.TextField](m.editor.control); field != nil {
@@ -439,7 +476,7 @@ func (m *workspaceModel) openFolderSearchMatch(world *module.Content, index int)
 func (m *workspaceModel) finishSearchNavigation(project *pencodeProject, file *openFile, n *fileNavigation) {
 	sum := sha256.Sum256([]byte(file.content()))
 	if string(sum[:]) != n.digest {
-		m.setProjectStatus(project, "文件已改变，请重新搜索")
+		m.setProjectStatus(project, m.tr("文件已改变，请重新搜索"))
 		return
 	}
 	match := n.searchMatch
@@ -560,13 +597,13 @@ func (m *workspaceModel) replaceFolderSearch(all bool) {
 		return
 	}
 	if m.fileIOMutating(s.project) {
-		s.message = "请等待文件操作完成"
+		s.message = m.tr("请等待文件操作完成")
 		return
 	}
 	if m.fileIO != nil {
 		for _, job := range m.fileIO.pending {
 			if job.project == s.project || job.target == s.project {
-				s.message = "请等待文件操作完成"
+				s.message = m.tr("请等待文件操作完成")
 				return
 			}
 		}
@@ -594,7 +631,7 @@ func (m *workspaceModel) replaceFolderSearch(all bool) {
 		s.message = err.Error()
 		return
 	}
-	s.replacing, s.message = true, "正在替换…"
+	s.replacing, s.message = true, m.tr("正在替换…")
 }
 
 func executeFolderReplace(j *fileIOJob) error {
@@ -661,15 +698,15 @@ func (m *workspaceModel) acceptFolderReplace(r *fileIOResult) {
 		if err == nil && !t.processed {
 			err = r.err
 			if err == nil {
-				err = fmt.Errorf("替换未完成")
+				err = fmt.Errorf("%s", m.tr("替换未完成"))
 			}
 		}
 		if err == nil && !m.projectLive(j.project) {
-			err = fmt.Errorf("项目已关闭")
+			err = fmt.Errorf("%s", m.tr("项目已关闭"))
 		}
 		if err == nil && t.file != nil {
 			if j.project.Files[t.path] != t.file || t.file.content() != t.before {
-				err = fmt.Errorf("文档已改变，保留当前编辑")
+				err = fmt.Errorf("%s", m.tr("文档已改变，保留当前编辑"))
 			} else {
 				m.applyFileContent(t.file, j.project, t.after, true)
 			}
@@ -698,9 +735,9 @@ func (m *workspaceModel) acceptFolderReplace(r *fileIOResult) {
 	if s.open {
 		m.startFolderSearch()
 	}
-	status := fmt.Sprintf("已替换 %d 处", count)
+	status := fmt.Sprintf(m.tr("已替换 %d 处"), count)
 	if failed > 0 {
-		status += fmt.Sprintf("；%d 个文件失败：%s", failed, message)
+		status += fmt.Sprintf(m.tr("；%d 个文件失败：%s"), failed, message)
 	}
 	s.message = status
 	m.setProjectStatus(j.project, status)

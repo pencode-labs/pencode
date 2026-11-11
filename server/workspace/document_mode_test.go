@@ -28,7 +28,7 @@ func TestDocumentModesRejectBinaryBeforeCreatingTextModel(t *testing.T) {
 			if err != nil || string(data) != content {
 				t.Fatal("opening changed the original bytes", err)
 			}
-			if _, err := s.Change(doc.ID, doc.Version, uint32(len(doc.Content)), uint32(len(doc.Content)), "!"); err != nil {
+			if _, err := s.Change(doc.ID, doc.Version, 0, uint32(len(doc.Content)), uint32(len(doc.Content)), "!"); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.Save(doc.ID, doc.Version+1); err != nil {

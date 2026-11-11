@@ -29,7 +29,7 @@ func (model *workspaceModel) loadSyntaxSettings() error {
 		var err error
 		snapshot, err = configuration.Read(context.Background(), filepath.Dir(model.settingsPath))
 		if err != nil {
-			model.settingsFeedback = fmt.Sprintf("读取配置失败：%v", err)
+			model.settingsFeedback = fmt.Sprintf(model.tr("读取配置失败：%v"), err)
 		}
 	}
 	return model.loadSyntaxResources(snapshot)
@@ -58,7 +58,7 @@ func (model *workspaceModel) loadSyntaxResources(snapshot configuration.Snapshot
 	for _, id := range names {
 		theme, err := syntax.LoadTheme(snapshot, id)
 		if err != nil {
-			model.settingsFeedback = fmt.Sprintf("加载主题 %s 失败：%v", id, err)
+			model.settingsFeedback = fmt.Sprintf(model.tr("加载主题 %s 失败：%v"), id, err)
 			continue
 		}
 		prepared, err := preparePencodeTheme(id, theme, model.themeSourceCSS)
@@ -70,7 +70,7 @@ func (model *workspaceModel) loadSyntaxResources(snapshot configuration.Snapshot
 	if data, ok := snapshot.Files["highlights.json"]; ok {
 		definitions, err := syntax.ParseDefinitions(data)
 		if err != nil {
-			model.settingsFeedback = fmt.Sprintf("加载高亮定义失败：%v", err)
+			model.settingsFeedback = fmt.Sprintf(model.tr("加载高亮定义失败：%v"), err)
 		} else {
 			model.syntaxDefinitions = syntax.DefaultDefinitions().WithOverrides(definitions)
 		}

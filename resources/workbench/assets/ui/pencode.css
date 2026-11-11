@@ -40,6 +40,18 @@ button {
     cursor: pointer;
 }
 
+input:not([type]),
+input[type="text"],
+input[type="search"],
+input[type="password"],
+input[type="email"],
+input[type="url"],
+input[type="tel"],
+input[type="number"],
+textarea {
+    cursor: text;
+}
+
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
 select {
@@ -1719,6 +1731,19 @@ textarea:focus {
     justify-content: flex-start;
 }
 
+.pencode-settings-row.pencode-update-row {
+    flex-wrap: nowrap;
+}
+
+.pencode-update-row .pencode-setting-description {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .pencode-setting-stacked .pencode-setting-copy { flex: none; }
 
 .pencode-settings-stepper {
@@ -3113,3 +3138,25 @@ textarea:focus {
     max-width: 65%;
     cursor: text;
 }
+
+.pencode-file-page {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    flex: 0 0 auto;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(12rem / 14);
+}
+.pencode-file-page span { flex: 1; min-width: 0; }
+.pencode-file-page select { width: 88px; }
+.pencode-file-page button,
+.pencode-file-page select {
+    padding: 2px 6px;
+    border: 0;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    font: inherit;
+}
+.pencode-file-page button:disabled { opacity: .45; }

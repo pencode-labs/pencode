@@ -332,11 +332,16 @@ func (c *Client) OpenDocument(ctx context.Context, workspace uint64, path string
 	}
 	d := protocol.Decoder{Buffer: p}
 	id, version, content := d.U64(), d.U64(), d.String()
+	page := d.DocumentPage()
 	if err := d.Done(); err != nil {
 		return nil, "", err
 	}
 	if id == 0 {
 		return nil, content, nil
 	}
-	return newDocument(c, id, version, content), content, nil
+	doc := newDocument(c, id, version, content)
+	doc.mu.Lock()
+	doc.page = page
+	doc.mu.Unlock()
+	return doc, content, nil
 }

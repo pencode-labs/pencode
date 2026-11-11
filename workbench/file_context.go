@@ -46,9 +46,9 @@ func (model *workspaceModel) renderFileCreation(view *htmlui.View) {
 	icon := treeIcon(&treeProps{Model: model, Name: c.name, IsDir: c.dialog == "new-folder"})
 	view.Attr("create-icon", "src", model.themedIcon(icon, "icon.foreground"))
 	view.Attr("create-name", "value", c.name)
-	label := "新建文件"
+	label := model.tr("新建文件")
 	if c.dialog == "new-folder" {
-		label = "新建文件夹"
+		label = model.tr("新建文件夹")
 	}
 	view.Attr("create-name", "aria-label", label)
 	view.Attr("create-name", "aria-invalid", boolAttribute(c.err != ""))
@@ -86,12 +86,12 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 	if c.open {
 		view.RemoveAttr("file-context", "hidden")
 		view.Attr("file-context", "style", languagePopupStyle(c.x, c.y))
-		label := "打开"
+		label := model.tr("打开")
 		if c.directory {
-			label = "展开 / 折叠"
+			label = model.tr("展开 / 折叠")
 		}
 		view.Text("file-context-open-label", label)
-		view.Text("file-context-reveal-label", fileManagerLabel(runtime.GOOS))
+		view.Text("file-context-reveal-label", model.tr(fileManagerLabel(runtime.GOOS)))
 		for i, ref := range pencodeFileContextRefs {
 			model.ensureSettings()
 			view.Text(pencodeFileContextHints[i].ref, model.settings.Bindings[pencodeFileContextRefs[i]].label(runtime.GOOS))
@@ -118,14 +118,14 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 	view.Attr("file-dialog-name", "value", c.name)
 	if c.dialog == "delete" || c.dialog == "overwrite" {
 		view.Attr("file-dialog-name", "hidden", "")
-		label := "删除"
+		label := model.tr("删除")
 		if c.dialog == "overwrite" {
-			label = "覆盖"
+			label = model.tr("覆盖")
 		}
 		view.Text("file-dialog-submit", label)
 	} else {
 		view.RemoveAttr("file-dialog-name", "hidden")
-		view.Text("file-dialog-submit", "确定")
+		view.Text("file-dialog-submit", model.tr("确定"))
 	}
 	if c.err == "" {
 		view.Attr("file-dialog-error", "hidden", "")
@@ -399,16 +399,16 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 		}
 		switch action {
 		case "rename":
-			c.title = "重命名"
+			c.title = model.tr("重命名")
 		case "delete":
-			c.title = "删除"
+			c.title = model.tr("删除")
 		}
-		c.message = "位置：" + filepath.Join(project.Path, filepath.FromSlash(model.fileContextDirectory()))
+		c.message = model.tr("位置：") + filepath.Join(project.Path, filepath.FromSlash(model.fileContextDirectory()))
 		if action == "rename" {
 			c.name = path.Base(relative)
 		}
 		if action == "delete" {
-			c.message = fmt.Sprintf("确定永久删除“%s”及其内容？未保存的更改也会丢失。", relative)
+			c.message = fmt.Sprintf(model.tr("确定永久删除“%s”及其内容？未保存的更改也会丢失。"), relative)
 		}
 	case "open":
 		model.activateProject(project)
@@ -422,7 +422,7 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 	case "reveal":
 		target := filepath.Join(project.Path, filepath.FromSlash(relative))
 		if err := revealInFileManager(target, c.directory); err != nil {
-			model.setProjectStatus(project, "无法打开文件管理器："+err.Error())
+			model.setProjectStatus(project, model.tr("无法打开文件管理器：")+err.Error())
 		}
 	case "copy-path", "copy-relative":
 		text := relative
@@ -433,13 +433,13 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 		}
 		state, _ := world.Resource[*input.State]()
 		if !state.SetClipboardText(text) {
-			model.setProjectStatus(project, "无法写入剪贴板")
+			model.setProjectStatus(project, model.tr("无法写入剪贴板"))
 		}
 	case "cut", "copy":
 		// Taking an internal copy replaces any older native file clipboard.
 		state, _ := world.Resource[*input.State]()
 		if !state.SetClipboardText(filepath.Join(project.Path, filepath.FromSlash(relative))) {
-			model.setProjectStatus(project, "无法写入剪贴板")
+			model.setProjectStatus(project, model.tr("无法写入剪贴板"))
 		}
 		model.fileClipboard = pencodeFileClipboard{project, relative, action == "cut"}
 		c.externalFiles = false

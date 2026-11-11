@@ -126,6 +126,7 @@
         <div data-ref="settings-feedback" class="pencode-settings-feedback" role="status" aria-live="polite" hidden></div>
         <div data-ref="extensions-feedback" class="pencode-settings-feedback" role="status" aria-live="polite" hidden></div>
         <section id="settings-appearance-pane" data-ref="settings-appearance-pane" aria-label="外观设置">
+          <div class="pencode-settings-row"><label for="language-select">界面语言</label><select id="language-select" data-ref="language-select" class="pencode-settings-select" aria-label="界面语言"></select></div>
           <div class="pencode-settings-row">
             <span>代码行宽度（编辑区域百分比）</span>
             <div class="pencode-settings-stepper">
@@ -177,11 +178,9 @@
         </section>
         <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
           <div class="pencode-settings-row"><span>Pencode 版本</span><span data-ref="update-version" class="pencode-settings-value"></span></div>
-          <p data-ref="update-status" class="pencode-setting-description" role="status" aria-live="polite"></p>
-          <div class="pencode-settings-row">
-            <button data-ref="check-update" class="pencode-settings-reset" type="button">检查更新</button>
-            <button data-ref="download-update" class="pencode-settings-reset" type="button" disabled>下载更新</button>
-            <button data-ref="restart-update" class="pencode-settings-reset" type="button" disabled>安装并重启</button>
+          <div class="pencode-settings-row pencode-update-row">
+            <p data-ref="update-status" class="pencode-setting-description" role="status" aria-live="polite"></p>
+            <button data-ref="update-action" class="pencode-settings-reset" type="button">检查更新</button>
           </div>
         </section>
         <section id="settings-extensions-pane" data-ref="settings-extensions-pane" aria-label="扩展设置" hidden>
@@ -249,6 +248,14 @@
           <ol data-ref="editor-path-segments"></ol>
         </nav>
         <button id="editor-split" data-ref="editor-split" class="pencode-icon-button" type="button" title="切换双栏布局" aria-label="切换双栏布局" aria-pressed="false" hidden><img data-ref="editor-split-icon" src="icons/split-horizontal.svg" alt=""></button>
+      </div>
+      <div id="editor-page" data-ref="editor-page" class="pencode-file-page" role="toolbar" aria-label="大文件分段浏览" hidden>
+        <button data-ref="editor-page-first" type="button">开头</button>
+        <button data-ref="editor-page-prev" type="button">上一段</button>
+        <span data-ref="editor-page-range" role="status"></span>
+        <select data-ref="editor-page-position" aria-label="跳转到文件位置"><option value="" selected>跳转位置</option><option value="0">开头</option><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100">末尾</option></select>
+        <button data-ref="editor-page-next" type="button">下一段</button>
+        <button data-ref="editor-page-last" type="button">末尾</button>
       </div>
       <div id="editor-body" data-ref="editor-body" class="pencode-editor-body">
         <section data-ref="extension-editor" class="pencode-extension-editor-slot" aria-label="扩展会话" hidden></section>
@@ -350,7 +357,7 @@
           <button id="lsp-context-21" data-ref="lsp-context-21" type="button" role="menuitem" tabindex="-1">类型层级</button>
           <button id="lsp-context-22" data-ref="lsp-context-22" type="button" role="menuitem" tabindex="-1">拉取诊断</button>
         </div>
-        <div data-ref="find-bar" class="pencode-find" hidden>
+        <div id="find-bar" data-ref="find-bar" class="pencode-find" hidden>
           <div class="pencode-find-layout">
             <button id="find-toggle-replace" data-ref="find-toggle-replace" class="pencode-find-toggle" type="button" title="展开替换" aria-label="展开替换" aria-expanded="false"><img data-ref="find-toggle-replace-icon" src="icons/chevron-right.svg" alt=""></button>
             <div class="pencode-find-rows">

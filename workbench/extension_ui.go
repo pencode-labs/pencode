@@ -176,19 +176,19 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 	fresh := surface == nil
 	if fresh {
 		if len(state.surfaces) >= maxExtensionSurfaces && (ui.Kind == peb.Panel || ui.Kind == peb.Notification || ui.Kind == peb.EditorTab || state.overlay == nil) {
-			return fmt.Errorf("扩展 UI 数量超过 %d", maxExtensionSurfaces)
+			return fmt.Errorf(model.tr("扩展 UI 数量超过 %d"), maxExtensionSurfaces)
 		}
 		prefix := "pencode-extension-ui/" + owner + "/" + ui.ID + "/"
 		surface = &pencodeExtensionSurface{model: model, session: session, owner: owner, ui: peb.UI{Kind: ui.Kind}, prefix: prefix, rootID: prefix + "surface", closeID: prefix + "close", contentID: prefix + "content", focused: -1}
 	} else if surface.ui.Kind != ui.Kind {
-		return fmt.Errorf("更新 UI 不能改变 Kind")
+		return fmt.Errorf("%s", model.tr("更新 UI 不能改变 Kind"))
 	}
 	if ui.View != nil {
 		if err := surface.setView(ui.View); err != nil {
 			return err
 		}
 	} else if surface.definition == nil {
-		return fmt.Errorf("首次打开 UI 必须提供 View")
+		return fmt.Errorf("%s", model.tr("首次打开 UI 必须提供 View"))
 	}
 	if state.wrapper == nil {
 		definition, err := newExtensionSurfaceDefinition()
@@ -270,7 +270,7 @@ func (model *workspaceModel) extensionUIAnchor(owner, anchor string) (string, er
 				}
 			}
 		}
-		return "", fmt.Errorf("扩展 UI 锚点不存在: %s", anchor)
+		return "", fmt.Errorf(model.tr("扩展 UI 锚点不存在: %s"), anchor)
 	}
 	return "action-extensions/" + owner + "/" + anchor, nil
 }

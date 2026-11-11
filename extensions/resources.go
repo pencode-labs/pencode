@@ -12,6 +12,7 @@ import (
 	"github.com/onix-engine/onix/images/svg"
 	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/localization"
 	"github.com/pencode-labs/pencode/output"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -36,6 +37,7 @@ type Theme struct {
 // registration, and rendering performs no disk reads for extension icons.
 type Bundle struct {
 	ID, Label       string
+	LanguagePacks   []localization.Pack
 	Settings        []peb.Setting
 	Actions         *ActionExtension
 	Themes          []Theme
@@ -194,6 +196,27 @@ func loadBundle(source fs.FS, id string, c peb.Contributions) (result *Bundle, f
 		}
 		bundle.Fonts = append(bundle.Fonts, Font{ID: "extensions/" + id + "/" + f.ID, Label: f.Label, Regular: regular, Bold: bold})
 	}
+	for _, item := range c.LanguagePacks {
+		if !localization.ValidID(item.ID) || item.Label == "" || ids["locale/"+item.ID] || len(c.LanguagePacks) > 64 {
+			return nil, fmt.Errorf("invalid or duplicate language pack %q", item.ID)
+		}
+		ids["locale/"+item.ID] = true
+		if path.Ext(item.Path) != ".json" {
+			return nil, fmt.Errorf("language pack must be JSON: %q", item.Path)
+		}
+		data, err := files.ReadFile(item.Path)
+		if err != nil {
+			return nil, err
+		}
+		pack, err := localization.Parse(data)
+		if err != nil {
+			return nil, fmt.Errorf("language pack %s: %w", item.ID, err)
+		}
+		if pack.ID != item.ID || pack.Label != item.Label {
+			return nil, fmt.Errorf("language pack metadata mismatch: %q", item.ID)
+		}
+		bundle.LanguagePacks = append(bundle.LanguagePacks, pack)
+	}
 	for _, t := range c.Themes {
 		if !validID(t.ID) || t.Label == "" || ids["theme/"+t.ID] {
 			return nil, fmt.Errorf("invalid or duplicate theme id %q", t.ID)
@@ -253,6 +276,9 @@ func contributionResources(c peb.Contributions) []string {
 	}
 	for _, action := range c.Actions {
 		add(action.Icon)
+	}
+	for _, pack := range c.LanguagePacks {
+		add(pack.Path)
 	}
 	for _, theme := range c.Themes {
 		add(theme.Path)

@@ -66,6 +66,15 @@ func newPortDefinition(content *module.Content) (*htmlui.Definition[pencodePortP
 
 func renderPortRow(c module.ContentRenderContext[pencodePortProps, struct{}], view *htmlui.View) {
 	p, row := c.Props, c.Props.Row
+	for _, label := range [...]struct{ ref, source string }{
+		{"label-input", "端口标签"}, {"label", "设置端口标签"}, {"local-input", "本地端口"},
+		{"local", "更改本地端口"}, {"open", "在浏览器中打开"}, {"copy", "复制本地地址"},
+		{"protocol", "切换端口协议"}, {"visibility", "切换端口可见性"}, {"stop", "停止转发端口"},
+	} {
+		view.Attr(label.ref, "aria-label", p.Model.tr(label.source))
+		view.Attr(label.ref, "title", p.Model.tr(label.source))
+	}
+
 	view.Attr("label", "title", p.Model.shortcutTitle("设置端口标签", "ports-rename"))
 	view.Attr("stop", "title", p.Model.shortcutTitle("停止转发端口", "ports-stop"))
 	ref := portRowRef(row)
@@ -91,11 +100,11 @@ func renderPortRow(c module.ContentRenderContext[pencodePortProps, struct{}], vi
 		protocol, hint = "HTTPS", "点击切换为 HTTP"
 	}
 	view.Text("protocol", protocol)
-	view.Attr("protocol", "title", hint)
-	view.Text("visibility", row.visibility)
-	view.Text("source", row.source)
+	view.Attr("protocol", "title", p.Model.tr(hint))
+	view.Text("visibility", p.Model.tr(row.visibility))
+	view.Text("source", p.Model.tr(row.source))
 	view.Attr("source", "id", "ports-source:"+row.key)
-	view.Attr("source", "title", row.source)
+	view.Attr("source", "title", p.Model.tr(row.source))
 	view.Attr("select", "id", ref)
 	view.Attr("select", "title", row.key)
 	for _, action := range [...]string{"open", "copy", "stop", "label", "local", "protocol", "visibility", "address"} {
@@ -249,11 +258,11 @@ func (m *workspaceModel) portRow(key string) *pencodePortRow {
 func (m *workspaceModel) sendPortCommand(command pencodePortCommand) bool {
 	u := &m.portUI
 	if u.pending != 0 {
-		u.message, u.failed = "端口操作正在进行，请稍后重试", true
+		u.message, u.failed = m.tr("端口操作正在进行，请稍后重试"), true
 		return false
 	}
 	if m.ports == nil {
-		u.message, u.failed = "远程连接不可用，请等待连接恢复", true
+		u.message, u.failed = m.tr("远程连接不可用，请等待连接恢复"), true
 		return false
 	}
 	u.nextCommand++
@@ -263,7 +272,7 @@ func (m *workspaceModel) sendPortCommand(command pencodePortCommand) bool {
 		u.message, u.failed = "", false
 		return true
 	default:
-		u.message, u.failed = "端口操作正在进行，请稍后重试", true
+		u.message, u.failed = m.tr("端口操作正在进行，请稍后重试"), true
 		return false
 	}
 }
@@ -298,13 +307,13 @@ func (m *workspaceModel) commitPortEdit() {
 	case "local":
 		number, err := strconv.ParseUint(command.value, 10, 16)
 		if err != nil {
-			u.message, u.failed = "本地端口必须在 0–65535 之间，0 表示自动分配", true
+			u.message, u.failed = m.tr("本地端口必须在 0–65535 之间，0 表示自动分配"), true
 			return
 		}
 		command.local = uint16(number)
 	case "label":
 		if utf8.RuneCountInString(command.value) > 64 {
-			u.message, u.failed = "端口标签最多 64 个字符", true
+			u.message, u.failed = m.tr("端口标签最多 64 个字符"), true
 			return
 		}
 	default:
@@ -319,10 +328,10 @@ func (m *workspaceModel) copyPortAddress(world *module.Content, row pencodePortR
 	u := &m.portUI
 	state, ok := world.Resource[*input.State]()
 	if !ok || !state.SetClipboardText(row.url) {
-		u.message, u.failed = "无法复制本地地址", true
+		u.message, u.failed = m.tr("无法复制本地地址"), true
 		return
 	}
-	u.message, u.failed = "已复制 "+row.url, false
+	u.message, u.failed = m.tr("已复制 ")+row.url, false
 }
 
 func (m *workspaceModel) portEvent(ref, value string) bool {

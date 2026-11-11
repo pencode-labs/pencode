@@ -224,7 +224,7 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 		b.text("h2", "title", "Source Control", "id", "sc-prompt-title")
 		b.text("p", "message", s.Notice, "id", "sc-prompt-message", "class", "pencode-close-message")
 		b.open("div", "actions", "class", "pencode-close-actions")
-		b.button("sc-notice-close", "确定", "class", "pencode-close-save")
+		b.button("sc-notice-close", a.tr("确定"), "class", "pencode-close-save")
 		b.close()
 	} else {
 		b.text("h2", "title", "Confirm Git Operation", "id", "sc-prompt-title")
@@ -232,49 +232,49 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 		switch s.Prompt {
 		case "branch":
 			if branch, ok := s.branch(s.PromptHash); ok {
-				message = "基于分支 “" + branch.Name + "” 创建并切换到新分支："
+				message = a.tr("基于分支 “") + branch.Name + a.tr("” 创建并切换到新分支：")
 			}
 		case "tag":
 			if branch, ok := s.branch(s.PromptHash); ok {
-				message = "在分支 “" + branch.Name + "” 的最新提交上创建标签："
+				message = a.tr("在分支 “") + branch.Name + a.tr("” 的最新提交上创建标签：")
 			}
 		case "rename-branch":
 			if branch, ok := s.branch(s.PromptHash); ok {
-				message = "重命名本地分支 “" + branch.Name + "”："
+				message = a.tr("重命名本地分支 “") + branch.Name + "”："
 			}
 		case "delete-branch":
 			if branch, ok := s.branch(s.PromptHash); ok {
-				message = "删除本地分支 “" + branch.Name + "”？未合并的分支会由 Git 拒绝删除。"
+				message = a.tr("删除本地分支 “") + branch.Name + a.tr("”？未合并的分支会由 Git 拒绝删除。")
 				if branch.Remote {
-					message = "从远程仓库删除分支 “" + branch.Name + "”？此操作会影响其他协作者，本地分支将保留。"
+					message = a.tr("从远程仓库删除分支 “") + branch.Name + a.tr("”？此操作会影响其他协作者，本地分支将保留。")
 				}
 			}
 		case "discard-tabs":
-			message = "丢弃所选标签页尚未保存的比较或合并编辑内容并关闭？"
+			message = a.tr("丢弃所选标签页尚未保存的比较或合并编辑内容并关闭？")
 		case "discard-tab":
-			message = "丢弃此标签页尚未保存的编辑内容？"
+			message = a.tr("丢弃此标签页尚未保存的编辑内容？")
 		case "discard-file":
-			message = "放弃此文件的未暂存修改？此操作无法撤销。"
+			message = a.tr("放弃此文件的未暂存修改？此操作无法撤销。")
 		case "discard-folder":
-			message = "放弃此文件夹下所有文件的未暂存修改？此操作无法撤销。"
+			message = a.tr("放弃此文件夹下所有文件的未暂存修改？此操作无法撤销。")
 		case "discard-all":
-			message = "放弃所有未暂存修改并删除未跟踪文件？此操作无法撤销。"
+			message = a.tr("放弃所有未暂存修改并删除未跟踪文件？此操作无法撤销。")
 		case "local":
-			message = "使用本地完整文件替换合并结果？结果仍需保存并暂存。"
+			message = a.tr("使用本地完整文件替换合并结果？结果仍需保存并暂存。")
 		case "incoming":
-			message = "使用传入的完整文件替换合并结果？结果仍需保存并暂存。"
+			message = a.tr("使用传入的完整文件替换合并结果？结果仍需保存并暂存。")
 		case "reset-soft":
-			message = "将当前分支移动到该提交，保留索引和工作区中的修改？"
+			message = a.tr("将当前分支移动到该提交，保留索引和工作区中的修改？")
 		case "reset-mixed":
-			message = "将当前分支移动到该提交并取消暂存，保留工作区文件？"
+			message = a.tr("将当前分支移动到该提交并取消暂存，保留工作区文件？")
 		case "abort":
-			message = "取消当前合并？合并期间的解决结果将被丢弃。"
+			message = a.tr("取消当前合并？合并期间的解决结果将被丢弃。")
 		case "checkout":
-			message = "以 detached HEAD 模式检出此提交？"
+			message = a.tr("以 detached HEAD 模式检出此提交？")
 		case "push":
-			message = "将当前分支的提交推送至已配置的远程仓库？"
+			message = a.tr("将当前分支的提交推送至已配置的远程仓库？")
 		case "pull":
-			message = "从远程拉取并仅以 fast-forward 方式更新当前分支？"
+			message = a.tr("从远程拉取并仅以 fast-forward 方式更新当前分支？")
 		}
 		b.text("p", "message", message, "id", "sc-prompt-message", "class", "pencode-close-message")
 		if s.Prompt != "delete-branch" && s.Prompt != "rename-branch" && len(s.PromptHash) >= 40 {

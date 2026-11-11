@@ -31,16 +31,16 @@ func restoredFileMode(tab pencodeTabState) protocol.DocumentMode {
 // apply the loaded bytes to a different document or overwrite intervening edits.
 func (m *workspaceModel) requestTextEditor(f *openFile) error {
 	if m.sourceState().visible() {
-		return fmt.Errorf("请先切换到文件标签")
+		return fmt.Errorf("%s", m.tr("请先切换到文件标签"))
 	}
 	p := m.activeProjectState()
 	if m.fileIOMutating(p) {
-		return fmt.Errorf("请等待文件操作完成")
+		return fmt.Errorf("%s", m.tr("请等待文件操作完成"))
 	}
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
 			if j.file == f && (j.kind == fileReopenText || j.kind == fileReload || j.kind == fileSave) {
-				return fmt.Errorf("请等待文件操作完成")
+				return fmt.Errorf("%s", m.tr("请等待文件操作完成"))
 			}
 		}
 	}
@@ -51,7 +51,7 @@ func (m *workspaceModel) requestTextEditor(f *openFile) error {
 	if err := m.submitFileIO(j); err != nil {
 		return err
 	}
-	m.setProjectStatus(p, "正在使用代码编辑器打开 "+f.Name+"…")
+	m.setProjectStatus(p, m.tr("正在使用代码编辑器打开 ")+f.Name+"…")
 	return nil
 }
 
@@ -61,7 +61,7 @@ func (m *workspaceModel) acceptTextEditor(r *fileIOResult) {
 		return
 	}
 	if r.err != nil {
-		m.setProjectStatus(j.project, "打开文件失败："+r.err.Error())
+		m.setProjectStatus(j.project, m.tr("打开文件失败：")+r.err.Error())
 		return
 	}
 	if f.Dirty || !f.snapshot().Equal(j.baseline) {
@@ -69,6 +69,7 @@ func (m *workspaceModel) acceptTextEditor(r *fileIOResult) {
 	}
 	f.closeDocument()
 	f.document, r.document = r.document, nil
+	f.initPage()
 	f.contentSnapshot, f.savedContent = snapshotText(r.content), snapshotText(r.content)
 	f.unsupported, f.editorSplit, f.forcedText = false, false, true
 	f.editorID, f.editorGeneration = pencodeTextEditor, 0

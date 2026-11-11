@@ -55,6 +55,26 @@ type EditorReply struct {
 // A custom editor container with data-ref and data-pencode-searchable enables
 // the host find bar for its rendered text, including highlight and navigation.
 // Find in a rendered view is read-only; replacement applies to source editors.
+// An empty div with data-ref and data-pencode-grid carries an HTML-escaped JSON
+// sparse grid: rows/columns (counts), rowHeight/columnWidth (pixels), optional
+// rowSizes/columnSizes ([oneBasedIndex,pixels] overrides), styles (CSS strings),
+// and cells ([row,column,text,styleIndex] tuples sorted by row then column).
+// Within a searchable/selectable custom editor, the host mounts only the visible
+// two-axis window plus overscan. Find indexes every value and reveals unmounted
+// matches; selection/copy retains data offsets when cells are unmounted. Copy
+// emits TSV data without row/column headings. Use .pencode-grid-cell and
+// .pencode-grid-header CSS to style cells/headings. The outer editor scrolls.
+// An optional grid source string defers cell transfer. The host sends internal
+// EditorEvent{Kind:"grid",Ref:source,Value:JSON} requests with integer request,
+// offset (UTF-8 bytes), firstRow/endRow and firstColumn/endColumn (half-open,
+// one-based), plus all and metadata booleans. all loads a complete sparse index
+// only for find/copy/select-all; metadata requests styles and size overrides.
+// Reply with a standalone div whose data-pencode-grid-chunk is escaped JSON:
+// {source,request,offset,done,data}, where data is base64 for up to 64 KiB of a
+// UTF-8 JSON stream containing cells and optionally styles/rowSizes/columnSizes.
+// The host requests consecutive offsets until done, then applies atomically;
+// stale source/request IDs are discarded. Supply a new source on reload/switch.
+// The 2 MiB per-view and 4 MiB message limits still apply to every reply.
 // A button with data-ref and data-pencode-copy="text" copies that exact text to
 // the local clipboard on click. An explicit click binding overrides this action.
 // A container with data-ref and data-pencode-region updates its children

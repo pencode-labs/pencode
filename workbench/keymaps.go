@@ -222,11 +222,11 @@ func (m *workspaceModel) handleKeymapEvent(c *module.ContentEventContext[appProp
 	case "keymap-create", "keymap-rename":
 		name := strings.TrimSpace(m.keymapName)
 		if name == "" || name == "default" || utf8.RuneCountInString(name) > 80 {
-			m.settingsFeedback = "请输入 1–80 字符的方案名称（不能为 default）"
+			m.settingsFeedback = m.tr("请输入 1–80 字符的方案名称（不能为 default）")
 			return true
 		}
 		if name == m.settings.Keymap || m.settings.Keymaps[name] != nil {
-			m.settingsFeedback = "方案名称已存在"
+			m.settingsFeedback = m.tr("方案名称已存在")
 			return true
 		}
 		if m.settings.Keymaps == nil {
@@ -237,7 +237,7 @@ func (m *workspaceModel) handleKeymapEvent(c *module.ContentEventContext[appProp
 			m.switchKeymap(name)
 		} else {
 			if m.settings.Keymap == "default" {
-				m.settingsFeedback = "默认方案不能重命名"
+				m.settingsFeedback = m.tr("默认方案不能重命名")
 				return true
 			}
 			m.settings.Keymap = name
@@ -271,16 +271,16 @@ func newShortcutDefinition(content *module.Content) (*htmlui.Definition[pencodeS
 		module.ContentBehavior[pencodeShortcutProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeShortcutProps, struct{}], v *htmlui.View) {
 				p := c.Props
-				v.Text("name", p.Name+" · "+pencodeScopeLabel(p.Scope))
+				v.Text("name", p.Model.tr(p.Name)+" · "+p.Model.tr(pencodeScopeLabel(p.Scope)))
 				v.Attr("name", "title", p.ID)
 				label, class := p.Binding.label(runtime.GOOS), "pencode-settings-binding"
 				if p.Model.capturingShortcut && p.Model.captureAction == p.ID {
-					label = "按下快捷键…"
+					label = p.Model.tr("按下快捷键…")
 					class += " recording"
 				}
-				v.Text("binding", label)
+				v.Text("binding", p.Model.tr(label))
 				v.Attr("binding", "class", class)
-				v.Attr("binding", "aria-label", p.Name+"："+label)
+				v.Attr("binding", "aria-label", p.Model.tr(p.Name)+": "+p.Model.tr(label))
 				v.Attr("binding", "id", "shortcut-"+p.ID)
 				v.Event("binding", htmlui.EventClick)
 			},
@@ -307,7 +307,7 @@ func (m *workspaceModel) renderShortcutSettings(v *htmlui.View, d *htmlui.Defini
 	for i, name := range names {
 		label := name
 		if name == "default" {
-			label = "默认"
+			label = m.tr("默认")
 		}
 		options = append(options, appearanceOption(uint64(i+1), name, label, name == m.settings.Keymap))
 	}
@@ -328,13 +328,13 @@ func (m *workspaceModel) renderShortcutSettings(v *htmlui.View, d *htmlui.Defini
 		}
 	}
 	appendRow := func(id, name, scope string, binding pencodeKeybinding) {
-		if m.shortcutQuery != "" && !strings.Contains(strings.ToLower(name+" "+id+" "+pencodeScopeLabel(scope)), m.shortcutQuery) {
+		if m.shortcutQuery != "" && !strings.Contains(strings.ToLower(m.tr(name)+" "+name+" "+id+" "+m.tr(pencodeScopeLabel(scope))), m.shortcutQuery) {
 			return
 		}
 		v.AppendComponentChild("settings-shortcut-fields", componentKey(id), d, pencodeShortcutProps{m, id, name, scope, binding}, struct{}{})
 	}
 	for _, entry := range pencodeShortcutDefinitions {
-		appendRow(entry.id, entry.name, "工作台", m.settings.Bindings[entry.id])
+		appendRow(entry.id, entry.name, m.tr("工作台"), m.settings.Bindings[entry.id])
 	}
 	for _, entry := range pencodeExtraShortcuts {
 		appendRow(entry.id, entry.name, entry.scope, m.settings.Bindings[entry.id])
@@ -442,9 +442,9 @@ func (m *workspaceModel) commandLabel(id string) string {
 func (m *workspaceModel) shortcutTitle(name, id string) string {
 	label := m.commandLabel(id)
 	if label == "未设置" {
-		return name
+		return m.tr(name)
 	}
-	return name + " (" + label + ")"
+	return m.tr(name) + " (" + label + ")"
 }
 
 func pencodeScopesOverlap(a, b string) bool {

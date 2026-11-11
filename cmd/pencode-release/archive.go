@@ -19,7 +19,7 @@ import (
 func stageDistribution(destination, artifact, project, version string) error {
 	add := func(header *tar.Header, source io.Reader) error {
 		name := filepath.FromSlash(header.Name)
-		if !filepath.IsLocal(name) || (name != "pencode" && !strings.HasPrefix(name, "pencode"+string(filepath.Separator))) {
+		if !filepath.IsLocal(name) || (name != "Pencode" && !strings.HasPrefix(name, "Pencode"+string(filepath.Separator))) {
 			return fmt.Errorf("invalid artifact path %q", header.Name)
 		}
 		target := filepath.Join(destination, name)
@@ -31,7 +31,7 @@ func stageDistribution(destination, artifact, project, version string) error {
 		}
 		if header.Typeflag == tar.TypeSymlink {
 			resolved := path.Join(path.Dir(header.Name), header.Linkname)
-			if path.IsAbs(header.Linkname) || !strings.HasPrefix(resolved, "pencode/") {
+			if path.IsAbs(header.Linkname) || !strings.HasPrefix(resolved, "Pencode/") {
 				return fmt.Errorf("invalid artifact symlink %q", header.Name)
 			}
 			return os.Symlink(header.Linkname, target)
@@ -50,23 +50,23 @@ func stageDistribution(destination, artifact, project, version string) error {
 		return err
 	}
 	for _, name := range []string{"LICENSE", "README.md", "README.zh-CN.md"} {
-		if err := addFile(filepath.Join(project, name), path.Join("pencode", name), add); err != nil {
+		if err := addFile(filepath.Join(project, name), path.Join("Pencode", name), add); err != nil {
 			return err
 		}
 	}
-	if err := add(&tar.Header{Name: "pencode/pencode-version", Mode: 0o644, Size: int64(len(version) + 1)}, strings.NewReader(version+"\n")); err != nil {
+	if err := add(&tar.Header{Name: "Pencode/pencode-version", Mode: 0o644, Size: int64(len(version) + 1)}, strings.NewReader(version+"\n")); err != nil {
 		return err
 	}
 	// Keep icon notices readable without an Onix package reader.
 	for _, name := range []string{"CODICONS-LICENSE.txt", "LUCIDE-LICENSE.txt"} {
-		if err := addFile(filepath.Join(project, "resources", "icons", name), path.Join("pencode", "licenses", name), add); err != nil {
+		if err := addFile(filepath.Join(project, "resources", "icons", name), path.Join("Pencode", "licenses", name), add); err != nil {
 			return err
 		}
 	}
-	if err := addFile(filepath.Join(project, "workbench", "fonts", "NERD-FONTS-LICENSE.txt"), "pencode/licenses/NERD-FONTS-LICENSE.txt", add); err != nil {
+	if err := addFile(filepath.Join(project, "workbench", "fonts", "NERD-FONTS-LICENSE.txt"), "Pencode/licenses/NERD-FONTS-LICENSE.txt", add); err != nil {
 		return err
 	}
-	return addFile(filepath.Join(project, "..", "onix", "LICENSE"), "pencode/licenses/ONIX-LICENSE.txt", add)
+	return addFile(filepath.Join(project, "..", "onix", "LICENSE"), "Pencode/licenses/ONIX-LICENSE.txt", add)
 }
 
 func copyArtifact(artifact string, add func(*tar.Header, io.Reader) error) error {
@@ -125,7 +125,7 @@ func copyArtifact(artifact string, add func(*tar.Header, io.Reader) error) error
 			if err != nil {
 				return err
 			}
-			return addFile(name, path.Join("pencode", filepath.ToSlash(relative)), add)
+			return addFile(name, path.Join("Pencode", filepath.ToSlash(relative)), add)
 		})
 	}
 }

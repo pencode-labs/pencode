@@ -46,7 +46,7 @@ func toggleSearchOption(options *textsearch.Options, index int) {
 
 func (model *workspaceModel) openFind(replace bool) {
 	previous := model.findPreview
-	findFocused := model.findOpen && (pencodeControlFocused(model.fontResources, model.surface, "find-query") || pencodeControlFocused(model.fontResources, model.surface, "replace-query"))
+	findFocused := model.findInputFocused(model.fontResources)
 	model.findPreview = nil
 	if document := model.customDocuments[model.activeFile()]; document != nil && document.find != nil &&
 		(!model.textEditorActive() || findFocused && previous == document || !findFocused && model.fontResources != nil && model.fontResources.FocusedControl() != model.editor.control) {
@@ -141,6 +141,12 @@ func (model *workspaceModel) refreshFindMatches() {
 	content := model.activeSnapshot()
 	preview := model.renderedFind()
 	if preview != nil {
+		if preview.grid != nil && preview.grid.remote != nil && !preview.grid.remote.complete && model.findQuery != "" {
+			model.customDocuments[model.activeFile()].requestGrid(true)
+			model.findMatches = model.findMatches[:0]
+			model.findCountLabel = model.tr("正在加载…")
+			return
+		}
 		content = preview.content
 		model.findSelection, model.replaceOpen = false, false
 	}
@@ -365,6 +371,10 @@ func pencodeControlFocused(world *module.Content, surface ecs.Entity, ref string
 	}
 	field, ok := world.Get[engineui.TextField](entity)
 	return ok && field.Focused
+}
+
+func (model *workspaceModel) findInputFocused(world *module.Content) bool {
+	return model.findOpen && (pencodeControlFocused(world, model.surface, "find-query") || pencodeControlFocused(world, model.surface, "replace-query"))
 }
 
 func renderSearchOptions(view *html.View, refs [3]string, options textsearch.Options) {

@@ -112,12 +112,12 @@ func (model *workspaceModel) readProjectDirectory() {
 	if p.busy {
 		return
 	}
-	p.message, p.failed = "选择项目目录后，点击“打开此目录”", false
+	p.message, p.failed = model.tr("选择项目目录后，点击“打开此目录”"), false
 	if p.directory == "" || p.directory == p.listed {
 		return
 	}
 	if !model.connectionConnected(p.profile) {
-		p.message, p.failed = "远程服务已断开，请重新连接后选择项目", true
+		p.message, p.failed = model.tr("远程服务已断开，请重新连接后选择项目"), true
 		return
 	}
 	directory := p.directory
@@ -126,7 +126,7 @@ func (model *workspaceModel) readProjectDirectory() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	p.cancel, p.done, p.busy = cancel, make(chan struct{}), true
-	p.message, p.failed = "正在读取目录…", false
+	p.message, p.failed = model.tr("正在读取目录…"), false
 	backend := model.session.connection.links[p.profile.Endpoint()].backend
 	results, done, wake := p.results, p.done, model.backgroundWake()
 	readConfiguration := model.backend != backend && p.configurationBackend != backend
@@ -158,7 +158,7 @@ func (model *workspaceModel) pollProjectPicker() bool {
 		}
 		if result.err != nil {
 			p.autoOpen = false
-			p.message, p.failed = "读取目录失败："+result.err.Error(), true
+			p.message, p.failed = model.tr("读取目录失败：")+result.err.Error(), true
 			return true
 		}
 		p.path, p.parent, p.names, p.listed = result.path, result.parent, result.names, result.directory
@@ -169,7 +169,7 @@ func (model *workspaceModel) pollProjectPicker() bool {
 			p.configuration = result.configuration
 			p.configurationBackend = result.backend
 		}
-		p.message, p.failed = "选择项目目录后，点击“打开此目录”", false
+		p.message, p.failed = model.tr("选择项目目录后，点击“打开此目录”"), false
 		if p.autoOpen {
 			p.autoOpen = false
 			model.projectPickerEvent("connection-project-open", "")
@@ -243,11 +243,11 @@ func (model *workspaceModel) renderProjectPicker(view *htmlui.View, definition *
 	if !p.busy && !p.failed && count == 0 {
 		switch {
 		case p.directory == "":
-			message = "请输入目录路径"
+			message = model.tr("请输入目录路径")
 		case p.filter != "":
-			message = "没有匹配的子文件夹"
+			message = model.tr("没有匹配的子文件夹")
 		default:
-			message = "此目录没有子文件夹，可以直接打开此目录"
+			message = model.tr("此目录没有子文件夹，可以直接打开此目录")
 		}
 	}
 	view.Text("connection-project-feedback", message)
@@ -277,17 +277,17 @@ func (model *workspaceModel) projectPickerEvent(ref, value string) {
 			return
 		}
 		if !model.connectionConnected(p.profile) {
-			p.message, p.failed = "远程服务已断开，请重新连接后选择项目", true
+			p.message, p.failed = model.tr("远程服务已断开，请重新连接后选择项目"), true
 			return
 		}
 		backend := c.links[p.profile.Endpoint()].backend
 		if model.session.backend != backend {
 			if len(model.projects) != 0 {
-				p.message, p.failed = "请先关闭当前项目，再打开其他设备的项目", true
+				p.message, p.failed = model.tr("请先关闭当前项目，再打开其他设备的项目"), true
 				return
 			}
 			if p.configuration == nil || p.configurationBackend != backend {
-				p.message, p.failed = "尚未读取远程配置，请重新选择目录", true
+				p.message, p.failed = model.tr("尚未读取远程配置，请重新选择目录"), true
 				return
 			}
 			if c.watchCancel != nil {

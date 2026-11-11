@@ -10,7 +10,7 @@ export enum Kind {
 export enum Capability {
   FileIcons = 1, EditorThemes = 2, CustomEditors = 4, Fonts = 8,
   LanguageServers = 16, Actions = 32, ExtensionUI = 64, DebugAdapters = 128,
-  ExtensionSettings = 256, All = 511,
+  ExtensionSettings = 256, LanguagePacks = 512, All = 1023,
 }
 export enum Match { DefaultFile, FileName, FileSuffix, DefaultFolder, FolderName }
 export enum ActionLocation { StatusBar, LeftContextMenu, RightContextMenu, TitleBarRight, OpenWith, Command }
@@ -59,6 +59,7 @@ export const ContributionsCodec = struct({
   actions: array(ActionCodec), actionService: bool,
   debugAdapters: array(struct({ id: str, label: str, command: str, args: array(str), templates: text })),
   settings: array(SettingCodec),
+  languagePacks: array(struct({ id: str, label: str, path: str })),
 });
 export const SettingsCodec: Codec<Record<string, string>> = {
   write(e, values = {}) {

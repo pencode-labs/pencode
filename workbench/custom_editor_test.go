@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/scene"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
@@ -292,6 +294,50 @@ func TestPencodeCustomViewRejectsInvalidBindingsAndHostIDs(t *testing.T) {
 	}
 	if !document.definition.ScopedCSS || !strings.Contains(document.definition.CSS, "onix-scope-") {
 		t.Fatal("extension CSS can escape its component")
+	}
+}
+
+func TestPencodeCustomViewSparseTextIDs(t *testing.T) {
+	document := &pencodeCustomDocument{}
+	view := &peb.EditorView{HTML: `<article data-ref="sheet" data-pencode-searchable data-pencode-selectable><div style="overflow:auto"><table><tr><td></td><td id="pencode-extension-kept"></td><td data-ref="dynamic"></td><td>target</td></tr></table></div><button data-ref="action" title="Action"></button></article>`}
+	if err := document.setView(view); err != nil {
+		t.Fatal(err)
+	}
+	root := document.find.tree
+	ancestor := root.Children[0]
+	cells := ancestor.Children[0].Children[0].Children[0].Children
+	// HTML parsing inserts tbody, so the source and component must agree on
+	// the repaired structure without rewriting markup through a serializer.
+	if len(cells) != 4 {
+		t.Fatalf("unexpected table structure: %s", root)
+	}
+	if id, _ := cells[0].Attr("id"); id != "" {
+		t.Fatal("empty padding cell acquired a lookup ID")
+	}
+	if id, _ := cells[1].Attr("id"); id != "pencode-extension-kept" {
+		t.Fatal("authored empty-cell ID was discarded")
+	}
+	for _, node := range []*dom.Node{root, ancestor, cells[2], cells[3], root.Children[1]} {
+		if id, _ := node.Attr("id"); id == "" {
+			t.Fatalf("text, scroll ancestor, reference or control lost its ID: %s", node)
+		}
+	}
+	if tabindex, _ := root.Attr("tabindex"); tabindex != "-1" {
+		t.Fatal("text root is no longer focusable")
+	}
+	if document.selection.tree.Children[0] != root || !strings.Contains(document.find.content.String(), "\t\t\ttarget") {
+		t.Fatal("search and selection lost the shared structure or empty-cell separators")
+	}
+	previous := document.definition
+	prefix := fmt.Sprintf("pencode-extension-editor/%p/", document)
+	for _, source := range []string{
+		`<article data-ref="sheet" data-pencode-searchable><p id="editor">bad</p></article>`,
+		`<article data-ref="sheet" data-pencode-searchable><p id="` + prefix + `0">collision</p></article>`,
+		`<p id="pencode-extension-same"></p><p id="pencode-extension-same"></p>`,
+	} {
+		if document.setView(&peb.EditorView{HTML: source}) == nil || document.definition != previous {
+			t.Fatal("parsed template bypassed ID validation or replaced the current view on error")
+		}
 	}
 }
 

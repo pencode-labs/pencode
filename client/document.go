@@ -16,6 +16,17 @@ type documentUpdate struct {
 	sequence              uint64
 }
 
+type documentPageResult struct {
+	err     error
+	content string
+	page    protocol.DocumentPage
+}
+type documentPageRequest struct {
+	ctx    context.Context
+	result chan documentPageResult
+	offset uint64
+}
+
 type documentSave struct {
 	ctx     context.Context
 	result  chan error
@@ -31,6 +42,7 @@ type Document struct {
 	cancel     context.CancelFunc
 	closed     chan struct{}
 	saves      chan documentSave
+	pages      chan documentPageRequest
 	operations chan struct{}
 	notify     chan struct{}
 	signal     chan struct{}
@@ -39,13 +51,14 @@ type Document struct {
 	version    uint64
 	id         uint64
 	applied    uint64
+	page       protocol.DocumentPage
 	once       sync.Once
 	mu         sync.Mutex
 }
 
 func newDocument(c *Client, id, version uint64, content string) *Document {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &Document{client: c, id: id, version: version, latest: documentUpdate{content: piecetree.FromString(content)}, notify: make(chan struct{}), signal: make(chan struct{}, 1), done: make(chan struct{}), cancel: cancel, saves: make(chan documentSave, 8), closed: make(chan struct{}), operations: make(chan struct{}, 1)}
+	d := &Document{client: c, id: id, version: version, latest: documentUpdate{content: piecetree.FromString(content)}, notify: make(chan struct{}), signal: make(chan struct{}, 1), done: make(chan struct{}), cancel: cancel, saves: make(chan documentSave, 8), pages: make(chan documentPageRequest, 1), closed: make(chan struct{}), operations: make(chan struct{}, 1)}
 	go d.run(ctx, version, piecetree.FromString(content))
 	return d
 }
@@ -68,11 +81,14 @@ func (d *Document) run(ctx context.Context, version uint64, content piecetree.Sn
 	var e protocol.Encoder
 	for {
 		var save *documentSave
+		var page *documentPageRequest
 		select {
 		case <-ctx.Done():
 			return
 		case <-d.client.done:
 			return
+		case request := <-d.pages:
+			page = &request
 		case request := <-d.saves:
 			save = &request
 		case <-d.signal:
@@ -87,7 +103,7 @@ func (d *Document) run(ctx context.Context, version uint64, content piecetree.Sn
 				continue
 			}
 			job = documentUpdate{content: save.content, start: -1}
-		} else if err != nil || ready {
+		} else if page == nil && (err != nil || ready) {
 			continue
 		}
 		requestCtx, stop := context.WithTimeout(ctx, 30*time.Second)
@@ -103,6 +119,9 @@ func (d *Document) run(ctx context.Context, version uint64, content piecetree.Sn
 			e.Reset()
 			e.U64(d.id)
 			e.U64(version)
+			d.mu.Lock()
+			e.U64(d.page.Offset)
+			d.mu.Unlock()
 			e.U32(uint32(start))
 			e.U32(uint32(end))
 			e.U32(uint32(next - start))
@@ -152,6 +171,32 @@ func (d *Document) run(ctx context.Context, version uint64, content piecetree.Sn
 			save.result <- err
 			stopSave()
 		}
+		if page != nil {
+			result := documentPageResult{err: err}
+			if result.err == nil {
+				e.Reset()
+				e.U64(d.id)
+				e.U64(version)
+				e.U64(page.offset)
+				var payload []byte
+				payload, result.err = d.client.request(page.ctx, protocol.DocumentRead, e.Buffer)
+				if result.err == nil {
+					r := protocol.Decoder{Buffer: payload}
+					result.content, result.page = r.String(), r.DocumentPage()
+					result.err = r.Done()
+				}
+			}
+			if result.err == nil {
+				content = piecetree.FromString(result.content)
+				d.mu.Lock()
+				d.latest = documentUpdate{content: content, sequence: d.latest.sequence}
+				d.applied = d.latest.sequence
+				d.page = result.page
+				d.mu.Unlock()
+			}
+			page.result <- result
+		}
+
 		stop()
 		if cap(e.Buffer) > protocol.MaxPayload {
 			e.Buffer = nil
@@ -221,6 +266,41 @@ func (d *Document) SaveSnapshot[V piecetree.Value](ctx context.Context, value V)
 		return ErrClosed
 	case err := <-request.result:
 		return err
+	}
+}
+
+// Page describes only the currently loaded window; Content and snapshots for a
+// paged document never represent the unloaded remainder of the file.
+func (d *Document) Page() protocol.DocumentPage {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.page
+}
+
+// ReadPage flushes edits to the server's disk-backed document, without saving.
+// The caller must stop submitting edits until this operation has returned.
+func (d *Document) ReadPage(ctx context.Context, offset uint64) (string, protocol.DocumentPage, error) {
+	select {
+	case <-ctx.Done():
+		return "", protocol.DocumentPage{}, ctx.Err()
+	case <-d.done:
+		return "", protocol.DocumentPage{}, ErrClosed
+	case d.operations <- struct{}{}:
+	}
+	defer func() { <-d.operations }()
+	request := documentPageRequest{ctx: ctx, offset: offset, result: make(chan documentPageResult, 1)}
+	select {
+	case <-ctx.Done():
+		return "", protocol.DocumentPage{}, ctx.Err()
+	case <-d.done:
+		return "", protocol.DocumentPage{}, ErrClosed
+	case d.pages <- request:
+	}
+	select {
+	case <-d.done:
+		return "", protocol.DocumentPage{}, ErrClosed
+	case result := <-request.result:
+		return result.content, result.page, result.err
 	}
 }
 

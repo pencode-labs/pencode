@@ -44,7 +44,7 @@ func (s *Session) initUpdates() {
 }
 
 func (m *workspaceModel) handleUpdateEvent(ref string) bool {
-	if ref != "check-update" && ref != "download-update" && ref != "restart-update" {
+	if ref != "update-action" {
 		return false
 	}
 	if m.session == nil {
@@ -55,8 +55,8 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 	if u.busy {
 		return true
 	}
-	if ref == "restart-update" {
-		if u.stage != "" && m.app != nil {
+	if u.stage != "" {
+		if m.app != nil {
 			u.requested = true
 			if m.requestWindowClose() {
 				m.app.RequestClose()
@@ -64,16 +64,14 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 		}
 		return true
 	}
-	if u.root == "" || u.stage != "" {
+	if u.root == "" {
 		return true
 	}
-	if ref == "download-update" && u.release.URL == "" {
-		return true
-	}
+	check := u.release.URL == ""
 	u.busy = true
-	u.message = "正在检查 GitHub tag…"
-	if ref == "download-update" {
-		u.message = "正在下载并校验更新包…"
+	u.message = m.tr("正在检查 GitHub tag…")
+	if !check {
+		u.message = m.tr("正在下载并校验更新包…")
 	}
 	u.results = make(chan pencodeUpdateResult, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -84,7 +82,7 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 		defer cancel()
 		c := updater.NewClient()
 		r := pencodeUpdateResult{}
-		if ref == "check-update" {
+		if check {
 			r.release, r.err = c.Check(ctx, version)
 		} else {
 			r.release = release
@@ -116,17 +114,17 @@ func (m *workspaceModel) pollUpdates() bool {
 	case r := <-u.results:
 		u.busy, u.results = false, nil
 		if r.err != nil {
-			u.message = "更新失败：" + r.err.Error()
+			u.message = m.tr("更新失败：") + r.err.Error()
 			return true
 		}
 		u.release, u.stage = r.release, r.stage
 		switch {
 		case r.stage != "":
-			u.message = "安装包已校验，安装并重启将打开系统安装程序"
+			u.message = m.tr("安装包已校验，安装并重启将打开系统安装程序")
 		case r.release.Tag != "":
-			u.message = "发现新版本：" + r.release.Tag
+			u.message = m.tr("发现新版本：") + r.release.Tag
 		default:
-			u.message = "当前已是最新可用版本"
+			u.message = m.tr("当前已是最新可用版本")
 		}
 		return true
 	default:
@@ -140,7 +138,7 @@ func (m *workspaceModel) renderUpdates(v *htmlui.View) {
 	v.Attr("settings-about-nav", "class", "pencode-settings-nav-item")
 	v.RemoveAttr("settings-about-nav", "aria-current")
 	if m.settingsAbout && !m.settingsShortcuts && !m.settingsExtensions {
-		v.Text("settings-page-title", "关于")
+		v.Text("settings-page-title", m.tr("关于"))
 		v.RemoveAttr("settings-about-pane", "hidden")
 		v.Attr("settings-about-nav", "class", "pencode-settings-nav-item active")
 		v.Attr("settings-about-nav", "aria-current", "page")
@@ -153,27 +151,21 @@ func (m *workspaceModel) renderUpdates(v *htmlui.View) {
 	}
 	m.session.initUpdates()
 	u := m.session.updates
-	v.Event("check-update", htmlui.EventClick)
-	v.Event("download-update", htmlui.EventClick)
-	v.Event("restart-update", htmlui.EventClick)
+	v.Event("update-action", htmlui.EventClick)
 	v.Text("update-version", u.version)
 	v.Text("update-status", u.message)
-	for _, ref := range [...]string{"check-update", "download-update", "restart-update"} {
-		disabled := u.busy || u.root == ""
-		if ref == "check-update" {
-			disabled = disabled || u.stage != ""
-		}
-		if ref == "download-update" {
-			disabled = disabled || u.release.URL == "" || u.stage != ""
-		}
-		if ref == "restart-update" {
-			disabled = disabled || u.stage == ""
-		}
-		if disabled {
-			v.Attr(ref, "disabled", "")
-		} else {
-			v.RemoveAttr(ref, "disabled")
-		}
+	v.Attr("update-status", "title", u.message)
+	label := "检查更新"
+	if u.stage != "" {
+		label = "安装并重启"
+	} else if u.release.URL != "" {
+		label = "下载更新"
+	}
+	v.Text("update-action", m.tr(label))
+	if u.busy || u.root == "" {
+		v.Attr("update-action", "disabled", "")
+	} else {
+		v.RemoveAttr("update-action", "disabled")
 	}
 }
 

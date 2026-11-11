@@ -207,7 +207,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 	}
 	ui := &model.languageUI
 	ui.keysHandled = false
-	if model.folderSearch.open || model.tabContext.open || model.fileContext.open || model.fileContext.dialog != "" || !model.textEditorActive() || model.settingsOpen || model.quickOpen || model.findOpen || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
+	if model.folderSearch.open || model.tabContext.open || model.fileContext.open || model.fileContext.dialog != "" || !model.textEditorActive() || model.settingsOpen || model.quickOpen || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
 		changed := ui.contextOpen || ui.hover.open || ui.hover.link || model.languages != nil && (model.languages.panel.open || model.languages.panel.completion)
 		model.cancelLanguageAutomatic()
 		model.cancelLanguageHover()
@@ -259,7 +259,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		changed = true
 	}
 	popup := model.pointerInsideRefs(world, x, y, []string{"lsp-context", "lsp-context-submenu", "lsp-completion", "lsp-panel", "lsp-hover"})
-	inside := languageRectContains(editorRect, x, y) && !popup
+	inside := languageRectContains(editorRect, x, y) && !popup && !(model.findOpen && model.pointerInsideRefs(world, x, y, []string{"find-bar"}))
 	if state.MousePressed(input.MouseRight) && inside {
 		model.cancelLanguageAutomatic()
 		model.cancelLanguageHover()

@@ -20,6 +20,9 @@ type pencodeTerminalContext struct {
 var pencodeTerminalContextRefs = [...]string{"terminal-copy", "terminal-paste", "terminal-clear"}
 
 func (m *workspaceModel) terminalSelection() string {
+	if m.terminals != nil && m.terminals.active != nil && m.terminals.active.selection.active {
+		return m.terminalSelectedText()
+	}
 	if field, ok := m.fontResources.Get[engineui.TextField](m.terminalView.control); ok {
 		start, end := pencodeSelectionBytes(field.Value, min(field.Caret, field.Anchor), max(field.Caret, field.Anchor))
 		return field.Value[start:end]
@@ -48,8 +51,17 @@ func (m *workspaceModel) terminalAction(state *input.State, ref, selection strin
 			m.writeTerminal(item, []byte(value))
 		}
 	case "terminal-clear":
+		if item.screen.Alternate() {
+			return
+		}
+		item.selection = terminalTextSelection{}
 		item.screen.ClearOutput()
 		item.scroll = 0
+		// The line editor owns multiline prompts and wrapped input. Ask it to
+		// clear and redraw rather than guessing their boundaries from cells.
+		if item.screen.BracketedPaste && item.ready && !item.exited {
+			m.writeTerminal(item, []byte{'\x0c'})
+		}
 		markPencodeRootDirtyByModel(m.fontResources, m)
 	}
 }

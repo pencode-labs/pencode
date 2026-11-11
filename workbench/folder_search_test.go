@@ -3,10 +3,12 @@ package workbench
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/onix-engine/onix/input"
 	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/protocol"
 )
@@ -124,14 +126,67 @@ func TestFolderSearchPopupFromContextAndNavigation(t *testing.T) {
 			t.Fatalf("popup escaped viewport or toggle lost its row span at %d%%: panel=%+v root=%+v query=%+v toggle=%+v", zoom, panel, root, query, toggle)
 		}
 	}
-	m.openFolderSearchMatch(world, 1)
-	markPencodeRootDirtyByModel(world, m)
+	editorContextClick(t, app, m, state, "folder-search-result-1")
 	for range 3 {
 		languageInteractionStep(t, app)
 	}
 	field, _ := world.Get[engineui.TextField](m.editor.control)
 	if m.folderSearch.open || field.Anchor != 10 || field.Caret != 16 || !field.Focused {
 		t.Fatalf("navigation did not select exact match: %+v", field)
+	}
+}
+
+func TestFolderSearchClickOpensFileAtMatch(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		index int
+		y     float32
+	}{
+		{name: "path", y: 10},
+		{name: "preview", y: 34},
+		{name: "next page", index: folderSearchPageSize, y: 34},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app, m, _, state := languageInteractionFixture(t)
+			p, world := m.activeProjectState(), m.fontResources
+			const name = "src/target.txt"
+			resourceTestWrite(t, p, name, strings.Repeat("中🙂 target\n", folderSearchPageSize+1))
+			m.openFolderSearch(p, "src", false)
+			m.folderSearch.query = "target"
+			m.startFolderSearch()
+			settleFolderSearch(t, m)
+			if len(m.folderSearch.rows) != folderSearchPageSize+1 {
+				t.Fatal(m.folderSearch.message)
+			}
+			if test.index >= folderSearchPageSize {
+				// Bind the first page before replacing its nodes and handlers.
+				markPencodeRootDirtyByModel(world, m)
+				languageInteractionStep(t, app)
+				editorContextClick(t, app, m, state, "folder-search-next")
+			}
+			markPencodeRootDirtyByModel(world, m)
+			languageInteractionStep(t, app)
+			if n := testing.AllocsPerRun(100, func() { m.bindFolderSearchResults(world) }); n != 0 {
+				t.Fatalf("unchanged result bindings allocated %g times", n)
+			}
+			r := editorContextBounds(t, m, "folder-search-result-"+strconv.Itoa(test.index))
+			x, y := float64(r.X+120), float64(r.Y+test.y)
+			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			if err := awaitFileIO(t, m); err != nil {
+				t.Fatal(err)
+			}
+			markPencodeRootDirtyByModel(world, m)
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
+			field, _ := world.Get[engineui.TextField](m.editor.control)
+			start := 3 + test.index*10
+			if m.folderSearch.open || m.activeFile().Path != name || field.Anchor != start || field.Caret != start+6 || !field.Focused {
+				t.Fatalf("click did not open/select the match: open=%v path=%q anchor=%d caret=%d focused=%v", m.folderSearch.open, m.activeFile().Path, field.Anchor, field.Caret, field.Focused)
+			}
+		})
 	}
 }
 

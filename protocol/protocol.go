@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Version    = 12
+	Version    = 13
 	HeaderSize = 24
 	MaxPayload = 64 << 10
 	MaxMessage = 64 << 20
@@ -30,6 +30,7 @@ const (
 	DocumentSave
 	DocumentClose
 	DocumentMove
+	DocumentRead
 	DirectoryRead
 	ResourceCreate
 	ResourceRemove
@@ -194,6 +195,7 @@ type Workspace struct {
 
 type Document struct {
 	Content     string
+	Page        DocumentPage
 	ID, Version uint64
 }
 

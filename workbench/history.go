@@ -107,7 +107,7 @@ func (model *workspaceModel) redoActiveContent(world *module.Content) bool {
 }
 func (model *workspaceModel) restoreActiveContent(world *module.Content, redo bool) bool {
 	file := model.activeFile()
-	if file == nil {
+	if file == nil || file.pageLoading {
 		return false
 	}
 	value, caret, ok := file.restoreSnapshot(file.snapshot(), redo)

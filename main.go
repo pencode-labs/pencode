@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/onix-engine/onix"
+	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/project"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/internal/desktopopen"
 	"github.com/pencode-labs/pencode/internal/environment"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/internal/updater"
@@ -54,8 +56,8 @@ func main() {
 	flag.StringVar(&initial.SSH.ServerRoot, "remote-server-directory", "", "Absolute remote server installation directory")
 	flag.StringVar(&serverDirectory, "server-directory", "", "Local directory of platform server binaries")
 	flag.Parse()
-	if port > 65535 || flag.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "invalid port or unexpected positional argument")
+	if port > 65535 || flag.NArg() != 0 && (port != 0 || initial != (connection.Profile{})) {
+		fmt.Fprintln(os.Stderr, "invalid port or local paths combined with a remote connection")
 		os.Exit(2)
 	}
 	initial.SSH.Port = uint16(port)
@@ -82,6 +84,10 @@ func main() {
 		panic(err)
 	}
 	session := workbench.NewSession(backend)
+	session.OpenPaths(flag.Args()...)
+	// Install before AppKit finishes launching so Finder's initial open event
+	// is queued even before the workbench has entered its first scene.
+	desktopopen.Configure(func(path string) { session.OpenPaths(path) })
 	defer func() {
 		session.Close()
 		if err := session.FinishUpdate(); err != nil {
@@ -97,6 +103,7 @@ func main() {
 		panic(err)
 	}
 	app := onix.NewApp()
+	app.AddInputHandler(input.PhaseGlobal, session.HandleFileDrop)
 	app.SetRenderMode(onix.RenderOnDemand)
 	app.SetIdleEnabled(true)
 	if err := OnixInstallSystems(app); err != nil {

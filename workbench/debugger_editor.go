@@ -65,7 +65,7 @@ func (m *workspaceModel) updateDebugPointer(world *module.Content, state *input.
 
 func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 	file, project := m.activeFile(), m.activeProjectState()
-	visible := m.screen == pencodeWorkspace && m.textEditorActive() && !m.settingsOpen && file != nil && project != nil
+	visible := m.screen == pencodeWorkspace && m.textEditorActive() && !m.settingsOpen && file != nil && !file.page.Paged && project != nil
 	used := 0
 	defer func() {
 		for _, entity := range paint.dots[used:] {

@@ -167,7 +167,7 @@ func (model *workspaceModel) retireConnection(closeBackend bool) {
 	model.fileClose = pencodeCloseRequest{}
 	if model.closing.saveID != 0 {
 		model.closing.saveID = 0
-		model.closing.error = "连接已断开，请在重连后重试保存"
+		model.closing.error = model.tr("连接已断开，请在重连后重试保存")
 	}
 	s := model.session
 	if closeBackend && s.backend != nil {
@@ -193,7 +193,7 @@ func (model *workspaceModel) retireConnection(closeBackend bool) {
 		for _, item := range model.terminals.items {
 			item.session.Close()
 			if !item.exited {
-				item.label += "（连接已断开）"
+				item.label += model.tr("（连接已断开）")
 			}
 			item.exited = true
 		}
@@ -205,6 +205,7 @@ func (model *workspaceModel) retireConnection(closeBackend bool) {
 		project.index = 0
 		for _, file := range project.Files {
 			file.closeDocument()
+			file.pageLoading = false
 		}
 	}
 	model.sourceControl.stop()
@@ -271,7 +272,7 @@ func (model *workspaceModel) beginConnection(profile connection.Profile, retry b
 	}
 	c.profile = profile
 	c.busy, c.restoring = true, restore
-	c.setMessage("正在连接…", false)
+	c.setMessage(model.tr("正在连接…"), false)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	c.cancel, c.done = cancel, make(chan struct{})
 	done, wake, dial := c.done, model.backgroundWake(), c.dial
@@ -386,9 +387,9 @@ func (model *workspaceModel) pollConnection() bool {
 		model.clearConnectionPassword()
 		if result.err != nil {
 			c.recentProject = ""
-			c.setMessage("连接失败："+result.err.Error(), true)
+			c.setMessage(model.tr("连接失败：")+result.err.Error(), true)
 			c.open = true
-			model.logOutput("远程连接", c.message)
+			model.logOutput(model.tr("远程连接"), c.message)
 			return true
 		}
 		if result.profile.Remote() {
@@ -400,7 +401,7 @@ func (model *workspaceModel) pollConnection() bool {
 		if result.restore {
 			model.acceptConnection(result)
 		} else {
-			c.setMessage("远程服务已连接", false)
+			c.setMessage(model.tr("远程服务已连接"), false)
 		}
 		if directory := c.recentProject; directory != "" {
 			c.recentProject = ""
@@ -426,7 +427,7 @@ func (model *workspaceModel) pollConnection() bool {
 				link.rapidLosses++
 				if link.rapidLosses > 3 {
 					link.lostHandled, c.open = true, true
-					c.setMessage("连接连续中断，已停止自动重连；请检查远程服务后手动重连", true)
+					c.setMessage(model.tr("连接连续中断，已停止自动重连；请检查远程服务后手动重连"), true)
 				} else {
 					model.beginConnection(link.profile, true)
 				}
@@ -438,14 +439,14 @@ func (model *workspaceModel) pollConnection() bool {
 	if !c.busy && !c.lostHandled && s.backend != nil {
 		select {
 		case <-s.backend.Done():
-			model.logOutput("远程连接", fmt.Sprintf("连接已断开：%v", s.backend.Err()))
+			model.logOutput(model.tr("远程连接"), fmt.Sprintf(model.tr("连接已断开：%v"), s.backend.Err()))
 			if time.Since(c.connectedAt) >= 30*time.Second {
 				c.rapidLosses = 0
 			}
 			c.rapidLosses++
 			if c.rapidLosses > 3 {
 				c.lostHandled, c.open = true, true
-				c.setMessage("连接连续中断，已停止自动重连；请检查远程服务后手动重连", true)
+				c.setMessage(model.tr("连接连续中断，已停止自动重连；请检查远程服务后手动重连"), true)
 				model.retireConnection(true)
 				return true
 			}
@@ -490,7 +491,7 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 		project.sourceControl.Snapshot.Repository.Backend = backend
 		project.sourceControl.Snapshot.Repository.Context = nil
 		if restored.Err != nil {
-			project.Status = "工作区恢复失败：" + restored.Err.Error()
+			project.Status = model.tr("工作区恢复失败：") + restored.Err.Error()
 			conflicts++
 			continue
 		}
@@ -500,6 +501,24 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 				if state.Document != nil {
 					state.Document.Release()
 				}
+				continue
+			}
+			if file.page.Paged {
+				// A new connection has a fresh server-side piece table. Never
+				// attach an old window to its first page or claim off-page edits
+				// survived the loss of that table.
+				if file.Dirty || state.Err != nil {
+					if state.Document != nil {
+						state.Document.Release()
+					}
+					project.Status = model.tr("大文件连接已中断，未保存分段无法自动恢复；当前段已保留，请重新加载")
+					conflicts++
+					continue
+				}
+				file.document = state.Document
+				file.contentSnapshot, file.savedContent = snapshotText(state.Disk), snapshotText(state.Disk)
+				file.pencodeEditHistory, file.editorView = pencodeEditHistory{}, pencodeEditorView{}
+				file.initPage()
 				continue
 			}
 			if state.Err != nil || !snapshotText(state.Disk).Equal(file.savedContent) && state.Disk != file.content() {
@@ -529,9 +548,9 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 	}
 	c.connectedAt = time.Now()
 	c.lostHandled, c.open = false, false
-	c.setMessage("已连接；未保存内容和撤销历史已保留", false)
+	c.setMessage(model.tr("已连接；未保存内容和撤销历史已保留"), false)
 	if conflicts > 0 {
-		c.setMessage(fmt.Sprintf("已连接；%d 项恢复失败或远端内容已变化，本地内容已保留，请比较或重新加载后保存", conflicts), true)
+		c.setMessage(fmt.Sprintf(model.tr("已连接；%d 项恢复失败或远端内容已变化，本地内容已保留，请比较或重新加载后保存"), conflicts), true)
 		c.open = true
 	}
 	s.market.items, s.market.directory = nil, ""
@@ -579,6 +598,10 @@ func renderPencodeConnection(c module.ContentRenderContext[pencodeConnectionProp
 	}
 	view.Attr("dot", "class", dotClass)
 	view.Text("name", p.Profile.Label())
+	for _, item := range []struct{ ref, text string }{{"project", "打开远端项目"}, {"more", "更多操作"}} {
+		view.Attr(item.ref, "title", p.Model.tr(item.text))
+		view.Attr(item.ref, "aria-label", p.Model.tr(item.text))
+	}
 	view.Text("host", p.Profile.Address())
 	view.Attr("project", "id", fmt.Sprintf("connection-project-%d", p.Index))
 	view.Attr("more", "id", fmt.Sprintf("connection-more-%d", p.Index))
@@ -651,7 +674,7 @@ func (model *workspaceModel) saveConnectionForm() {
 		profile.Name = strings.TrimSpace(profile.WebSocket.Address)
 	}
 	if profile.Name == "" {
-		c.setMessage("请输入显示名称", true)
+		c.setMessage(model.tr("请输入显示名称"), true)
 		return
 	}
 	if c.webSocket {
@@ -668,7 +691,7 @@ func (model *workspaceModel) saveConnectionForm() {
 			port, err = 0, nil
 		}
 		if err != nil || c.port != "" && port == 0 {
-			c.setMessage("SSH 端口必须在 1–65535 之间", true)
+			c.setMessage(model.tr("SSH 端口必须在 1–65535 之间"), true)
 			return
 		}
 		profile.SSH.Port = uint16(port)
@@ -679,7 +702,7 @@ func (model *workspaceModel) saveConnectionForm() {
 	}
 	for index := range c.profiles {
 		if index != c.edit && c.profiles[index].Name == profile.Name {
-			c.setMessage("显示名称已存在", true)
+			c.setMessage(model.tr("显示名称已存在"), true)
 			return
 		}
 	}
@@ -695,11 +718,11 @@ func (model *workspaceModel) saveConnectionForm() {
 		profiles = append(profiles, profile)
 	}
 	if err := connection.SaveProfiles(connection.ProfilePath(), profiles); err != nil {
-		c.setMessage("连接设置保存失败："+err.Error(), true)
+		c.setMessage(model.tr("连接设置保存失败：")+err.Error(), true)
 		return
 	}
 	c.profiles, c.form, c.formOpen, c.edit = profiles, profile, false, -1
-	c.setMessage("已保存远程连接", false)
+	c.setMessage(model.tr("已保存远程连接"), false)
 	if link := c.links[previous.Endpoint()]; link != nil && previous.Endpoint() == profile.Endpoint() {
 		link.profile = profile
 		if c.workspaceProfile.Endpoint() == profile.Endpoint() {
@@ -716,18 +739,18 @@ func (model *workspaceModel) removeConnection(index int, profile connection.Prof
 		return
 	}
 	if model.connectionConnected(profile) {
-		c.setMessage("请先退出连接，再删除此远程连接", true)
+		c.setMessage(model.tr("请先退出连接，再删除此远程连接"), true)
 		return
 	}
 	profiles := make([]connection.Profile, len(c.profiles)-1)
 	copy(profiles, c.profiles[:index])
 	copy(profiles[index:], c.profiles[index+1:])
 	if err := connection.SaveProfiles(connection.ProfilePath(), profiles); err != nil {
-		c.setMessage("连接设置保存失败："+err.Error(), true)
+		c.setMessage(model.tr("连接设置保存失败：")+err.Error(), true)
 		return
 	}
 	c.profiles = profiles
-	c.setMessage("已删除远程连接", false)
+	c.setMessage(model.tr("已删除远程连接"), false)
 }
 
 func (model *workspaceModel) connectionEvent(ref, value string) bool {
@@ -856,7 +879,7 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 		panelClass += " form-open"
 	}
 	view.Attr("connection-panel", "class", panelClass)
-	view.Attr("connection-open", "title", "远程管理")
+	view.Attr("connection-open", "title", model.tr("远程管理"))
 	view.Attr("connection-close-icon", "src", model.themedIcon("icons/close.svg", "icon.foreground"))
 	view.Attr("connection-form-close-icon", "src", model.themedIcon("icons/close.svg", "icon.foreground"))
 	view.Text("connection-feedback", c.message)
@@ -893,15 +916,15 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 		view.RemoveAttr("connection-password-form", "hidden")
 		view.Text("connection-password-prompt", c.passwordRequest.prompt.Text)
 		if c.passwordRequest.prompt.Confirm {
-			view.Text("connection-password-title", "确认 SSH 主机")
-			view.Text("connection-password-note", "首次连接此主机。请核对上方主机指纹，确认后将记录到 SSH known_hosts。")
-			view.Text("connection-password-submit", "信任并连接")
+			view.Text("connection-password-title", model.tr("确认 SSH 主机"))
+			view.Text("connection-password-note", model.tr("首次连接此主机。请核对上方主机指纹，确认后将记录到 SSH known_hosts。"))
+			view.Text("connection-password-submit", model.tr("信任并连接"))
 			view.Attr("connection-password", "hidden", "")
 			view.Attr("connection-password-label", "hidden", "")
 		} else {
-			view.Text("connection-password-title", "SSH 身份验证")
-			view.Text("connection-password-note", "密码仅用于本次认证，不会保存；断线重连时会重新询问。")
-			view.Text("connection-password-submit", "连接")
+			view.Text("connection-password-title", model.tr("SSH 身份验证"))
+			view.Text("connection-password-note", model.tr("密码仅用于本次认证，不会保存；断线重连时会重新询问。"))
+			view.Text("connection-password-submit", model.tr("连接"))
 			view.RemoveAttr("connection-password", "hidden")
 			view.RemoveAttr("connection-password-label", "hidden")
 		}
@@ -941,9 +964,9 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	}
 	view.Attr("connection-options-icon", "src", model.themedIcon(arrow, "icon.foreground"))
 	setPanelVisible(view, "connection-options", c.optionsExpanded)
-	nameLabel := "显示名称"
+	nameLabel := model.tr("显示名称")
 	if c.webSocket {
-		nameLabel = "显示名称（可选）"
+		nameLabel = model.tr("显示名称（可选）")
 	}
 	view.Text("connection-name-label", nameLabel)
 	for _, field := range [...]struct {
@@ -962,7 +985,7 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	if c.typeOptions[0].Tag == "" {
 		c.typeOptions = [2]htmlui.VNode{
 			appearanceOption(1, "ssh", "SSH", false),
-			appearanceOption(2, "websocket", "WebSocket 直连", false),
+			appearanceOption(2, "websocket", model.tr("WebSocket 直连"), false),
 		}
 	}
 	for i := range c.typeOptions {
@@ -975,9 +998,9 @@ func (model *workspaceModel) renderConnection(view *htmlui.View, definition *htm
 	view.Keyed("connection-type", c.typeOptions[:])
 	if c.formOpen {
 		view.RemoveAttr("connection-form", "hidden")
-		title := "添加远程连接"
+		title := model.tr("添加远程连接")
 		if c.edit >= 0 {
-			title = "编辑远程连接"
+			title = model.tr("编辑远程连接")
 		}
 		view.Text("connection-form-title", title)
 	} else {
@@ -1054,7 +1077,7 @@ func (model *workspaceModel) disconnectRemote(profile connection.Profile) {
 		_ = link.backend.Close()
 		model.session.closeSettingsWriter(link.backend)
 	}
-	c.setMessage("远程服务已断开", false)
+	c.setMessage(model.tr("远程服务已断开"), false)
 }
 
 // Opening a project starts with a directory choice on the connected device.

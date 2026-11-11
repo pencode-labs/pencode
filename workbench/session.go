@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
 	engineui "github.com/onix-engine/onix/ui"
@@ -18,6 +19,7 @@ import (
 // Session keeps the foreground model available while preloaded views own their
 // HTML, editor entities and resource readers independently.
 type Session struct {
+	externalJob     *fileIOJob
 	updates         *pencodeUpdates
 	quickHistory    *pencodeQuickHistory
 	localBackend    *client.Client
@@ -30,6 +32,7 @@ type Session struct {
 	recentProjects  *pencodeRecentProjects
 	fonts           map[string]pencodeFont
 	settingsWriters map[*client.Client]*pencodeSettingsWriter
+	externalPaths   []string
 	stateDirectory  string
 	// Actions accepts native registrations before or after the session starts.
 	Actions actions.Registry
@@ -92,6 +95,7 @@ func (s *Session) ScrollSystem() ecs.SystemConfig {
 					model.refreshRegion(model.fontResources, pencodeRefreshSourcePanel)
 				}
 				model.syncTreeScroll(model.fontResources)
+				model.syncCustomGrid(model.fontResources)
 			}
 			return nil
 		},
@@ -102,7 +106,7 @@ func (s *Session) ScrollSystem() ecs.SystemConfig {
 // HTML bounds in the same frame, including when the next frame is far away.
 func (s *Session) LayoutSystem() ecs.SystemConfig {
 	return ecs.SystemConfig{
-		Name: "sync_pencode_editor_layout", After: []string{"sync_ui_global_transform_after_layout"},
+		Name: "sync_pencode_editor_layout", After: []string{"sync_ui_text_input"},
 		System: func(context *ecs.SystemContext) error {
 			if s.syncLayout() {
 				// Extension scroll restoration and inline text changes run after
@@ -113,6 +117,8 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 			}
 			if s.active != nil {
 				s.active.model.syncInputContextSelection(s.active.model.fontResources)
+				state, _ := context.World.GetResource[*input.State]()
+				s.active.model.syncTerminalIME(s.active.model.fontResources, state)
 			}
 			return nil
 		},
@@ -137,6 +143,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 		model.refreshRegion(model.fontResources, pencodeRefreshSourcePanel)
 	}
 	model.bindTerminal(model.fontResources)
+	scrollChanged = model.syncTerminalSelection(model.fontResources) || scrollChanged
 	model.focusPorts(model.fontResources)
 	model.syncTabScroll(model.fontResources)
 	model.centerRevealedTreeRow(model.fontResources)
@@ -149,9 +156,10 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 			model.editor.syncHighlight(value, field, model)
 		}
 	}
-	scrollChanged = model.syncExtensionUI(model.fontResources)
+	scrollChanged = model.syncExtensionUI(model.fontResources) || scrollChanged
 	scrollChanged = model.actions.ui.selection.sync(model.fontResources, model) || scrollChanged
 	scrollChanged = model.syncRenderedFind(model.fontResources) || scrollChanged
+	scrollChanged = model.syncCustomGrid(model.fontResources) || scrollChanged
 	model.focusFileContext(model.fontResources)
 	model.focusFindInput(model.fontResources, model.surface)
 	model.focusFolderSearch(model.fontResources)

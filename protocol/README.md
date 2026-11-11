@@ -1,4 +1,4 @@
-# Pencode CS v12
+# Pencode CS v13
 
 GUI 和无头服务通过有序双向字节流通信。本地传输是子进程管道，远端传输是 OpenSSH 加密的 stdin/stdout；不监听或转发服务端端口，协议与具体传输无关。所有整数采用小端编码；不传递 Go 指针或渲染对象。旧版本不兼容。
 
@@ -7,7 +7,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 12 |
+| 4 | 2 | 协议版本，当前 13 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -24,8 +24,9 @@ v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整
 | WorkspaceOpen | path:string | id:u64, path:string, name:string |
 | WorkspaceClose | id:u64 | 空 |
 | DirectoryRead | workspace:u64, path:string | count:u32, {name:string, mode:u32}[] |
-| DocumentOpen | workspace:u64, path:string, mode:u32 | id:u64, version:u64, content:string |
-| DocumentChange | id:u64, baseVersion:u64, start:u32, end:u32, text:string | version:u64 |
+| DocumentOpen | workspace:u64, path:string, mode:u32 | id:u64, version:u64, content:string, offset:u64, size:u64, paged:u32 |
+| DocumentChange | id:u64, baseVersion:u64, pageOffset:u64, start:u32, end:u32, text:string | version:u64 |
+| DocumentRead | id:u64, version:u64, offset:u64 | content:string, offset:u64, size:u64, paged:u32 |
 | DocumentSave | id:u64, version:u64 | 空 |
 | DocumentClose | id:u64 | 空 |
 | DocumentMove | id:u64, workspace:u64, path:string | 空 |
@@ -39,7 +40,7 @@ directory 只接受 0/1；DocumentOpen mode 接受 0（路径）、1（检查文
 
 v12 新增 ResourceImport：source 是服务端主机的绝对原生路径，directory 是目标工作区内的目录，overwrite 只接受 0/1。未确认覆盖时遇到同名资源返回 Conflict；确认后目录合并，同名文件替换。GUI 只在本地工作区将系统剪贴板文件传给此请求，远端工作区不能使用本机路径。GUI 与 server 必须同时更新。
 
-路径相对于工作区，采用 `/`，禁止绝对路径、`..`、反斜杠和 NUL；DirectoryRead 额外允许 `.`。工作区根目录由服务端规范化并通过 os.Root 持有；WorkspaceOpen 的 `~` 和 `~/...` 在服务端展开，绝不使用 GUI 的 home。文档初始版本为 1，每个有效 Change 递增一次；范围为 UTF-8 字节边界。每份 GUI 增量作为一个 DocumentChange 发送，可包含多个 Data 帧，只在完整请求到达后原子应用并确认一次版本；合并 GUI 编辑时不得跳过版本确认。文档预算为单份小于 64 MiB、每连接文本总量 128 MiB、128 个文档及 32 个工作区；这些是文本预算，不等于进程 RSS 上限。
+路径相对于工作区，采用 `/`，禁止绝对路径、`..`、反斜杠和 NUL；DirectoryRead 额外允许 `.`。工作区根目录由服务端规范化并通过 os.Root 持有；WorkspaceOpen 的 `~` 和 `~/...` 在服务端展开，绝不使用 GUI 的 home。文档初始版本为 1，每个有效 Change 递增一次；范围为 UTF-8 字节边界。每份 GUI 增量作为一个 DocumentChange 发送，可包含多个 Data 帧，只在完整请求到达后原子应用并确认一次版本；合并 GUI 编辑时不得跳过版本确认。v13 移除打开文本文件的大小上限：超过 4 MiB 的文件保留磁盘句柄，首次和 DocumentRead 每次只读取最多 64 KiB 的 UTF-8 分段，优先在换行处结束；超长行仍有界。offset 与 size 为 64 位逻辑字节偏移及文档总字节数，DocumentChange 的 start/end 相对于 pageOffset，普通文档的 pageOffset 为零。修改保存在磁盘编辑暂存文件及分段引用中，切换分段不保存原文件；DocumentSave 流式原子写回所有内容，并检查文件身份、大小及修改时间以检测外部变更。GUI 的分段模式仅对当前段执行查找、撤销与语法高亮，不把部分内容发送给 LSP。超过 4 MiB 的强制文本模式仍要求各分段是有效 UTF-8。连接关闭释放大文件句柄和暂存修改。普通内存文档保留每连接 128 MiB 总量、128 个文档及 32 个工作区预算；这些不等于进程 RSS 上限。
 
 失败使用 Failure 帧：`code:u32 + message:string`。错误码为 Invalid、NotFound、Conflict、VersionMismatch、Busy、IO。协议头错误会关闭连接。文档与文件资源操作按完整请求的接收顺序执行，Service 长任务最多并发 48 个，任务持有的请求 payload 合计不超过 128 MiB。`Cancel` 使用被取消请求的 ID 和空 payload，中断对应任务并丢弃未完成上传；客户端超时后发送取消，忽略迟到响应。独立响应写协程在 64 KiB 分块间轮转发送，避免大下载阻塞接收请求或独占响应链路；队列及发送中最多 64 个响应、缓冲容量合计最多 128 MiB，超限对生产者施加背压。取消会丢弃已排队响应的剩余分块，正在发送的一帧允许完成。此预算不包含服务构建结果、文档存储和缓冲池的额外内存。已经执行的文件修改不能回滚，不允许自动重放。当前语法解析在一次解析完成后检查取消，工作区关闭撤销派生的 Git 根并回收相关流与索引。连接关闭释放所有连接资源，协议不保留可跨连接使用的会话或句柄。连接管理器只能重新打开工作区和文档，检查磁盘基线后恢复 GUI 内存中的编辑；禁止重放保存、资源修改、Git 写入或终端输入。
 

@@ -177,7 +177,7 @@ func (m *workspaceModel) handleTabContextEvent(world *module.Content, ref string
 				}
 			}
 			if !state.SetClipboardText(value) {
-				m.setProjectStatus(c.project, "无法写入剪贴板")
+				m.setProjectStatus(c.project, m.tr("无法写入剪贴板"))
 			}
 		}
 		return true

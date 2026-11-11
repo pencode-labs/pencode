@@ -1,10 +1,10 @@
-# peb v18 — Pencode Extension Binary
+# peb v19 — Pencode Extension Binary
 
-peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）和 `ExtensionSettings`（扩展配置）。
+peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）、`ExtensionSettings`（扩展配置）和 `LanguagePacks`（界面语言包）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **17**，增加统一文件服务通知，保留扩展标签页的可拦截关闭请求；宿主与扩展需用当前 SDK 重新构建。
+字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **19**，增加可扩展的界面语言包注册；宿主与扩展需用当前 SDK 重新构建。
 
 ## 扩展配置
 
@@ -71,6 +71,10 @@ SettingsResponse {}                         // 空 payload
 
 同一快照不能重复 ID，且必须恰好覆盖声明的配置项。所有字符串、数组和 payload 仍受 PEB 的通用大小上限约束。此变更将 PEB 升级为 v10，现有扩展需要用当前 SDK 重新构建。
 
+## 界面语言包
+
+扩展通过 `Contributions.LanguagePacks` 注册静态 JSON 语言包，加载后出现在「设置 → 外观 → 界面语言」。声明的 ID、Label 必须与文件中的 id、label 一致，Path 必须位于 resources/ 下。消息缺失时回退到英文，禁用或卸载后保留语言选择以便重新加载。参见[语言包格式、Go 与 TypeScript 示例](../docs/localization.zh-CN.md)。
+
 ## 文件变化通知
 
 扩展在 `peb.Handlers.FileChanges` 注册回调，由宿主统一文件服务提供变化，不需要自行递归监听文件系统。只有该回调的扩展也会获得持久 action 会话。已打开的自定义编辑器进程同样接收通知，处理函数与该进程其他请求串行执行。
@@ -94,7 +98,7 @@ handlers := peb.Handlers{
 | 偏移 | 长度 | 字段                                 |
 | ---- | ---- | ------------------------------------ |
 | 0    | 4    | magic：`70 65 62 00`（`peb\0`）      |
-| 4    | 2    | version：`18`                         |
+| 4    | 2    | version：`19`                         |
 | 6    | 2    | kind：见下表                         |
 | 8    | 4    | request ID                           |
 | 12   | 4    | payload 字节数，不含头部，最大 4 MiB |
@@ -130,7 +134,7 @@ handlers := peb.Handlers{
 ```text
 Initialize {
   host: string                  // 当前为 "pencode"
-  capabilities: u32             // FileIcons=1, EditorThemes=2, CustomEditors=4, Fonts=8, LanguageServers=16, Actions=32, ExtensionUI=64, DebugAdapters=128, ExtensionSettings=256，当前为 511
+  capabilities: u32             // FileIcons=1, EditorThemes=2, CustomEditors=4, Fonts=8, LanguageServers=16, Actions=32, ExtensionUI=64, DebugAdapters=128, ExtensionSettings=256, LanguagePacks=512，当前为 1023
 }
 
 Register {
@@ -142,7 +146,9 @@ Register {
   actionService: u32             // boolean；允许初始按钮列表为空，之后主动注册
   debugAdapters: array<DebugAdapter>
   settings: array<Setting>
+  languagePacks: array<LanguagePack>
 }
+LanguagePack { id: string, label: string, path: string }
 
 Theme {
   id: string
@@ -225,7 +231,7 @@ peb.Contributions{
 
 ## TypeScript 扩展
 
-[peb/ts](ts/README.md) 提供与当前 v18 线格式一致的 TypeScript SDK，包括帧、全部消息 codec 和 serveExtension。TS 插件将 SDK 与业务依赖打包为 `.js`、`.mjs` 或 `.cjs` 入口，工作区主机自动使用 Node.js（优先）或 Bun 启动。无需可执行权限，原生入口保持直接启动。参见 [Office Viewer](../extensions/office-viewer/README.md) 示例。
+[peb/ts](ts/README.md) 提供与当前 v19 线格式一致的 TypeScript SDK，包括帧、全部消息 codec 和 serveExtension。TS 插件将 SDK 与业务依赖打包为 `.js`、`.mjs` 或 `.cjs` 入口，工作区主机自动使用 Node.js（优先）或 Bun 启动。无需可执行权限，原生入口保持直接启动。参见 [Office Viewer](../extensions/office-viewer/README.md) 示例。
 
 ## Go 扩展
 

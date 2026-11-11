@@ -29,6 +29,7 @@ func TestWindowsFileAssociations(t *testing.T) {
 	name := fmt.Sprintf("PencodeAssociationTest-%d-%s", os.Getpid(), filepath.Base(root))
 	key := `Software\PencodeInstallerTests\` + name
 	text := strings.ReplaceAll(string(script), `Software\Classes`, key)
+	text = strings.ReplaceAll(text, "#include AssociationsFile", strings.ReplaceAll(windowsFileAssociations(), `Software\Classes`, key))
 	text = strings.ReplaceAll(text, "AppId={{438863BF-885C-4AC6-A981-9C8F43563985}", "AppId="+name)
 	text = strings.ReplaceAll(text, "AppName=Pencode", "AppName="+name)
 	text = strings.ReplaceAll(text, "CloseApplications=yes", "CloseApplications=no")
@@ -44,7 +45,7 @@ func TestWindowsFileAssociations(t *testing.T) {
 	project := filepath.Join(root, "project")
 	writeTestFile(t, filepath.Join(project, "packaging", "windows.iss"), text, 0o600)
 	stage := filepath.Join(root, "stage")
-	writeTestFile(t, filepath.Join(stage, "pencode", "pencode.exe"), "fixture", 0o600)
+	writeTestFile(t, filepath.Join(stage, "Pencode", "Pencode.exe"), "fixture", 0o600)
 	installer := filepath.Join(root, "pencode-test.exe")
 	if err := buildInstaller(stage, installer, project, "1.2.3"); err != nil {
 		t.Fatal(err)
@@ -93,7 +94,7 @@ func TestWindowsFileAssociations(t *testing.T) {
 		}
 		return got
 	}
-	wantCommand := `"` + filepath.Join(installed, "pencode.exe") + `" -- "%1"`
+	wantCommand := `"` + filepath.Join(installed, "Pencode.exe") + `" -- "%1"`
 	for _, subkey := range []string{`Applications\pencode.exe\shell\open\command`, `Pencode.File\shell\open\command`} {
 		if got := read(subkey, ""); got != wantCommand {
 			t.Errorf("open command: %q, want %q", got, wantCommand)

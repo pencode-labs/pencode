@@ -26,6 +26,7 @@ type pencodeHighlightJob struct {
 	backend           *client.Client
 	definitions       *syntax.Definitions
 	documentText      piecetree.Snapshot
+	lineInfoFormat    string
 	diffBase          string
 	path              string
 	source            string
@@ -155,7 +156,11 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		}
 
 	}
-	result.lineInfo = fmt.Sprintf("行 %d · %d 字符", result.lines, result.characters)
+	format := job.lineInfoFormat
+	if format == "" {
+		format = "行 %d · %d 字符"
+	}
+	result.lineInfo = fmt.Sprintf(format, result.lines, result.characters)
 	if job.diff {
 		job.source = source.String()
 		var patch []byte
@@ -201,6 +206,7 @@ func (model *workspaceModel) submitHighlightJob(job pencodeHighlightJob) {
 		}, model.backgroundWake())
 	}
 	model.highlightRevision++
+	job.lineInfoFormat = model.tr("行 %d · %d 字符")
 	job.backend = model.backend
 	job.theme, job.definitions, job.revision = model.syntaxTheme, model.syntaxDefinitions, model.highlightRevision
 	model.highlightRequest = job
@@ -235,16 +241,21 @@ func (model *workspaceModel) pollHighlight() bool {
 		index.source, index.paint = job.documentText, pencodeOverlayKey{}
 		index.items, result.brackets.items = result.brackets.items, index.items
 		model.highlightPaintRevision++
-		model.lineCount, model.characterCount, model.lineInfo = result.lines, result.characters, result.lineInfo
+		model.lineCount, model.characterCount = result.lines, result.characters
+		model.lineInfo = result.lineInfo
+		format := model.tr("行 %d · %d 字符")
+		if job.lineInfoFormat != format {
+			model.lineInfo = fmt.Sprintf(format, result.lines, result.characters)
+		}
 		if result.err != nil {
-			model.status = fmt.Sprintf("语法解析失败：%v", result.err)
+			model.status = fmt.Sprintf(model.tr("语法解析失败：%v"), result.err)
 		} else {
 			if model.highlightCache == nil {
 				model.highlightCache = &pencodeHighlightCache{}
 			}
 			model.highlightCache.put(pencodeHighlightCacheEntry{
 				file: file, source: job.documentText, theme: job.theme, definitions: job.definitions,
-				spans: model.highlightScratch, brackets: model.editor.brackets.items, lines: result.lines, characters: result.characters, lineInfo: result.lineInfo,
+				spans: model.highlightScratch, brackets: model.editor.brackets.items, lines: result.lines, characters: result.characters, lineInfo: model.lineInfo, lineInfoFormat: model.tr("行 %d · %d 字符"),
 			})
 		}
 		// Retire references from the live field before returning the previous

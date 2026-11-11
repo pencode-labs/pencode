@@ -38,6 +38,7 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 			return false
 		}
 		renderPencodeHighlight(m)
+		m.renderFilePage(view)
 		if regions&pencodeRefreshSelection != 0 {
 			m.renderEditorHeader(view, m.activeFile())
 			for entity, access := range c.World.Query[htmlui.Component[treeProps, struct{}]]() {

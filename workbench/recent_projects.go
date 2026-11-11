@@ -136,7 +136,7 @@ func (m *workspaceModel) rememberRecentProject(workspace protocol.Workspace) {
 	}
 	entry.prepare()
 	if err := m.session.recentProjects.remember(entry); err != nil {
-		m.logOutput("pencode", "保存最近打开的项目失败："+err.Error())
+		m.logOutput("pencode", m.tr("保存最近打开的项目失败：")+err.Error())
 	}
 }
 
@@ -156,6 +156,7 @@ func newRecentProjectDefinition(content *module.Content) (*htmlui.Definition[pen
 				view.Text("path", entry.description)
 				view.Attr("open", "title", entry.description)
 				view.Attr("remove", "aria-label", entry.removeLabel)
+				view.Attr("remove", "title", m.tr("从最近打开中移除"))
 				icon := "icons/folder-opened.svg"
 				if entry.Profile.Remote() {
 					icon = "icons/remote.svg"
@@ -198,12 +199,12 @@ func (m *workspaceModel) renderRecentProjects(view *htmlui.View, definition *htm
 func (m *workspaceModel) openRecentProject(entry pencodeRecentProject) {
 	c := m.session.connection
 	if c != nil && c.busy {
-		m.status = "正在连接，请稍后打开项目"
+		m.status = m.tr("正在连接，请稍后打开项目")
 		return
 	}
 	if entry.Profile.Remote() {
 		if c == nil {
-			m.status = "远程连接不可用"
+			m.status = m.tr("远程连接不可用")
 			return
 		}
 		// Saved credentials may have changed since this project was last opened.

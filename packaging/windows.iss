@@ -13,7 +13,7 @@ ArchitecturesInstallIn64BitMode={#AppArchitecture}
 DisableDirPage=no
 DisableProgramGroupPage=yes
 UsePreviousAppDir=yes
-UninstallDisplayIcon={app}\pencode.exe
+UninstallDisplayIcon={app}\Pencode.exe
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputName}
 Compression=lzma2
@@ -34,22 +34,21 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Pencode"; Filename: "{app}\pencode.exe"
-Name: "{autodesktop}\Pencode"; Filename: "{app}\pencode.exe"; Tasks: desktopicon
+Name: "{group}\Pencode"; Filename: "{app}\Pencode.exe"
+Name: "{autodesktop}\Pencode"; Filename: "{app}\Pencode.exe"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Classes\Applications\pencode.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Pencode"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\Applications\pencode.exe\DefaultIcon"; ValueType: string; ValueData: "{app}\pencode.exe,0"
-Root: HKCU; Subkey: "Software\Classes\Applications\pencode.exe\shell\open\command"; ValueType: string; ValueData: """{app}\pencode.exe"" -- ""%1"""
-Root: HKCU; Subkey: "Software\Classes\Pencode.File"; ValueType: string; ValueData: "Pencode"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\Pencode.File\DefaultIcon"; ValueType: string; ValueData: "{app}\pencode.exe,0"
-Root: HKCU; Subkey: "Software\Classes\Pencode.File\shell\open\command"; ValueType: string; ValueData: """{app}\pencode.exe"" -- ""%1"""
-
-; Register alternatives without changing the user's default application.
-#define FileExtensions ".txt|.text|.log|.md|.markdown|.mdx|.rst|.adoc|.org|.go|.mod|.sum|.work|.rs|.c|.h|.cc|.cpp|.cxx|.hpp|.hxx|.m|.mm|.js|.jsx|.mjs|.cjs|.ts|.tsx|.mts|.cts|.vue|.svelte|.astro|.html|.htm|.xml|.svg|.css|.scss|.sass|.less|.json|.jsonc|.jsonl|.yaml|.yml|.toml|.ini|.conf|.cfg|.properties|.env|.py|.pyi|.rb|.php|.java|.kt|.kts|.scala|.swift|.dart|.cs|.fs|.fsx|.vb|.sh|.bash|.zsh|.fish|.ps1|.bat|.cmd|.lua|.pl|.pm|.r|.jl|.ex|.exs|.erl|.hrl|.hs|.lhs|.clj|.cljs|.cljc|.edn|.elm|.ml|.mli|.sql|.graphql|.gql|.proto|.csv|.tsv|.tex|.bib|.diff|.patch|.s|.asm|.cmake|.mk|.nix|.tf|.tfvars|.hcl|.lock|"
-#sub RegisterFileType
-  #define Extension Copy(FileExtensions, 1, Pos("|", FileExtensions) - 1)
-Root: HKCU; Subkey: "Software\Classes\Applications\pencode.exe\SupportedTypes"; ValueType: string; ValueName: "{#Extension}"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\{#Extension}\OpenWithProgids"; ValueType: string; ValueName: "Pencode.File"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
-#endsub
-#for {FileExtensions = FileExtensions; FileExtensions != ""; FileExtensions = Copy(FileExtensions, Pos("|", FileExtensions) + 1)} RegisterFileType
+Root: HKCU; Subkey: "Software\Classes\Applications\Pencode.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Pencode"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Applications\Pencode.exe\DefaultIcon"; ValueType: string; ValueData: "{app}\Pencode.exe,0"
+Root: HKCU; Subkey: "Software\Classes\Applications\Pencode.exe\shell\open\command"; ValueType: string; ValueData: """{app}\Pencode.exe"" -- ""%1"""
+Root: HKCU; Subkey: "Software\Classes\Pencode.File"; ValueType: string; ValueData: "Pencode Text and Source File"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Pencode.File\DefaultIcon"; ValueType: string; ValueData: "{app}\Pencode.exe,0"
+Root: HKCU; Subkey: "Software\Classes\Pencode.File\shell\open"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Pencode"
+Root: HKCU; Subkey: "Software\Classes\Pencode.File\shell\open\command"; ValueType: string; ValueData: """{app}\Pencode.exe"" -- ""%1"""
+Root: HKCU; Subkey: "Software\Classes\*\shell\Pencode"; ValueType: string; ValueData: "Open with Pencode"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\*\shell\Pencode"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\Pencode.exe,0"
+Root: HKCU; Subkey: "Software\Classes\*\shell\Pencode\command"; ValueType: string; ValueData: """{app}\Pencode.exe"" -- ""%1"""
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\Pencode"; ValueType: string; ValueData: "Open with Pencode"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\Pencode"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\Pencode.exe,0"
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\Pencode\command"; ValueType: string; ValueData: """{app}\Pencode.exe"" -- ""%1"""
+#include AssociationsFile

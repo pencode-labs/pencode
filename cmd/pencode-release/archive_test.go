@@ -17,23 +17,23 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 	for _, format := range []string{".zip", ".tar.gz", ".app"} {
 		t.Run(format, func(t *testing.T) {
 			workspace := t.TempDir()
-			root := filepath.Join(workspace, "pencode")
+			root := filepath.Join(workspace, "Pencode")
 			writeTestFile(t, filepath.Join(workspace, "onix", "LICENSE"), "Onix license", 0o644)
 			for _, name := range []string{"LICENSE", "README.md", "README.zh-CN.md", "resources/icons/CODICONS-LICENSE.txt", "resources/icons/LUCIDE-LICENSE.txt", "workbench/fonts/NERD-FONTS-LICENSE.txt"} {
 				writeTestFile(t, filepath.Join(root, name), name, 0o644)
 			}
-			bundle := filepath.Join(root, "pencode.app")
-			binary, catalog, data := "pencode/pencode", "pencode/resources/catalog.bin", "pencode/resources/base.dat"
+			bundle := filepath.Join(root, "Pencode.app")
+			binary, catalog, data := "Pencode/Pencode", "Pencode/resources/catalog.bin", "Pencode/resources/base.dat"
 			if format == ".app" {
-				binary = "pencode/pencode.app/Contents/MacOS/pencode"
-				catalog = "pencode/pencode.app/Contents/Resources/catalog.bin"
-				data = "pencode/pencode.app/Contents/Resources/base.dat"
+				binary = "Pencode/Pencode.app/Contents/MacOS/Pencode"
+				catalog = "Pencode/Pencode.app/Contents/Resources/catalog.bin"
+				data = "Pencode/Pencode.app/Contents/Resources/base.dat"
 			}
 			payloads := map[string]string{binary: "executable", catalog: "ONIXCAT2", data: "ONIXDAT5"}
 			for name, content := range payloads {
-				relative := strings.TrimPrefix(name, "pencode/")
+				relative := strings.TrimPrefix(name, "Pencode/")
 				if format == ".app" {
-					relative = strings.TrimPrefix(relative, "pencode.app/")
+					relative = strings.TrimPrefix(relative, "Pencode.app/")
 				}
 				mode := os.FileMode(0o644)
 				if name == binary {
@@ -108,7 +108,7 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 				if expected, ok := payloads[name]; ok && string(content) != expected {
 					t.Errorf("%s: payload changed", name)
 				}
-				if name == "pencode/pencode-version" && string(content) != "v1.0.0\n" {
+				if name == "Pencode/pencode-version" && string(content) != "v1.0.0\n" {
 					t.Errorf("release version: %q", content)
 				}
 				info, err := entry.Info()
@@ -122,7 +122,7 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{binary, catalog, data, "pencode/pencode-version", "pencode/LICENSE", "pencode/README.md", "pencode/README.zh-CN.md", "pencode/licenses/CODICONS-LICENSE.txt", "pencode/licenses/LUCIDE-LICENSE.txt", "pencode/licenses/NERD-FONTS-LICENSE.txt", "pencode/licenses/ONIX-LICENSE.txt"} {
+			for _, name := range []string{binary, catalog, data, "Pencode/pencode-version", "Pencode/LICENSE", "Pencode/README.md", "Pencode/README.zh-CN.md", "Pencode/licenses/CODICONS-LICENSE.txt", "Pencode/licenses/LUCIDE-LICENSE.txt", "Pencode/licenses/NERD-FONTS-LICENSE.txt", "Pencode/licenses/ONIX-LICENSE.txt"} {
 				if !seen[name] {
 					t.Errorf("missing %s", name)
 				}

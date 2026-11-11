@@ -157,7 +157,7 @@ go test -race -p 1 ./workbench -run '^TestConnection' -count=1
 
 ## 内置终端
 
-状态栏 **Terminal** 或 `Ctrl+反引号` 打开底部终端，首次打开在当前项目目录启动系统 shell。`Ctrl+Shift+反引号` 或工具栏新建图标创建独立会话，点击标签切换会话，标签上的关闭按钮终止对应会话；shell 中输入 `exit` 后自动关闭标签，最后一个终端关闭时自动收起面板。右键菜单提供复制、粘贴和清屏，Linux/Windows 使用 `Ctrl+Shift+K`，macOS 使用 `Cmd+Shift+K` 清除其他显示行与历史，保留当前输入行和光标位置；全屏应用使用的备用屏幕不受此操作影响。拖动底部面板上边缘调整高度；收起或切换 Output/Problems 保留正在运行的会话，关闭所属项目或退出时回收进程。
+状态栏 **Terminal** 或 `Ctrl+反引号` 打开底部终端，首次打开在当前项目目录启动系统 shell。`Ctrl+Shift+反引号` 或工具栏新建图标创建独立会话，点击标签切换会话，标签上的关闭按钮终止对应会话；shell 中输入 `exit` 后自动关闭标签，最后一个终端关闭时自动收起面板。右键菜单提供复制、粘贴和清屏，Linux/Windows 使用 `Ctrl+Shift+K`，macOS 使用 `Cmd+Shift+K` 清除其他显示行与历史；输入编辑器启用括号粘贴时，同时请求其清屏并重绘完整提示符，保留未提交的输入。其他情况下保留当前输入行和光标位置；全屏应用使用的备用屏幕不受此操作影响。拖动底部面板上边缘调整高度；收起或切换 Output/Problems 保留正在运行的会话，关闭所属项目或退出时回收进程。
 
 终端模拟器和平台后端均位于 `terminal/`，仅使用 Go 标准库，没有新增外部包。Linux/macOS 直接打开 PTY、设置控制终端与窗口尺寸；Windows 直接调用 ConPTY 和进程 Job API，需要 Windows 10 1809 或更新版本。Unix 使用 `$SHELL`，默认 `/bin/sh`；Windows 优先启动已安装的 `pwsh.exe`，否则使用 `%COMSPEC%` / `cmd.exe`。
 

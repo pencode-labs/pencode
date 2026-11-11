@@ -125,6 +125,9 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 			_ = world.Insert(editor.control, model.workbenchTheme.editorStyle)
 		}
 	}
+	if control := world.Mut[html.Control](editor.control); control != nil {
+		control.ReadOnly = file.pageLoading
+	}
 	font := model.codeFont()
 	if binding := world.Mut[html.ControlTextFont](editor.control); binding != nil {
 		binding.Font = font

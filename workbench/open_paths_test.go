@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/pencode-labs/pencode/protocol"
 )
 
 func TestOpenPathsFilesAndDirectories(t *testing.T) {
@@ -29,15 +27,13 @@ func TestOpenPathsFilesAndDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	paths := []string{folder, filepath.Join(first, "中文 file.go"), filepath.Join(first, "other.txt"), filepath.Join(first, "中文 file.go"), filepath.Join(second, "last.json")}
-	if err := s.OpenPaths(paths...); err != nil {
-		t.Fatal(err)
-	}
-	paths[0] = "invalid" // The pending request owns its resolved paths.
-	for len(s.opening) != 0 {
-		if !m.pollOpenPaths() {
+	s.OpenPaths(paths...)
+	paths[0] = "invalid" // The pending request owns its path list.
+	for len(s.externalPaths) != 0 {
+		if !s.pollExternalPaths(m) {
 			t.Fatal("startup request did not advance")
 		}
-		if m.pollOpenPaths() {
+		if s.externalJob != nil && !s.externalJob.finished && s.pollExternalPaths(m) {
 			t.Fatal("another request ran before the previous file finished opening")
 		}
 		if err := awaitFileIO(t, m); err != nil {
@@ -61,29 +57,31 @@ func TestOpenPathsFilesAndDirectories(t *testing.T) {
 	if err != nil || string(data) != "edited\n" {
 		t.Fatalf("single-file save: %q, %v", data, err)
 	}
-	if allocations := testing.AllocsPerRun(100, func() { m.pollOpenPaths() }); allocations != 0 {
+	if allocations := testing.AllocsPerRun(100, func() { s.pollExternalPaths(m) }); allocations != 0 {
 		t.Fatalf("idle path polling allocated %g times", allocations)
 	}
 }
 
 func TestOpenPathsValidation(t *testing.T) {
-	s := newPencodeTestSession(t, nil)
-	if err := s.OpenPaths(); err != nil || s.opening != nil {
-		t.Fatal("empty startup request created work", err)
+	s, m := externalTestSession(t)
+	s.OpenPaths()
+	if s.externalPaths != nil {
+		t.Fatal("empty startup request created work")
 	}
 	root := t.TempDir()
 	t.Chdir(root)
 	if err := os.WriteFile("-中文 file.txt", []byte("text"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.OpenPaths("-中文 file.txt"); err != nil {
-		t.Fatal(err)
-	}
-	if len(s.opening) != 1 || s.opening[0].directory != root || s.opening[0].file != "-中文 file.txt" {
+	s.OpenPaths("-中文 file.txt")
+	settleExternalPaths(t, s, m)
+	if m.activeProjectState().Path != root || m.activePath != "-中文 file.txt" {
 		t.Fatal("relative file path was not resolved")
 	}
-	if err := s.OpenPaths(root, "missing.txt"); err == nil || len(s.opening) != 1 || s.opening[0].file != "-中文 file.txt" {
-		t.Fatal("invalid path replaced the pending startup request")
+	s.OpenPaths("missing.txt")
+	settleExternalPaths(t, s, m)
+	if m.activePath != "-中文 file.txt" || m.status == "" {
+		t.Fatal("invalid path replaced the active file or failed silently")
 	}
 }
 
@@ -99,16 +97,14 @@ func TestOpenPathOverridesRestoredActiveTab(t *testing.T) {
 	}
 	m.projects, m.activeProjectIndex = nil, -1
 	m.syncActiveProjectFields()
-	m.acceptFileIO(&fileIOResult{job: &fileIOJob{kind: fileOpenWorkspace, backend: p.backend, relative: "requested.txt"}, workspace: protocol.Workspace{ID: p.workspace.ID, Path: p.Path, Name: p.Name}})
+	s.OpenPaths(filepath.Join(p.Path, "requested.txt"))
 	t.Cleanup(func() {
 		for _, project := range m.projects {
 			project.stopScan()
 			project.stopWatch()
 		}
 	})
-	if err := awaitFileIO(t, m); err != nil {
-		t.Fatal(err)
-	}
+	settleExternalPaths(t, s, m)
 	if m.activePath != "requested.txt" || len(m.tabs) != 2 || m.activeFile().Preview {
 		t.Fatalf("restoring project state replaced the requested file selection: active=%q tabs=%v status=%s", m.activePath, m.tabs, m.status)
 	}

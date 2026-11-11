@@ -39,7 +39,7 @@ func TestSaveEditedChunksAndEmptyDocument(t *testing.T) {
 	}
 	version := doc.Version
 	for _, value := range []string{text[:32760] + "替换\r\n" + text[32768:], "", "restored🙂"} {
-		version, err = s.Change(doc.ID, version, 0, uint32(len(text)), value)
+		version, err = s.Change(doc.ID, version, 0, 0, uint32(len(text)), value)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,7 +68,7 @@ func BenchmarkDocumentSave(b *testing.B) {
 			version, index := doc.Version, 0
 			b.ReportAllocs()
 			for b.Loop() {
-				version, err = s.Change(doc.ID, version, 1000, 1001, []string{"x", "y"}[index%2])
+				version, err = s.Change(doc.ID, version, 0, 1000, 1001, []string{"x", "y"}[index%2])
 				index++
 				if err != nil {
 					b.Fatal(err)
@@ -95,10 +95,10 @@ func TestVersionedAtomicSaveAndExternalConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Change(d.ID, 1, 2, 3, "x"); err == nil {
+	if _, err := s.Change(d.ID, 1, 0, 2, 3, "x"); err == nil {
 		t.Fatal("accepted split rune")
 	}
-	v, err := s.Change(d.ID, 1, 1, 4, "文🙂")
+	v, err := s.Change(d.ID, 1, 0, 1, 4, "文🙂")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestSymlinkAndMovedUnsavedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.Change(d.ID, d.Version, 0, 5, "unsaved")
+	v, err := s.Change(d.ID, d.Version, 0, 0, 5, "unsaved")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestSymlinkAndMovedUnsavedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err = s.Change(linked.ID, linked.Version, 0, 7, "through link")
+	v, err = s.Change(linked.ID, linked.Version, 0, 0, 7, "through link")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestWarmDocumentChangesDoNotAllocate(t *testing.T) {
 	version := d.Version
 	if n := testing.AllocsPerRun(100, func() {
 		var err error
-		version, err = s.Change(d.ID, version, 0, 1, "x")
+		version, err = s.Change(d.ID, version, 0, 0, 1, "x")
 		if err != nil {
 			panic(err)
 		}

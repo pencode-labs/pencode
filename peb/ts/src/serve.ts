@@ -55,6 +55,7 @@ export async function serveExtension(
     if (!first || first.kind !== Kind.Initialize) throw new ProtocolError();
     const hello = decode(HelloCodec, first.payload);
     let required = c.actions.length || c.actionService ? Capability.Actions : 0;
+    if (c.languagePacks.length) required |= Capability.LanguagePacks;
     if (c.themes.length) required |= Capability.EditorThemes;
     if (c.iconThemes.length) required |= Capability.FileIcons;
     if (c.fonts.length) required |= Capability.Fonts;

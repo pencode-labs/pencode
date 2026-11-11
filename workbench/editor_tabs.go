@@ -92,7 +92,7 @@ func (m *workspaceModel) beginEditorClose(request pencodeCloseRequest) {
 	}
 	if m.fileCloseBlocked(request.action, request.project) {
 		m.fileClose = request
-		m.setActiveStatus("正在等待文件操作完成后关闭…")
+		m.setActiveStatus(m.tr("正在等待文件操作完成后关闭…"))
 		return
 	}
 	for _, tab := range request.editorTabs {
@@ -105,7 +105,7 @@ func (m *workspaceModel) beginEditorClose(request pencodeCloseRequest) {
 		file := tab.project.Files[tab.path]
 		if document := m.customDocuments[file]; document != nil && document.busy() {
 			m.customClose = request
-			m.setActiveStatus("正在等待编辑工具完成操作…")
+			m.setActiveStatus(m.tr("正在等待编辑工具完成操作…"))
 			return
 		}
 	}

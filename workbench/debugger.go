@@ -205,7 +205,7 @@ func (m *workspaceModel) startDebug() {
 		return
 	}
 	if !m.backendConnected() {
-		u.message = "工作区服务未连接"
+		u.message = m.tr("工作区服务未连接")
 		return
 	}
 	if u.configProject != m.activeProjectState() || u.loading {
@@ -219,7 +219,7 @@ func (m *workspaceModel) startDebug() {
 	p := u.configProject
 	for _, f := range p.Files {
 		if f.Dirty {
-			u.message = "请先保存项目中的更改，再启动调试"
+			u.message = m.tr("请先保存项目中的更改，再启动调试")
 			return
 		}
 	}
@@ -391,7 +391,7 @@ eventsDrained:
 	}
 	if u.backend != m.backend || !m.backendConnected() {
 		m.closeDebugger()
-		u.message = "调试连接已断开"
+		u.message = m.tr("调试连接已断开")
 		return true
 	}
 	view := u.session.Snapshot()
@@ -581,7 +581,7 @@ func (m *workspaceModel) debugBreakpointSnapshot(p *pencodeProject) map[string][
 }
 
 func (m *workspaceModel) syncDebugBreakpoints(p *pencodeProject, file *openFile) {
-	if p == nil || file == nil || m.debug.session == nil || m.debug.project != p || file.Dirty {
+	if p == nil || file == nil || m.debug.session == nil || m.debug.project != p || file.Dirty || file.page.Paged {
 		return
 	}
 	list := make([]dap.SourceBreakpoint, 0, len(p.debugBreakpoints[file.Path]))
@@ -593,7 +593,7 @@ func (m *workspaceModel) syncDebugBreakpoints(p *pencodeProject, file *openFile)
 
 func (m *workspaceModel) toggleDebugBreakpoint(world *module.Content, line int) {
 	p, f := m.activeProjectState(), m.activeFile()
-	if p == nil || f == nil || !m.textEditorActive() {
+	if p == nil || f == nil || f.page.Paged || !m.textEditorActive() {
 		return
 	}
 	if line <= 0 {
@@ -629,7 +629,7 @@ func (m *workspaceModel) toggleDebugBreakpoint(world *module.Content, line int) 
 }
 
 func (m *workspaceModel) rebaseDebugBreakpoints(p *pencodeProject, f *openFile, value piecetree.Snapshot, start, oldEnd, newEnd int) {
-	if p == nil {
+	if p == nil || f.page.Paged {
 		return
 	}
 	list := p.debugBreakpoints[f.Path]
@@ -711,12 +711,12 @@ func (m *workspaceModel) debugRows() {
 		for _, name := range u.breakpointNames {
 			verified := u.view.Breakpoints[path.Join(p.Path, name)]
 			for i, bp := range p.debugBreakpoints[name] {
-				detail := "第 " + strconv.Itoa(bp.line) + " 行"
+				detail := m.tr("第 ") + strconv.Itoa(bp.line) + m.tr(" 行")
 				if u.session != nil && u.view.State < debugger.Ended {
 					if i < len(verified) && verified[i].Verified {
-						detail += " · 已验证"
+						detail += m.tr(" · 已验证")
 					} else {
-						detail += " · 待验证"
+						detail += m.tr(" · 待验证")
 						if i < len(verified) && verified[i].Message != "" {
 							detail += " · " + verified[i].Message
 						}
@@ -830,18 +830,18 @@ func (m *workspaceModel) renderDebugger(view *htmlui.View, definition *htmlui.De
 	for _, ref := range [...]string{"debug-next", "debug-stepIn", "debug-stepOut", "debug-evaluate", "debug-expression"} {
 		setContextMenuEnabled(view, ref, stopped)
 	}
-	label := "继续"
+	label := m.tr("继续")
 	icon, foreground := "icons/debug-continue.svg", "debugIcon.continueForeground"
-	title := m.shortcutTitle("继续", "debug-start")
+	title := m.shortcutTitle(m.tr("继续"), "debug-start")
 	if u.view.State == debugger.Running {
-		label = "暂停"
-		title = "暂停执行"
+		label = m.tr("暂停")
+		title = m.tr("暂停执行")
 		icon, foreground = "icons/debug-pause.svg", "debugIcon.pauseForeground"
 	}
 	view.Attr("debug-continue", "aria-label", label)
 	view.Attr("debug-continue", "title", title)
 	view.Attr("debug-continue-icon", "src", m.themedIcon(icon, foreground))
-	for _, command := range [...]struct{ ref, name string }{{"debug-start", "启动调试"}, {"debug-next", "单步跳过"}, {"debug-stepIn", "单步进入"}, {"debug-stepOut", "单步跳出"}, {"debug-stop", "停止 / 分离"}} {
+	for _, command := range [...]struct{ ref, name string }{{"debug-start", m.tr("启动调试")}, {"debug-next", m.tr("单步跳过")}, {"debug-stepIn", m.tr("单步进入")}, {"debug-stepOut", m.tr("单步跳出")}, {"debug-stop", m.tr("停止 / 分离")}} {
 		view.Attr(command.ref, "title", m.shortcutTitle(command.name, command.ref))
 	}
 	view.Text("debug-console", u.output)

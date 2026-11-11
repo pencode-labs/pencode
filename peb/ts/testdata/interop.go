@@ -28,6 +28,7 @@ func main() {
 	data, err := peb.EncodeHello(nil, peb.Hello{Host: "pencode", Capabilities: peb.Capabilities})
 	add("Hello", data, err)
 	data, err = peb.EncodeContributions(nil, peb.Contributions{
+		LanguagePacks:   []peb.LanguagePack{{ID: "es", Label: "Español", Path: "resources/locales/es.json"}},
 		Themes:          []peb.Theme{{ID: "theme", Label: "主题", Path: "resources/theme.json"}},
 		IconThemes:      []peb.IconTheme{{ID: "icons", Label: "图标", Rules: []peb.IconRule{{Pattern: ".docx", Path: "resources/office.svg", Match: peb.FileSuffix}}}},
 		Fonts:           []peb.Font{{ID: "font", Label: "字体", Path: "resources/font.ttf", BoldPath: "resources/bold.ttf"}},

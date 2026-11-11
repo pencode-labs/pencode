@@ -92,21 +92,21 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 		return
 	}
 	if model.session == nil || model.session.backend == nil {
-		m.feedback = "服务未连接"
+		m.feedback = model.tr("服务未连接")
 		return
 	}
-	m.busy, m.feedback = true, "正在读取扩展…"
+	m.busy, m.feedback = true, model.tr("正在读取扩展…")
 	switch op {
 	case pencodeMarketInstall:
-		m.feedback = "正在安装扩展…"
+		m.feedback = model.tr("正在安装扩展…")
 	case pencodeMarketUninstall:
-		m.feedback = "正在卸载扩展…"
+		m.feedback = model.tr("正在卸载扩展…")
 	case pencodeMarketEnable:
-		m.feedback = "正在启用扩展…"
+		m.feedback = model.tr("正在启用扩展…")
 	case pencodeMarketDisable:
-		m.feedback = "正在禁用扩展…"
+		m.feedback = model.tr("正在禁用扩展…")
 	case pencodeMarketOpenDirectory:
-		m.feedback = "正在打开扩展目录…"
+		m.feedback = model.tr("正在打开扩展目录…")
 		source = m.directory
 	}
 	ctx, cancel := context.WithCancel(output.WithStore(context.Background(), model.outputStore()))
@@ -199,7 +199,7 @@ func (model *workspaceModel) pollMarketplace() bool {
 			for _, bundle := range result.bundles {
 				bundle.Close()
 			}
-			m.feedback = fmt.Sprintf("操作失败：%v", result.err)
+			m.feedback = fmt.Sprintf(model.tr("操作失败：%v"), result.err)
 			return true
 		}
 		if result.op == pencodeMarketOpenDirectory {
@@ -232,7 +232,7 @@ func (model *workspaceModel) pollMarketplace() bool {
 			}
 			if err := model.importExtension(bundle); err != nil {
 				bundle.Close()
-				loadError = fmt.Sprintf("扩展 %s 加载失败：%v", id, err)
+				loadError = fmt.Sprintf(model.tr("扩展 %s 加载失败：%v"), id, err)
 				continue
 			}
 			model.setExtensionState(id, pencodeExtensionLoaded)
@@ -242,14 +242,14 @@ func (model *workspaceModel) pollMarketplace() bool {
 			if model.extensionStates[result.id] != pencodeExtensionRemoved {
 				model.removeExtension(result.id)
 			}
-			m.feedback = "扩展已卸载"
+			m.feedback = model.tr("扩展已卸载")
 		case pencodeMarketInstall:
-			m.selected, m.feedback = result.id, "扩展已安装"
+			m.selected, m.feedback = result.id, model.tr("扩展已安装")
 			_, found = present[result.id]
 		case pencodeMarketEnable:
-			m.feedback = "扩展已启用"
+			m.feedback = model.tr("扩展已启用")
 		case pencodeMarketDisable:
-			m.feedback = "扩展已禁用"
+			m.feedback = model.tr("扩展已禁用")
 		default:
 			m.feedback = ""
 		}
@@ -298,9 +298,9 @@ func (model *workspaceModel) handleMarketplaceEvent(c *module.ContentEventContex
 		if m.busy || model.app == nil || model.app.OpenFolder == nil {
 			return true
 		}
-		source, err := model.app.OpenFolder(window.FileDialogOptions{Title: "选择扩展目录（包含 resources/extension.json）", DefaultPath: model.lastDirectory})
+		source, err := model.app.OpenFolder(window.FileDialogOptions{Title: model.tr("选择扩展目录（包含 resources/extension.json）"), DefaultPath: model.lastDirectory})
 		if err != nil {
-			m.feedback = fmt.Sprintf("选择扩展失败：%v", err)
+			m.feedback = fmt.Sprintf(model.tr("选择扩展失败：%v"), err)
 		} else if source != "" {
 			model.startMarketOperation(pencodeMarketInstall, source, "")
 		}
@@ -414,9 +414,9 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 		m.rowsModel, m.rowsRevision, m.rowsDefinition = model, m.revision, definition
 	}
 	view.Components("market-list", m.rows)
-	label := "禁用扩展"
+	label := model.tr("禁用扩展")
 	if m.selectedItem != nil && m.selectedItem.Disabled {
-		label = "启用扩展"
+		label = model.tr("启用扩展")
 	}
 	view.Text("market-toggle", label)
 	if m.busy || m.selectedItem == nil {

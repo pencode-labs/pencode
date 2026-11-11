@@ -228,7 +228,7 @@ func (a *workspaceModel) sourceAction(id string) {
 				continue
 			}
 			if parts[0] != "history" && parts[0] != "staged" && a.sourcePathDirty(file.Path) {
-				s.Notice = "请先保存此文件的编辑内容，再打开工作区比较或合并。"
+				s.Notice = a.tr("请先保存此文件的编辑内容，再打开工作区比较或合并。")
 				break
 			}
 			kind, hash := parts[0], s.SelectedHash
@@ -297,7 +297,7 @@ func (a *workspaceModel) sourceAction(id string) {
 				continue
 			}
 			if !unstage && a.sourcePathDirty(f.Path) {
-				s.Notice = "请先保存文件的编辑内容，再暂存。"
+				s.Notice = a.tr("请先保存文件的编辑内容，再暂存。")
 				a.sourceChanged()
 				return
 			}
@@ -313,7 +313,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	case id == "sc-create-commit":
 		if s.Snapshot.syncPending() {
 			if a.sourceHasDrafts() || s.unsaved() {
-				s.Notice = "请先保存编辑内容，再同步远程。"
+				s.Notice = a.tr("请先保存编辑内容，再同步远程。")
 				break
 			}
 			a.sourceJob(sourceSync, func() sourceResult {
@@ -330,11 +330,11 @@ func (a *workspaceModel) sourceAction(id string) {
 			break
 		}
 		if s.unsaved() || len(s.Snapshot.Groups[0]) != 0 {
-			s.Notice = "请先完成并保存所有合并，再提交。"
+			s.Notice = a.tr("请先完成并保存所有合并，再提交。")
 			break
 		}
 		if len(s.Snapshot.Groups[1]) == 0 && a.sourceHasDrafts() {
-			s.Notice = "请先保存编辑内容，再自动暂存并提交。"
+			s.Notice = a.tr("请先保存编辑内容，再自动暂存并提交。")
 			break
 		}
 		message := s.CommitMessage
@@ -357,7 +357,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	case id == "sc-save-merge":
 		if tab := s.activeTab(); tab != nil && tab.Kind == "merge" {
 			if a.sourcePathDirty(tab.Path) {
-				s.Notice = "该文件还有未保存的普通编辑内容，请先保存后重新打开合并。"
+				s.Notice = a.tr("该文件还有未保存的普通编辑内容，请先保存后重新打开合并。")
 				break
 			}
 			value := *tab
@@ -383,7 +383,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	case id == "sc-save-diff":
 		if tab := s.activeTab(); tab != nil && tab.editable() && tab.Result != tab.Saved {
 			if a.sourcePathDirty(tab.Path) {
-				s.Notice = "该文件还有未保存的普通编辑内容，请先保存后重新打开差异。"
+				s.Notice = a.tr("该文件还有未保存的普通编辑内容，请先保存后重新打开差异。")
 				break
 			}
 			value := *tab
@@ -515,7 +515,7 @@ func (a *workspaceModel) confirmSourceOperation() {
 		return
 	}
 	if a.sourceHasDrafts() || s.unsaved() {
-		s.Notice = "请先保存编辑器中的项目修改，再执行 Git 工作区操作。"
+		s.Notice = a.tr("请先保存编辑器中的项目修改，再执行 Git 工作区操作。")
 		return
 	}
 	var args []string
@@ -578,7 +578,7 @@ func (a *workspaceModel) discardSourceChanges(op, key string) {
 	}
 	for _, f := range files {
 		if a.sourcePathDirty(f.Path) {
-			s.Notice = "请先保存此文件的编辑内容，再放弃修改。"
+			s.Notice = a.tr("请先保存此文件的编辑内容，再放弃修改。")
 			return
 		}
 	}
@@ -612,7 +612,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	b.reset()
 	b.open("section", "source", "id", "sc-panel", "class", "sc-panel", "aria-label", "Source Control")
 	if s.RepositoryError != "" {
-		b.text("p", "repository-error", "当前文件夹未检测到 Git 仓库。", "id", "sc-repository-error", "class", "muted", "role", "status", "title", s.RepositoryError)
+		b.text("p", "repository-error", a.tr("当前文件夹未检测到 Git 仓库。"), "id", "sc-repository-error", "class", "muted", "role", "status", "title", s.RepositoryError)
 		b.close()
 		return
 	}
@@ -710,7 +710,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	if key.Resizing {
 		resizeClass += " resizing"
 	}
-	b.text("div", "changes-resize", "", "id", "sc-changes-resize", "class", resizeClass, "role", "separator", "aria-orientation", "vertical", "aria-label", "拖动调整改动列表宽度", "aria-controls", "sc-changes")
+	b.text("div", "changes-resize", "", "id", "sc-changes-resize", "class", resizeClass, "role", "separator", "aria-orientation", "vertical", "aria-label", a.tr("拖动调整改动列表宽度"), "aria-controls", "sc-changes")
 	b.open("section", "history", "id", "sc-history", "class", "sc-history", "aria-label", "Source Control Graph")
 	b.text("h2", "title", "Source Control Graph", "class", "sc-heading")
 	b.open("div", "graph", "id", "sc-graph", "class", "sc-graph")

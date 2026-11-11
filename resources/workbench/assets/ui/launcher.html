@@ -129,6 +129,7 @@
         <div data-ref="settings-feedback" class="pencode-settings-feedback" role="status" aria-live="polite" hidden></div>
         <div data-ref="extensions-feedback" class="pencode-settings-feedback" role="status" aria-live="polite" hidden></div>
         <section id="settings-appearance-pane" data-ref="settings-appearance-pane" aria-label="外观设置">
+          <div class="pencode-settings-row"><label for="language-select">界面语言</label><select id="language-select" data-ref="language-select" class="pencode-settings-select" aria-label="界面语言"></select></div>
           <div class="pencode-settings-row">
             <span>代码行宽度（编辑区域百分比）</span>
             <div class="pencode-settings-stepper">
@@ -180,8 +181,8 @@
         </section>
         <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
           <div class="pencode-settings-row"><span>Pencode 版本</span><span data-ref="update-version" class="pencode-settings-value"></span></div>
-          <p data-ref="update-status" class="pencode-setting-description" role="status" aria-live="polite"></p>
-          <div class="pencode-settings-row">
+          <div class="pencode-settings-row pencode-update-row">
+            <p data-ref="update-status" class="pencode-setting-description" role="status" aria-live="polite"></p>
             <button data-ref="update-action" class="pencode-settings-reset" type="button">检查更新</button>
           </div>
         </section>

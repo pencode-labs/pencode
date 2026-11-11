@@ -45,10 +45,14 @@ func nativePackageVersion(version, platform string) string {
 }
 
 func buildInstaller(stage, destination, project, version string) error {
-	payload := filepath.Join(stage, "pencode")
+	payload := filepath.Join(stage, "Pencode")
 	packageVersion := nativePackageVersion(version, runtime.GOOS)
 	switch runtime.GOOS {
 	case "windows":
+		associations := filepath.Join(stage, "file-associations.iss")
+		if err := os.WriteFile(associations, []byte(windowsFileAssociations()), 0o644); err != nil {
+			return err
+		}
 		compiler := os.Getenv("ISCC")
 		if compiler == "" {
 			compiler = "iscc"
@@ -60,9 +64,10 @@ func buildInstaller(stage, destination, project, version string) error {
 		return runPackaging(compiler, "/DSourceDir="+payload, "/DOutputDir="+filepath.Dir(destination),
 			"/DOutputName="+strings.TrimSuffix(filepath.Base(destination), ".exe"),
 			"/DAppVersion="+version, "/DAppArchitecture="+architecture,
+			"/DAssociationsFile="+associations,
 			filepath.Join(project, "packaging", "windows.iss"))
 	case "darwin":
-		bundle := filepath.Join(payload, "pencode.app")
+		bundle := filepath.Join(payload, "Pencode.app")
 		// Contents is reserved for signed code; data belongs in Resources.
 		resources := filepath.Join(bundle, "Contents", "Resources")
 		if err := os.MkdirAll(resources, 0o755); err != nil {
@@ -88,16 +93,20 @@ func buildInstaller(stage, destination, project, version string) error {
 		if err := os.Rename(payload, filepath.Join(root, "opt", "pencode")); err != nil {
 			return err
 		}
-		control := fmt.Sprintf("Package: pencode\nVersion: %s\nSection: devel\nPriority: optional\nArchitecture: %s\nMaintainer: Pencode contributors\nHomepage: https://github.com/pencode-labs/pencode\nDepends: libc6, libx11-6, libxext6, libxrender1, libxi6, libwayland-client0, libwayland-cursor0, libwayland-egl1, libxkbcommon0, libgl1\nDescription: Pencode code editor\n", packageVersion, runtime.GOARCH)
+		control := fmt.Sprintf("Package: pencode\nVersion: %s\nSection: devel\nPriority: optional\nArchitecture: %s\nMaintainer: Pencode contributors\nHomepage: https://github.com/pencode-labs/pencode\nDepends: libc6, libx11-6, libxext6, libxrender1, libxi6, libwayland-client0, libwayland-cursor0, libwayland-egl1, libxkbcommon0, libgl1, desktop-file-utils\nDescription: Pencode code editor\n", packageVersion, runtime.GOARCH)
 		if err := os.WriteFile(filepath.Join(root, "DEBIAN", "control"), []byte(control), 0o644); err != nil {
 			return err
 		}
-		if err := os.Symlink("/opt/pencode/pencode", filepath.Join(root, "usr", "bin", "pencode")); err != nil {
+		if err := os.Symlink("/opt/pencode/Pencode", filepath.Join(root, "usr", "bin", "pencode")); err != nil {
 			return err
 		}
-		desktop := "[Desktop Entry]\nType=Application\nName=Pencode\nComment=Code editor\nExec=/opt/pencode/pencode %F\nIcon=pencode\nTerminal=false\nCategories=Development;IDE;\nStartupWMClass=pencode\n"
-		if err := os.WriteFile(filepath.Join(root, "usr", "share", "applications", "pencode.desktop"), []byte(desktop), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(root, "usr", "share", "applications", "pencode.desktop"), []byte(linuxDesktopEntry), 0o644); err != nil {
 			return err
+		}
+		for _, name := range []string{"postinst", "postrm"} {
+			if err := os.WriteFile(filepath.Join(root, "DEBIAN", name), []byte("#!/bin/sh\nset -e\nif command -v update-desktop-database >/dev/null 2>&1; then\n    update-desktop-database -q /usr/share/applications\nfi\n"), 0o755); err != nil {
+				return err
+			}
 		}
 		icon, err := os.ReadFile(filepath.Join(project, "resources", "icons", "pencode.svg"))
 		if err != nil {

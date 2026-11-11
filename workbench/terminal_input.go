@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
@@ -23,42 +24,47 @@ func (m *workspaceModel) terminalFocused(world *module.Content) bool {
 // The native text field owns pointer selection and IME; shell editing happens in
 // the PTY. Its keyboard interceptor runs exactly once in the native input phase.
 func (m *workspaceModel) terminalKeys(state *input.State) bool {
+	v := &m.terminalView
+	defer func() { v.keys = v.keys[:0] }()
 	t := m.terminals
 	if m.terminalView.context.open || m.terminalView.context.keysHandled {
+		v.repeatKey = 0
 		return true
 	}
 	if t == nil || t.active == nil {
 		return true
 	}
+	m.ensureSettings()
 	item := t.active
 	s := item.screen
+	m.repeatTerminalKeys(state, time.Now())
 	ctrl := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
 	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
 	super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
 	alt := state.KeyHeld(input.KeyLeftAlt) || state.KeyHeld(input.KeyRightAlt)
-	if m.commandMatches("terminal-toggle", state, runtime.GOOS) || m.commandMatches("terminal-new", state, runtime.GOOS) {
+	if m.terminalCommandCount("terminal-toggle", state) > 0 || m.terminalCommandCount("terminal-new", state) > 0 {
+		v.repeatKey = 0
 		return true
 	}
-	copyKey := m.commandMatches("terminal-copy", state, runtime.GOOS)
-	pasteKey := m.commandMatches("terminal-paste", state, runtime.GOOS) || m.commandMatches("terminal-paste-alternate", state, runtime.GOOS)
+	copyKey := m.terminalCommandCount("terminal-copy", state) > 0
+	pasteKey := m.terminalCommandCount("terminal-paste", state) > 0 || m.terminalCommandCount("terminal-paste-alternate", state) > 0
 	if copyKey {
+		v.repeatKey = 0
 		m.terminalAction(state, "terminal-copy", m.terminalSelection())
 		return true
 	}
 	if pasteKey {
+		v.repeatKey = 0
 		m.terminalAction(state, "terminal-paste", "")
 		return true
 	}
-	if m.commandMatches("terminal-clear", state, runtime.GOOS) {
+	if m.terminalCommandCount("terminal-clear", state) > 0 {
+		v.repeatKey = 0
 		m.terminalAction(state, "terminal-clear", "")
 		return true
 	}
-	if m.commandMatches("terminal-scroll-up", state, runtime.GOOS) || m.commandMatches("terminal-scroll-down", state, runtime.GOOS) {
-		step := s.Rows - 1
-		if m.commandMatches("terminal-scroll-down", state, runtime.GOOS) {
-			step = -step
-		}
-		item.scroll = max(0, min(len(s.History)/s.Cols, item.scroll+step))
+	if up, down := m.terminalCommandCount("terminal-scroll-up", state), m.terminalCommandCount("terminal-scroll-down", state); up != 0 || down != 0 {
+		item.scroll = max(0, min(len(s.History)/s.Cols, item.scroll+(s.Rows-1)*(up-down)))
 		markPencodeRootDirtyByModel(m.fontResources, m)
 		return true
 	}
@@ -67,36 +73,38 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 	}
 	if ctrl {
 		var b byte
-		found := false
+		count := 0
 		for key := input.KeyA; key <= input.KeyZ; key++ {
-			if state.KeyPressed(key) {
+			if m.terminalKeyCount(state, key) > 0 {
 				b = byte(key-input.KeyA) + 1
-				found = true
+				count = m.terminalKeyCount(state, key)
 				break
 			}
 		}
-		if state.KeyPressed(input.KeySpace) {
+		if m.terminalKeyCount(state, input.KeySpace) > 0 {
 			b = 0
-			found = true
+			count = m.terminalKeyCount(state, input.KeySpace)
 		}
-		if state.KeyPressed(input.KeyLeftBracket) {
+		if m.terminalKeyCount(state, input.KeyLeftBracket) > 0 {
 			b = 27
-			found = true
+			count = m.terminalKeyCount(state, input.KeyLeftBracket)
 		}
-		if state.KeyPressed(input.KeyBackslash) {
+		if m.terminalKeyCount(state, input.KeyBackslash) > 0 {
 			b = 28
-			found = true
+			count = m.terminalKeyCount(state, input.KeyBackslash)
 		}
-		if state.KeyPressed(input.KeyRightBracket) {
+		if m.terminalKeyCount(state, input.KeyRightBracket) > 0 {
 			b = 29
-			found = true
+			count = m.terminalKeyCount(state, input.KeyRightBracket)
 		}
-		if found {
+		if count > 0 {
 			data := [2]byte{27, b}
-			if alt {
-				m.writeTerminal(item, data[:])
-			} else {
-				m.writeTerminal(item, data[1:])
+			for range count {
+				if alt {
+					m.writeTerminal(item, data[:])
+				} else {
+					m.writeTerminal(item, data[1:])
+				}
 			}
 			return true
 		}
@@ -119,7 +127,7 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 		{code: input.KeyInsert, sequence: "2~", final: ""}, {code: input.KeyDelete, sequence: "3~", final: ""}, {code: input.KeyPageUp, sequence: "5~", final: ""}, {code: input.KeyPageDown, sequence: "6~", final: ""},
 		{code: input.KeyF1, sequence: "P", final: "P"}, {code: input.KeyF2, sequence: "Q", final: "Q"}, {code: input.KeyF3, sequence: "R", final: "R"}, {code: input.KeyF4, sequence: "S", final: "S"}, {code: input.KeyF5, sequence: "15~", final: ""}, {code: input.KeyF6, sequence: "17~", final: ""}, {code: input.KeyF7, sequence: "18~", final: ""}, {code: input.KeyF8, sequence: "19~", final: ""}, {code: input.KeyF9, sequence: "20~", final: ""}, {code: input.KeyF10, sequence: "21~", final: ""}, {code: input.KeyF11, sequence: "23~", final: ""}, {code: input.KeyF12, sequence: "24~", final: ""},
 	} {
-		if state.KeyPressed(key.code) {
+		if count := m.terminalKeyCount(state, key.code); count > 0 {
 			prefix := "\x1b["
 			sequence := key.sequence
 			if key.final != "" {
@@ -131,24 +139,46 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 			} else if modifier > 1 {
 				sequence = strings.TrimSuffix(sequence, "~") + ";" + strconv.Itoa(modifier) + "~"
 			}
-			m.writeTerminal(item, []byte(prefix+sequence))
+			var buffer [16]byte
+			data := append(buffer[:0], prefix...)
+			data = append(data, sequence...)
+			for range count {
+				m.writeTerminal(item, data)
+			}
 			return true
 		}
 	}
-	if state.KeyPressed(input.KeyEscape) && !state.Composing() {
-		m.writeTerminal(item, []byte{27})
+	if m.terminalKeyCount(state, input.KeyEscape) > 0 && !state.Composing() {
+		for range m.terminalKeyCount(state, input.KeyEscape) {
+			m.writeTerminal(item, []byte{27})
+		}
 		return true
 	}
-	if state.KeyPressed(input.KeyTab) && !state.Composing() {
+	if m.terminalKeyCount(state, input.KeyTab) > 0 && !state.Composing() {
 		value := "\t"
 		if shift {
 			value = "\x1b[Z"
 		}
-		m.writeTerminal(item, []byte(value))
+		for range m.terminalKeyCount(state, input.KeyTab) {
+			m.writeTerminal(item, []byte(value))
+		}
 		return true
 	}
-	v := &m.terminalView
 	v.edits = state.AppendTextEdits(v.edits[:0])
+	for _, key := range [...]struct {
+		key     input.KeyCode
+		command input.TextCommand
+	}{{input.KeyBackspace, input.TextCommandBackspace}, {input.KeyEnter, input.TextCommandEnter}} {
+		count := m.terminalKeyCount(state, key.key)
+		for _, edit := range v.edits {
+			if edit.Command == key.command {
+				count--
+			}
+		}
+		for range max(0, count) {
+			v.edits = append(v.edits, input.TextEdit{Command: key.command, DuringComposition: state.Composing() || state.KeyPressedDuringComposition(key.key)})
+		}
+	}
 	for _, edit := range v.edits {
 		if edit.DuringComposition {
 			continue
@@ -169,6 +199,77 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 	}
 	return true
 }
+
+// Keep platform repeats separate from KeyPressed, which deliberately reports
+// only the initial edge for application shortcuts.
+func (m *workspaceModel) terminalInput(context *scene.FocusedInputContext) {
+	v := &m.terminalView
+	event := context.Event
+	if event.Kind == input.EventKeyUp && event.Key == v.repeatKey {
+		v.repeatKey = 0
+	}
+	if event.Kind != input.EventKeyDown {
+		return
+	}
+	v.keys = append(v.keys, event.Key)
+	state, _ := context.World.GetResource[*input.State]()
+	ctrl := state != nil && (state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl))
+	if event.Key >= input.KeyEscape && event.Key <= input.KeyEnd || event.Key >= input.KeyF1 && event.Key <= input.KeyF12 || ctrl && (event.Key >= input.KeyA && event.Key <= input.KeyZ || event.Key == input.KeySpace || event.Key >= input.KeyLeftBracket && event.Key <= input.KeyRightBracket) {
+		v.repeatKey, v.repeatAt = event.Key, time.Now().Add(500*time.Millisecond)
+	} else if event.Key < input.KeyLeftShift {
+		v.repeatKey = 0
+	}
+}
+
+// Schedule held control keys as well as accepting native repeats. Some window
+// backends deliver only the initial down event; native repeats reset the timer.
+func (m *workspaceModel) repeatTerminalKeys(state *input.State, now time.Time) {
+	v := &m.terminalView
+	if v.repeatKey == 0 {
+		return
+	}
+	if !state.KeyHeld(v.repeatKey) || state.Composing() {
+		v.repeatKey = 0
+		return
+	}
+	if !now.Before(v.repeatAt) {
+		v.keys = append(v.keys, v.repeatKey)
+		v.repeatAt = now.Add(35 * time.Millisecond)
+	}
+	if m.app != nil && m.app.WakeAt != nil {
+		m.app.WakeAt(v.repeatAt)
+	}
+}
+
+func (m *workspaceModel) terminalKeyCount(state *input.State, key input.KeyCode) int {
+	count := 0
+	for _, pressed := range m.terminalView.keys {
+		if pressed == key {
+			count++
+		}
+	}
+	if count == 0 && state.KeyPressed(key) {
+		count = 1
+	}
+	return count
+}
+
+func (m *workspaceModel) terminalCommandCount(id string, state *input.State) int {
+	binding := m.settings.Bindings[id]
+	count := m.terminalKeyCount(state, binding.Key)
+	if count == 0 || binding.matches(state, runtime.GOOS) {
+		return count
+	}
+	ctrl := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
+	super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
+	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
+	alt := state.KeyHeld(input.KeyLeftAlt) || state.KeyHeld(input.KeyRightAlt)
+	if ctrl == (binding.Control || binding.Primary && runtime.GOOS != "darwin") && super == (binding.Super || binding.Primary && runtime.GOOS == "darwin") && shift == binding.Shift && alt == binding.Alt {
+		return count
+	}
+	return 0
+}
+
 func (m *workspaceModel) terminalShortcut(world *module.Content, state *input.State) (bool, bool) {
 	if m.terminalView.context.open {
 		return true, m.terminalContextKeys(world, state)
@@ -192,6 +293,9 @@ func (m *workspaceModel) terminalShortcut(world *module.Content, state *input.St
 func (m *workspaceModel) updateTerminalPointer(world *module.Content, state *input.State) bool {
 	m.terminalView.context.keysHandled = false
 	if m.bottom.active != pencodePanelTerminal || m.screen != pencodeWorkspace || m.terminals == nil || m.terminals.active == nil || m.settingsOpen || m.quickOpen || m.findOpen || m.closing.action != pencodeCloseNone || m.market != nil && m.market.open {
+		if m.terminals != nil && m.terminals.active != nil {
+			m.terminals.active.selection.dragging = false
+		}
 		c := &m.terminalView.context
 		changed := c.open
 		c.open, c.selection = false, ""
@@ -204,13 +308,16 @@ func (m *workspaceModel) updateTerminalPointer(world *module.Content, state *inp
 	}
 	x, y := p.X/zoom, p.Y/zoom
 	if m.updateTerminalContext(world, state, x, y) {
+		m.terminals.active.selection.dragging = false
 		return true
 	}
 	if m.terminalView.context.open {
 		return false
 	}
-	if !m.pointerInsideRefs(world, x, y, []string{"terminal-content"}) {
-		return false
+	inside := m.pointerInsideRefs(world, x, y, []string{"terminal-content"})
+	selectionChanged := m.updateTerminalSelection(world, state, x, y, inside)
+	if !inside {
+		return selectionChanged
 	}
 	item := m.terminals.active
 	s := item.screen
@@ -285,7 +392,7 @@ func (m *workspaceModel) updateTerminalPointer(world *module.Content, state *inp
 		return false
 	}
 	if p.WheelY == 0 {
-		return false
+		return selectionChanged
 	}
 	if s.Alternate() {
 		sequence := "\x1b[A"
@@ -307,6 +414,9 @@ func (m *workspaceModel) updateTerminalPointer(world *module.Content, state *inp
 			}
 		}
 		item.scroll = max(0, min(len(s.History)/s.Cols, item.scroll+delta))
+	}
+	if item.selection.dragging {
+		m.updateTerminalSelection(world, state, x, y, inside)
 	}
 	state.ConsumePointerWheel()
 	return true

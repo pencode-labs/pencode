@@ -100,7 +100,7 @@ func (m *workspaceModel) saveProjectState(p *pencodeProject) {
 		state.Tabs = append(state.Tabs, tab)
 	}
 	if err := writeProjectState(file, &state); err != nil {
-		m.logOutput("pencode", "保存项目状态失败："+err.Error())
+		m.logOutput("pencode", m.tr("保存项目状态失败：")+err.Error())
 	}
 }
 
@@ -143,7 +143,7 @@ func (m *workspaceModel) restoreProjectState(p *pencodeProject) {
 		err = json.Unmarshal(data, state)
 	}
 	if err != nil {
-		m.logOutput("pencode", "读取项目状态失败："+err.Error())
+		m.logOutput("pencode", m.tr("读取项目状态失败：")+err.Error())
 		return
 	}
 	p.ExpandedDirs, p.Collapsed, p.AllDirectoriesCollapsed = state.ExpandedDirs, state.Collapsed, state.AllDirectoriesCollapsed
@@ -170,7 +170,7 @@ func (m *workspaceModel) restoreProjectState(p *pencodeProject) {
 	p.restoring = state
 	if err := m.submitFileIO(&fileIOJob{kind: fileRestore, project: p, workspace: p.workspace.ID, restore: state}); err != nil {
 		p.restoring = nil
-		m.setProjectStatus(p, "恢复标签失败："+err.Error())
+		m.setProjectStatus(p, m.tr("恢复标签失败：")+err.Error())
 	}
 }
 

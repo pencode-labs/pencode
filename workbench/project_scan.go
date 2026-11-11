@@ -303,7 +303,7 @@ func (model *workspaceModel) pollProjectScans() bool {
 					} else if project.Status == pencodeTreeLoading || project.Status == pencodeTreeReloading {
 						project.Status = ""
 						if !scan.initial {
-							project.Status = "已从磁盘重新加载"
+							project.Status = model.tr("已从磁盘重新加载")
 						}
 					}
 					project.stopScan()

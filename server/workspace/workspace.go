@@ -24,6 +24,7 @@ type project struct {
 }
 type document struct {
 	project *project
+	paged   *pagedDocument
 	path    string
 	tree    piecetree.Tree
 	version uint64
@@ -93,6 +94,9 @@ func (s *Store) CloseProject(id uint64) error {
 	for id, d := range s.documents {
 		if d.project == p {
 			s.bytes -= d.tree.Len()
+			if d.paged != nil {
+				d.paged.close()
+			}
 			delete(s.documents, id)
 		}
 	}
@@ -100,6 +104,11 @@ func (s *Store) CloseProject(id uint64) error {
 	return p.root.Close()
 }
 func (s *Store) Close() {
+	for _, d := range s.documents {
+		if d.paged != nil {
+			d.paged.close()
+		}
+	}
 	for id, p := range s.projects {
 		_ = p.root.Close()
 		delete(s.projects, id)
@@ -112,7 +121,7 @@ func validPath(name string) bool {
 	return fs.ValidPath(name) && name != "." && !strings.ContainsAny(name, "\\\x00")
 }
 
-func openFile(root *os.Root, name string, text bool) (*os.File, fs.FileInfo, error) {
+func openFile(root *os.Root, name string) (*os.File, fs.FileInfo, error) {
 	f, err := root.Open(filepath.FromSlash(name))
 	if err != nil {
 		return nil, nil, err
@@ -126,17 +135,13 @@ func openFile(root *os.Root, name string, text bool) (*os.File, fs.FileInfo, err
 		f.Close()
 		return nil, nil, failure(protocol.Invalid, "不是普通文件")
 	}
-	if text && info.Size() > protocol.MaxMessage-1024 {
-		f.Close()
-		return nil, nil, failure(protocol.Invalid, "文件超过 64 MiB 文档预算")
-	}
 	return f, info, nil
 }
 
 var errUnsupportedText = errors.New("binary or unsupported text encoding")
 
 func read(root *os.Root, name string, mode protocol.DocumentMode) (string, [sha256.Size]byte, error) {
-	f, info, err := openFile(root, name, mode != protocol.DocumentFile)
+	f, info, err := openFile(root, name)
 	if err != nil {
 		return "", [sha256.Size]byte{}, err
 	}
@@ -189,6 +194,28 @@ func (s *Store) OpenDocument(projectID uint64, name string, mode protocol.Docume
 	if mode != protocol.DocumentFile && len(s.documents) >= 128 {
 		return protocol.Document{}, failure(protocol.Busy, "打开文档数量超过连接预算")
 	}
+	if mode != protocol.DocumentFile {
+		f, info, err := openFile(p.root, name)
+		if err != nil {
+			return protocol.Document{}, err
+		}
+		if info.Size() > protocol.TextPagingThreshold {
+			paged := &pagedDocument{file: f, info: info, size: info.Size(), forced: mode == protocol.DocumentTextForced,
+				pieces: []filePiece{{length: info.Size()}}}
+			content, err := paged.readPage(0)
+			if err != nil {
+				paged.close()
+				if err == errUnsupportedText {
+					return protocol.Document{}, nil
+				}
+				return protocol.Document{}, err
+			}
+			id := s.id()
+			s.documents[id] = &document{project: p, path: name, version: 1, paged: paged}
+			return protocol.Document{ID: id, Version: 1, Content: content, Page: paged.page}, nil
+		}
+		f.Close()
+	}
 	content, digest, err := read(p.root, name, mode)
 	if err == errUnsupportedText {
 		return protocol.Document{}, nil
@@ -210,13 +237,23 @@ func (s *Store) OpenDocument(projectID uint64, name string, mode protocol.Docume
 	return protocol.Document{ID: id, Version: 1, Content: content}, nil
 }
 
-func (s *Store) Change(id, version uint64, start, end uint32, text string) (uint64, error) {
+func (s *Store) Change(id, version, offset uint64, start, end uint32, text string) (uint64, error) {
 	d := s.documents[id]
 	if d == nil {
 		return 0, failure(protocol.NotFound, "文档已关闭")
 	}
 	if version != d.version {
 		return 0, failure(protocol.VersionMismatch, "文档版本已改变")
+	}
+	if d.paged != nil {
+		if err := d.paged.change(offset, start, end, text); err != nil {
+			return 0, err
+		}
+		d.version++
+		return d.version, nil
+	}
+	if offset != 0 {
+		return 0, protocol.ErrProtocol
 	}
 	a, b := int(start), int(end)
 	if a > b || b > d.tree.Len() || d.tree.ByteOffset(d.tree.RuneOffset(a)) != a || d.tree.ByteOffset(d.tree.RuneOffset(b)) != b || !utf8.ValidString(text) {
@@ -248,19 +285,25 @@ func (s *Store) Save(id, version uint64) error {
 	if version != d.version {
 		return failure(protocol.VersionMismatch, "保存版本已改变")
 	}
-	current, _, err := openFile(d.project.root, d.path, true)
-	if err != nil {
-		return err
-	}
 	buffer := fileBuffers.Get().(*fileBuffer)
 	defer fileBuffers.Put(buffer)
-	digest, err := buffer.read(current, nil)
-	current.Close()
-	if err != nil {
-		return err
-	}
-	if digest != d.disk {
-		return failure(protocol.Conflict, "文件已被其他程序修改，请先比较或重新加载")
+	if d.paged != nil {
+		if err := d.paged.check(d.project.root, d.path); err != nil {
+			return err
+		}
+	} else {
+		current, _, err := openFile(d.project.root, d.path)
+		if err != nil {
+			return err
+		}
+		digest, err := buffer.read(current, nil)
+		current.Close()
+		if err != nil {
+			return err
+		}
+		if digest != d.disk {
+			return failure(protocol.Conflict, "文件已被其他程序修改，请先比较或重新加载")
+		}
 	}
 	// Resolve within the opened root so saving an internal symlink updates its
 	// target while an escaping link is rejected by os.Root.
@@ -283,9 +326,17 @@ func (s *Store) Save(id, version uint64) error {
 	}
 	defer d.project.root.Remove(name)
 	buffer.hash.Reset()
-	for offset := 0; offset < d.tree.Len(); {
-		n := min(len(buffer.data), d.tree.Len()-offset)
-		_, err = d.tree.ReadAt(buffer.data[:n], int64(offset))
+	size := int64(d.tree.Len())
+	if d.paged != nil {
+		size = d.paged.size
+	}
+	for offset := int64(0); offset < size; {
+		n := int(min(int64(len(buffer.data)), size-offset))
+		if d.paged != nil {
+			_, err = d.paged.readAt(buffer.data[:n], offset)
+		} else {
+			_, err = d.tree.ReadAt(buffer.data[:n], offset)
+		}
 		if err != nil {
 			break
 		}
@@ -293,7 +344,7 @@ func (s *Store) Save(id, version uint64) error {
 			break
 		}
 		buffer.hash.Write(buffer.data[:n])
-		offset += n
+		offset += int64(n)
 	}
 	if err == nil {
 		err = f.Chmod(info.Mode().Perm())
@@ -307,8 +358,25 @@ func (s *Store) Save(id, version uint64) error {
 	if err != nil {
 		return err
 	}
+	if d.paged != nil {
+		if err := d.paged.check(d.project.root, d.path); err != nil {
+			return err
+		}
+	}
 	if err := d.project.root.Rename(name, relative); err != nil {
 		return err
+	}
+	if p := d.paged; p != nil {
+		file, info, err := openFile(d.project.root, relative)
+		if err != nil {
+			return err
+		}
+		p.close()
+		p.file, p.info, p.edits, p.editEnd = file, info, nil, 0
+		p.pieces, p.scratch = p.pieces[:0], p.scratch[:0]
+		if p.size > 0 {
+			p.pieces = append(p.pieces, filePiece{length: p.size})
+		}
 	}
 	buffer.hash.Sum(buffer.sum[:0])
 	d.disk = buffer.sum
@@ -334,6 +402,9 @@ func (s *Store) Move(id, projectID uint64, name string) error {
 func (s *Store) CloseDocument(id uint64) {
 	if d := s.documents[id]; d != nil {
 		s.bytes -= d.tree.Len()
+		if d.paged != nil {
+			d.paged.close()
+		}
 		delete(s.documents, id)
 	}
 }

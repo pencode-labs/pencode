@@ -15,6 +15,8 @@ import (
 
 func (model *workspaceModel) applyConfiguration(snapshot configuration.Snapshot, remote bool) {
 	model.settings = parsePencodeSettings(snapshot.Files["settings.json"])
+	model.ensureLanguagePacks()
+	model.selectLanguage()
 	for _, group := range model.extensionSettings {
 		model.rebuildExtensionSettings(group)
 	}
@@ -22,7 +24,7 @@ func (model *workspaceModel) applyConfiguration(snapshot configuration.Snapshot,
 	model.settingsRemote, model.settingsFeedback, model.capturingShortcut = remote, "", false
 	model.themes, model.workbenchTheme, model.syntaxTheme, model.syntaxDefinitions = nil, nil, nil, nil
 	if err := model.loadSyntaxResources(snapshot); err != nil {
-		model.settingsFeedback = fmt.Sprintf("加载配置失败：%v", err)
+		model.settingsFeedback = fmt.Sprintf(model.tr("加载配置失败：%v"), err)
 	}
 	// System faces render on the GUI host. Extension face IDs remain selected
 	// until the new host publishes its registrations.
@@ -90,12 +92,12 @@ func newPencodeSettingsWriter(backend *client.Client, wake func()) *pencodeSetti
 
 func (model *workspaceModel) saveRemoteSettings() {
 	if model.session == nil || !model.backendConnected() {
-		model.settingsFeedback = "远程连接已断开，设置未保存"
+		model.settingsFeedback = model.tr("远程连接已断开，设置未保存")
 		return
 	}
 	data, err := json.MarshalIndent(model.settings, "", "  ")
 	if err != nil {
-		model.settingsFeedback = fmt.Sprintf("保存设置失败：%v", err)
+		model.settingsFeedback = fmt.Sprintf(model.tr("保存设置失败：%v"), err)
 		return
 	}
 	s := model.session
@@ -113,7 +115,7 @@ func (model *workspaceModel) saveRemoteSettings() {
 	}
 	w.revision++
 	w.requests <- pencodeSettingsWrite{data: append(data, '\n'), revision: w.revision}
-	model.settingsFeedback = "正在保存远程设置…"
+	model.settingsFeedback = model.tr("正在保存远程设置…")
 }
 
 func (model *workspaceModel) pollSettingsWrites() bool {
@@ -131,7 +133,7 @@ func (model *workspaceModel) pollSettingsWrites() bool {
 		}
 		model.settingsFeedback = ""
 		if result.err != nil {
-			model.settingsFeedback = fmt.Sprintf("保存远程设置失败：%v", result.err)
+			model.settingsFeedback = fmt.Sprintf(model.tr("保存远程设置失败：%v"), result.err)
 		}
 		return true
 	default:

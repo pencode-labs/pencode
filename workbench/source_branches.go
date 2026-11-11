@@ -105,7 +105,7 @@ func (r sourceRepository) switchBranch(branch sourceBranch, branches []sourceBra
 func (m *workspaceModel) switchSourceBranch(ref string) {
 	s := m.sourceState()
 	if m.sourceHasDrafts() || s.unsaved() {
-		s.Notice = "请先保存编辑器中的项目修改，再切换分支。"
+		s.Notice = m.tr("请先保存编辑器中的项目修改，再切换分支。")
 		return
 	}
 	for _, branch := range s.Snapshot.Branches {

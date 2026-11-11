@@ -115,12 +115,15 @@ func TestEditorNavigationBindingsAndFocus(t *testing.T) {
 	m.findOpen = true
 	markPencodeRootDirtyByModel(w, m)
 	languageInteractionStep(t, app)
-	if m.editorNavigationShortcut(w, keymapState(pencodeBindingChord("Alt+Left"), runtime.GOOS), runtime.GOOS) {
-		t.Fatal("navigation intercepted search input")
+	if !m.editorNavigationShortcut(w, keymapState(pencodeBindingChord("Alt+Left"), runtime.GOOS), runtime.GOOS) {
+		t.Fatal("open find bar blocked editor navigation")
 	}
 	control, _ := w.HTMLControl(m.surface, "find-query")
 	if !w.Focus(control) {
 		t.Fatal("could not focus search input")
+	}
+	if m.editorNavigationShortcut(w, keymapState(pencodeBindingChord("Alt+Left"), runtime.GOOS), runtime.GOOS) {
+		t.Fatal("navigation intercepted search input")
 	}
 	m.findOpen = false
 	if m.editorNavigationShortcut(w, keymapState(pencodeBindingChord("Alt+Left"), runtime.GOOS), runtime.GOOS) {

@@ -5,7 +5,7 @@ import test from 'node:test';
 import * as peb from '../src/index.js';
 import type { Codec } from '../src/index.js';
 
-test('all TS codecs preserve Go-generated PEB v18 wire bytes', () => {
+test('all TS codecs preserve Go-generated PEB v19 wire bytes', () => {
   const fixtures = JSON.parse(execFileSync('go', ['run', './testdata/interop.go'], { encoding: 'utf8' })) as { Name: string; Data: string }[];
   const codecs: Record<string, Codec<unknown>> = {
     Hello: peb.HelloCodec, Contributions: peb.ContributionsCodec, EditorMessage: peb.EditorMessageCodec,
@@ -24,7 +24,7 @@ test('reader accepts arbitrary splits, coalesced frames, and clean EOF', async (
   const stream = new PassThrough(), writer = new peb.Writer(stream);
   const chunks: Buffer[] = [];
   stream.on('data', chunk => chunks.push(Buffer.from(chunk)));
-  await writer.send(peb.Kind.Initialize, 7, peb.encode(peb.HelloCodec, { host: '中文', capabilities: 511 }));
+  await writer.send(peb.Kind.Initialize, 7, peb.encode(peb.HelloCodec, { host: '中文', capabilities: peb.Capability.All }));
   await writer.send(peb.Kind.Shutdown, 0);
   const wire = Buffer.concat(chunks);
   for (const size of [1, 3, 16, wire.length]) {
@@ -58,7 +58,7 @@ test('serve keeps read-only replies distinct from clearing text and responds to 
   const serving = peb.serveExtension({ actions: [{ id: 'office', location: peb.ActionLocation.OpenWith }] }, {
     editor(message) { if (message.event.kind === 'error') throw new Error('test error'); return { view: { html: '<p>你好</p>' } }; },
   }, input, output);
-  await writer.send(peb.Kind.Initialize, 1, peb.encode(peb.HelloCodec, { capabilities: 511 }));
+  await writer.send(peb.Kind.Initialize, 1, peb.encode(peb.HelloCodec, { capabilities: peb.Capability.All }));
   const registration = await reader.read(); assert.equal(registration?.kind, peb.Kind.Register);
   assert.equal(peb.decode(peb.ContributionsCodec, registration!.payload).actionService, false);
   await writer.send(peb.Kind.EditorRequest, 2, peb.encode(peb.EditorMessageCodec, { event: { kind: 'open' } }));

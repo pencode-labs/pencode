@@ -22,6 +22,7 @@ type pencodeTerminal struct {
 	screen              *terminal.Screen
 	id, root, label     string
 	selectRef, closeRef string
+	selection           terminalTextSelection
 	scroll              int
 	ready, exited       bool
 }
@@ -40,7 +41,7 @@ func (m *workspaceModel) terminalState() *pencodeTerminals {
 }
 func (m *workspaceModel) newTerminal() {
 	if !m.backendConnected() {
-		m.setActiveStatus("工作区服务未连接，请等待连接恢复")
+		m.setActiveStatus(m.tr("工作区服务未连接，请等待连接恢复"))
 		return
 	}
 	t := m.terminalState()

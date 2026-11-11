@@ -39,7 +39,7 @@ func TestOfficeViewerSelectionCopyAndSearch(t *testing.T) {
 			languageInteractionStep(t, app)
 		}
 	}
-	show(`<table class="sheet"><tr><td>alpha  beta</td><td>copy-end</td></tr><tr><td>next-row</td><td>value</td></tr></table>`)
+	show(`<table class="sheet"><tr><td>alpha  beta</td><td>copy-end</td></tr><tr><td>next-row</td><td></td><td>value</td></tr></table>`)
 	var copied string
 	state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
 	point := func(label string, caret int) (float64, float64) {
@@ -93,11 +93,11 @@ func TestOfficeViewerSelectionCopyAndSearch(t *testing.T) {
 	}
 	shortcut(input.KeyA)
 	shortcut(input.KeyC)
-	if copied != "alpha  beta\tcopy-end\nnext-row\tvalue" {
+	if copied != "alpha  beta\tcopy-end\nnext-row\t\tvalue" {
 		t.Fatalf("spreadsheet select all copied %q", copied)
 	}
 	// Search the complete sheet, including text outside both paint axes.
-	body := `<table class="sheet">` + strings.Repeat(`<tr><td>filler</td><td>value</td></tr>`, 70) + `<tr>` + strings.Repeat(`<td>wide</td>`, 25) + `<td>far-target</td></tr></table>`
+	body := `<table class="sheet">` + strings.Repeat(`<tr><td>filler</td><td>value</td></tr>`, 70) + `<tr>` + strings.Repeat(`<td></td>`, 25) + `<td>far-target</td></tr></table>`
 	show(body)
 	if selection.surface != nil {
 		t.Fatal("replacing the worksheet retained its old selection")

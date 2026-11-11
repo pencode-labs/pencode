@@ -105,7 +105,7 @@ func (m *workspaceModel) updateExtensionSetting(group *pencodeExtensionSettings,
 		data = json.RawMessage(strings.TrimSpace(value))
 	}
 	if err := setting.Validate(data); err != nil {
-		m.settingsFeedback = fmt.Sprintf("%s：请输入有效的配置值", setting.Label)
+		m.settingsFeedback = fmt.Sprintf(m.tr("%s：请输入有效的配置值"), setting.Label)
 		return
 	}
 	m.settingsFeedback = ""
@@ -257,7 +257,7 @@ func (m *workspaceModel) renderExtensionSettings(view *htmlui.View, nav *htmlui.
 	if !m.settingsExtensions {
 		return
 	}
-	view.Text("settings-page-title", "扩展")
+	view.Text("settings-page-title", m.tr("扩展"))
 	view.Attr("settings-appearance-nav", "class", "pencode-settings-nav-item")
 	view.RemoveAttr("settings-appearance-nav", "aria-current")
 	view.Attr("settings-shortcuts-nav", "class", "pencode-settings-nav-item")
@@ -267,9 +267,9 @@ func (m *workspaceModel) renderExtensionSettings(view *htmlui.View, nav *htmlui.
 	view.Attr("reset-shortcuts", "hidden", "")
 	view.RemoveAttr("settings-extensions-pane", "hidden")
 	view.RemoveAttr("settings-extensions-empty", "hidden")
-	view.Text("settings-extensions-empty", "选择左侧扩展以查看配置项")
+	view.Text("settings-extensions-empty", m.tr("选择左侧扩展以查看配置项"))
 	if len(m.extensionSettings) == 0 {
-		view.Text("settings-extensions-empty", "暂无支持设置的已启用扩展")
+		view.Text("settings-extensions-empty", m.tr("暂无支持设置的已启用扩展"))
 	}
 	for _, group := range m.extensionSettings {
 		if group.id != m.settingsExtension {

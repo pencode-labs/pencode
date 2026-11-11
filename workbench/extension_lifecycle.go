@@ -11,7 +11,7 @@ func (m *workspaceModel) beginExtensionClose(action pencodeCloseAction, project 
 	r.action, r.project, r.path = action, project, path
 	r.lifecycle, r.lifecycleToken = true, m.actions.closeToken
 	r.lifecyclePending = make(map[string]bool, len(m.actions.sessions))
-	r.message, r.needsFocus = "正在检查扩展的后台任务…", true
+	r.message, r.needsFocus = m.tr("正在检查扩展的后台任务…"), true
 	m.settingsOpen, m.quickOpen = false, false
 	m.capturingShortcut, m.quickNeedsFocus, m.findNeedsFocus = false, false, false
 	m.quickFocusEditor = false
@@ -23,7 +23,7 @@ func (m *workspaceModel) beginExtensionClose(action pencodeCloseAction, project 
 		if session.SubmitLifecycle(event, r.lifecycleToken) {
 			r.lifecyclePending[id] = true
 		} else {
-			r.error += "扩展 " + id + " 暂时无法检查后台任务。\n"
+			r.error += m.tr("扩展 ") + id + m.tr(" 暂时无法检查后台任务。\n")
 		}
 	}
 	if len(r.lifecyclePending) == 0 {
@@ -49,7 +49,7 @@ func (m *workspaceModel) resolveExtensionClose(id string, token uint64, reply pe
 func (m *workspaceModel) completeExtensionClose() {
 	r := &m.closing
 	if r.error != "" {
-		r.message, r.error = r.error+"是否继续关闭？", ""
+		r.message, r.error = r.error+m.tr("是否继续关闭？"), ""
 		r.needsFocus = true
 		return
 	}

@@ -48,7 +48,7 @@ func (p *languageEditPlan) release() {
 }
 func (model *workspaceModel) applyLanguageWorkspaceEdit(session *pencodeLanguageSession, edit lsp.WorkspaceEdit, complete func(error)) error {
 	if model.languages == nil || session.client == nil {
-		return fmt.Errorf("语言服务已停止")
+		return fmt.Errorf("%s", model.tr("语言服务已停止"))
 	}
 	var project *pencodeProject
 	files := model.files
@@ -59,10 +59,10 @@ func (model *workspaceModel) applyLanguageWorkspaceEdit(session *pencodeLanguage
 		}
 	}
 	if project == nil && model.projectPath != session.key.root {
-		return fmt.Errorf("工作区已关闭")
+		return fmt.Errorf("%s", model.tr("工作区已关闭"))
 	}
 	if model.fileIOMutating(project) {
-		return fmt.Errorf("请等待文件操作完成")
+		return fmt.Errorf("%s", model.tr("请等待文件操作完成"))
 	}
 	plan := &languageEditPlan{state: model.languages, session: session, client: session.client, encoding: session.client.Encoding, complete: complete}
 	seen := make(map[lsp.URI]struct{}, len(edit.Changes)+len(edit.DocumentChanges))
@@ -117,7 +117,7 @@ func (model *workspaceModel) applyLanguageWorkspaceEdit(session *pencodeLanguage
 			return err
 		}
 		if change.Kind != "" {
-			return fmt.Errorf("不支持工作区资源操作：%s", change.Kind)
+			return fmt.Errorf(model.tr("不支持工作区资源操作：%s"), change.Kind)
 		}
 		if err := add(change.TextDocument.URI, change.Edits, change.TextDocument.Version); err != nil {
 			return err
@@ -168,9 +168,9 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 		if j.ctx.Err() != nil {
 			err = j.ctx.Err()
 		} else if m.languages != plan.state || plan.session.client != plan.client || plan.session.failed {
-			err = fmt.Errorf("语言服务已改变，编辑未应用")
+			err = fmt.Errorf("%s", m.tr("语言服务已改变，编辑未应用"))
 		} else if j.project != nil && !m.projectLive(j.project) || j.project == nil && m.projectPath != j.root {
-			err = fmt.Errorf("工作区已关闭，编辑未应用")
+			err = fmt.Errorf("%s", m.tr("工作区已关闭，编辑未应用"))
 		}
 	}
 	files := m.files
@@ -181,13 +181,13 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 		for _, t := range plan.targets {
 			f := files[t.relative]
 			if f != t.file || f != nil && f.content() != t.before {
-				err = fmt.Errorf("文档已改变，编辑未应用：%s", t.relative)
+				err = fmt.Errorf(m.tr("文档已改变，编辑未应用：%s"), t.relative)
 				break
 			}
 			if t.version != nil {
 				doc := m.languages.documents[f]
 				if doc == nil || doc.version != *t.version || !doc.content.Equal(snapshotText(t.before)) {
-					err = fmt.Errorf("文档版本已改变：%s", t.relative)
+					err = fmt.Errorf(m.tr("文档版本已改变：%s"), t.relative)
 					break
 				}
 			}

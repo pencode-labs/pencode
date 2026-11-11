@@ -715,7 +715,7 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 		b.text("img", "icon", "", "class", "pencode-tab-icon", "src", m.themedIcon(icon, foreground), "alt", "")
 		b.text("span", "label", label, "class", "pencode-tab-name")
 		b.close()
-		b.open("button", "close", "id", "sc-close-tab:"+tab.Key, "type", "button", "class", "pencode-tab-close", "title", "关闭比较", "aria-label", "关闭 "+label)
+		b.open("button", "close", "id", "sc-close-tab:"+tab.Key, "type", "button", "class", "pencode-tab-close", "title", m.tr("关闭比较"), "aria-label", m.tr("关闭 ")+label)
 		if s.busy() {
 			b.attr("disabled", "")
 		}
@@ -1031,9 +1031,9 @@ func (m *workspaceModel) sourceCloseBlocked(project *pencodeProject) bool {
 		if s.unsavedRepositories() || s.Done != nil && (s.JobKind == sourceWrite || s.JobKind == sourceSync) {
 			m.activateProject(p)
 			if s.unsavedRepositories() {
-				s.Notice = "差异或合并编辑标签中有未保存的修改，请保存或关闭这些标签后再关闭项目或窗口。"
+				s.Notice = m.tr("差异或合并编辑标签中有未保存的修改，请保存或关闭这些标签后再关闭项目或窗口。")
 			} else {
-				s.Notice = "Git 正在修改仓库，请等待操作完成后再关闭项目或窗口。"
+				s.Notice = m.tr("Git 正在修改仓库，请等待操作完成后再关闭项目或窗口。")
 			}
 			m.sourceChanged()
 			return true

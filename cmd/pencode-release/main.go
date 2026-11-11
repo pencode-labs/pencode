@@ -49,7 +49,7 @@ func release(output, version string) error {
 	}
 	artifact, err := editor.BuildProject(editor.BuildOptions{
 		ProjectDir: project, Platform: platform, Mode: editor.BuildModeRelease,
-		Architecture: editor.BuildArchitecture(runtime.GOARCH), AppName: "pencode",
+		Architecture: editor.BuildArchitecture(runtime.GOARCH), AppName: "Pencode",
 		Progress: func(p editor.BuildProgress) { fmt.Fprintln(os.Stderr, p.Message) },
 	})
 	if err != nil {

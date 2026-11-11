@@ -33,6 +33,7 @@ type pencodeCustomDocument struct {
 	links       map[string]string
 	find        *pencodeRenderedFind
 	selection   *pencodeExtensionSurface
+	grid        *pencodeVirtualGrid
 	content     string
 	message     string
 	bindings    []peb.EditorBinding
@@ -62,7 +63,7 @@ func editorMatch(editor *peb.Action, name string) int {
 // File associations are resolved once per file/registry change. Exact names
 // beat suffixes; longest suffix wins; stable IDs break ties deterministically.
 func (model *workspaceModel) fileEditor(file *openFile) *extensions.Editor {
-	if file == nil || file.editorID == pencodeTextEditor {
+	if file == nil || file.page.Paged || file.editorID == pencodeTextEditor {
 		return nil
 	}
 	if file.editorGeneration == model.editorGeneration {
@@ -179,7 +180,7 @@ func (model *workspaceModel) customDocument() *pencodeCustomDocument {
 	if model.customDocuments == nil {
 		model.customDocuments = make(map[*openFile]*pencodeCustomDocument)
 	}
-	document := &pencodeCustomDocument{file: file, project: model.activeProjectState(), provider: provider, model: model, content: file.content(), message: "正在加载编辑工具…"}
+	document := &pencodeCustomDocument{file: file, project: model.activeProjectState(), provider: provider, model: model, content: file.content(), message: model.tr("正在加载编辑工具…")}
 	root := model.projectPath
 	if document.project != nil {
 		root = document.project.Path
@@ -269,7 +270,7 @@ func (model *workspaceModel) pollCustomEditors() bool {
 			changed = true
 			document.inflight = false
 			if !ok {
-				document.fail(fmt.Errorf("扩展进程已退出"))
+				document.fail(fmt.Errorf("%s", model.tr("扩展进程已退出")))
 				continue
 			}
 			if result.Err != nil {
@@ -284,7 +285,7 @@ func (model *workspaceModel) pollCustomEditors() bool {
 			}
 			if result.Reply.Content != nil {
 				if !file.text() {
-					document.fail(fmt.Errorf("当前仅支持文本文件内容修改"))
+					document.fail(fmt.Errorf("%s", model.tr("当前仅支持文本文件内容修改")))
 					continue
 				}
 				model.applyFileContent(file, document.project, *result.Reply.Content, true)
@@ -297,7 +298,7 @@ func (model *workspaceModel) pollCustomEditors() bool {
 				}
 				document.images = model.replaceExtensionImages(document.images, result.Assets)
 			} else if document.definition == nil {
-				document.fail(fmt.Errorf("扩展没有提供 HTML 视图"))
+				document.fail(fmt.Errorf("%s", model.tr("扩展没有提供 HTML 视图")))
 				continue
 			}
 			document.message = ""
@@ -339,6 +340,11 @@ func (model *workspaceModel) pollCustomEditors() bool {
 }
 
 func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
+	if isPencodeGridChunk(view) {
+		return document.acceptGridChunk(view)
+	}
+	previousGrid := document.grid
+	preserveGridSelection := document.view != nil && document.view.HTML == view.HTML
 	var theme *pencodeTheme
 	if document.model != nil {
 		theme = document.model.workbenchTheme
@@ -348,16 +354,26 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		return nil
 	}
 	var links map[string]string
-	var searchable, tree *dom.Node
+	var searchable *dom.Node
+	var grid *pencodeVirtualGrid
+	var gridErr error
 	var selectables []pencodeExtensionSelectable
 	var focus []pencodeExtensionFocus
-	template := *view
-	if strings.Contains(view.HTML, "data-pencode-searchable") || strings.Contains(view.HTML, "data-pencode-selectable") {
-		template.HTML = renderedFindTemplate(view.HTML, fmt.Sprintf("pencode-extension-editor/%p/find/", document))
+	tree, err := dom.Parse(view.HTML)
+	if err != nil {
+		return err
 	}
-	if err := validateExtensionView(&template, func(node *dom.Node, hidden bool) {
-		if node.Parent == nil {
-			tree = node
+	prefix := fmt.Sprintf("pencode-extension-editor/%p/", document)
+	textView := strings.Contains(view.HTML, "data-pencode-searchable") || strings.Contains(view.HTML, "data-pencode-selectable") || strings.Contains(view.HTML, "data-pencode-grid")
+	index := 0
+	if err := validateExtensionTree(view, tree, nil, func(node *dom.Node, hidden bool) {
+		prepareExtensionViewNode(node, prefix, &index, textView)
+		if source, ok := node.Attr("data-pencode-grid"); ok && !hidden && gridErr == nil {
+			if grid != nil {
+				gridErr = fmt.Errorf("a custom editor supports one virtual grid")
+			} else {
+				grid, gridErr = parsePencodeGrid(node, source)
+			}
 		}
 		if !hidden {
 			ref, _ := node.Attr("data-ref")
@@ -393,8 +409,33 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	}); err != nil {
 		return err
 	}
-	definition, err := htmlui.DefineScoped(tooltipTemplate(template.HTML, fmt.Sprintf("pencode-extension-editor/%p/", document)), theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
+	if gridErr != nil {
+		return gridErr
+	}
+	if preserveGridSelection && previousGrid != nil && grid != nil && previousGrid.remote != nil && grid.remote != nil && previousGrid.remote.name == grid.remote.name {
+		node := grid.node
+		*grid = *previousGrid
+		grid.node = node
+		node.Attributes["style"] = previousGrid.node.Attributes["style"]
+		for _, metadata := range grid.metadata {
+			metadata.Parent = node
+		}
+	}
+	componentTemplate, err := htmlui.NewDocumentTemplate(tree)
+	if err != nil {
+		return err
+	}
+	definition, err := htmlui.DefineScoped(componentTemplate, theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
 		Render: func(context htmlui.RenderContext[*pencodeCustomDocument, struct{}], target *htmlui.View) {
+			doc := *context.Props
+			if doc.grid != nil {
+				doc.grid.component = context.Component
+				doc.grid.renderExtent(target)
+				doc.grid.render(target)
+				if doc.find != nil {
+					doc.find.chunks, doc.find.dirty = doc.grid.chunks, true
+				}
+			}
 			for _, event := range (*context.Props).bindings {
 				target.Event(event.Ref, htmlui.EventKind(event.Kind))
 			}
@@ -424,7 +465,7 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 			document.selection = &pencodeExtensionSurface{model: document.model, document: document}
 		}
 		if document.view != nil && document.view.HTML != view.HTML && document.model.actions.ui.selection.surface == document.selection {
-			document.model.actions.ui.selection.surface = nil
+			document.model.actions.ui.selection.surface, document.model.actions.ui.selection.grid = nil, nil
 		}
 		document.selection.tree, document.selection.view = tree, view
 		document.selection.selectables, document.selection.focus = selectables, focus
@@ -432,12 +473,25 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		document.selection = nil
 	}
 	document.definition, document.bindings, document.links = definition, view.Events, links
-	document.view, document.theme = view, theme
+	document.view, document.theme, document.grid = view, theme, grid
+	if preserveGridSelection && previousGrid != nil && document.model != nil {
+		selection := &document.model.actions.ui.selection
+		if selection.surface == document.selection && selection.grid == previousGrid {
+			selection.grid = grid
+		}
+	}
 	if searchable != nil {
 		if document.find == nil {
 			document.find = &pencodeRenderedFind{}
 		}
-		document.find.setTree(searchable)
+		if grid != nil {
+			document.find.tree, document.find.grid = searchable, grid
+			document.find.content = snapshotText(grid.content)
+			document.find.chunks = nil
+			document.find.dirty, document.find.reveal = true, true
+		} else {
+			document.find.setTree(searchable)
+		}
 	} else {
 		document.find = nil
 	}
@@ -493,6 +547,7 @@ func (document *pencodeCustomDocument) openLink(href string) {
 }
 
 func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
+	model.renderFilePage(view)
 	view.RemoveAttr("editor-body", "data-editor-split")
 	view.Attr("editor-split", "hidden", "")
 	view.Attr("editor-open-text", "hidden", "")
@@ -543,7 +598,7 @@ func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 		return
 	}
 	view.RemoveAttr("custom-editor", "hidden")
-	message := "此文件是二进制文件、使用不支持的文本编码，或没有匹配的编辑器。是否使用代码编辑器打开？"
+	message := model.tr("此文件是二进制文件、使用不支持的文本编码，或没有匹配的编辑器。是否使用代码编辑器打开？")
 	if document == nil {
 		view.RemoveAttr("editor-open-text", "hidden")
 		view.Event("editor-open-text", htmlui.EventClick)
@@ -571,7 +626,7 @@ func (model *workspaceModel) selectEditor(id string) bool {
 		return false
 	}
 	if document := model.customDocuments[file]; document != nil && document.busy() {
-		model.setActiveStatus("请等待编辑工具完成操作")
+		model.setActiveStatus(model.tr("请等待编辑工具完成操作"))
 		return false
 	}
 	if id == pencodeTextEditor {
@@ -647,7 +702,7 @@ func (document *pencodeCustomDocument) close() {
 	document.images = document.model.replaceExtensionImages(document.images, nil)
 	document.definition, document.view, document.links = nil, nil, nil
 	document.bindings, document.content = nil, ""
-	document.find, document.selection = nil, nil
+	document.find, document.selection, document.grid = nil, nil, nil
 	clear(document.queue[:])
 }
 
@@ -656,14 +711,6 @@ func (model *workspaceModel) closeCustomEditors() {
 		document.close()
 		delete(model.customDocuments, file)
 	}
-}
-
-func validateExtensionView(view *peb.EditorView, visit func(*dom.Node, bool)) error {
-	root, err := dom.Parse(view.HTML)
-	if err != nil {
-		return err
-	}
-	return validateExtensionTree(view, root, nil, visit)
 }
 
 // Validate retained region trees in their original parent context, including
@@ -678,6 +725,12 @@ func (s *pencodeExtensionScratch) validate(view *peb.EditorView, root *dom.Node,
 	refs, ids := s.refs, s.ids
 	var validate func(*dom.Node, bool) error
 	validate = func(node *dom.Node, hidden bool) error {
+		_, nodeHidden := node.Attr("hidden")
+		hidden = hidden || nodeHidden
+		// Validate generated identifiers too when the visitor annotates nodes.
+		if visit != nil {
+			visit(node, hidden)
+		}
 		if id, _ := node.Attr("id"); id != "" && !strings.HasPrefix(id, "pencode-extension-") {
 			return fmt.Errorf("扩展元素 id 必须以 pencode-extension- 开头：%s", id)
 		}
@@ -686,11 +739,6 @@ func (s *pencodeExtensionScratch) validate(view *peb.EditorView, root *dom.Node,
 				return fmt.Errorf("重复的 id：%s", id)
 			}
 			ids[id] = true
-		}
-		_, nodeHidden := node.Attr("hidden")
-		hidden = hidden || nodeHidden
-		if visit != nil {
-			visit(node, hidden)
 		}
 		if ref, _ := node.Attr("data-ref"); ref != "" {
 			if refs[ref] {

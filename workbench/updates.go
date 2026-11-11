@@ -67,11 +67,11 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 	if u.root == "" {
 		return true
 	}
-	download := u.release.URL != ""
+	check := u.release.URL == ""
 	u.busy = true
-	u.message = "正在检查 GitHub tag…"
-	if download {
-		u.message = "正在下载并校验更新包…"
+	u.message = m.tr("正在检查 GitHub tag…")
+	if !check {
+		u.message = m.tr("正在下载并校验更新包…")
 	}
 	u.results = make(chan pencodeUpdateResult, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -82,11 +82,11 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 		defer cancel()
 		c := updater.NewClient()
 		r := pencodeUpdateResult{}
-		if download {
+		if check {
+			r.release, r.err = c.Check(ctx, version)
+		} else {
 			r.release = release
 			r.stage, r.err = c.Stage(ctx, root, executable, release)
-		} else {
-			r.release, r.err = c.Check(ctx, version)
 		}
 		if ctx.Err() != nil {
 			if r.stage != "" {
@@ -114,17 +114,17 @@ func (m *workspaceModel) pollUpdates() bool {
 	case r := <-u.results:
 		u.busy, u.results = false, nil
 		if r.err != nil {
-			u.message = "更新失败：" + r.err.Error()
+			u.message = m.tr("更新失败：") + r.err.Error()
 			return true
 		}
 		u.release, u.stage = r.release, r.stage
 		switch {
 		case r.stage != "":
-			u.message = "安装包已校验，安装并重启将打开系统安装程序"
+			u.message = m.tr("安装包已校验，安装并重启将打开系统安装程序")
 		case r.release.Tag != "":
-			u.message = "发现新版本：" + r.release.Tag
+			u.message = m.tr("发现新版本：") + r.release.Tag
 		default:
-			u.message = "当前已是最新可用版本"
+			u.message = m.tr("当前已是最新可用版本")
 		}
 		return true
 	default:
@@ -138,7 +138,7 @@ func (m *workspaceModel) renderUpdates(v *htmlui.View) {
 	v.Attr("settings-about-nav", "class", "pencode-settings-nav-item")
 	v.RemoveAttr("settings-about-nav", "aria-current")
 	if m.settingsAbout && !m.settingsShortcuts && !m.settingsExtensions {
-		v.Text("settings-page-title", "关于")
+		v.Text("settings-page-title", m.tr("关于"))
 		v.RemoveAttr("settings-about-pane", "hidden")
 		v.Attr("settings-about-nav", "class", "pencode-settings-nav-item active")
 		v.Attr("settings-about-nav", "aria-current", "page")
@@ -154,6 +154,7 @@ func (m *workspaceModel) renderUpdates(v *htmlui.View) {
 	v.Event("update-action", htmlui.EventClick)
 	v.Text("update-version", u.version)
 	v.Text("update-status", u.message)
+	v.Attr("update-status", "title", u.message)
 	label := "检查更新"
 	switch {
 	case u.stage != "":
@@ -167,7 +168,7 @@ func (m *workspaceModel) renderUpdates(v *htmlui.View) {
 	case u.busy:
 		label = "正在检查…"
 	}
-	v.Text("update-action", label)
+	v.Text("update-action", m.tr(label))
 	if u.busy || u.root == "" {
 		v.Attr("update-action", "disabled", "")
 	} else {

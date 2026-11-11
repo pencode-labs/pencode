@@ -8,6 +8,8 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 
 **项目状态：早期开发。** Pencode 正从 Onix 仓库迁移为独立项目。源码已包含下述功能，并使用 Onix 公开的 HTML API。构建前请先阅读[开发环境](#开发环境)。
 
+界面语言：在「**设置 → 外观 → 界面语言**」中即时切换中文、英语、日语、韩语、德语、法语和西班牙语；支持通过扩展添加 JSON 语言包。缺失翻译回退到英文，参见[语言包开发文档](docs/localization.zh-CN.md)。
+
 [功能](#功能) · [开发环境](#开发环境) · [架构](#架构) · [扩展](#扩展) · [参与贡献](#参与贡献)
 
 ## 功能
@@ -74,13 +76,13 @@ make run
 
 可运行 `make install-server` 仅编译安装本机服务端。离线 SSH 引导所需的服务端可在仓库根目录运行 `go run ./cmd/pencode-build-servers` 构建，默认生成 Linux/macOS 的 amd64、arm64 程序，位于 `resources/servers/<os>-<arch>/pencode-server`。
 
-运行 `make release VERSION=v0.1.0` 构建当前主机平台的原生安装包（版本默认 `dev`，可用 `DIST_DIR` 指定输出目录）。构建复用 Onix 的 release 流程，将模块执行计划和资源编译为 `catalog.bin` 与 `.dat` 包，再使用 `onix_release` 编译程序。Windows 输出 `dist/pencode-<版本>-windows-<架构>.exe`，macOS 输出 `dist/pencode-<版本>-darwin-<架构>.pkg`，Linux 输出 `dist/pencode-<版本>-linux-<架构>.deb`，每个安装包附带 `.sha256` 校验文件。Windows 使用 Inno Setup 7（可用 `ISCC` 指定编译器），显示安装目录选择页，默认安装到 `%LOCALAPPDATA%\Programs\Pencode`，并注册快捷方式、卸载程序及支持的文本和源码文件的“打开方式”。文件关联仅注册到当前用户，卸载时自动清理，保留原有默认应用。macOS 使用 `productbuild` 将 `pencode.app` 安装到 `/Applications`。Debian/Ubuntu 使用 `dpkg-deb`，安装到 `/opt/pencode`，提供 `pencode` 命令和应用菜单入口。所有安装包包含许可证、图标声明及中英文 README。扩展需另行安装；安装包不包含离线 SSH 服务端程序。
+运行 `make release VERSION=v0.1.0` 构建当前主机平台的原生安装包（版本默认 `dev`，可用 `DIST_DIR` 指定输出目录）。构建复用 Onix 的 release 流程，将模块执行计划和资源编译为 `catalog.bin` 与 `.dat` 包，再使用 `onix_release` 编译程序。Windows 输出 `dist/pencode-<版本>-windows-<架构>.exe`，macOS 输出 `dist/pencode-<版本>-darwin-<架构>.pkg`，Linux 输出 `dist/pencode-<版本>-linux-<架构>.deb`，每个安装包附带 `.sha256` 校验文件。Windows 使用 Inno Setup 7（可用 `ISCC` 指定编译器），显示安装目录选择页，默认安装到 `%LOCALAPPDATA%\Programs\Pencode`，并注册快捷方式、卸载程序及支持的文本和源码文件的“打开方式”。文件关联仅注册到当前用户，卸载时自动清理，保留原有默认应用。macOS 使用 `productbuild` 将 `Pencode.app` 安装到 `/Applications`。Debian/Ubuntu 使用 `dpkg-deb`，安装到 `/opt/pencode`，提供 `pencode` 命令和应用菜单入口。桌面程序的可执行文件名为 `Pencode`（Windows 为 `Pencode.exe`）。所有安装包包含许可证、图标声明及中英文 README。扩展需另行安装；安装包不包含离线 SSH 服务端程序。
 
-可使用 `pencode [--] <文件或目录> ...` 打开本地文件或文件夹。单文件以父目录作为工作区，直接打开为固定的可编辑标签页；同一目录的多个文件共用工作区。本地路径不能与远程连接参数同时使用。
+可使用 `pencode [--] <文件或目录> ...` 打开本地文件或文件夹。单文件以父目录作为工作区，直接打开为固定的可编辑标签页；同一目录的多个文件共用工作区。本地路径不能与远程连接参数同时使用。也可以将文件或文件夹拖到启动页或编辑器中打开，重复打开会保留标签页中的未保存内容；在远程会话中拖入本地文件会另开本地窗口。原生安装包会将 Pencode 注册到 Windows、macOS、Linux 的“打开方式”中，并保留现有默认应用。macOS 支持 Finder 在首次启动和程序已运行时发送的文档打开事件。
 
 推送 `v*` tag 会触发[发布工作流](.github/workflows/release.yml)，分别构建 Linux、Windows、macOS 的 amd64 和 arm64 版本，校验后将六个原生安装包、六个独立服务端程序及 `SHA256SUMS` 上传到 GitHub Release。服务端附件名为 `pencode-server-<版本>-<系统>-<架构>`（Windows 附带 `.exe`），使用 `CGO_ENABLED=0` 编译，可单独下载并部署到远程主机。发布前请将仓库的 Actions 变量 `ONIX_REF` 设置为兼容的 Onix commit 或 tag，默认使用 `main`。手动运行工作流或在 `main` 上修改发布相关文件时，只生成可下载的构建产物，不创建 Release。构建依赖 Onix 文档列出的原生开发库；Windows 使用 MinGW-w64（LLVM MinGW 支持 arm64）。macOS 应用使用临时签名，尚未配置 Developer ID 签名和公证。
 
-设置 → 关于提供“检查更新”“下载更新”和“安装并重启”。程序读取 GitHub tag 对应的 Release，按本机系统与架构选择原生安装包，校验 SHA-256 后暂存到临时目录。重启沿用未保存文件确认流程；编辑器退出后，由辅助进程运行系统安装程序并重新启动 Pencode，取消安装或安装失败时也会尝试启动已安装的编辑器。Windows 更新沿用原安装路径；macOS 打开 Installer；Debian/Ubuntu 通过 `pkexec` 与 `apt-get` 请求系统授权安装。软件注册和卸载信息由原生安装程序维护。正式版跳过预发行版。更新检测要求安装目录中包含 `pencode-version`；现有压缩包发行版需手动安装一次新版安装包以切换更新流程。
+设置 → 关于通过一个按钮完成更新操作：初始显示“检查更新”，发现新版本后变为“下载更新”，下载并校验完成后变为“安装并重启”。程序读取 GitHub tag 对应的 Release，按本机系统与架构选择原生安装包，校验 SHA-256 后暂存到临时目录。重启沿用未保存文件确认流程；编辑器退出后，由辅助进程运行系统安装程序并重新启动 Pencode，取消安装或安装失败时也会尝试启动已安装的编辑器。Windows 更新沿用原安装路径；macOS 打开 Installer；Debian/Ubuntu 通过 `pkexec` 与 `apt-get` 请求系统授权安装。软件注册和卸载信息由原生安装程序维护。正式版跳过预发行版。更新检测要求安装目录中包含 `pencode-version`；现有压缩包发行版需手动安装一次新版安装包以切换更新流程。
 
 WebSocket 直连时，先在远端启动服务：
 

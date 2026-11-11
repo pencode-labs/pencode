@@ -1,7 +1,6 @@
 package workbench
 
 import (
-	"html"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,11 +14,11 @@ import (
 	"github.com/onix-engine/onix/scene"
 	"github.com/onix-engine/onix/text/piecetree"
 	htmlui "github.com/onix-engine/onix/ui/html"
-	nethtml "golang.org/x/net/html"
 )
 
 type pencodeRenderedFind struct {
 	tree    *dom.Node
+	grid    *pencodeVirtualGrid
 	content piecetree.Snapshot
 	chunks  []pencodeRenderedFindChunk
 	text    pencodeExtensionTextSelection
@@ -32,58 +31,36 @@ type pencodeRenderedFindChunk struct {
 	start, end int
 }
 
-// Stable IDs allow layout queries for text whose paint entities are culled.
-// Keep the authored element structure and whitespace intact.
-func renderedFindTemplate(source, prefix string) string {
-	z := nethtml.NewTokenizer(strings.NewReader(source))
-	var b strings.Builder
-	index := 0
-	for {
-		kind := z.Next()
-		if kind == nethtml.ErrorToken {
-			break
-		}
-		raw := z.Raw()
-		if kind == nethtml.StartTagToken || kind == nethtml.SelfClosingTagToken {
-			token := z.Token()
-			id, searchable, tabindex := "", false, false
-			for _, attr := range token.Attr {
-				switch attr.Key {
-				case "id":
-					id = attr.Val
-				case "data-pencode-searchable", "data-pencode-selectable":
-					searchable = true
-				case "tabindex":
-					tabindex = true
-				}
-			}
-			if id == "" || searchable && !tabindex {
-				value := strings.TrimSuffix(string(raw), ">")
-				value = strings.TrimSuffix(value, "/")
-				b.WriteString(value)
-				if id == "" {
-					b.WriteString(` id="`)
-					b.WriteString(html.EscapeString(prefix + strconv.Itoa(index)))
-					b.WriteByte('"')
-					index++
-				}
-				if searchable && !tabindex {
-					b.WriteString(` tabindex="-1"`)
-				}
-				if kind == nethtml.SelfClosingTagToken {
-					b.WriteByte('/')
-				}
-				b.WriteByte('>')
-				continue
-			}
-		}
-		b.Write(raw)
+// Retain IDs for text containers, their potential scroll ancestors and
+// controls. Empty leaves such as spreadsheet padding cells need no lookup.
+// Annotate the parsed tree during validation instead of rewriting the HTML.
+func prepareExtensionViewNode(node *dom.Node, prefix string, index *int, textView bool) {
+	if node.Type != dom.ElementNode {
+		return
 	}
-	return b.String()
+	_, searchable := node.Attr("data-pencode-searchable")
+	_, selectable := node.Attr("data-pencode-selectable")
+	_, referenced := node.Attr("data-ref")
+	control := false
+	switch node.Data {
+	case "button", "input", "textarea", "select", "a":
+		control = true
+	}
+	needsID := node.Data == "button" || textView && (len(node.Children) > 0 || searchable || selectable || referenced || control)
+	if id, _ := node.Attr("id"); id == "" && needsID {
+		if node.Attributes == nil {
+			node.Attributes = make(map[string]string)
+		}
+		node.Attributes["id"] = prefix + strconv.Itoa(*index)
+		*index++
+	}
+	if _, tabindex := node.Attr("tabindex"); (searchable || selectable) && !tabindex {
+		node.Attributes["tabindex"] = "-1"
+	}
 }
 
 func (f *pencodeRenderedFind) setTree(tree *dom.Node) {
-	f.tree, f.dirty, f.reveal = tree, true, true
+	f.tree, f.grid, f.dirty, f.reveal = tree, nil, true, true
 	clear(f.chunks)
 	f.chunks = f.chunks[:0]
 	surface := pencodeExtensionSurface{tree: tree}
@@ -191,7 +168,7 @@ func (f *pencodeRenderedFind) bind(world *module.Content, m *workspaceModel) boo
 	// inside its authored block so repeated text cannot shift to another block.
 	f.text.area = area
 	surface := pencodeExtensionSurface{tree: f.tree, model: m}
-	f.text.content = f.content.String()
+	f.text.content, f.text.grid = f.content.String(), f.grid
 	f.text.collectText(world, &surface)
 	f.mapSpans(world, m, &f.text)
 	f.dirty = false
@@ -230,6 +207,9 @@ func (f *pencodeRenderedFind) mapSpans(world *module.Content, m *workspaceModel,
 }
 
 func (f *pencodeRenderedFind) revealChunk(world *module.Content, m *workspaceModel, offset int) bool {
+	if f.grid != nil {
+		return f.grid.reveal(world, offset)
+	}
 	index := sort.Search(len(f.chunks), func(i int) bool { return f.chunks[i].end > offset })
 	if index == len(f.chunks) {
 		return false

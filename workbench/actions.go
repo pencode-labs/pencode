@@ -74,7 +74,7 @@ func (model *workspaceModel) syncActions() bool {
 			continue
 		}
 		if a.Location == peb.OpenWith {
-			if state.file == nil || editorMatch(&a, state.file.Name) == 0 {
+			if state.file == nil || state.file.page.Paged || editorMatch(&a, state.file.Name) == 0 {
 				continue
 			}
 			state.openWithCount++
@@ -297,7 +297,7 @@ func (model *workspaceModel) removeActions(id string) {
 		delete(model.actions.sessions, id)
 	}
 	model.actionRegistry().RemovePrefix("extensions/" + id + "/")
-	model.resolveExtensionClose(id, model.closing.lifecycleToken, peb.LifecycleReply{Message: "扩展 " + id + " 已断开，无法确认后台任务状态。"})
+	model.resolveExtensionClose(id, model.closing.lifecycleToken, peb.LifecycleReply{Message: model.tr("扩展 ") + id + model.tr(" 已断开，无法确认后台任务状态。")})
 }
 func (model *workspaceModel) closeActions() {
 	model.clearExtensionUI("")
@@ -327,7 +327,7 @@ func (model *workspaceModel) pollActions() bool {
 				}
 				if result.Err != nil {
 					changed = true
-					model.extensionFeedback = fmt.Sprintf("扩展 %s action：%v", id, result.Err)
+					model.extensionFeedback = fmt.Sprintf(model.tr("扩展 %s action：%v"), id, result.Err)
 					model.logOutput("Extension: "+id, model.extensionFeedback)
 					if result.Fatal {
 						model.removeActions(id)
@@ -354,7 +354,7 @@ func (model *workspaceModel) pollActions() bool {
 					}
 					if err := model.applyExtensionUI(id, session, *result.UI); err != nil {
 						changed = true
-						model.extensionFeedback = fmt.Sprintf("扩展 %s UI：%v", id, err)
+						model.extensionFeedback = fmt.Sprintf(model.tr("扩展 %s UI：%v"), id, err)
 						model.logOutput("Extension: "+id, model.extensionFeedback)
 					} else {
 						if result.UI.View != nil && !result.UI.Close {

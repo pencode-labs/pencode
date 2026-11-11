@@ -226,6 +226,9 @@ func (model *workspaceModel) handleEditorContextEvent(world *module.Content, ref
 }
 
 func (model *workspaceModel) runEditorContextEdit(world *module.Content, ref string) {
+	if f := model.activeFile(); f != nil && f.pageLoading && ref != "editor-context-copy" && ref != "editor-context-select-all" {
+		return
+	}
 	ui := &model.languageUI
 	if world == nil || !ui.contextOpen || ui.contextFile != model.activeFile() || ui.contextContent != model.activeSnapshot() {
 		model.dismissLanguageContext()

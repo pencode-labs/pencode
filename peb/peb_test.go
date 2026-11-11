@@ -25,7 +25,7 @@ func TestGoldenWireAndFragmentedIO(t *testing.T) {
 	if err := w.Write(Initialize, 0x12345678, payload); err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(wire.Bytes()); got != "7065620012000100785634120f0000000700000070656e636f6465ff010000" {
+	if got := hex.EncodeToString(wire.Bytes()); got != "7065620013000100785634120f0000000700000070656e636f6465ff030000" {
 		t.Fatalf("wire format changed: %s", got)
 	}
 	if err := w.Write(Shutdown, 0, nil); err != nil {
@@ -51,6 +51,7 @@ func TestGoldenWireAndFragmentedIO(t *testing.T) {
 
 func TestContributionsOwnStringsAndRejectMalformedPayloads(t *testing.T) {
 	want := Contributions{
+		LanguagePacks: []LanguagePack{{ID: "it", Label: "Italiano", Path: "resources/locales/it.json"}},
 		Fonts:         []Font{{"mono", "等宽", "resources/fonts/mono.ttf", "resources/fonts/bold.ttf"}},
 		Themes:        []Theme{{"ink", "墨色", "resources/themes/ink.json"}},
 		IconThemes:    []IconTheme{{"code", "代码", []IconRule{{Match: FileSuffix, Pattern: ".d.ts", Path: "resources/icons/code.svg"}, {Match: DefaultFolder, Pattern: "", Path: "resources/icons/folder.svg"}}}},
@@ -128,13 +129,13 @@ func TestRejectInvalidFrames(t *testing.T) {
 }
 
 func TestServeHandshakeAndCapabilityFailure(t *testing.T) {
-	for _, caps := range []Capability{Capabilities, FileIcons, EditorThemes} {
+	for _, caps := range []Capability{Capabilities, Capabilities &^ LanguagePacks, FileIcons, EditorThemes} {
 		var input, output bytes.Buffer
 		w := Writer{Target: &input}
 		hello, _ := EncodeHello(nil, Hello{"pencode", caps})
 		_ = w.Write(Initialize, 42, hello)
 		_ = w.Write(Shutdown, 0, nil)
-		if err := Serve(&input, &output, Contributions{Themes: []Theme{{"ink", "Ink", "resources/themes/ink.json"}}, Fonts: []Font{{ID: "mono", Label: "Mono", Path: "resources/fonts/mono.ttf"}}}); err != nil {
+		if err := Serve(&input, &output, Contributions{LanguagePacks: []LanguagePack{{ID: "it", Label: "Italiano", Path: "resources/locales/it.json"}}, Themes: []Theme{{"ink", "Ink", "resources/themes/ink.json"}}, Fonts: []Font{{ID: "mono", Label: "Mono", Path: "resources/fonts/mono.ttf"}}}); err != nil {
 			t.Fatal(err)
 		}
 		r := Reader{Source: &output}

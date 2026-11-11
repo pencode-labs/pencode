@@ -29,6 +29,8 @@ const (
 	fileSearchReplace
 	fileRestore
 	fileReopenText
+	fileReadPage
+	fileOpenExternal
 )
 const fileIOCapacity = 32
 
@@ -67,12 +69,14 @@ type fileIOJob struct {
 	imports                                               []string
 	workspace, targetWorkspace                            uint64
 	id                                                    uint64
-	preview, reveal, directory, cut, duplicate, clipboard bool
+	offset                                                uint64
 	mode                                                  protocol.DocumentMode
+	preview, reveal, directory, cut, duplicate, clipboard bool
 	kind                                                  fileIOKind
 	finished                                              bool
 	external                                              bool
 	overwrite                                             bool
+	tail                                                  bool
 }
 type fileNavigation struct {
 	selection       *lsp.Range
@@ -95,6 +99,7 @@ type fileIOResult struct {
 	workspace            protocol.Workspace
 	content, destination string
 	reload               []fileReloadResult
+	page                 protocol.DocumentPage
 	importIndex          int
 	external             bool
 }
@@ -179,6 +184,8 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		return
 	}
 	switch j.kind {
+	case fileOpenExternal:
+		return executeExternalOpen(j)
 	case fileCloseWorkspace:
 		ctx, cancel := context.WithTimeout(j.ctx, time.Second)
 		defer cancel()
@@ -195,6 +202,8 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		if r.err == nil {
 			r.document, r.content, r.err = j.backend.OpenDocument(j.ctx, workspace, j.relative, j.mode)
 		}
+	case fileReadPage:
+		r.content, r.page, r.err = j.document.ReadPage(j.ctx, j.offset)
 	case fileSave:
 		document := j.document
 		if document == nil {
@@ -287,14 +296,14 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 }
 func (m *workspaceModel) submitFileIO(j *fileIOJob) error {
 	if !m.backendConnected() {
-		return fmt.Errorf("工作区服务未连接，请等待连接恢复")
+		return fmt.Errorf("%s", m.tr("工作区服务未连接，请等待连接恢复"))
 	}
 	if m.fileIO == nil {
 		m.fileIO = newFileIO(m.backgroundWake())
 	}
 	q := m.fileIO
 	if len(q.pending) >= fileIOCapacity {
-		return fmt.Errorf("文件任务队列已满，请稍后重试")
+		return fmt.Errorf("%s", m.tr("文件任务队列已满，请稍后重试"))
 	}
 	j.ctx, j.cancel = context.WithTimeout(q.ctx, 30*time.Second)
 	q.next++
@@ -310,7 +319,7 @@ func (m *workspaceModel) stopFileIO() {
 		m.fileIO.cancel()
 		for _, j := range m.fileIO.pending {
 			if j.language != nil {
-				j.language.finish(fmt.Errorf("文件任务已取消，编辑未应用"))
+				j.language.finish(fmt.Errorf("%s", m.tr("文件任务已取消，编辑未应用")))
 			}
 		}
 		clear(m.fileIO.pending)
@@ -388,21 +397,20 @@ func (m *workspaceModel) pollFileIO() bool {
 }
 func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 	j := r.job
+	if j.kind == fileOpenExternal {
+		m.acceptExternalOpen(r)
+		return
+	}
 	if j.kind == fileSearchReplace {
 		m.acceptFolderReplace(r)
 		return
 	}
 	if j.kind == fileOpenWorkspace {
 		if r.err != nil {
-			m.setActiveStatus("打开项目失败：" + r.err.Error())
+			m.setActiveStatus(m.tr("打开项目失败：") + r.err.Error())
 			return
 		}
 		m.acceptWorkspace(j.backend, r.workspace)
-		if j.relative != "" {
-			if err := m.requestFileOpen(m.activeProjectState(), j.relative, false, true, nil); err != nil {
-				m.setActiveStatus(err.Error())
-			}
-		}
 		return
 	}
 	if j.kind == fileLanguageEdit {
@@ -418,6 +426,8 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 	switch j.kind {
 	case fileOpen:
 		m.acceptFileOpen(r)
+	case fileReadPage:
+		m.acceptFilePage(r)
 	case fileReopenText:
 		m.acceptTextEditor(r)
 	case fileSave:
@@ -437,10 +447,10 @@ func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, pre
 	before := m.selectionSnapshot()
 	m.actions.ui.editor = nil
 	if p != nil && !m.projectLive(p) {
-		return fmt.Errorf("项目已关闭")
+		return fmt.Errorf("%s", m.tr("项目已关闭"))
 	}
 	if m.fileIOMutating(p) {
-		return fmt.Errorf("请等待文件操作完成")
+		return fmt.Errorf("%s", m.tr("请等待文件操作完成"))
 	}
 	m.cancelFileOpens()
 	files := m.files
@@ -472,7 +482,7 @@ func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, pre
 	if p != nil && p.restoring != nil {
 		p.ActivePath = relative
 	}
-	m.setProjectStatus(p, "正在打开 "+path.Base(relative)+"…")
+	m.setProjectStatus(p, m.tr("正在打开 ")+path.Base(relative)+"…")
 	return nil
 }
 func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
@@ -483,7 +493,7 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 		return
 	}
 	if r.err != nil {
-		m.setProjectStatus(j.project, "打开文件失败："+r.err.Error())
+		m.setProjectStatus(j.project, m.tr("打开文件失败：")+r.err.Error())
 		return
 	}
 	if j.project != nil {
@@ -519,6 +529,7 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 			return
 		}
 		f := &openFile{document: r.document, Path: j.relative, Name: path.Base(j.relative), contentSnapshot: snapshotText(r.content), savedContent: snapshotText(r.content), unsupported: r.document == nil}
+		f.initPage()
 		r.document = nil
 		m.files[j.relative] = f
 		m.tabs = append(m.tabs, j.relative)
@@ -558,7 +569,7 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 				key = p.historyKey
 			}
 			if err := m.session.quickHistory.remember(key, f.Path); err != nil {
-				m.setProjectStatus(p, "保存搜索历史失败："+err.Error())
+				m.setProjectStatus(p, m.tr("保存搜索历史失败：")+err.Error())
 			}
 		}
 		m.quickOpen, m.quickNeedsFocus = false, false
@@ -596,24 +607,30 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 }
 func (m *workspaceModel) requestFileSave(p *pencodeProject, f *openFile) (*fileIOJob, error) {
 	if f == nil {
-		return nil, fmt.Errorf("没有打开的文件")
+		return nil, fmt.Errorf("%s", m.tr("没有打开的文件"))
+	}
+	if f.pageLoading {
+		return nil, fmt.Errorf("%s", m.tr("请等待分段加载完成"))
+	}
+	if f.page.Paged && f.document == nil {
+		return nil, fmt.Errorf("%s", m.tr("大文件连接已断开，请恢复连接后重新加载"))
 	}
 	if !f.text() {
-		return nil, fmt.Errorf("当前编辑工具不支持保存二进制文件")
+		return nil, fmt.Errorf("%s", m.tr("当前编辑工具不支持保存二进制文件"))
 	}
 	if m.fileIOMutating(p) {
-		return nil, fmt.Errorf("请等待文件操作完成")
+		return nil, fmt.Errorf("%s", m.tr("请等待文件操作完成"))
 	}
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
 			if j.kind == fileReload && j.project == p {
-				return nil, fmt.Errorf("请等待重新加载完成")
+				return nil, fmt.Errorf("%s", m.tr("请等待重新加载完成"))
 			}
 			if j.kind == fileSave && j.file == f {
 				if j.text.Equal(f.snapshot()) {
 					return j, nil
 				}
-				return nil, fmt.Errorf("该文件正在保存，新更改保留在编辑器中，请稍后再保存")
+				return nil, fmt.Errorf("%s", m.tr("该文件正在保存，新更改保留在编辑器中，请稍后再保存"))
 			}
 		}
 	}
@@ -626,7 +643,7 @@ func (m *workspaceModel) requestFileSave(p *pencodeProject, f *openFile) (*fileI
 		return nil, err
 	}
 	m.prepareLanguageSave(f)
-	m.setProjectStatus(p, "正在保存 "+f.Name+"…")
+	m.setProjectStatus(p, m.tr("正在保存 ")+f.Name+"…")
 	return j, nil
 }
 func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
@@ -643,6 +660,7 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 				f.document.Update(piecetree.Snapshot{}, f.snapshot(), -1, 0, 0)
 			}
 		}
+		f.pageDirty = false
 		f.savedContent = j.text
 		f.Dirty = !f.snapshot().Equal(j.text)
 		f.saveRevision++
@@ -650,17 +668,17 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 		if j.relative == pencodeDebugConfigPath && j.project == m.activeProjectState() {
 			m.loadDebugConfigs()
 		}
-		m.setProjectStatus(j.project, "已保存 "+f.Name)
+		m.setProjectStatus(j.project, m.tr("已保存 ")+f.Name)
 		m.syncLanguageDocuments()
 	} else {
-		m.setProjectStatus(j.project, fmt.Sprintf("保存 %s 失败：%v", f.Name, r.err))
+		m.setProjectStatus(j.project, fmt.Sprintf(m.tr("保存 %s 失败：%v"), f.Name, r.err))
 	}
 	if m.closing.saveID == j.id {
 		m.closing.saveID = 0
 		if r.err != nil {
 			m.closing.error = r.err.Error()
 		} else if f.Dirty {
-			m.closing.error = "保存期间内容已改变，请再次保存"
+			m.closing.error = m.tr("保存期间内容已改变，请再次保存")
 		} else {
 			m.resolveClose(false)
 		}
@@ -682,15 +700,16 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 			f.document = nil
 		}
 		if f.content() != item.before || r.external && f.Dirty {
-			m.setProjectStatus(p, "重新加载期间内容已改变，保留当前编辑")
+			m.setProjectStatus(p, m.tr("重新加载期间内容已改变，保留当前编辑"))
 			continue
 		}
 		if item.err != nil {
-			m.setProjectStatus(p, "重新加载失败："+item.err.Error())
+			m.setProjectStatus(p, m.tr("重新加载失败：")+item.err.Error())
 			continue
 		}
 		f.closeDocument()
 		f.document = item.document
+		f.initPage()
 		f.unsupported = item.document == nil
 		f.editorGeneration = 0
 		item.document = nil
@@ -702,6 +721,7 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		start, oldEnd, newEnd, _ := pencodeChangedRange(f.content(), item.content)
 		m.rebaseDebugBreakpoints(p, f, snapshotText(item.content), start, oldEnd, newEnd)
 		f.contentSnapshot = snapshotText(item.content)
+		f.updatePageLabel()
 		f.savedContent = snapshotText(item.content)
 		f.Dirty = false
 		f.pencodeEditHistory = pencodeEditHistory{}
@@ -791,7 +811,7 @@ func (m *workspaceModel) requestFileReload(p *pencodeProject, cleanOnly bool) er
 	if m.fileIO != nil {
 		for _, job := range m.fileIO.pending {
 			if job.project == p || job.target == p {
-				return fmt.Errorf("请等待文件操作完成后重新加载")
+				return fmt.Errorf("%s", m.tr("请等待文件操作完成后重新加载"))
 			}
 		}
 	}

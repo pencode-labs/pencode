@@ -1,8 +1,10 @@
 package workbench
 
 import (
+	"time"
 	"unicode/utf8"
 
+	"github.com/go-gl/mathgl/mgl32"
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
 	"github.com/onix-engine/onix/input"
@@ -17,32 +19,44 @@ type terminalBackground struct {
 	x, y, width int
 	color       graphics.ColorRGBA
 }
+type terminalIMEAnchor struct {
+	terminal    *pencodeTerminal
+	revision    uint64
+	column, row int
+}
+
 type pencodeTerminalView struct {
-	tabsActive     *pencodeTerminal
-	tabsTheme      *pencodeTheme
-	active         *pencodeTerminal
-	theme          *pencodeTheme
-	value          string
-	edits          []input.TextEdit
-	spans          []scene.TextSpan2D
-	backgrounds    []terminalBackground
-	buffer         []byte
-	decorations    []ecs.Entity
-	underlines     []terminalBackground
-	tabs           sourceVNodeView
-	tabScroll      pencodeTabScroll
-	context        pencodeTerminalContext
-	control, text  ecs.Entity
-	tabsCount      int
-	scroll         int
-	revision       uint64
-	caret          int
-	tabsGeneration uint64
+	repeatAt        time.Time
+	tabsActive      *pencodeTerminal
+	tabsTheme       *pencodeTheme
+	active          *pencodeTerminal
+	theme           *pencodeTheme
+	value           string
+	keys            []input.KeyCode
+	edits           []input.TextEdit
+	selectionBuffer []byte
+	spans           []scene.TextSpan2D
+	backgrounds     []terminalBackground
+	buffer          []byte
+	decorations     []ecs.Entity
+	underlines      []terminalBackground
+	tabs            sourceVNodeView
+	tabScroll       pencodeTabScroll
+	ime             terminalIMEAnchor
+	context         pencodeTerminalContext
+	control, text   ecs.Entity
+	tabsCount       int
+	scroll          int
+	repeatKey       input.KeyCode
+	firstRow        int
+	revision        uint64
+	caret           int
+	tabsGeneration  uint64
 }
 
 func (m *workspaceModel) renderTerminal(view *htmlui.View) {
-	view.Attr("status-terminal", "title", m.shortcutTitle("切换终端", "terminal-toggle"))
-	view.Attr("terminal-new", "title", m.shortcutTitle("新建终端", "terminal-new"))
+	view.Attr("status-terminal", "title", m.shortcutTitle(m.tr("切换终端"), "terminal-toggle"))
+	view.Attr("terminal-new", "title", m.shortcutTitle(m.tr("新建终端"), "terminal-new"))
 	active := m.bottom.active == pencodePanelTerminal
 	view.Attr("status-terminal", "aria-expanded", boolAttribute(active))
 	setPanelVisible(view, "terminal-pane", active)
@@ -75,7 +89,7 @@ func (m *workspaceModel) renderTerminal(view *htmlui.View) {
 				b.attr("id", "active-terminal-tab")
 			}
 			b.text("button", item.selectRef, item.label, "id", item.selectRef, "type", "button", "role", "tab", "aria-selected", boolAttribute(item == t.active), "aria-controls", "terminal-pane", "tabindex", tabindex, "title", item.root)
-			b.open("button", item.closeRef, "id", item.closeRef, "type", "button", "class", "pencode-icon-button", "title", "关闭终端", "aria-label", "关闭 "+item.label)
+			b.open("button", item.closeRef, "id", item.closeRef, "type", "button", "class", "pencode-icon-button", "title", m.tr("关闭终端"), "aria-label", m.tr("关闭 ")+item.label)
 			b.text("img", "close", "", "src", m.themedIcon("icons/close.svg", foreground), "alt", "", "class", "pencode-close-icon")
 			b.close()
 			b.close()
@@ -132,6 +146,7 @@ func (m *workspaceModel) prepareTerminalView() {
 	runeIndex := 0
 	cx, cy := s.Cursor()
 	historyRows := len(s.History) / s.Cols
+	v.firstRow = int(s.Scrolled) - item.scroll
 	for row := 0; row < s.Rows; row++ {
 		line := historyRows - item.scroll + row
 		cells := s.Cells
@@ -278,6 +293,7 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 		v.control = control
 		v.text, _ = world.FindPart[engineui.ValuePart, scene.Text2D](control)
 		_ = world.Insert(control, engineui.TextFieldKeyHandler{Handle: m.terminalKeys})
+		_ = world.Insert(control, scene.FocusedInputHandler{Handle: m.terminalInput})
 	}
 	if !world.IsAlive(v.text) {
 		v.text, _ = world.FindPart[engineui.ValuePart, scene.Text2D](control)
@@ -346,6 +362,7 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 	}
 	cols, rows := max(2, int(link.Content.Width/width)), max(1, int(link.Content.Height/height))
 	if cols != s.Cols || rows != s.Rows {
+		item.selection = terminalTextSelection{}
 		s.Resize(cols, rows)
 		item.session.Resize(s.Cols, s.Rows)
 		markPencodeRootDirtyByModel(world, m)
@@ -376,17 +393,45 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 	for _, e := range v.decorations[used:] {
 		world.SetIfChanged(e, scene.Visibility{})
 	}
-	// Native IME positioning follows the shell cursor rather than the selection.
-	if m.terminalFocused(world) {
-		if state, ok := world.Resource[*input.State](); ok {
-			node, _ := world.HTMLNode(m.surface, "terminal-content")
-			if bounds, ok := node.Bounds(); ok {
-				cx, cy := s.Cursor()
-				state.SetTextInputCaret(input.TextInputRect{X: float32(bounds.X) + float32(cx)*width, Y: float32(bounds.Y) + float32(cy)*height, Width: width, Height: height})
-			}
-		}
+}
+
+// Publish after native caret synchronization so selection cannot replace the
+// shell's IME anchor. Keep its cell stable throughout one composition, even
+// when a full-screen application moves the cursor while redrawing.
+func (m *workspaceModel) syncTerminalIME(world *module.Content, state *input.State) {
+	v := &m.terminalView
+	if m.screen != pencodeWorkspace || !m.terminalFocused(world) || m.terminals == nil || m.terminals.active == nil {
+		v.ime = terminalIMEAnchor{}
+		return
+	}
+	// Content.Resource returns an isolated input copy. Position the native
+	// session through the live state supplied by the application system.
+	if state == nil {
+		return
+	}
+	item := m.terminals.active
+	revision := state.TextInputConfig().Revision
+	if !state.Composing() || v.ime.terminal != item || v.ime.revision != revision {
+		column, row := item.screen.Cursor()
+		v.ime = terminalIMEAnchor{terminal: item, revision: revision, column: column, row: row}
+	}
+	text := world.Ref[scene.Text2D](v.text)
+	transform := world.Ref[scene.UIGlobalTransform](v.text)
+	if text == nil || transform == nil {
+		return
+	}
+	width, height, ok := scene.MeasureTextValue2D(text, "M")
+	if !ok || width <= 0 || height <= 0 {
+		return
+	}
+	// The text transform includes content padding, parent transforms and zoom.
+	matrix := transform.Matrix.Mul4(mgl32.Translate3D(float32(v.ime.column)*width, float32(v.ime.row)*height, 0))
+	x, y, right, bottom, ok := scene.BoundsInSpace2D(matrix, scene.AnchorTopLeft, width, height, true)
+	if ok {
+		state.SetTextInputCaret(input.TextInputRect{X: x, Y: y, Width: right - x, Height: bottom - y})
 	}
 }
+
 func (m *workspaceModel) terminalQuad(world *module.Content, used *int, parent ecs.Entity, stack scene.UIStackIndex, x, y, width, height float32, color graphics.ColorRGBA) {
 	v := &m.terminalView
 	if *used == len(v.decorations) {

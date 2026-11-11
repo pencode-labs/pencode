@@ -165,7 +165,7 @@ type pencodeCloseRequest struct {
 func (model *workspaceModel) beginClose(action pencodeCloseAction, project *pencodeProject, relative string) bool {
 	if model.fileCloseBlocked(action, project) {
 		model.fileClose = pencodeCloseRequest{action: action, project: project, path: relative}
-		model.setActiveStatus("正在等待文件操作完成后关闭…")
+		model.setActiveStatus(model.tr("正在等待文件操作完成后关闭…"))
 		return false
 	}
 	if action >= pencodeCloseProject && model.sourceCloseBlocked(project) {
@@ -179,7 +179,7 @@ func (model *workspaceModel) beginClose(action pencodeCloseAction, project *penc
 		}
 		if action == pencodeCloseWindow || document.project == project && (action == pencodeCloseProject || tabCloseIncludes(action, project, relative, file)) {
 			model.customClose = pencodeCloseRequest{action: action, project: project, path: relative}
-			model.setActiveStatus("正在等待编辑工具完成操作…")
+			model.setActiveStatus(model.tr("正在等待编辑工具完成操作…"))
 			return false
 		}
 	}
@@ -256,7 +256,7 @@ func (model *workspaceModel) showCloseTarget() {
 	if target.project != nil {
 		name = target.project.Name + "/" + name
 	}
-	request.message = "是否保存对 “" + name + "” 的更改？"
+	request.message = model.tr("是否保存对 “") + name + model.tr("” 的更改？")
 	request.error = ""
 	request.needsFocus = true
 }
@@ -288,7 +288,7 @@ func (model *workspaceModel) resolveClose(save bool) {
 			return
 		}
 		request.saveID = job.id
-		request.error = "正在保存…"
+		request.error = model.tr("正在保存…")
 		return
 	}
 
@@ -399,12 +399,12 @@ func (model *workspaceModel) renderCloseDialog(view *htmlui.View) {
 		}
 	}
 	if model.closing.lifecycle {
-		view.Text("close-title", "确认关闭")
-		view.Text("close-save", "继续关闭")
+		view.Text("close-title", model.tr("确认关闭"))
+		view.Text("close-save", model.tr("继续关闭"))
 		view.Attr("close-discard", "hidden", "")
 	} else {
-		view.Text("close-title", "未保存的更改")
-		view.Text("close-save", "保存")
+		view.Text("close-title", model.tr("未保存的更改"))
+		view.Text("close-save", model.tr("保存"))
 		view.RemoveAttr("close-discard", "hidden")
 	}
 	view.Text("close-message", model.closing.message)

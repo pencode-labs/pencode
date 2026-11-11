@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/internal/updater"
 )
@@ -61,7 +60,8 @@ func TestUpdatePollingWarmAllocations(t *testing.T) {
 func TestUpdateSettingsControls(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)
 	m.settingsOpen = true
-	m.session.updates = &pencodeUpdates{root: t.TempDir(), version: "v1.0.0", message: "更新已就绪，重启后完成安装", stage: "staged"}
+	u := &pencodeUpdates{root: t.TempDir(), version: "v1.0.0"}
+	m.session.updates = u
 	markPencodeRootDirtyByModel(m.fontResources, m)
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
@@ -70,49 +70,56 @@ func TestUpdateSettingsControls(t *testing.T) {
 	if !m.settingsAbout || m.settingsShortcuts || m.settingsExtensions {
 		t.Fatal("about category was not selected")
 	}
-	u := m.session.updates
-	for _, test := range []struct {
-		label    string
-		release  string
-		stage    string
-		busy     bool
-		disabled bool
-	}{
-		{label: "检查更新"},
-		{label: "正在检查…", busy: true, disabled: true},
-		{label: "下载更新", release: "download"},
-		{label: "正在下载…", release: "download", busy: true, disabled: true},
-		{label: "安装并重启", release: "download", stage: "staged"},
-		{label: "检查更新"},
-	} {
-		u.release.URL, u.stage, u.busy = test.release, test.stage, test.busy
+	assertAction := func(label string, disabled bool) {
+		t.Helper()
 		markPencodeRootDirtyByModel(m.fontResources, m)
 		languageInteractionStep(t, app)
-		languageInteractionStep(t, app)
 		editorContextBounds(t, m, "update-action")
-		control, ok := m.fontResources.HTMLControl(m.surface, "update-action")
-		if !ok {
-			t.Fatal("missing update action")
+		node, _ := m.fontResources.HTMLNode(m.surface, "update-action")
+		if _, got := node.Attribute("disabled"); got != disabled {
+			t.Fatalf("%s: disabled = %v, want %v", label, got, disabled)
 		}
-		button, _ := m.fontResources.Get[htmlui.Control](control)
-		if button.Disabled != test.disabled {
-			t.Fatalf("%s: disabled = %v", test.label, button.Disabled)
+		markup, err := htmlui.Serialize(app.World, m.surface)
+		if err != nil {
+			t.Fatal(err)
 		}
-		var label strings.Builder
-		for _, access := range app.World.Query2[htmlui.ControlText, scene.Text2D]().All {
-			if access.A.Ref().Control == control {
-				label.WriteString(access.B.Ref().Text().String())
-			}
+		if !strings.Contains(markup, ">"+label+"</button>") {
+			t.Fatalf("update action label %q not rendered", label)
 		}
-		if label.String() != test.label {
-			t.Fatalf("update action label = %q, want %q", label.String(), test.label)
+	}
+	complete := func(result pencodeUpdateResult) {
+		t.Helper()
+		u.results = make(chan pencodeUpdateResult, 1)
+		u.results <- result
+		if !m.pollUpdates() {
+			t.Fatal("update result did not change UI")
 		}
-		if test.busy {
-			editorContextClick(t, app, m, state, "update-action")
-			if u.results != nil || u.requested {
-				t.Fatal("busy update action accepted a click")
-			}
-		}
+	}
+	assertAction("检查更新", false)
+	u.busy = true
+	assertAction("正在检查…", true)
+	if !m.handleUpdateEvent("update-action") || u.results != nil {
+		t.Fatal("busy action started another update")
+	}
+	complete(pencodeUpdateResult{err: errors.New("offline")})
+	assertAction("检查更新", false)
+	complete(pencodeUpdateResult{})
+	assertAction("检查更新", false)
+	complete(pencodeUpdateResult{release: updater.Release{Tag: "v1.1.0", URL: "download"}})
+	assertAction("下载更新", false)
+	u.busy = true
+	assertAction("正在下载…", true)
+	complete(pencodeUpdateResult{err: errors.New("offline")})
+	assertAction("下载更新", false)
+	complete(pencodeUpdateResult{release: u.release, stage: "staged"})
+	assertAction("安装并重启", false)
+	m.clearCloseRequest()
+	assertAction("安装并重启", false)
+	u.stage, u.root = "", ""
+	u.release = updater.Release{}
+	assertAction("检查更新", true)
+	if !m.handleUpdateEvent("update-action") || u.busy {
+		t.Fatal("unsupported installation started an update")
 	}
 	for _, ref := range []string{"check-update", "download-update", "restart-update"} {
 		if _, ok := m.fontResources.HTMLNode(m.surface, ref); ok {

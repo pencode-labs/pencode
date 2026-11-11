@@ -47,6 +47,7 @@ func (m *Mod) Install(c *module.Context) error {
 	model.fonts = m.session.fonts
 	m.model = model
 	model.settings, model.settingsPath = loadPencodeSettings()
+	model.ensureLanguagePacks()
 	model.themeSourceCSS = string(css)
 	if err := model.loadSyntaxSettings(); err != nil {
 		return err
@@ -153,16 +154,15 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 	if previousFile != nil {
 		previousContent = previousFile.snapshot()
 	}
-	if m.model.pollFileIO() {
+	fileIOChanged := m.model.pollFileIO()
+	externalChanged := m.session.pollExternalPaths(m.model)
+	if fileIOChanged || externalChanged {
 		if previousFile != m.model.activeFile() || previousContent != m.model.activeSnapshot() {
 			setPencodeEditorValue(c.Content(), m.model.surface, m.model.activeContent())
 		}
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	m.model.releaseIdleSyntaxMemory(time.Now())
-	if m.model.pollOpenPaths() {
-		markPencodeRootDirtyByModel(c.Content(), m.model)
-	}
 	terminalCount, terminalActive := 0, (*pencodeTerminal)(nil)
 	panel, status := m.model.bottom.active, m.model.status
 	if m.model.terminals != nil {

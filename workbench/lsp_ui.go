@@ -121,7 +121,7 @@ func languageAction(method string) (string, string) {
 
 func (model *workspaceModel) renderLanguageTools(view *htmlui.View) {
 	state := model.languages
-	if state == nil || model.settingsOpen || model.quickOpen || model.findOpen || !model.textEditorActive() {
+	if state == nil || model.settingsOpen || model.quickOpen || !model.textEditorActive() {
 		view.Attr("lsp-panel", "hidden", "")
 		return
 	}
@@ -132,7 +132,7 @@ func (model *workspaceModel) renderLanguageTools(view *htmlui.View) {
 	}
 	view.RemoveAttr("lsp-panel", "hidden")
 	view.Attr("lsp-panel", "style", languagePopupStyle(panel.anchorX, panel.anchorY))
-	title := panel.title
+	title := model.tr(panel.title)
 	if panel.method == "textDocument/references" {
 		title = ""
 		view.Attr("lsp-panel-header", "hidden", "")
@@ -236,7 +236,7 @@ func (model *workspaceModel) renderLanguageTools(view *htmlui.View) {
 func (model *workspaceModel) renderLanguageEditorPopups(view *htmlui.View) {
 	ui := &model.languageUI
 	view.RemoveAttr("editor", "aria-activedescendant")
-	available := model.textEditorActive() && !model.settingsOpen && !model.quickOpen && !model.findOpen && model.closing.action == pencodeCloseNone
+	available := model.textEditorActive() && !model.settingsOpen && !model.quickOpen && model.closing.action == pencodeCloseNone
 	for _, ref := range []string{"lsp-hover", "lsp-completion", "lsp-context", "lsp-context-submenu", "lsp-hover-underline"} {
 		view.Attr(ref, "hidden", "")
 	}
@@ -405,7 +405,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 	model.dismissLanguageContext()
 	doc := model.languageDocument()
 	if doc == nil {
-		model.setActiveStatus("请安装匹配此文件的 LSP 扩展")
+		model.setActiveStatus(model.tr("请安装匹配此文件的 LSP 扩展"))
 		return
 	}
 	p := &model.languages.panel
@@ -415,7 +415,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 	session := model.languageProvider(doc, method)
 	if session == nil {
 		if !automatic {
-			model.setActiveStatus("当前语言服务尚未就绪或不支持" + title)
+			model.setActiveStatus(model.tr("当前语言服务尚未就绪或不支持") + title)
 		}
 		return
 	}
@@ -423,7 +423,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 		model.dismissLanguagePanel()
 		p.open = true
 		p.focus = true
-		p.title = title
+		p.title = model.tr(title)
 		p.query = ""
 		p.job = pencodeLanguageJob{document: doc, content: doc.content, version: doc.version}
 		if world != nil {
@@ -435,7 +435,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 		return
 	}
 	if doc.servers[session].version != doc.version {
-		model.setActiveStatus("语言服务正在同步文档，请重试")
+		model.setActiveStatus(model.tr("语言服务正在同步文档，请重试"))
 		return
 	}
 	caret, anchor := 0, 0
@@ -518,8 +518,8 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 	if automatic || method == "textDocument/definition" {
 		p.open = false
 	}
-	p.title = title
-	p.body = "请求中…"
+	p.title = model.tr(title)
+	p.body = model.tr("请求中…")
 	p.rows = nil
 	p.referenceGroups = nil
 	p.page = 0
@@ -535,7 +535,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 		}
 	default:
 		p.pending = false
-		p.body = "语言服务繁忙，请重试"
+		p.body = model.tr("语言服务繁忙，请重试")
 	}
 }
 func (model *workspaceModel) requestLanguageFollowup(method string, params any) {
@@ -548,10 +548,10 @@ func (model *workspaceModel) requestLanguageFollowup(method string, params any) 
 	select {
 	case p.session.jobs <- job:
 		p.pending = true
-		p.body = "请求中…"
+		p.body = model.tr("请求中…")
 	default:
 		p.pending = false
-		p.body = "语言服务繁忙，请重试"
+		p.body = model.tr("语言服务繁忙，请重试")
 	}
 }
 func (model *workspaceModel) acceptLanguageResult(world *module.Content, event pencodeLanguageEvent) {
@@ -578,7 +578,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 	}
 	p.pending = false
 	if job.method != "workspace/executeCommand" && (job.document.file.snapshot() != job.content || job.document.version != job.version || !job.document.seen) {
-		p.body = "文档已改变，请重新请求"
+		p.body = model.tr("文档已改变，请重新请求")
 		p.rows = nil
 		p.referenceGroups = nil
 		return
@@ -602,7 +602,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 			p.body = err.Error()
 			return
 		}
-		p.body = "正在应用重命名…"
+		p.body = model.tr("正在应用重命名…")
 		complete := func(err error) {
 			if err != nil {
 				p.body = err.Error()
@@ -693,7 +693,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 				Range   lsp.Range    `json:"range"`
 			}
 			if json.Unmarshal(raw, &item) == nil {
-				label := fmt.Sprintf("行 %d", item.Range.Start.Line+1)
+				label := fmt.Sprintf(model.tr("行 %d"), item.Range.Start.Line+1)
 				if item.Command != nil {
 					label += " · " + item.Command.Title
 				}
@@ -708,7 +708,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 			model.executeLanguageCommand(*item.Command)
 		}
 	case "workspace/executeCommand":
-		p.body = "命令已执行"
+		p.body = model.tr("命令已执行")
 	case "textDocument/selectionRange":
 		var items []struct {
 			Range lsp.Range `json:"range"`
@@ -723,7 +723,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 		_ = json.Unmarshal(event.result, &items)
 		for _, item := range items {
 			location := lsp.Location{URI: job.uri, Range: item.Range}
-			p.rows = append(p.rows, pencodeLanguageRow{label: fmt.Sprintf("行 %d，列 %d", item.Range.Start.Line+1, item.Range.Start.Character+1), location: &location})
+			p.rows = append(p.rows, pencodeLanguageRow{label: fmt.Sprintf(model.tr("行 %d，列 %d"), item.Range.Start.Line+1, item.Range.Start.Character+1), location: &location})
 		}
 	case "textDocument/prepareCallHierarchy", "textDocument/prepareTypeHierarchy", "callHierarchy/incomingCalls", "callHierarchy/outgoingCalls", "typeHierarchy/supertypes", "typeHierarchy/subtypes":
 		model.languageHierarchyRows(job.method, event.result)
@@ -743,7 +743,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 		p.body = languageText(event.result)
 	}
 	if len(p.rows) == 0 && p.body == "" {
-		p.body = "没有结果"
+		p.body = model.tr("没有结果")
 	}
 }
 
@@ -943,7 +943,7 @@ func (model *workspaceModel) chooseLanguageRow(world *module.Content, index int)
 		return
 	}
 	if p.job.document == nil || p.job.document.content != p.job.content || p.job.document.file.snapshot() != p.job.content {
-		p.body = "文档已改变，请重新请求"
+		p.body = model.tr("文档已改变，请重新请求")
 		return
 	}
 	switch row.kind {
@@ -993,7 +993,7 @@ func (model *workspaceModel) applyLanguageEdits(world *module.Content, session *
 	if doc.file == model.activeFile() && world != nil {
 		setPencodeEditorValue(world, model.surface, content)
 	}
-	model.languages.panel.body = "编辑已应用，可撤销或保存"
+	model.languages.panel.body = model.tr("编辑已应用，可撤销或保存")
 	model.languages.panel.rows = nil
 	return true
 }
@@ -1005,7 +1005,7 @@ func (model *workspaceModel) applyLanguageCompletion(world *module.Content, sess
 		return
 	}
 	if item.InsertTextFormat == 2 {
-		p.body = "服务器返回了未协商的 snippet 补全"
+		p.body = model.tr("服务器返回了未协商的 snippet 补全")
 		return
 	}
 	edits := item.AdditionalTextEdits
@@ -1128,9 +1128,9 @@ func (model *workspaceModel) languageHierarchyRows(method string, raw json.RawMe
 		p := &model.languages.panel
 		p.rows = append(p.rows, pencodeLanguageRow{label: symbol.Name, location: &location})
 		if strings.Contains(method, "CallHierarchy") || strings.HasPrefix(method, "callHierarchy/") {
-			p.rows = append(p.rows, pencodeLanguageRow{label: "  调用者 → " + symbol.Name, raw: item, kind: "incoming"}, pencodeLanguageRow{label: "  调用目标 → " + symbol.Name, raw: item, kind: "outgoing"})
+			p.rows = append(p.rows, pencodeLanguageRow{label: model.tr("  调用者 → ") + symbol.Name, raw: item, kind: "incoming"}, pencodeLanguageRow{label: model.tr("  调用目标 → ") + symbol.Name, raw: item, kind: "outgoing"})
 		} else {
-			p.rows = append(p.rows, pencodeLanguageRow{label: "  父类型 → " + symbol.Name, raw: item, kind: "super"}, pencodeLanguageRow{label: "  子类型 → " + symbol.Name, raw: item, kind: "sub"})
+			p.rows = append(p.rows, pencodeLanguageRow{label: model.tr("  父类型 → ") + symbol.Name, raw: item, kind: "super"}, pencodeLanguageRow{label: model.tr("  子类型 → ") + symbol.Name, raw: item, kind: "sub"})
 		}
 	}
 }
@@ -1164,7 +1164,7 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 	}
 }
 func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *input.State) (handled bool) {
-	if model.settingsOpen || model.quickOpen || model.findOpen || !model.textEditorActive() {
+	if model.settingsOpen || model.quickOpen || model.findInputFocused(world) || !model.textEditorActive() {
 		return false
 	}
 	defer func() {

@@ -30,39 +30,39 @@ func (model *workspaceModel) applyFileDialog() error {
 	c := &model.fileContext
 	project := c.project
 	if project == nil || model.projectIndex(project.Path) < 0 {
-		return fmt.Errorf("项目已关闭")
+		return fmt.Errorf("%s", model.tr("项目已关闭"))
 	}
 	if c.dialog == "overwrite" {
 		j := c.transfer
 		if j == nil || !model.projectLive(j.project) || j.target != nil && !model.projectLive(j.target) {
-			return fmt.Errorf("项目已关闭")
+			return fmt.Errorf("%s", model.tr("项目已关闭"))
 		}
 		if model.resourceBusy(project, path.Join(j.destination, filepath.Base(j.imports[0]))) {
-			return fmt.Errorf("请等待编辑工具完成操作")
+			return fmt.Errorf("%s", model.tr("请等待编辑工具完成操作"))
 		}
 		return model.submitResourceIO(&fileIOJob{kind: fileImport, project: project,
 			destination: j.destination, imports: j.imports, overwrite: true})
 	}
 	if c.dialog == "delete" {
 		if c.path == "" {
-			return fmt.Errorf("不能删除项目根目录")
+			return fmt.Errorf("%s", model.tr("不能删除项目根目录"))
 		}
 		if model.resourceBusy(project, c.path) {
-			return fmt.Errorf("请等待编辑工具完成操作")
+			return fmt.Errorf("%s", model.tr("请等待编辑工具完成操作"))
 		}
 		return model.submitResourceIO(&fileIOJob{kind: fileRemove, project: project, relative: c.path})
 	}
 	name := strings.TrimSpace(c.name)
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") {
-		return fmt.Errorf("请输入有效名称，不能包含路径分隔符")
+		return fmt.Errorf("%s", model.tr("请输入有效名称，不能包含路径分隔符"))
 	}
 	directory := model.fileContextDirectory()
 	if c.dialog == "rename" {
 		if c.path == "" {
-			return fmt.Errorf("不能重命名项目根目录")
+			return fmt.Errorf("%s", model.tr("不能重命名项目根目录"))
 		}
 		if model.resourceBusy(project, c.path) {
-			return fmt.Errorf("请等待编辑工具完成操作")
+			return fmt.Errorf("%s", model.tr("请等待编辑工具完成操作"))
 		}
 		directory = path.Dir(c.path)
 	}
@@ -71,11 +71,11 @@ func (model *workspaceModel) applyFileDialog() error {
 		return nil
 	}
 	if project.Files[relative] != nil {
-		return fmt.Errorf("名称“%s”已存在", name)
+		return fmt.Errorf(model.tr("名称“%s”已存在"), name)
 	}
 	for _, entry := range project.Entries {
 		if entry.Path == relative {
-			return fmt.Errorf("名称“%s”已存在", name)
+			return fmt.Errorf(model.tr("名称“%s”已存在"), name)
 		}
 	}
 
@@ -88,7 +88,7 @@ func (model *workspaceModel) applyFileDialog() error {
 	case "rename":
 		j.kind = fileRename
 	default:
-		return fmt.Errorf("未知文件操作")
+		return fmt.Errorf("%s", model.tr("未知文件操作"))
 	}
 	return model.submitResourceIO(j)
 }
@@ -200,11 +200,11 @@ func (model *workspaceModel) pasteFileClipboard(project *pencodeProject, directo
 	defer cancel()
 	files, err := clipboard.ReadFiles(ctx)
 	if err != nil {
-		return fmt.Errorf("无法读取剪贴板文件：%w", err)
+		return fmt.Errorf(model.tr("无法读取剪贴板文件：%w"), err)
 	}
 	if len(files) != 0 {
 		if model.remoteWorkspace() {
-			return fmt.Errorf("外部文件粘贴仅支持本地工作区")
+			return fmt.Errorf("%s", model.tr("外部文件粘贴仅支持本地工作区"))
 		}
 		return model.submitResourceIO(&fileIOJob{kind: fileImport, project: project, destination: directory, imports: files})
 	}
@@ -219,13 +219,13 @@ func (model *workspaceModel) moveProjectResource(source *pencodeProject, relativ
 
 func (model *workspaceModel) transferProjectResource(clipboard pencodeFileClipboard, project *pencodeProject, directory string, duplicate bool) error {
 	if project == nil || clipboard.project == nil || clipboard.path == "" || model.projectIndex(clipboard.project.Path) < 0 || model.projectIndex(project.Path) < 0 {
-		return fmt.Errorf("请先复制或剪切文件")
+		return fmt.Errorf("%s", model.tr("请先复制或剪切文件"))
 	}
 	if clipboard.project.backend != project.backend {
-		return fmt.Errorf("文件传输需要位于同一个工作区服务")
+		return fmt.Errorf("%s", model.tr("文件传输需要位于同一个工作区服务"))
 	}
 	if clipboard.cut && model.resourceBusy(clipboard.project, clipboard.path) {
-		return fmt.Errorf("请等待编辑工具完成操作")
+		return fmt.Errorf("%s", model.tr("请等待编辑工具完成操作"))
 	}
 	return model.submitResourceIO(&fileIOJob{kind: fileTransfer, project: clipboard.project, target: project, relative: clipboard.path, destination: directory, cut: clipboard.cut, duplicate: duplicate, clipboard: duplicate})
 }
@@ -234,7 +234,7 @@ func (model *workspaceModel) submitResourceIO(j *fileIOJob) error {
 	if model.fileIO != nil {
 		for _, pending := range model.fileIO.pending {
 			if pending.project == j.project || pending.target == j.project || j.target != nil && (pending.project == j.target || pending.target == j.target) {
-				return fmt.Errorf("请等待当前文件任务完成")
+				return fmt.Errorf("%s", model.tr("请等待当前文件任务完成"))
 			}
 		}
 	}
@@ -252,7 +252,7 @@ func (model *workspaceModel) submitResourceIO(j *fileIOJob) error {
 	if err := model.submitFileIO(j); err != nil {
 		return err
 	}
-	model.setProjectStatus(j.project, "正在处理文件操作…")
+	model.setProjectStatus(j.project, model.tr("正在处理文件操作…"))
 	return nil
 }
 
@@ -289,8 +289,8 @@ func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 			next := *j
 			next.imports = j.imports[r.importIndex:]
 			name := filepath.Base(next.imports[0])
-			model.fileContext = pencodeFileContext{project: j.project, transfer: &next, dialog: "overwrite", title: "覆盖文件？", needsFocus: true,
-				message: fmt.Sprintf("“%s”已存在，是否覆盖？文件夹将合并，并覆盖其中的同名文件。未保存的编辑会保留。", path.Join(j.destination, name))}
+			model.fileContext = pencodeFileContext{project: j.project, transfer: &next, dialog: "overwrite", title: model.tr("覆盖文件？"), needsFocus: true,
+				message: fmt.Sprintf(model.tr("“%s”已存在，是否覆盖？文件夹将合并，并覆盖其中的同名文件。未保存的编辑会保留。"), path.Join(j.destination, name))}
 			return
 		}
 		model.setProjectStatus(j.project, r.err.Error())
@@ -340,7 +340,7 @@ func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 		model.reloadExternalFiles(target)
 	}
 	for _, err := range r.moveErrors {
-		model.setProjectStatus(target, "资源已移动，文档重新连接失败："+err.Error())
+		model.setProjectStatus(target, model.tr("资源已移动，文档重新连接失败：")+err.Error())
 		break
 	}
 	if j.kind == fileCreate && !j.directory && model.canOpenFile(j.destination) {

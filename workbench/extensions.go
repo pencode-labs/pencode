@@ -38,6 +38,7 @@ func (model *workspaceModel) unloadExtension(id string) {
 }
 
 func (model *workspaceModel) unloadContributions(prefix, sourcePrefix string) {
+	model.removeLanguagePacks(prefix)
 	for i := len(model.extensionSettings) - 1; i >= 0; i-- {
 		if group := model.extensionSettings[i]; strings.HasPrefix("extensions/"+group.id+"/", prefix) {
 			model.removeExtensionSettings(group.id)
@@ -200,17 +201,17 @@ func (model *workspaceModel) pollExtensions(host *extensions.Host) bool {
 				continue
 			}
 			if result.Err != nil {
-				model.extensionFeedback = fmt.Sprintf("扩展 %s 加载失败：%v", result.ID, result.Err)
+				model.extensionFeedback = fmt.Sprintf(model.tr("扩展 %s 加载失败：%v"), result.ID, result.Err)
 				model.logOutput("Extension: "+result.ID, model.extensionFeedback)
 				continue
 			}
 			if err := model.importExtension(result.Bundle); err != nil {
 				result.Bundle.Close()
-				model.extensionFeedback = fmt.Sprintf("扩展 %s 加载失败：%v", result.ID, err)
+				model.extensionFeedback = fmt.Sprintf(model.tr("扩展 %s 加载失败：%v"), result.ID, err)
 				model.logOutput("Extension: "+result.ID, model.extensionFeedback)
 			} else {
 				model.setExtensionState(result.ID, pencodeExtensionLoaded)
-				model.logOutput("Extension: "+result.ID, "扩展已加载")
+				model.logOutput("Extension: "+result.ID, model.tr("扩展已加载"))
 			}
 		default:
 			return changed
@@ -255,6 +256,7 @@ func (model *workspaceModel) importExtension(bundle *extensions.Bundle) error {
 	sort.Slice(model.fileIconThemes, func(i, j int) bool { return model.fileIconThemes[i].id < model.fileIconThemes[j].id })
 	model.rebuildIconThemeOptions()
 	model.selectIconTheme(model.settings.IconTheme)
+	model.importLanguagePacks(bundle.ID, bundle.LanguagePacks)
 	model.importDebugTemplates(bundle.ID, bundle.DebugAdapters)
 	model.importLanguageServers(bundle.LanguageServers)
 	model.importExtensionSettings(bundle.ID, bundle.Label, bundle.Settings)
@@ -291,7 +293,7 @@ func (model *workspaceModel) rebuildThemeOptions() {
 
 func (model *workspaceModel) rebuildIconThemeOptions() {
 	model.iconThemeOptions = make([]htmlui.VNode, 1, len(model.fileIconThemes)+1)
-	model.iconThemeOptions[0] = appearanceOption(componentKey("builtin-icons"), "", "内置", model.fileIcons == nil)
+	model.iconThemeOptions[0] = appearanceOption(componentKey("builtin-icons"), "", model.tr("内置"), model.fileIcons == nil)
 	for _, t := range model.fileIconThemes {
 		model.iconThemeOptions = append(model.iconThemeOptions, appearanceOption(componentKey(t.id), t.id, t.label, model.fileIcons == t))
 	}

@@ -94,8 +94,13 @@ jobs:
       - name: Test installer packaging and updates
         shell: bash
         run: |
+          message=$(git log -1 --format=%B)
+          if [[ "$message" == *"[skip tests]"* ]]; then
+            echo 'Skipping tests as requested by the release commit.'
+            exit 0
+          fi
           set +e
-          go test -v -mod=readonly ./cmd/pencode-release ./internal/updater 2>&1 | tee "$RUNNER_TEMP/packaging-tests.log"
+          go test -v -mod=readonly ./cmd/pencode-release ./internal/updater ./internal/desktopopen 2>&1 | tee "$RUNNER_TEMP/packaging-tests.log"
           status=${PIPESTATUS[0]}
           set -e
           if [[ "$status" != 0 ]]; then

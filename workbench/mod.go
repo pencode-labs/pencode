@@ -160,6 +160,9 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	m.model.releaseIdleSyntaxMemory(time.Now())
+	if m.model.pollOpenPaths() {
+		markPencodeRootDirtyByModel(c.Content(), m.model)
+	}
 	terminalCount, terminalActive := 0, (*pencodeTerminal)(nil)
 	panel, status := m.model.bottom.active, m.model.status
 	if m.model.terminals != nil {

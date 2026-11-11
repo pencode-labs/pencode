@@ -1342,6 +1342,10 @@ func (model *workspaceModel) chooseProject() {
 }
 
 func (model *workspaceModel) loadProject(directory string) error {
+	return model.loadPath(directory, "")
+}
+
+func (model *workspaceModel) loadPath(directory, file string) error {
 	if model == nil {
 		return fmt.Errorf("项目工作区不可用")
 	}
@@ -1351,7 +1355,7 @@ func (model *workspaceModel) loadProject(directory string) error {
 	if model.session != nil && model.session.connection != nil && model.session.connection.restoring {
 		return fmt.Errorf("连接恢复中，请稍后打开项目；未保存内容仍可继续编辑")
 	}
-	if err := model.submitFileIO(&fileIOJob{kind: fileOpenWorkspace, root: directory}); err != nil {
+	if err := model.submitFileIO(&fileIOJob{kind: fileOpenWorkspace, root: directory, relative: file}); err != nil {
 		return err
 	}
 	model.status = "正在打开项目…"

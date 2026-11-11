@@ -30,6 +30,7 @@ type Session struct {
 	recentProjects  *pencodeRecentProjects
 	fonts           map[string]pencodeFont
 	settingsWriters map[*client.Client]*pencodeSettingsWriter
+	opening         []pencodeOpenPath
 	stateDirectory  string
 	// Actions accepts native registrations before or after the session starts.
 	Actions actions.Registry

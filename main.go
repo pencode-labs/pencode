@@ -54,8 +54,8 @@ func main() {
 	flag.StringVar(&initial.SSH.ServerRoot, "remote-server-directory", "", "Absolute remote server installation directory")
 	flag.StringVar(&serverDirectory, "server-directory", "", "Local directory of platform server binaries")
 	flag.Parse()
-	if port > 65535 || flag.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "invalid port or unexpected positional argument")
+	if port > 65535 || initial.Remote() && flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "invalid port or local paths combined with a remote connection")
 		os.Exit(2)
 	}
 	initial.SSH.Port = uint16(port)
@@ -88,6 +88,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "启动更新失败：", err)
 		}
 	}()
+	if err := session.OpenPaths(flag.Args()...); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		session.Close()
+		os.Exit(2)
+	}
 	dialer := connection.DefaultDialer(executable, session.Output.Channel("SSH"))
 	if serverDirectory != "" {
 		dialer.SSH.ServerDirectory = serverDirectory

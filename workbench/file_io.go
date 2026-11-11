@@ -398,6 +398,11 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 			return
 		}
 		m.acceptWorkspace(j.backend, r.workspace)
+		if j.relative != "" {
+			if err := m.requestFileOpen(m.activeProjectState(), j.relative, false, true, nil); err != nil {
+				m.setActiveStatus(err.Error())
+			}
+		}
 		return
 	}
 	if j.kind == fileLanguageEdit {

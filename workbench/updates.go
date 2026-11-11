@@ -44,7 +44,7 @@ func (s *Session) initUpdates() {
 }
 
 func (m *workspaceModel) handleUpdateEvent(ref string) bool {
-	if ref != "check-update" && ref != "download-update" && ref != "restart-update" {
+	if ref != "update-action" {
 		return false
 	}
 	if m.session == nil {
@@ -55,8 +55,8 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 	if u.busy {
 		return true
 	}
-	if ref == "restart-update" {
-		if u.stage != "" && m.app != nil {
+	if u.stage != "" {
+		if m.app != nil {
 			u.requested = true
 			if m.requestWindowClose() {
 				m.app.RequestClose()
@@ -64,15 +64,13 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 		}
 		return true
 	}
-	if u.root == "" || u.stage != "" {
+	if u.root == "" {
 		return true
 	}
-	if ref == "download-update" && u.release.URL == "" {
-		return true
-	}
+	download := u.release.URL != ""
 	u.busy = true
 	u.message = "正在检查 GitHub tag…"
-	if ref == "download-update" {
+	if download {
 		u.message = "正在下载并校验更新包…"
 	}
 	u.results = make(chan pencodeUpdateResult, 1)
@@ -84,11 +82,11 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 		defer cancel()
 		c := updater.NewClient()
 		r := pencodeUpdateResult{}
-		if ref == "check-update" {
-			r.release, r.err = c.Check(ctx, version)
-		} else {
+		if download {
 			r.release = release
 			r.stage, r.err = c.Stage(ctx, root, executable, release)
+		} else {
+			r.release, r.err = c.Check(ctx, version)
 		}
 		if ctx.Err() != nil {
 			if r.stage != "" {
@@ -153,27 +151,27 @@ func (m *workspaceModel) renderUpdates(v *htmlui.View) {
 	}
 	m.session.initUpdates()
 	u := m.session.updates
-	v.Event("check-update", htmlui.EventClick)
-	v.Event("download-update", htmlui.EventClick)
-	v.Event("restart-update", htmlui.EventClick)
+	v.Event("update-action", htmlui.EventClick)
 	v.Text("update-version", u.version)
 	v.Text("update-status", u.message)
-	for _, ref := range [...]string{"check-update", "download-update", "restart-update"} {
-		disabled := u.busy || u.root == ""
-		if ref == "check-update" {
-			disabled = disabled || u.stage != ""
-		}
-		if ref == "download-update" {
-			disabled = disabled || u.release.URL == "" || u.stage != ""
-		}
-		if ref == "restart-update" {
-			disabled = disabled || u.stage == ""
-		}
-		if disabled {
-			v.Attr(ref, "disabled", "")
+	label := "检查更新"
+	switch {
+	case u.stage != "":
+		label = "安装并重启"
+	case u.release.URL != "":
+		if u.busy {
+			label = "正在下载…"
 		} else {
-			v.RemoveAttr(ref, "disabled")
+			label = "下载更新"
 		}
+	case u.busy:
+		label = "正在检查…"
+	}
+	v.Text("update-action", label)
+	if u.busy || u.root == "" {
+		v.Attr("update-action", "disabled", "")
+	} else {
+		v.RemoveAttr("update-action", "disabled")
 	}
 }
 

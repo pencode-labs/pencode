@@ -221,8 +221,8 @@ func TestPencodeEditorAssociationsAndBinarySave(t *testing.T) {
 		t.Fatal("binary file changed")
 	}
 	model.removeEditors("extensions/test/")
-	if model.fileEditor(&openFile{Name: "image.png"}) != nil {
-		t.Fatal("removed editor retained its association")
+	if model.fileEditor(&openFile{Name: "image.png"}) != &pencodeImageEditor {
+		t.Fatal("removed editor did not fall back to the built-in image preview")
 	}
 }
 

@@ -66,7 +66,7 @@ func (model *workspaceModel) fileEditor(file *openFile) *extensions.Editor {
 	if file == nil || file.page.Paged || file.editorID == pencodeTextEditor {
 		return nil
 	}
-	if file.editorGeneration == model.editorGeneration {
+	if file.editorGeneration != 0 && file.editorGeneration == model.editorGeneration {
 		return file.customEditor
 	}
 	file.editorGeneration, file.customEditor = model.editorGeneration, nil
@@ -83,6 +83,9 @@ func (model *workspaceModel) fileEditor(file *openFile) *extensions.Editor {
 		if file.editorID == "" && (editor.Default || !file.text()) && match > score {
 			file.customEditor, score = editor, match
 		}
+	}
+	if file.customEditor == nil && imageFile(file.Name) && (file.editorID == "" || file.editorID == pencodeImageEditor.ID) {
+		file.customEditor = &pencodeImageEditor
 	}
 	return file.customEditor
 }
@@ -185,8 +188,12 @@ func (model *workspaceModel) customDocument() *pencodeCustomDocument {
 	if document.project != nil {
 		root = document.project.Path
 	}
-	document.process = provider.Start(root, model.extensionSettingValues(extensionOwner(provider.ID)), model.backgroundWake())
 	model.customDocuments[file] = document
+	if provider == &pencodeImageEditor {
+		document.loadImage()
+		return document
+	}
+	document.process = provider.Start(root, model.extensionSettingValues(extensionOwner(provider.ID)), model.backgroundWake())
 	document.enqueue(peb.EditorEvent{Kind: "open"})
 	document.dispatch()
 	return document
@@ -246,6 +253,9 @@ func (document *pencodeCustomDocument) fail(err error) {
 }
 
 func (document *pencodeCustomDocument) busy() bool {
+	if document.provider == &pencodeImageEditor {
+		return false
+	}
 	return document.inflight || document.count != 0 || document.process != nil && document.content != document.file.content()
 }
 
@@ -260,6 +270,13 @@ func (model *workspaceModel) pollCustomEditors() bool {
 			document.close()
 			delete(model.customDocuments, file)
 			changed = true
+			continue
+		}
+		if document.provider == &pencodeImageEditor {
+			if !document.inflight && document.content != file.content() {
+				document.loadImage()
+				changed = true
+			}
 			continue
 		}
 		if document.process == nil {
@@ -551,6 +568,7 @@ func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 	view.RemoveAttr("editor-body", "data-editor-split")
 	view.Attr("editor-split", "hidden", "")
 	view.Attr("editor-open-text", "hidden", "")
+	view.Attr("editor-image", "hidden", "")
 	if model.sourceState().visible() {
 		view.Attr("custom-editor", "hidden", "")
 		view.Attr("editor-tools", "hidden", "")
@@ -564,7 +582,14 @@ func (model *workspaceModel) renderCustomEditor(view *htmlui.View) {
 		return
 	}
 	model.syncActions()
-	available := model.actions.openWithCount > 0
+	image := imageFile(file.Name) && !file.page.Paged
+	available := model.actions.openWithCount > 0 || image
+	if image {
+		view.RemoveAttr("editor-image", "hidden")
+		view.Event("editor-image", htmlui.EventClick)
+		view.Attr("editor-image", "aria-pressed", strconv.FormatBool(model.fileEditor(file) == &pencodeImageEditor))
+		view.Attr("editor-image-icon", "src", model.themedIcon("icons/image.svg", "icon.foreground"))
+	}
 	view.Event("editor-split", htmlui.EventClick)
 	view.Event("editor-text", htmlui.EventClick)
 	view.Attr("editor-split-icon", "src", model.themedIcon("icons/split-horizontal.svg", "icon.foreground"))
@@ -638,6 +663,11 @@ func (model *workspaceModel) selectEditor(id string) bool {
 			return true
 		}
 		file.editorID, file.editorSplit = id, false
+	} else if id == pencodeImageEditor.ID {
+		if !imageFile(file.Name) || file.page.Paged {
+			return false
+		}
+		file.editorID = id
 	} else {
 		found := false
 		for _, editor := range model.customEditors {
@@ -650,11 +680,11 @@ func (model *workspaceModel) selectEditor(id string) bool {
 			return false
 		}
 		file.editorID = id
-		if model.fileIO != nil {
-			for _, job := range model.fileIO.pending {
-				if job.kind == fileReopenText && job.file == file {
-					job.cancel()
-				}
+	}
+	if id != pencodeTextEditor && model.fileIO != nil {
+		for _, job := range model.fileIO.pending {
+			if job.kind == fileReopenText && job.file == file {
+				job.cancel()
 			}
 		}
 	}
@@ -685,6 +715,9 @@ func (model *workspaceModel) toggleEditorSplit() bool {
 				break
 			}
 		}
+		if model.fileEditor(file) == nil && imageFile(file.Name) {
+			model.selectEditor(pencodeImageEditor.ID)
+		}
 	}
 	if model.fileEditor(file) == nil {
 		return false
@@ -695,6 +728,13 @@ func (model *workspaceModel) toggleEditorSplit() bool {
 }
 
 func (document *pencodeCustomDocument) close() {
+	if document.provider == &pencodeImageEditor && document.model.fileIO != nil {
+		for _, job := range document.model.fileIO.pending {
+			if job.imageDocument == document {
+				job.cancel()
+			}
+		}
+	}
 	if document.model.findPreview == document {
 		document.model.findPreview = nil
 	}

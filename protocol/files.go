@@ -61,7 +61,7 @@ func IsTextFile(name string) bool {
 // checks during search, even though opening them requires an editor choice.
 func IsBinaryFile(name string) bool {
 	switch strings.ToLower(path.Ext(name)) {
-	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".ttf", ".otf", ".woff", ".woff2", ".mp3", ".wav", ".ogg", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".bin", ".glb", ".zip", ".gz", ".pdf", ".exe", ".dll", ".so", ".a", ".o", ".class", ".jar", ".wasm", ".7z", ".rar", ".bz2", ".xz", ".sqlite", ".db":
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".ico", ".ttf", ".otf", ".woff", ".woff2", ".mp3", ".wav", ".ogg", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".bin", ".glb", ".zip", ".gz", ".pdf", ".exe", ".dll", ".so", ".a", ".o", ".class", ".jar", ".wasm", ".7z", ".rar", ".bz2", ".xz", ".sqlite", ".db":
 		return true
 	}
 	return false

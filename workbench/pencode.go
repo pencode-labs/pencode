@@ -1110,6 +1110,9 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 	case "editor-split":
 		model.toggleEditorSplit()
 		markPencodeRootDirty(context, model)
+	case "editor-image":
+		model.selectEditor(pencodeImageEditor.ID)
+		markPencodeRootDirty(context, model)
 	case "editor-text", "editor-open-text":
 		model.selectEditor(pencodeTextEditor)
 		markPencodeRootDirty(context, model)

@@ -10,6 +10,7 @@ require (
 	github.com/go-gl/mathgl v1.2.0
 	github.com/onix-engine/onix v0.0.0-00010101000000-000000000000
 	github.com/yuin/goldmark/v2 v2.1.9
+	golang.org/x/image v0.45.0
 	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0

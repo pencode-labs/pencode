@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"unsafe"
 
@@ -114,7 +115,11 @@ func processPencodeHighlight(document highlightDocument, job pencodeHighlightJob
 		document.Close()
 		defer document.Close()
 	}
-	result.err = document.UpdateSnapshot(job.path, source)
+	languagePath := job.path
+	if strings.EqualFold(path.Ext(languagePath), ".svg") {
+		languagePath = "xml"
+	}
+	result.err = document.UpdateSnapshot(languagePath, source)
 	var tokens []syntax.Token
 	if result.err == nil {
 		tokens = document.Tokens(job.theme, job.definitions)

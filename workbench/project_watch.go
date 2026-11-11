@@ -245,7 +245,7 @@ func (m *workspaceModel) reloadExternalFiles(project *pencodeProject) {
 			continue
 		}
 		file.externalChanged = false
-		if file.Dirty || !file.text() {
+		if file.Dirty || !file.text() && m.fileEditor(file) != &pencodeImageEditor {
 			continue
 		}
 		if job == nil {

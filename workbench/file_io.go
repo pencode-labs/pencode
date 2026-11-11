@@ -31,6 +31,7 @@ const (
 	fileReopenText
 	fileReadPage
 	fileOpenExternal
+	fileImagePreview
 )
 const fileIOCapacity = 32
 
@@ -61,6 +62,7 @@ type fileIOJob struct {
 	project, target                                       *pencodeProject
 	navigation                                            *fileNavigation
 	file                                                  *openFile
+	imageDocument                                         *pencodeCustomDocument
 	document                                              *client.Document
 	text, baseline                                        piecetree.Snapshot
 	root, relative, destination, content                  string
@@ -94,6 +96,7 @@ type fileNavigation struct {
 type fileIOResult struct {
 	err                  error
 	job                  *fileIOJob
+	image                *pencodeImageResult
 	document             *client.Document
 	moveErrors           map[*client.Document]error
 	workspace            protocol.Workspace
@@ -184,6 +187,8 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		return
 	}
 	switch j.kind {
+	case fileImagePreview:
+		r.image, r.err = executeImagePreview(j)
 	case fileOpenExternal:
 		return executeExternalOpen(j)
 	case fileCloseWorkspace:
@@ -424,6 +429,8 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 		return
 	}
 	switch j.kind {
+	case fileImagePreview:
+		m.acceptImagePreview(r)
 	case fileOpen:
 		m.acceptFileOpen(r)
 	case fileReadPage:
@@ -713,6 +720,10 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		f.unsupported = item.document == nil
 		f.editorGeneration = 0
 		item.document = nil
+		if document := m.customDocuments[f]; document != nil && document.provider == &pencodeImageEditor {
+			document.close()
+			delete(m.customDocuments, f)
+		}
 		if r.external && f.content() == item.content {
 			continue
 		}

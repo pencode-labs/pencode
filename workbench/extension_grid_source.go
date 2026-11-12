@@ -227,7 +227,7 @@ func (d *pencodeCustomDocument) applyGridData(data pencodeGridData) error {
 	}
 	// Template extent is also used on theme recompilation. Live extent overrides
 	// update with the same native component state as the newly loaded cells.
-	g.node.Attributes["style"] = fmt.Sprintf("position:relative;width:%gpx;height:%gpx", g.columns.offset(g.columns.count), g.rows.offset(g.rows.count))
+	g.node.SetAttr("style", fmt.Sprintf("position:relative;width:%gpx;height:%gpx", g.columns.offset(g.columns.count), g.rows.offset(g.rows.count)))
 	return nil
 }
 
@@ -242,7 +242,7 @@ func (s *pencodeExtensionTextSelection) copy(state *input.State) {
 
 func (g *pencodeVirtualGrid) renderExtent(target *htmlui.View) {
 	if g.remote != nil && g.remote.metadata {
-		target.Attr(g.ref, "style", g.node.Attributes["style"])
+		target.Attr(g.ref, "style", g.node.AttrValue("style"))
 	}
 }
 

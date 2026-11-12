@@ -289,7 +289,7 @@ func (p *ActionPublisher) handleViewEvent(event UIEvent) (bool, error) {
 	var err error
 	p.data, err = EncodeUI(p.data, ui)
 	if err == nil {
-		err = p.writer.Write(UIUpdate, 0, p.data)
+		err = p.writer.WriteSession(p.session, UIUpdate, 0, p.data)
 	}
 	return true, err
 }

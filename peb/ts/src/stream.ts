@@ -3,7 +3,7 @@ import { Readable, Writable } from 'node:stream';
 import { HeaderSize, MaxPayload, ProtocolError, Version } from './codec.js';
 import { Kind } from './messages.js';
 const empty = Buffer.alloc(0);
-export interface Frame { kind: Kind; id: number; payload: Buffer }
+export interface Frame { kind: Kind; id: number; session: number; payload: Buffer }
 export function validFrame(kind: Kind, id: number, size: number): boolean {
   if (!Number.isInteger(id) || id < 0 || id > 0xffffffff || size < 0 || size > MaxPayload) return false;
   if (kind === Kind.Shutdown || kind === Kind.ActionActivate) return id === 0 && size === 0;
@@ -41,22 +41,29 @@ export class Reader {
     if (size > this.payload.length) this.payload = Buffer.allocUnsafe(size);
     const payload = this.payload.subarray(0, size);
     await this.fill(payload);
-    return { kind, id, payload };
+    return { kind, id, session: h.readUInt32LE(16), payload };
   }
 }
 export class Writer {
   private readonly header = Buffer.allocUnsafe(HeaderSize);
+  private tail: Promise<void> = Promise.resolve();
   constructor(private readonly output: Writable) {}
   private async write(data: Buffer): Promise<void> {
     if (!data.length) return;
     await new Promise<void>((resolve, reject) => this.output.write(data, error => error ? reject(error) : resolve()));
   }
-  // One owner must serialize calls and await completion before reusing payload.
-  async send(kind: Kind, id: number, payload: Buffer = empty): Promise<void> {
+  // Shared session publishers serialize complete frames. Payload remains borrowed until completion.
+  send(kind: Kind, id: number, payload: Buffer = empty, session = 0): Promise<void> {
+    if (!Number.isInteger(session) || session < 0 || session > 0xffffffff) return Promise.reject(new ProtocolError());
+    const task = this.tail.then(() => this.frame(kind, id, payload, session));
+    this.tail = task.catch(() => {});
+    return task;
+  }
+  private async frame(kind: Kind, id: number, payload: Buffer, session: number): Promise<void> {
     if (!validFrame(kind, id, payload.length)) throw new ProtocolError();
     const h = this.header;
     h.writeUInt32LE(0x00626570, 0); h.writeUInt16LE(Version, 4); h.writeUInt16LE(kind, 6);
-    h.writeUInt32LE(id, 8); h.writeUInt32LE(payload.length, 12);
+    h.writeUInt32LE(id, 8); h.writeUInt32LE(payload.length, 12); h.writeUInt32LE(session, 16);
     await this.write(h); await this.write(payload);
   }
 }

@@ -125,10 +125,7 @@ func TestMarkdownPreviewStylesFollowWorkbenchTheme(t *testing.T) {
 			var addScope func(*dom.Node)
 			addScope = func(node *dom.Node) {
 				if node.Type == dom.ElementNode {
-					if node.Attributes == nil {
-						node.Attributes = make(map[string]string)
-					}
-					node.Attributes["class"] += " " + scope
+					node.SetAttr("class", node.AttrValue("class")+" "+scope)
 				}
 				for _, child := range node.Children {
 					addScope(child)

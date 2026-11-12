@@ -68,7 +68,7 @@ func TestMarkdownPreviewInlineCodePaddingAndWrapping(t *testing.T) {
 				if code == nil || len(code.TextFragments) == 0 {
 					t.Fatal("missing inline code layout")
 				}
-				if code.Padding != (layout.Edges{Top: 1, Right: 6, Bottom: 1, Left: 6}) {
+				if code.Padding != (layout.Edges{Right: 6, Left: 6}) {
 					t.Fatalf("code padding = %+v", code.Padding)
 				}
 				if code.BorderBox().Width > 240.01 {

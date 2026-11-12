@@ -217,7 +217,7 @@ func (p *ActionPublisher) show(ui UI) error {
 	if err != nil {
 		return err
 	}
-	if err = p.writer.Write(UIUpdate, 0, p.data); err != nil {
+	if err = p.writer.WriteSession(p.session, UIUpdate, 0, p.data); err != nil {
 		return err
 	}
 	p.views.commit(ui.ID, ui.Close, state)

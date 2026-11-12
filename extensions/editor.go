@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -17,8 +18,8 @@ type EditorResult struct {
 	Message peb.EditorMessage
 }
 
-// EditorSession owns one active document process. All pipe I/O happens on its
-// worker; the UI submits at most one outstanding request and never blocks.
+// EditorSession owns one view in the window's shared extension process.
+// All pipe I/O happens on its worker; the UI submits at most one outstanding request and never blocks.
 type EditorSession struct {
 	Results  <-chan EditorResult
 	Done     <-chan struct{}
@@ -72,7 +73,7 @@ func (s *EditorSession) Submit(message peb.EditorMessage) bool {
 	}
 }
 
-// Close cancels asynchronously; Done closes only after the child is reaped.
+// Close releases this view asynchronously; the window's extension process stays alive.
 func (s *EditorSession) Close() {
 	if s != nil {
 		s.cancel()
@@ -86,14 +87,28 @@ func (editor *Editor) run(parent context.Context, root string, values peb.Settin
 	if err != nil {
 		return err
 	}
+	// Continuously receive EOF so idle views also observe a shared-process crash.
+	input, received := io.Pipe()
+	readerDone := make(chan struct{})
+	var readerErr error
+	go func() {
+		defer close(readerDone)
+		_, readerErr = io.Copy(received, stream)
+		_ = received.CloseWithError(readerErr)
+		if readerErr == nil {
+			readerErr = io.EOF
+		}
+	}()
 	defer func() {
 		cancel()
+		_ = input.Close()
 		closeProcess()
+		<-readerDone
 		if err != nil && stderr.used > 0 {
 			err = fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr.data[:stderr.used])))
 		}
 	}()
-	r, w := peb.Reader{Source: stream}, peb.Writer{Target: stream}
+	r, w := peb.Reader{Source: input}, peb.Writer{Target: stream}
 	// Each exchange is bounded, but an idle extension has no deadline.
 	deadline := time.AfterFunc(StartupTimeout, cancel)
 	defer deadline.Stop()
@@ -134,6 +149,8 @@ func (editor *Editor) run(parent context.Context, root string, values peb.Settin
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-readerDone:
+			return readerErr
 		case values := <-settings:
 			id++
 			if id == 0 {

@@ -119,7 +119,7 @@ Pencode 服务端
         ├── 文件、文档、索引与语法解析
         ├── Git 与终端进程
         ├── 语言服务器（LSP）
-        └── 扩展进程（peb v13）
+        └── 扩展进程（peb v20）
 ```
 
 GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理文件系统、索引、语法解析、Git、PTY、语言服务器和扩展进程。本地会话启动子服务进程，SSH 会话通过加密字节流使用同一协议，无需开放服务端端口。WebSocket 会话通过带 token 校验的 `/ws` 端点使用同一协议。
@@ -139,7 +139,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 ## 扩展
 
-扩展是原生可执行程序或由 TypeScript 编译的 JavaScript，通过 stdin/stdout 上的二进制协议 **peb v18** 与服务端通信，日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
+扩展是原生可执行程序或由 TypeScript 编译的 JavaScript，通过 stdin/stdout 上的二进制协议 **peb v20** 与服务端通信，同一窗口内每个扩展仅保留一个进程，工作台 action 与文档视图复用它；关闭视图只释放会话，连接关闭或扩展被撤销时回收进程。日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
 
 扩展安装在服务端的 `~/.pencode/extensions/<扩展 ID>/`，包含可执行文件和 `resources/extension.json` 清单。可通过扩展管理器的本地目录安装流程注册扩展。
 
@@ -159,7 +159,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 (cd extensions/go && go build -o bin/go .)
 ```
 
-当前扩展协议为 peb v18（CS v11），旧扩展需要使用当前 SDK 重新构建。
+当前扩展协议为 peb v20（CS v11），旧扩展需要使用当前 SDK 重新构建。
 
 JavaScript 入口按 `.js`、`.mjs`、`.cjs` 后缀识别，自动使用工作区主机 PATH 中的 Node.js，没有时使用 Bun。运行时不调用包管理器；TS 需要先编译并打包依赖。参见 [TS SDK](peb/ts/README.md)。`make install-extensions` 使用 npm（没有时使用 Bun）按锁文件安装构建依赖、运行 build，并安装输出目录、资源和 package.json；`.js` 的 ESM/CJS 类型随 package.json 保留，各平台入口不添加 `.exe`。
 

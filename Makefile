@@ -4,6 +4,11 @@ VERSION ?= dev
 ARGS ?=
 EXTENSIONS_DIR ?=
 
+# Go adds -lobjc for each Objective-C package.
+ifeq ($(shell $(GO) env GOHOSTOS GOOS),darwin darwin)
+export CGO_LDFLAGS := $(CGO_LDFLAGS) -Wl,-no_warn_duplicate_libraries
+endif
+
 .DEFAULT_GOAL := run
 .PHONY: run install-server install-extensions release
 

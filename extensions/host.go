@@ -147,7 +147,7 @@ func importRemote(ctx context.Context, remote *client.Extension) (*Bundle, error
 }
 
 // Runtime stderr is drained on its own flow-controlled stream. Closing the
-// proxy waits for both the server-owned child and this diagnostic reader.
+// proxy releases its virtual session and waits for this diagnostic reader.
 func openExtensionProcess(ctx context.Context, remote *client.Extension, root string, logs *output.Channel) (*client.Process, *diagnosticBuffer, func(), error) {
 	p, err := remote.OpenProcess(ctx, root)
 	if err != nil {

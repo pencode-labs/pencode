@@ -15,7 +15,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 
 payload 中的字符串为 `u32 长度 + 原始字节`，数组为 `u32 元素数 + 元素`，字段按序排列，不允许尾随字节。Reader 返回的 payload 借用其缓冲区，仅在下一次 Read 之前有效。大请求由同一 request ID 的若干 Data 帧和最终请求帧组成，大响应由 Data 帧和最终 Reply 帧组成，组装总量上限 64 MiB。客户端最多保留 64 个未完成请求，上传及未完成响应分别限制为 128 MiB 逻辑 payload；已取消但仍由写协程持有的上传继续计费，上传超限返回 Busy，响应超限关闭连接。不同请求的分块可以交错；客户端在大上传块之间轮转调度普通请求，取消优先。服务端未完成的上传合计上限 128 MiB。
 
-v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整校准标记；IndexOpen 保留 previous 字段。语法高亮使用 TextMate 逐行词法状态，名称表同时传输类别和完整 scope 栈，SyntaxRelease 没有 trim 字段。GUI 与 server 必须同时更新。扩展协议使用 peb v18，扩展注册格式保持不变。文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
+v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整校准标记；IndexOpen 保留 previous 字段。语法高亮使用 TextMate 逐行词法状态，名称表同时传输类别和完整 scope 栈，SyntaxRelease 没有 trim 字段。GUI 与 server 必须同时更新。扩展协议使用 peb v20，扩展注册格式保持不变。文本搜索匹配按 `start:u32, end:u32, line:u32, column:u32, previewStart:u32, preview:string` 编码。`previewStart` 是预览在原文中的 UTF-8 字节偏移，供客户端准确高亮截断预览中的命中。
 
 首个请求必须是空 Hello，服务端返回空 Reply。之后支持：
 
@@ -111,12 +111,12 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 
 解析会话由客户端分配 ID，每连接最多 8 个，初始 baseVersion 为 0。增量范围采用 UTF-8 字节边界；结果只包含语言和 capture，不含颜色、字体、HTML、ECS 或 GPU 数据。captures 编码为 `prefix:u32, removed:u32, inserted:u32 + {start:u32, end:u32, captureID:u32, [name:string, scopes:string]}[inserted]`。保留上次结果的前 prefix 项，将之后的 removed 项替换为传回的 inserted 项，并将剩余后缀的起止位置加上本次源码字节长度变化。服务端比较解析后的真实 capture，允许多行注释等语法变化扩大替换范围；初次返回完整列表。名称表在解析会话内保留，captureID 从零递增；ID 首次出现时紧跟类别名称和空格分隔的完整 TextMate scope 栈，后续复用 ID。释放会话后清空 capture 和名称表。本地按主题和 capture 映射着色，主题切换不发送解析请求。
 
-`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v18 编码，CS 与 peb 的帧版本独立。
+`ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v20 编码，CS 与 peb 的帧版本独立。
 
 扩展安装是单连接事务：同时最多两个暂存包；文件路径必须是有效相对路径，拒绝符号链接和特殊文件，单包最多 256 MiB / 4096 项。Prepare 在暂存目录执行 peb 注册；GUI 完成字体、主题和图标验证后调用 Commit 发布，失败调用 Abort 清理。禁用、卸载和连接关闭撤销资源句柄并回收扩展进程，未提交的暂存包随连接释放。禁用扩展的 Load 返回零句柄，不执行扩展或占用注册预算。
 
 资源单份最大 32 MiB，一个扩展最多缓存 64 MiB，连接内扩展缓存合计最多 128 MiB。ExtensionResources 的 limit 是每份资源的字节限制，最多请求 4096 条不重复路径；返回请求的有序前缀，响应目标大小为 16 MiB，单份超过此值时单独返回。客户端继续请求剩余路径直到取完。GUI 缓存已验证的图片；每视图最多 64 张，单张 4 MiB、总计 8 MiB / 4 MP，每边不超过 2048 像素。自定义编辑器 SVG 按原始尺寸栅格化，避免图标采样倍率扩大图片预算。
 
-ExtensionLanguageProcess 的 root 必须是本连接工作区，可执行程序中的相对路径由服务端基于已发布的扩展目录解析，cwd 为工作区。action 进程允许空 root，生命周期属于连接。
+ExtensionLanguageProcess 的 root 必须是本连接工作区，可执行程序中的相对路径由服务端基于已发布的扩展目录解析，cwd 为工作区。ExtensionProcess 返回该扩展常驻进程中的虚拟会话流，允许空 root；同一连接内复用进程，关闭 Stream 只释放对应会话。服务端为 PEB 帧分配非零 session ID，客户端流中的 session ID 保持为零，由服务端添加和去除。stderr 各会话独立读取进程的有界日志尾部。不同连接保持进程隔离，进程生命周期属于连接。
 
 DocumentOpen 的 mode：`0` 仅检查文件路径，供二进制查看器使用；`1` 检查文本内容，遇到 NUL 或无效 UTF-8 时返回空文档（id=0）；`2` 表示用户明确选择代码编辑器，读取内容并将无效 UTF-8 替换为 U+FFFD。路径查看器和未确认的文件不会创建文本模型。

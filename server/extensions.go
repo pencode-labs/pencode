@@ -22,6 +22,7 @@ const (
 )
 
 type extensionEntry struct {
+	runtime      *extensionRuntime
 	ctx          context.Context
 	root         *os.Root
 	cancel       context.CancelFunc
@@ -54,6 +55,10 @@ func (s *extensionService) close() {
 
 func (s *extensionService) remove(id uint64, entry *extensionEntry) {
 	delete(s.entries, id)
+	if entry.runtime != nil {
+		entry.runtime.Close()
+		entry.runtime = nil
+	}
 	if entry.cancel != nil {
 		entry.cancel()
 	}
@@ -423,7 +428,35 @@ func (s *extensionService) openProcess(ctx context.Context, id uint64, entry *ex
 	if root != "" && !s.owner.roots[root] {
 		return &protocol.Error{Code: protocol.NotFound, Message: "workspace is closed"}
 	}
-	if len(s.owner.streams)+2 > 16 {
+	if len(s.owner.streams)+2 > 2*peb.MaxSessions+16 {
+		return &protocol.Error{Code: protocol.Busy, Message: "stream budget exceeded"}
+	}
+	if language == "" {
+		if entry.runtime != nil && !entry.runtime.alive() {
+			entry.runtime.Close()
+			entry.runtime = nil
+		}
+		if entry.runtime == nil {
+			logs, childLogs, err := os.Pipe()
+			if err != nil {
+				return err
+			}
+			p, err := extensionhost.Open(entry.root, entry.registration.Info.Path, entry.registration.Info.ExtensionManifest, childLogs)
+			childLogs.Close()
+			if err != nil {
+				logs.Close()
+				return err
+			}
+			entry.runtime = newExtensionRuntime(p, logs)
+		}
+		p, logs, err := entry.runtime.open()
+		if err != nil {
+			return err
+		}
+		s.owner.attachProcess(p, logs, root, id, e)
+		return nil
+	}
+	if s.owner.processSlots()+2 > 16 {
 		return &protocol.Error{Code: protocol.Busy, Message: "process budget exceeded"}
 	}
 	logs, childLogs, err := os.Pipe()
@@ -431,30 +464,26 @@ func (s *extensionService) openProcess(ctx context.Context, id uint64, entry *ex
 		return err
 	}
 	var p io.ReadWriteCloser
-	if language == "" {
-		p, err = extensionhost.Open(entry.root, entry.registration.Info.Path, entry.registration.Info.ExtensionManifest, childLogs)
-	} else {
-		err = fmt.Errorf("unknown extension language server %q", language)
-		for _, server := range entry.registration.Contributions.LanguageServers {
-			if server.ID != language {
-				continue
-			}
-			command := server.Command
-			if strings.ContainsAny(command, "/\\") && !filepath.IsAbs(command) {
-				if !extensionhost.ValidResourcePath(filepath.ToSlash(command), false) {
-					break
-				}
-				f, checkErr := entry.root.Open(command)
-				if checkErr != nil {
-					err = checkErr
-					break
-				}
-				f.Close()
-				command = filepath.Join(entry.registration.Info.Path, command)
-			}
-			p, err = transport.StartWithOutput(root, command, childLogs, server.Args...)
-			break
+	err = fmt.Errorf("unknown extension language server %q", language)
+	for _, server := range entry.registration.Contributions.LanguageServers {
+		if server.ID != language {
+			continue
 		}
+		command := server.Command
+		if strings.ContainsAny(command, "/\\") && !filepath.IsAbs(command) {
+			if !extensionhost.ValidResourcePath(filepath.ToSlash(command), false) {
+				break
+			}
+			f, checkErr := entry.root.Open(command)
+			if checkErr != nil {
+				err = checkErr
+				break
+			}
+			f.Close()
+			command = filepath.Join(entry.registration.Info.Path, command)
+		}
+		p, err = transport.StartWithOutput(root, command, childLogs, server.Args...)
+		break
 	}
 	childLogs.Close()
 	if err != nil {

@@ -66,7 +66,7 @@ type actionRequest struct {
 	ui        bool
 }
 
-// Editor binds a live Open With action to the extension's document process.
+// Editor binds a live Open With action to a view in the window's extension process.
 func (s *ActionSession) Editor(a peb.Action) Editor {
 	return Editor{Action: a, LocalID: strings.TrimPrefix(a.ID, "extensions/"+s.remote.Info.ID+"/"), remote: s.remote, Output: s.output}
 }

@@ -127,7 +127,7 @@ Pencode server
         ├── Files, documents, indexing, and syntax parsing
         ├── Git and terminal processes
         ├── Language servers (LSP)
-        └── Extension processes (peb v13)
+        └── Extension processes (peb v20)
 ```
 
 The GUI owns interactive text buffers, undo history, layout, and rendering. The server owns filesystem access, indexing, syntax parsing, Git, PTYs, language servers, and extension processes. Local sessions start a child server; SSH sessions use the same protocol over an encrypted stream without opening a server port. WebSocket sessions use the same protocol at the token-authenticated `/ws` endpoint.
@@ -147,7 +147,7 @@ For remote workspaces, settings and extensions belong to the workspace host; sys
 
 ## Extensions
 
-Extensions are native executables or JavaScript bundles compiled from TypeScript, communicating with the server through **peb v18**, a binary protocol over stdin/stdout. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
+Extensions are native executables or JavaScript bundles compiled from TypeScript, communicating with the server through **peb v20**, a binary protocol over stdin/stdout. Within each window, one process per extension serves its workbench actions and document views; closing a view releases its session while the process remains until the connection closes or the extension is revoked. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
 
 Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host and include an executable and a `resources/extension.json` manifest. Use the extension manager's local-directory installation flow to register one.
 
@@ -168,7 +168,7 @@ For an existing checkout, initialize the submodules with `git submodule update -
 (cd extensions/go && go build -o bin/go .)
 ```
 
-The current extension protocol is peb v18 (CS v11). Older extensions must be rebuilt with the current SDK.
+The current extension protocol is peb v20 (CS v11). Older extensions must be rebuilt with the current SDK.
 
 The workspace host recognizes `.js`, `.mjs`, and `.cjs` entries and launches them with Node.js from its PATH, falling back to Bun. Runtime loading never invokes a package manager; compile TypeScript and bundle dependencies first. See the [TypeScript SDK](peb/ts/README.md). `make install-extensions` uses npm (or Bun) with the lockfile, runs the package build, and installs its output directory, resources and package.json. The package metadata preserves ESM/CJS behavior for `.js`; JavaScript entries keep the same name on every platform.
 

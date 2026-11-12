@@ -135,13 +135,14 @@ func decodeActionContext(d *decoder) ActionContext {
 // ActionPublisher serializes unsolicited updates with request replies. It may
 // be used from background goroutines until the activation context is canceled.
 type ActionPublisher struct {
-	ctx    context.Context
-	writer *Writer
-	views  viewStream
-	data   []byte
-	action ActionContext
-	mu     sync.Mutex
-	ui     bool
+	ctx     context.Context
+	writer  *Writer
+	views   viewStream
+	data    []byte
+	action  ActionContext
+	session uint32
+	mu      sync.Mutex
+	ui      bool
 }
 
 func (p *ActionPublisher) Update(action Action) error { return p.change(ActionChange{Action: action}) }
@@ -159,13 +160,16 @@ func (p *ActionPublisher) change(change ActionChange) error {
 	if err != nil {
 		return err
 	}
-	return p.writer.Write(ActionUpdate, 0, p.data)
+	return p.writer.WriteSession(p.session, ActionUpdate, 0, p.data)
 }
 
 // Handlers shares one SDK for editor requests and persistent workbench actions.
-// ActivateActions runs once, only in the workbench action process. Start any
+// ActivateActions runs once in the window's workbench action session. Start any
 // background work there; return promptly and stop when ctx is canceled.
 type Handlers struct {
+	// NewEditor creates isolated document-view state. Its context ends when the view closes.
+	// Editor may instead be used for stateless handlers shared by all views.
+	NewEditor func(context.Context) func(EditorMessage) (EditorReply, error)
 	// Settings runs before activation/first document request and on each change.
 	// The snapshot owns its data and may be retained by the extension.
 	Settings        func(SettingValues) error

@@ -144,11 +144,11 @@ func parsePencodeGrid(node *dom.Node, source string) (*pencodeVirtualGrid, error
 		return nil, err
 	}
 	// Remove the payload before the template is cloned into the live DOM.
-	delete(node.Attributes, "data-pencode-grid")
-	node.Attributes["role"] = "grid"
-	node.Attributes["aria-rowcount"] = strconv.Itoa(data.Rows + 1)
-	node.Attributes["aria-colcount"] = strconv.Itoa(data.Columns + 1)
-	node.Attributes["style"] = fmt.Sprintf("position:relative;width:%gpx;height:%gpx", g.columns.offset(g.columns.count), g.rows.offset(g.rows.count))
+	node.RemoveAttr("data-pencode-grid")
+	node.SetAttr("role", "grid")
+	node.SetAttr("aria-rowcount", strconv.Itoa(data.Rows+1))
+	node.SetAttr("aria-colcount", strconv.Itoa(data.Columns+1))
+	node.SetAttr("style", fmt.Sprintf("position:relative;width:%gpx;height:%gpx", g.columns.offset(g.columns.count), g.rows.offset(g.rows.count)))
 	g.setWindow(0, 0, 1200, 800)
 	return g, nil
 }
@@ -219,7 +219,7 @@ func (g *pencodeVirtualGrid) render(target *htmlui.View) {
 		for len(g.records) < g.cacheRows*g.cacheColumns {
 			g.records = append(g.records, htmlui.VNode{})
 			g.attributes = append(g.attributes, [6]htmlui.VNodeAttribute{})
-			g.metadata = append(g.metadata, &dom.Node{Type: dom.ElementNode, Data: "div", Parent: g.node, Attributes: make(map[string]string, 1)})
+			g.metadata = append(g.metadata, &dom.Node{Type: dom.ElementNode, Data: "div", Parent: g.node})
 		}
 		clear(g.records)
 	}
@@ -268,7 +268,7 @@ func (g *pencodeVirtualGrid) render(target *htmlui.View) {
 					{Name: "aria-rowindex", Value: strconv.Itoa(r + 1)}, {Name: "aria-colindex", Value: strconv.Itoa(c + 1)},
 				}
 				*vnode = htmlui.VNode{Key: key, Tag: "div", Text: value}
-				g.metadata[slot].Attributes["id"] = attrs[0].Value
+				g.metadata[slot].SetAttr("id", attrs[0].Value)
 			}
 			// The attribute backing array can move while growing the first window.
 			vnode.Attributes = attrs[:]

@@ -48,14 +48,11 @@ func prepareExtensionViewNode(node *dom.Node, prefix string, index *int, textVie
 	}
 	needsID := node.Data == "button" || textView && (len(node.Children) > 0 || searchable || selectable || referenced || control)
 	if id, _ := node.Attr("id"); id == "" && needsID {
-		if node.Attributes == nil {
-			node.Attributes = make(map[string]string)
-		}
-		node.Attributes["id"] = prefix + strconv.Itoa(*index)
+		node.SetAttr("id", prefix+strconv.Itoa(*index))
 		*index++
 	}
 	if _, tabindex := node.Attr("tabindex"); (searchable || selectable) && !tabindex {
-		node.Attributes["tabindex"] = "-1"
+		node.SetAttr("tabindex", "-1")
 	}
 }
 

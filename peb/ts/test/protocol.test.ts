@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { Readable, PassThrough } from 'node:stream';
+import { Readable, PassThrough, Transform } from 'node:stream';
 import test from 'node:test';
 import * as peb from '../src/index.js';
 import type { Codec } from '../src/index.js';
 
-test('all TS codecs preserve Go-generated PEB v19 wire bytes', () => {
+test('all TS codecs preserve Go-generated PEB v20 wire bytes', () => {
   const fixtures = JSON.parse(execFileSync('go', ['run', './testdata/interop.go'], { encoding: 'utf8' })) as { Name: string; Data: string }[];
   const codecs: Record<string, Codec<unknown>> = {
     Hello: peb.HelloCodec, Contributions: peb.ContributionsCodec, EditorMessage: peb.EditorMessageCodec,
@@ -68,4 +68,33 @@ test('serve keeps read-only replies distinct from clearing text and responds to 
   const error = await reader.read(); assert.equal(error?.kind, peb.Kind.Failure);
   assert.equal(peb.decode(peb.FailureCodec, error!.payload).message, 'test error');
   await writer.send(peb.Kind.Shutdown, 0); await serving;
+});
+
+test('multiplexed views isolate state, route replies, and cancel independently', async () => {
+  // Model OS pipes: writes copy bytes before the sender reuses its buffers.
+  const input = new Transform({ transform(chunk, _encoding, done) { done(null, Buffer.from(chunk)); } }), output = new PassThrough(), reader = new peb.Reader(output), writer = new peb.Writer(input);
+  const signals: AbortSignal[] = [];
+  const serving = peb.serveExtension({ actions: [{ id: 'view', location: peb.ActionLocation.OpenWith }] }, {
+    newEditor(signal) {
+      signals.push(signal);
+      let count = 0;
+      return () => ({ content: String(++count) });
+    },
+  }, input, output);
+  const hello = peb.encode(peb.HelloCodec, { capabilities: peb.Capability.All });
+  const message = peb.encode(peb.EditorMessageCodec, { path: 'same.txt' });
+  for (const session of [1, 2]) {
+    await writer.send(peb.Kind.Initialize, 1, hello, session);
+    const registration = await reader.read(); assert.equal(registration?.session, session);
+    await writer.send(peb.Kind.EditorRequest, 2, message, session);
+    const response = await reader.read(); assert.equal(response?.session, session); assert.equal(response?.id, 2);
+    assert.equal(peb.decode(peb.EditorReplyCodec, response!.payload).content, '1');
+  }
+  await writer.send(peb.Kind.Shutdown, 0, undefined, 1);
+  await writer.send(peb.Kind.EditorRequest, 2, message, 2);
+  const response = await reader.read(); assert.equal(response?.session, 2);
+  assert.equal(peb.decode(peb.EditorReplyCodec, response!.payload).content, '2');
+  assert.equal(signals[0]?.aborted, true); assert.equal(signals[1]?.aborted, false);
+  await writer.send(peb.Kind.Shutdown, 0); await serving;
+  assert.equal(signals[1]?.aborted, true);
 });

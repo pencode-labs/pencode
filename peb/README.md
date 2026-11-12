@@ -1,10 +1,30 @@
-# peb v19 — Pencode Extension Binary
+# peb v20 — Pencode Extension Binary
 
 peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写扩展的 stdin，读取其 stdout；日志只写 stderr。不使用 JSON 消息、换行分隔或 shell 命令。支持 `Fonts`（字体）、`FileIcons`（文件图标）、`EditorThemes`（颜色主题）、`CustomEditors`（HTML/CSS 文件编辑工具）、`LanguageServers`（语言服务）、`Actions`（工作台按钮）、`ExtensionUI`（弹窗、菜单与 Panel）、`DebugAdapters`（调试适配器）、`ExtensionSettings`（扩展配置）和 `LanguagePacks`（界面语言包）。
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持一次静态注册；编辑工具在用户打开对应文件时按需启动独立会话；action 扩展在注册校验后启动一个工作台会话，支持主动推送更新。每个打开的文件拥有自己的扩展进程，标签切换保留会话，关闭文件、切换工具、卸载扩展或退出时取消并回收进程。注册、进程 I/O 和退出不阻塞 UI。此版本将帧版本更新为 **19**，增加可扩展的界面语言包注册；宿主与扩展需用当前 SDK 重新构建。
+字体、主题与图标保持静态注册。每个窗口连接为同一扩展按需启动一个常驻进程，工作台 action 和各文件编辑器通过独立逻辑会话复用它。不同窗口保持进程隔离；关闭文件或切换工具只释放该视图，最后一个视图关闭后进程仍保留，禁用、卸载、窗口连接关闭时回收。注册探测仍使用短生命周期进程；LSP 和调试适配器沿用各自的进程管理。注册、进程 I/O 和退出不阻塞 UI。v20 为帧增加会话标识；宿主与 Go、TypeScript 扩展需用当前 SDK 重新构建。
+
+## 窗口与视图会话
+
+同一物理 stdin/stdout 上，帧的 session ID 标识工作台 action 或文档视图，请求 ID 仅在该会话内关联。宿主分配非零、进程内不复用的 session ID；每个会话独立 Initialize/Register，回复和主动推送必须携带原 session ID。非零会话上的 Shutdown 取消该会话的 context 并释放视图；控制会话 `0` 上的 Shutdown 退出进程。每进程最多 256 个会话。
+
+宿主为既有 action/editor 调用提供虚拟 stdio 流，在服务端添加和去除 session ID。每个会话输出队列最多约 8 MiB，溢出仅关闭该会话；stderr 共享保留最近 64 KiB，各会话独立读取。扩展崩溃会断开所有视图，包括空闲视图，下一次打开会话可重启扩展。
+
+`Handlers.Editor` / TS `editor` 适合无状态处理函数。有缓存、选择或分页状态的编辑器使用 `Handlers.NewEditor(ctx)` / TS `newEditor(signal)`，每个文档视图创建一次处理函数，同一路径在不同视图中也互相隔离。关闭视图会取消传入的 context/signal，可据此停止后台任务。窗口级 settings、action、UI 和 lifecycle 回调仍串行执行；配置快照应来自该窗口的一致配置。
+
+```go
+peb.Handlers{
+    NewEditor: func(ctx context.Context) func(peb.EditorMessage) (peb.EditorReply, error) {
+        requests := 0
+        return func(message peb.EditorMessage) (peb.EditorReply, error) {
+            requests++ // 每个视图独立计数。
+            return peb.EditorReply{}, ctx.Err()
+        }
+    },
+}
+```
 
 ## 扩展配置
 
@@ -93,15 +113,16 @@ handlers := peb.Handlers{
 
 ## 帧
 
-所有整数都是无符号小端整数。每帧由固定 16 字节头部和 payload 组成；流允许任意拆包、粘包。读取方必须精确读取指定长度。
+所有整数都是无符号小端整数。每帧由固定 20 字节头部和 payload 组成；流允许任意拆包、粘包。读取方必须精确读取指定长度。
 
 | 偏移 | 长度 | 字段                                 |
 | ---- | ---- | ------------------------------------ |
 | 0    | 4    | magic：`70 65 62 00`（`peb\0`）      |
-| 4    | 2    | version：`19`                         |
+| 4    | 2    | version：`20`                         |
 | 6    | 2    | kind：见下表                         |
 | 8    | 4    | request ID                           |
 | 12   | 4    | payload 字节数，不含头部，最大 4 MiB |
+| 16   | 4    | session ID，`0` 为进程控制会话 |
 
 | kind | 名称           | 方向        | request ID                                          |
 | ---- | -------------- | ----------- | --------------------------------------------------- |
@@ -231,7 +252,7 @@ peb.Contributions{
 
 ## TypeScript 扩展
 
-[peb/ts](ts/README.md) 提供与当前 v19 线格式一致的 TypeScript SDK，包括帧、全部消息 codec 和 serveExtension。TS 插件将 SDK 与业务依赖打包为 `.js`、`.mjs` 或 `.cjs` 入口，工作区主机自动使用 Node.js（优先）或 Bun 启动。无需可执行权限，原生入口保持直接启动。参见 [Office Viewer](../extensions/office-viewer/README.md) 示例。
+[peb/ts](ts/README.md) 提供与当前 v20 线格式一致的 TypeScript SDK，包括帧、全部消息 codec 和 serveExtension。TS 插件将 SDK 与业务依赖打包为 `.js`、`.mjs` 或 `.cjs` 入口，工作区主机自动使用 Node.js（优先）或 Bun 启动。无需可执行权限，原生入口保持直接启动。参见 [Office Viewer](../extensions/office-viewer/README.md) 示例。
 
 ## Go 扩展
 
@@ -618,7 +639,7 @@ publisher.Show(peb.UI{
 
 ## 窗口与项目关闭事件
 
-PEB v18 增加 `Handlers.Lifecycle`，在 action 进程中接收 `WindowClosing`、`ProjectClosing`、`ProjectClosed`；所有扩展界面关闭后仍会收到。事件按 `kind:u32, projectPath:string` 编码，kind 分别为 0、1、2；窗口事件的项目路径为空，项目事件使用绝对路径。返回 `LifecycleReply{Message: "…"}`，编码为 `message:string`。关闭前事件返回非空消息时，宿主汇总所有扩展的消息并要求用户确认；空消息允许继续。用户取消后保留窗口、项目和扩展任务，下次关闭重新检查。
+PEB v18 增加 `Handlers.Lifecycle`，在 action 会话中接收 `WindowClosing`、`ProjectClosing`、`ProjectClosed`；所有扩展界面关闭后仍会收到。事件按 `kind:u32, projectPath:string` 编码，kind 分别为 0、1、2；窗口事件的项目路径为空，项目事件使用绝对路径。返回 `LifecycleReply{Message: "…"}`，编码为 `message:string`。关闭前事件返回非空消息时，宿主汇总所有扩展的消息并要求用户确认；空消息允许继续。用户取消后保留窗口、项目和扩展任务，下次关闭重新检查。
 
 宿主在确认扩展任务之后继续处理未保存文件。`ProjectClosed` 只在项目实际关闭后发送，其回复不能阻止关闭；扩展可在此释放对应项目的状态。窗口关闭前使用 `WindowClosing` 检查，进程退出由激活上下文取消负责清理。回调与其他 action 请求串行执行，必须及时返回，不应等待用户交互。
 

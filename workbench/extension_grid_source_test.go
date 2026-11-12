@@ -15,7 +15,7 @@ import (
 
 func deferredGrid(t *testing.T) *pencodeCustomDocument {
 	t.Helper()
-	node := dom.NewElement("div", map[string]string{"data-ref": "grid", "id": "deferred-grid"})
+	node := dom.NewElement("div", dom.Attribute{Name: "data-ref", Value: "grid"}, dom.Attribute{Name: "id", Value: "deferred-grid"})
 	g, err := parsePencodeGrid(node, `{"source":"sheet-one","rows":10000,"columns":200,"rowHeight":21,"columnWidth":64,"styles":[""],"cells":[]}`)
 	if err != nil {
 		t.Fatal(err)

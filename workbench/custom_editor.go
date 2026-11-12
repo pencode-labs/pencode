@@ -433,7 +433,7 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		node := grid.node
 		*grid = *previousGrid
 		grid.node = node
-		node.Attributes["style"] = previousGrid.node.Attributes["style"]
+		node.SetAttr("style", previousGrid.node.AttrValue("style"))
 		for _, metadata := range grid.metadata {
 			metadata.Parent = node
 		}

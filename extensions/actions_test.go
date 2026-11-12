@@ -179,6 +179,13 @@ func TestActionSessionUIAnchors(t *testing.T) {
 func TestActionSessionLiveUpdateClickAndClose(t *testing.T) {
 	backend, _ := actionFixture(t)
 	var logs output.Store
+	updated := make(chan struct{}, 1)
+	logs.SetWake(func() {
+		select {
+		case updated <- struct{}{}:
+		default:
+		}
+	})
 	bundle, err := Load(output.WithStore(context.Background(), &logs), backend, "test")
 	if err != nil {
 		t.Fatal(err)
@@ -214,17 +221,26 @@ func TestActionSessionLiveUpdateClickAndClose(t *testing.T) {
 	if !result.Change.Remove || result.Change.Action.ID != "extensions/test/run" {
 		t.Fatal(result)
 	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for _, line := range []string{"extension startup", "action activated", "action clicked"} {
+		for {
+			text, _ := extension.Output.Snapshot()
+			if strings.Contains(text, line) {
+				break
+			}
+			select {
+			case <-updated:
+			case <-deadline.C:
+				t.Fatalf("missing live stderr %q: %q", line, text)
+			}
+		}
+	}
 	session.Close()
 	select {
 	case <-session.Done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("process was not reaped")
-	}
-	text, _ := extension.Output.Snapshot()
-	for _, line := range []string{"extension startup", "action activated", "action clicked"} {
-		if !strings.Contains(text, line) {
-			t.Fatalf("missing live stderr %q: %q", line, text)
-		}
+		t.Fatal("action session did not close")
 	}
 }
 func TestActionResourcesAndValidation(t *testing.T) {

@@ -65,4 +65,4 @@ await serveExtension({
 
 语言查询只读取内存中的不可变映射，不进行文件读取、格式化或内存分配。模板的静态文案绑定在创建工作台视图时编译，编辑器区域的局部更新跳过这部分工作。
 
-PEB 已升级为 v19，新增 `LanguagePacks = 512` 能力以及 Register 尾部的 `languagePacks` 数组。Go 和 TypeScript 扩展均需使用当前 SDK 重新构建；可以运行 `make install-extensions` 构建并安装项目内的扩展。
+PEB 当前为 v20；语言包在 v19 引入，提供 `LanguagePacks = 512` 能力以及 Register 尾部的 `languagePacks` 数组。Go 和 TypeScript 扩展均需使用当前 SDK 重新构建；可以运行 `make install-extensions` 构建并安装项目内的扩展。

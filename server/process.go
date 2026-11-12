@@ -41,7 +41,7 @@ func (s *services) process(ctx context.Context, op protocol.Operation, root stri
 		if op == protocol.ProcessOpen {
 			needed = 2
 		}
-		if len(s.streams)+needed > 16 {
+		if s.processSlots()+needed > 16 {
 			return &protocol.Error{Code: protocol.Busy, Message: "process budget exceeded"}
 		}
 		if op == protocol.TerminalOpen {
@@ -149,7 +149,7 @@ func (s *services) process(ctx context.Context, op protocol.Operation, root stri
 
 // The caller owns s.mu, so process creation and handle publication are atomic
 // with respect to workspace/extension revocation and the stream budget.
-func (s *services) attachProcess(p io.ReadWriteCloser, logs *os.File, root string, extension uint64, e *protocol.Encoder) {
+func (s *services) attachProcess(p io.ReadWriteCloser, logs io.ReadCloser, root string, extension uint64, e *protocol.Encoder) {
 	s.next++
 	id, logID := s.next, uint64(0)
 	var logStream *serviceStream
@@ -165,4 +165,23 @@ func (s *services) attachProcess(p io.ReadWriteCloser, logs *os.File, root strin
 	s.streams[id] = stream
 	e.U64(id)
 	e.U64(logID)
+}
+
+// Virtual extension views have a separate session budget; opening more tabs
+// must not consume the terminal/language-server process budget.
+// The caller holds s.mu.
+func (s *services) processSlots() int {
+	count := 0
+	for _, stream := range s.streams {
+		switch p := stream.process.(type) {
+		case *extensionPipe:
+			continue
+		case readOnlyStream:
+			if _, virtual := p.ReadCloser.(*extensionLogReader); virtual {
+				continue
+			}
+		}
+		count++
+	}
+	return count
 }

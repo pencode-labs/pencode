@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"unsafe"
 
 	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
@@ -19,7 +20,7 @@ func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 	project.Entries = make([]treeEntry, count)
 	for i := range project.Entries {
 		name := fmt.Sprintf("item-%05d.txt", i)
-		project.Entries[i] = treeEntry{Path: name, Name: name, Openable: true}
+		project.Entries[i] = treeEntry{Path: name, Openable: true}
 	}
 	project.tree.revision++
 	model.revealProject, model.revealPath = nil, ""
@@ -76,7 +77,7 @@ func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 	project.scan = &pencodeProjectScan{staged: true, cancel: func() {}}
 	t.Cleanup(project.stopScan)
 	entry := project.Entries[count-1]
-	project.Files[entry.Path] = &openFile{Path: entry.Path, Name: entry.Name}
+	project.Files[entry.Path] = &openFile{Path: entry.Path, Name: entry.Name()}
 	project.ActivePath = entry.Path
 	model.syncActiveProjectFields()
 	model.queueProjectFileReveal(project)
@@ -93,11 +94,11 @@ func TestPencodeTreeFlattenCacheInvalidation(t *testing.T) {
 	project := pencodeProject{ExpandedDirs: map[string]bool{}, Entries: []treeEntry{
 		{Path: "folder", IsDir: true}, {Path: "folder/child", Depth: 1}, {Path: "folder/nested", Depth: 1, IsDir: true}, {Path: "folder/nested/file", Depth: 2}, {Path: "last"},
 	}}
-	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 4}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int32{0, 4}) {
 		t.Fatal(got)
 	}
 	model.toggleProjectDirectory(&project, "folder", 0)
-	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 1, 2, 4}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int32{0, 1, 2, 4}) {
 		t.Fatal(got)
 	}
 	model.toggleProjectDirectory(&project, "folder/nested", 1)
@@ -105,11 +106,98 @@ func TestPencodeTreeFlattenCacheInvalidation(t *testing.T) {
 		t.Fatal(got)
 	}
 	model.collapseProjectDirectories(&project)
-	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 4}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int32{0, 4}) {
 		t.Fatal(got)
 	}
 	project.Entries = append(project.Entries, treeEntry{Path: "new"})
-	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int{0, 4, 5}) {
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int32{0, 4, 5}) {
 		t.Fatal(got)
+	}
+}
+
+func TestPencodeTreeFlagsReleaseDefaultPaths(t *testing.T) {
+	project := &pencodeProject{}
+	model := workspaceModel{projects: []*pencodeProject{project}, activeProjectIndex: 0}
+	for i := range 1000 {
+		name := fmt.Sprintf("folder-%d", i)
+		model.toggleProjectDirectory(project, name, 0)
+		if !project.ExpandedDirs[name] {
+			t.Fatal("directory did not expand")
+		}
+		model.toggleProjectDirectory(project, name, 0)
+		id := "sc-folder:changes:" + name
+		model.sourceAction(id)
+		if !project.sourceControl.Collapsed["changes:"+name] {
+			t.Fatal("source directory did not collapse")
+		}
+		model.sourceAction(id)
+	}
+	if len(project.ExpandedDirs) != 0 || len(project.sourceControl.Collapsed) != 0 {
+		t.Fatal("default states retained paths after visiting directories")
+	}
+	if n := testing.AllocsPerRun(100, func() {
+		model.toggleProjectDirectory(project, "folder", 0)
+		model.toggleProjectDirectory(project, "folder", 0)
+		model.sourceAction("sc-folder:changes:folder")
+		model.sourceAction("sc-folder:changes:folder")
+	}); n != 0 {
+		t.Fatalf("warm directory toggling allocated %g times", n)
+	}
+}
+
+func TestPencodeTreeReindexesReplacementAndDeepSubtrees(t *testing.T) {
+	model := workspaceModel{}
+	project := pencodeProject{Entries: []treeEntry{
+		{Path: "folder", IsDir: true}, {Path: "folder/child", Depth: 1}, {Path: "last"},
+	}}
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int32{0, 2}) {
+		t.Fatal(got)
+	}
+	// Replace in place with the same length, as a root preview can do.
+	project.Entries[1] = treeEntry{Path: "sibling"}
+	project.tree.entriesChanged()
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int32{0, 1, 2}) {
+		t.Fatal("replacement reused stale subtree boundaries", got)
+	}
+	project.Entries = make([]treeEntry, 258)
+	for i := range 257 {
+		project.Entries[i] = treeEntry{Path: fmt.Sprintf("directory-%d", i), Depth: uint16(i), IsDir: true}
+	}
+	project.Entries[257] = treeEntry{Path: "last"}
+	if got := project.visibleTreeRows(&model); !slices.Equal(got, []int32{0, 257}) {
+		t.Fatal("maximum-depth subtree was not skipped", got)
+	}
+	if n := testing.AllocsPerRun(100, func() {
+		project.tree.revision++
+		project.visibleTreeRows(&model)
+	}); n != 0 {
+		t.Fatalf("warm folding allocated %g times", n)
+	}
+}
+
+func BenchmarkPencodeTreeRows(b *testing.B) {
+	for _, count := range []int32{1024, 262144} {
+		for _, expanded := range []bool{false, true} {
+			b.Run(fmt.Sprintf("entries=%d/expanded=%v", count, expanded), func(b *testing.B) {
+				model := workspaceModel{}
+				project := pencodeProject{Entries: make([]treeEntry, count), ExpandedDirs: make(map[string]bool)}
+				for i := range project.Entries {
+					directory := fmt.Sprintf("folder-%03d", i/1024)
+					if i%1024 == 0 {
+						project.Entries[i] = treeEntry{Path: directory, IsDir: true}
+						project.ExpandedDirs[directory] = expanded
+					} else {
+						project.Entries[i] = treeEntry{Path: fmt.Sprintf("%s/file-%04d.go", directory, i%1024), Depth: 1, Openable: true}
+					}
+				}
+				project.visibleTreeRows(&model)
+				b.ReportAllocs()
+				for b.Loop() {
+					project.tree.revision++
+					project.visibleTreeRows(&model)
+				}
+				b.ReportMetric(float64(unsafe.Sizeof(treeEntry{})), "B/entry")
+			})
+		}
 	}
 }

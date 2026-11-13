@@ -57,11 +57,13 @@ const (
 
 type treeEntry struct {
 	Path     string
-	Name     string
-	Depth    int
+	end      uint32
+	Depth    uint16
 	IsDir    bool
 	Openable bool
 }
+
+func (e treeEntry) Name() string { return e.Path[strings.LastIndexByte(e.Path, '/')+1:] }
 
 type openFile struct {
 	document        *client.Document
@@ -1676,10 +1678,7 @@ func (model *workspaceModel) toggleProjectDirectory(project *pencodeProject, rel
 	if model == nil || project == nil {
 		return
 	}
-	if project.ExpandedDirs == nil {
-		project.ExpandedDirs = make(map[string]bool)
-	}
-	project.ExpandedDirs[relative] = !model.isProjectDirectoryExpanded(project, relative, depth)
+	project.ExpandedDirs = togglePencodeFlag(project.ExpandedDirs, relative)
 	project.tree.revision++
 	model.syncActiveProjectFields()
 }

@@ -15,13 +15,25 @@ type Upload struct {
 	file      *os.File
 	paths     map[string]bool
 	Directory string
+	replace   string
+	backup    string
 	name      string
 	offset    uint64
 	bytes     int
 	sealed    bool
+	disabled  bool
+	published bool
 }
 
-func Begin(directory string) (*Upload, error) {
+func Begin(directory, replace string) (*Upload, error) {
+	disabled := false
+	if replace != "" {
+		item, err := Inspect(directory, replace)
+		if err != nil {
+			return nil, err
+		}
+		disabled = item.Disabled
+	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, err
 	}
@@ -34,7 +46,7 @@ func Begin(directory string) (*Upload, error) {
 		os.RemoveAll(stage)
 		return nil, err
 	}
-	return &Upload{Directory: stage, root: root, paths: make(map[string]bool)}, nil
+	return &Upload{Directory: stage, root: root, replace: replace, disabled: disabled, paths: make(map[string]bool)}, nil
 }
 
 func (u *Upload) Write(name string, offset uint64, mode uint32, final bool, data []byte) error {
@@ -98,6 +110,14 @@ func (u *Upload) Prepare(ctx context.Context) (Registration, error) {
 	if err != nil {
 		return Registration{}, err
 	}
+	if u.replace != "" {
+		if manifest.ID != u.replace {
+			return Registration{}, fmt.Errorf("updated extension ID must be %q", u.replace)
+		}
+		if err := writeDisabled(ctx, u.root, u.disabled); err != nil {
+			return Registration{}, err
+		}
+	}
 	return Register(ctx, u.Directory, manifest.ID, false)
 }
 
@@ -109,20 +129,41 @@ func (u *Upload) Publish(directory, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(items) >= MaxExtensions {
+	if u.replace == "" && len(items) >= MaxExtensions {
 		return "", fmt.Errorf("at most %d extensions can be installed", MaxExtensions)
 	}
 	target := filepath.Join(directory, id)
-	if _, err := os.Lstat(target); err == nil {
+	if u.replace != "" {
+		if id != u.replace {
+			return "", fmt.Errorf("updated extension ID mismatch")
+		}
+		backup, err := os.MkdirTemp(directory, "_backup-")
+		if err != nil {
+			return "", err
+		}
+		if err := os.Remove(backup); err != nil {
+			return "", err
+		}
+		if err := os.Rename(target, backup); err != nil {
+			return "", err
+		}
+		u.backup = backup
+	} else if _, err := os.Lstat(target); err == nil {
 		return "", fmt.Errorf("extension %s is already installed", id)
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
 	if err := os.Rename(u.Directory, target); err != nil {
+		if u.backup != "" {
+			if rollback := os.Rename(u.backup, target); rollback != nil {
+				return "", fmt.Errorf("publish: %w; restore %s: %v", err, u.backup, rollback)
+			}
+			u.backup = ""
+		}
 		return "", err
 	}
 	u.root.Close()
-	u.root, u.Directory = nil, ""
+	u.root, u.Directory, u.published = nil, "", true
 	return target, nil
 }
 
@@ -134,6 +175,10 @@ func (u *Upload) Close() {
 	if u.root != nil {
 		u.root.Close()
 		u.root = nil
+	}
+	if u.backup != "" && u.published {
+		os.RemoveAll(u.backup)
+		u.backup = ""
 	}
 	if u.Directory != "" {
 		os.RemoveAll(u.Directory)

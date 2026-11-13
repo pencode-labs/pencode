@@ -221,7 +221,7 @@ func TestPencodeIconsFollowSelectionAndTabState(t *testing.T) {
 	other := &openFile{Path: "other.go", Name: "other.go", contentSnapshot: snapshotText("package demo\n")}
 	project.Files[other.Path] = other
 	project.Tabs = append(project.Tabs, other.Path)
-	project.Entries = append(project.Entries, treeEntry{Path: other.Path, Name: other.Name, Openable: true})
+	project.Entries = append(project.Entries, treeEntry{Path: other.Path, Openable: true})
 	model.selectTheme("light-plus")
 	step := func() {
 		t.Helper()

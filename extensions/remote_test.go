@@ -241,7 +241,7 @@ func TestRemoteExtensionRelativeLanguageProcessAfterPublish(t *testing.T) {
 func TestRemoteExtensionUploadConfinementAndDisconnectCleanup(t *testing.T) {
 	target := t.TempDir()
 	backend := extensionBackend(t, target)
-	upload, err := backend.BeginExtension(t.Context())
+	upload, err := backend.BeginExtension(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,5 +306,55 @@ func TestRemoteEditorResourceCacheAndPaths(t *testing.T) {
 		if _, err := resources.prepare(context.Background(), &invalid, ""); err == nil {
 			t.Fatalf("accepted invalid resource URL %q", source)
 		}
+	}
+}
+
+func TestRemoteExtensionUpdateValidatesBeforeReplacing(t *testing.T) {
+	_, sourceDirectory := actionFixture(t)
+	source := filepath.Join(sourceDirectory, "test")
+	changeFixtureManifest(t, source, func(m *Manifest) { m.Version = "1.0.0" })
+	target := t.TempDir()
+	backend := extensionBackend(t, target)
+	_, oldBundle, err := Install(t.Context(), backend, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer oldBundle.Close()
+	old := oldBundle.Actions.remote
+	changeFixtureManifest(t, source, func(m *Manifest) {
+		m.Version = "1.1.0"
+		m.Args = append(m.Args[:len(m.Args)-1], "peb-bad-icon", "peb-action-helper")
+	})
+	if err := os.WriteFile(filepath.Join(source, "resources/broken.svg"), []byte("broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := install(t.Context(), backend, source, "test"); err == nil {
+		t.Fatal("published invalid update")
+	}
+	catalog, err := backend.ListExtensions(t.Context())
+	if err != nil || len(catalog.Items) != 1 || catalog.Items[0].Version != "1.0.0" {
+		t.Fatal(catalog, err)
+	}
+	if _, err := old.ReadResource(t.Context(), "resources/extension.json", 64<<10); err != nil {
+		t.Fatal("failed update revoked old registration", err)
+	}
+	changeFixtureManifest(t, source, func(m *Manifest) { m.Args = []string{"-test.run=^TestActionHelperProcess$", "--", "peb-action-helper"} })
+	item, bundle, err := install(t.Context(), backend, source, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bundle.Close()
+	if item.Version != "1.1.0" || bundle.Actions.remote.Handle == old.Handle {
+		t.Fatal("update did not register new version", item)
+	}
+	if _, err := old.ReadResource(t.Context(), "resources/extension.json", 64<<10); err == nil {
+		t.Fatal("update retained old registration")
+	}
+	if _, err := bundle.Actions.remote.ReadResource(t.Context(), "resources/extension.json", 64<<10); err != nil {
+		t.Fatal("updated resource unavailable", err)
+	}
+	entries, err := os.ReadDir(target)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "test" {
+		t.Fatal(entries, err)
 	}
 }

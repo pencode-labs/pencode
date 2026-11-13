@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"os"
@@ -140,7 +141,7 @@ func TestPagedPieceEditsMatchReference(t *testing.T) {
 	}
 	want := strings.Repeat("abc\n", 100)
 	f.WriteString(want)
-	p := &pagedDocument{file: f, size: int64(len(want)), pieces: []filePiece{{length: int64(len(want))}}}
+	p := &pagedDocument{file: f, size: int64(len(want)), pieces: []filePiece{{end: int64(len(want))}}}
 	defer p.close()
 	r := rand.New(rand.NewPCG(7, 11))
 	for range 300 {
@@ -157,6 +158,89 @@ func TestPagedPieceEditsMatchReference(t *testing.T) {
 		}
 		if string(got) != want || p.size != int64(len(want)) {
 			t.Fatalf("edit %d:%d mismatch", start, end)
+		}
+	}
+}
+
+func TestPagedFragmentedEditsAndReadsMatchReference(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("abcdef\n", 2048)
+	if _, err := f.WriteString(want); err != nil {
+		t.Fatal(err)
+	}
+	p := &pagedDocument{file: f, size: int64(len(want)), pieces: []filePiece{{end: int64(len(want))}}}
+	defer p.close()
+	r := rand.New(rand.NewPCG(31, 57))
+	for i := range 2000 {
+		start := r.IntN(len(want) + 1)
+		end := start + r.IntN(min(24, len(want)-start)+1)
+		text := strings.Repeat(string(byte('a'+i%26)), r.IntN(25))
+		if err := p.replace(int64(start), int64(end), text); err != nil {
+			t.Fatal(err)
+		}
+		want = want[:start] + text + want[end:]
+		offset := r.IntN(len(want) + 1)
+		var scratch [257]byte
+		n, err := p.readAt(scratch[:], int64(offset))
+		length := min(len(scratch), len(want)-offset)
+		if n != length || string(scratch[:n]) != want[offset:offset+length] || err != nil && err != io.EOF {
+			t.Fatalf("edit %d: range read differs at %d: n=%d err=%v", i, offset, n, err)
+		}
+		if n < len(scratch) && err != io.EOF || p.size != int64(len(want)) {
+			t.Fatalf("edit %d: wrong EOF or document size", i)
+		}
+	}
+	got := make([]byte, len(want))
+	if n, err := p.readAt(got, 0); n != len(want) || err != nil || string(got) != want {
+		t.Fatal("fragmented document differs from the edited reference", err)
+	}
+}
+
+func TestPagedFragmentedWarmEditsDoNotAllocate(t *testing.T) {
+	p := fragmentedPagedDocument(t, 128)
+	if n := testing.AllocsPerRun(100, func() {
+		if err := p.replace(100, 100, "x"); err != nil {
+			panic(err)
+		}
+		if err := p.replace(100, 101, ""); err != nil {
+			panic(err)
+		}
+	}); n != 0 {
+		t.Fatalf("warm fragmented edits allocated %g times", n)
+	}
+}
+
+func TestPagedSaveReleasesFragmentIndex(t *testing.T) {
+	s, w := fixture(t)
+	write(t, w, "fragmented.txt", strings.Repeat("a", protocol.TextPagingThreshold+1))
+	doc, err := s.OpenDocument(w.ID, "fragmented.txt", protocol.DocumentText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := doc.Version
+	for i := range 512 {
+		version, err = s.Change(doc.ID, version, 0, uint32(i*64), uint32(i*64+1), "b")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := s.documents[doc.ID].paged
+	if err := s.Save(doc.ID, version); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.pieces) != 1 || cap(p.pieces) > pagedPieceSpareLimit || p.edits != nil {
+		t.Fatal("save retained fragmented metadata or the edit spool")
+	}
+	page, err := s.ReadDocument(doc.ID, version, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 512 {
+		if page.Content[i*64] != 'b' || page.Content[i*64+1] != 'a' {
+			t.Fatal("save changed fragmented content")
 		}
 	}
 }
@@ -186,7 +270,7 @@ func TestPagedWarmAppendAllocations(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.WriteString("original")
-	p := &pagedDocument{file: f, size: 8, pieces: []filePiece{{length: 8}}}
+	p := &pagedDocument{file: f, size: 8, pieces: []filePiece{{end: 8}}}
 	defer p.close()
 	for range 10 {
 		if err := p.replace(p.size, p.size, "x"); err != nil {
@@ -202,5 +286,60 @@ func TestPagedWarmAppendAllocations(t *testing.T) {
 	}
 	if len(p.pieces) != 2 {
 		t.Fatalf("consecutive typing fragmented into %d pieces", len(p.pieces))
+	}
+}
+
+func fragmentedPagedDocument(t testing.TB, count int) *pagedDocument {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Repeat("a", count*16+1)
+	if _, err := f.WriteString(text); err != nil {
+		t.Fatal(err)
+	}
+	p := &pagedDocument{file: f, size: int64(len(text)), pieces: []filePiece{{end: int64(len(text))}}}
+	t.Cleanup(p.close)
+	for i := range count {
+		position := int64((i*4051)%count*16 + 1)
+		if err := p.replace(position, position+1, "b"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return p
+}
+
+func BenchmarkPagedFragments(b *testing.B) {
+	for _, count := range []int{128, 4096} {
+		for _, operation := range []string{"read-tail", "replace", "insert-delete", "append"} {
+			b.Run(fmt.Sprintf("edits=%d/%s", count, operation), func(b *testing.B) {
+				p := fragmentedPagedDocument(b, count)
+				var scratch [1]byte
+				i := 0
+				b.ReportAllocs()
+				for b.Loop() {
+					position := int64((i*4051)%count*16 + 1)
+					i++
+					var err error
+					switch operation {
+					case "read-tail":
+						_, err = p.readAt(scratch[:], p.size-1)
+					case "replace":
+						err = p.replace(position, position+1, "c")
+					case "insert-delete":
+						err = p.replace(position, position, "c")
+						if err == nil {
+							err = p.replace(position, position+1, "")
+						}
+					case "append":
+						err = p.replace(p.size, p.size, "c")
+					}
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
 	}
 }

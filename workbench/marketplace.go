@@ -18,6 +18,8 @@ type pencodeMarketOperation uint8
 const (
 	pencodeMarketRefresh pencodeMarketOperation = iota
 	pencodeMarketInstall
+	pencodeMarketDownload
+	pencodeMarketUpdate
 	pencodeMarketUninstall
 	pencodeMarketEnable
 	pencodeMarketDisable
@@ -25,12 +27,14 @@ const (
 )
 
 type pencodeMarketResult struct {
-	err       error
-	bundles   map[string]*extensions.Bundle
-	directory string
-	id        string
-	items     []extensions.Installed
-	op        pencodeMarketOperation
+	err         error
+	marketError error
+	listings    []extensions.Listing
+	bundles     map[string]*extensions.Bundle
+	directory   string
+	id          string
+	items       []extensions.Installed
+	op          pencodeMarketOperation
 }
 
 // UI state belongs to the session, so a scene switch does not lose an ongoing
@@ -39,6 +43,10 @@ type pencodeMarketplace struct {
 	rowsModel                  *workspaceModel
 	rowsDefinition             *htmlui.Definition[pencodeMarketProps, struct{}]
 	selectedItem               *extensions.Installed
+	selectedListing            *extensions.Listing
+	source                     extensions.Marketplace
+	listings                   []extensions.Listing
+	entries                    []extensions.Installed
 	cancel                     context.CancelFunc
 	done                       chan struct{}
 	results                    chan pencodeMarketResult
@@ -48,7 +56,7 @@ type pencodeMarketplace struct {
 	items                      []extensions.Installed
 	rows                       []htmlui.ComponentVNode
 	revision, rowsRevision     uint64
-	open, busy                 bool
+	open, busy, download       bool
 }
 
 type pencodeMarketProps struct {
@@ -97,8 +105,10 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 	}
 	m.busy, m.feedback = true, model.tr("正在读取扩展…")
 	switch op {
-	case pencodeMarketInstall:
+	case pencodeMarketInstall, pencodeMarketDownload:
 		m.feedback = model.tr("正在安装扩展…")
+	case pencodeMarketUpdate:
+		m.feedback = model.tr("正在更新扩展…")
 	case pencodeMarketUninstall:
 		m.feedback = model.tr("正在卸载扩展…")
 	case pencodeMarketEnable:
@@ -119,6 +129,16 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 	for id, state := range model.extensionStates {
 		known[id] = state == pencodeExtensionLoaded
 	}
+	marketSource := m.source
+	var listing extensions.Listing
+	if op == pencodeMarketDownload || op == pencodeMarketUpdate {
+		for i := range m.listings {
+			if m.listings[i].Name == id {
+				listing = m.listings[i]
+				break
+			}
+		}
+	}
 	go func() {
 		defer close(done)
 		r := pencodeMarketResult{op: op, id: id, bundles: make(map[string]*extensions.Bundle)}
@@ -131,10 +151,14 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 			}
 		}()
 		switch op {
-		case pencodeMarketInstall:
+		case pencodeMarketInstall, pencodeMarketDownload, pencodeMarketUpdate:
 			var item extensions.Installed
 			var bundle *extensions.Bundle
-			item, bundle, r.err = extensions.Install(ctx, backend, source)
+			if op == pencodeMarketInstall {
+				item, bundle, r.err = extensions.Install(ctx, backend, source)
+			} else {
+				item, bundle, r.err = marketSource.Install(ctx, backend, listing, op == pencodeMarketUpdate)
+			}
 			if r.err == nil {
 				r.id = item.ID
 				r.bundles[item.ID] = bundle
@@ -157,6 +181,7 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 			r.err = err
 			r.items, r.directory = catalog.Items, catalog.Directory
 			if r.err == nil && op == pencodeMarketRefresh {
+				r.listings, r.marketError = marketSource.List(ctx, catalog.OS, catalog.Arch)
 				for i := range r.items {
 					item := &r.items[i]
 					if known[item.ID] || item.Disabled || item.Problem != "" {
@@ -207,6 +232,13 @@ func (model *workspaceModel) pollMarketplace() bool {
 			return true
 		}
 		m.items, m.directory = result.items, result.directory
+		if result.listings != nil {
+			m.listings = result.listings
+		}
+		if result.op == pencodeMarketUpdate {
+			model.unloadExtension(result.id)
+			model.setExtensionState(result.id, 0)
+		}
 		present := make(map[string]bool, len(m.items))
 		found := false
 		for _, item := range m.items {
@@ -218,6 +250,9 @@ func (model *workspaceModel) pollMarketplace() bool {
 				}
 				model.setExtensionState(item.ID, pencodeExtensionDisabled)
 			}
+		}
+		for _, listing := range m.listings {
+			found = found || listing.Name == m.selected
 		}
 		for id, state := range model.extensionStates {
 			if _, exists := present[id]; state != pencodeExtensionRemoved && !exists {
@@ -243,9 +278,12 @@ func (model *workspaceModel) pollMarketplace() bool {
 				model.removeExtension(result.id)
 			}
 			m.feedback = model.tr("扩展已卸载")
-		case pencodeMarketInstall:
+		case pencodeMarketInstall, pencodeMarketDownload, pencodeMarketUpdate:
 			m.selected, m.feedback = result.id, model.tr("扩展已安装")
 			_, found = present[result.id]
+			if result.op == pencodeMarketUpdate {
+				m.feedback = model.tr("扩展已更新")
+			}
 		case pencodeMarketEnable:
 			m.feedback = model.tr("扩展已启用")
 		case pencodeMarketDisable:
@@ -253,12 +291,17 @@ func (model *workspaceModel) pollMarketplace() bool {
 		default:
 			m.feedback = ""
 		}
+		if result.marketError != nil {
+			m.feedback = fmt.Sprintf(model.tr("扩展源加载失败：%v"), result.marketError)
+		}
 		if loadError != "" {
 			m.feedback = loadError
 		}
 		if !found {
 			m.selected = ""
-			if len(m.items) > 0 {
+			if len(m.listings) > 0 {
+				m.selected = m.listings[0].Name
+			} else if len(m.items) > 0 {
 				m.selected = m.items[0].ID
 			}
 		}
@@ -304,8 +347,19 @@ func (model *workspaceModel) handleMarketplaceEvent(c *module.ContentEventContex
 		} else if source != "" {
 			model.startMarketOperation(pencodeMarketInstall, source, "")
 		}
+	case "market-download":
+		if m.selectedListing != nil && m.selectedListing.URL != "" && m.selectedListing.Problem == "" {
+			op := pencodeMarketDownload
+			if m.selectedItem != nil {
+				if !m.selectedListing.NewerThan(m.selectedItem.Version) {
+					return true
+				}
+				op = pencodeMarketUpdate
+			}
+			model.startMarketOperation(op, "", m.selectedListing.Name)
+		}
 	case "market-uninstall":
-		if m.selected != "" {
+		if m.selectedItem != nil {
 			model.startMarketOperation(pencodeMarketUninstall, "", m.selected)
 		}
 	case "market-toggle":
@@ -372,6 +426,7 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	view.Event("market-open-directory", htmlui.EventClick)
 	view.Event("market-install", htmlui.EventClick)
 	view.Event("market-uninstall", htmlui.EventClick)
+	view.Event("market-download", htmlui.EventClick)
 	view.Event("market-toggle", htmlui.EventClick)
 	view.Event("market-search", htmlui.EventInput)
 	if m == nil || !m.open {
@@ -389,8 +444,8 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	} else {
 		view.RemoveAttr("market-open-directory", "hidden")
 	}
-	for _, ref := range [...]string{"market-refresh", "market-install", "market-uninstall", "market-open-directory"} {
-		if m.busy || ref == "market-uninstall" && m.selected == "" || ref == "market-open-directory" && m.directory == "" {
+	for _, ref := range [...]string{"market-refresh", "market-install", "market-open-directory"} {
+		if m.busy || ref == "market-open-directory" && m.directory == "" {
 			view.Attr(ref, "disabled", "")
 		} else {
 			view.RemoveAttr(ref, "disabled")
@@ -399,9 +454,23 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	if m.rowsModel != model || m.rowsRevision != m.revision || m.rowsDefinition != definition {
 		clear(m.rows[:cap(m.rows)])
 		m.rows = m.rows[:0]
+		clear(m.entries)
+		m.entries = append(m.entries[:0], m.items...)
+		for _, listing := range m.listings {
+			installed := false
+			for i := range m.items {
+				if m.items[i].ID == listing.Name {
+					installed = true
+					break
+				}
+			}
+			if !installed {
+				m.entries = append(m.entries, extensions.Installed{ExtensionManifest: extensions.Manifest{ID: listing.Name, Name: listing.Name, Version: listing.Version, Description: listing.Description}})
+			}
+		}
 		var selected *extensions.Installed
-		for i := range m.items {
-			item := &m.items[i]
+		for i := range m.entries {
+			item := &m.entries[i]
 			if item.ID == m.selected {
 				selected = item
 			}
@@ -410,10 +479,30 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 			}
 			m.rows = append(m.rows, definition.ComponentChild(componentKey(item.ID), pencodeMarketProps{Model: model, Item: item, Selected: item.ID == m.selected}, struct{}{}))
 		}
-		m.cacheDetails(selected)
+		model.cacheMarketDetails(selected)
 		m.rowsModel, m.rowsRevision, m.rowsDefinition = model, m.revision, definition
 	}
 	view.Components("market-list", m.rows)
+	downloadLabel := model.tr("安装扩展")
+	if m.selectedItem != nil {
+		downloadLabel = model.tr("更新扩展")
+	}
+	view.Text("market-download", downloadLabel)
+	if m.download {
+		view.RemoveAttr("market-download", "hidden")
+	} else {
+		view.Attr("market-download", "hidden", "")
+	}
+	if m.busy || !m.download {
+		view.Attr("market-download", "disabled", "")
+	} else {
+		view.RemoveAttr("market-download", "disabled")
+	}
+	if m.busy || m.selectedItem == nil {
+		view.Attr("market-uninstall", "disabled", "")
+	} else {
+		view.RemoveAttr("market-uninstall", "disabled")
+	}
 	label := model.tr("禁用扩展")
 	if m.selectedItem != nil && m.selectedItem.Disabled {
 		label = model.tr("启用扩展")
@@ -434,11 +523,24 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	}
 }
 
-func (m *pencodeMarketplace) cacheDetails(selected *extensions.Installed) {
-	m.selectedItem = selected
+func (model *workspaceModel) cacheMarketDetails(selected *extensions.Installed) {
+	m := model.market
+	m.selectedItem, m.selectedListing, m.download = nil, nil, false
 	if selected == nil {
-		m.details = [5]string{"暂无已安装扩展", "", "点击「从本地目录安装」，或将扩展复制到安装目录后刷新。", "", ""}
+		m.details = [5]string{model.tr("暂无扩展"), "", model.tr("刷新扩展市场，或从本地目录安装扩展。"), "", ""}
 		return
+	}
+	for i := range m.items {
+		if m.items[i].ID == selected.ID {
+			m.selectedItem = &m.items[i]
+			break
+		}
+	}
+	for i := range m.listings {
+		if m.listings[i].Name == selected.ID {
+			m.selectedListing = &m.listings[i]
+			break
+		}
 	}
 	meta := selected.ID
 	if selected.Version != "" {
@@ -447,12 +549,27 @@ func (m *pencodeMarketplace) cacheDetails(selected *extensions.Installed) {
 	if selected.Publisher != "" {
 		meta += " · " + selected.Publisher
 	}
-	status := "已安装"
+	status := model.tr("已安装")
+	if m.selectedItem == nil {
+		status = model.tr("未安装")
+	}
 	if selected.Disabled {
-		status = "已禁用"
+		status = model.tr("已禁用")
 	}
 	if selected.Problem != "" {
-		status = "扩展需要检查：" + selected.Problem
+		status = fmt.Sprintf(model.tr("扩展需要检查：%s"), selected.Problem)
 	}
+	if listing := m.selectedListing; listing != nil {
+		if listing.Problem != "" {
+			message := "版本信息获取失败：%s"
+			if m.selectedItem != nil {
+				message = "更新检查失败：%s"
+			}
+			status += " · " + fmt.Sprintf(model.tr(message), listing.Problem)
+		} else if m.selectedItem != nil && listing.NewerThan(selected.Version) {
+			status += " · " + fmt.Sprintf(model.tr("可更新至 %s"), listing.Version)
+		}
+	}
+	m.download = m.selectedListing != nil && m.selectedListing.URL != "" && m.selectedListing.Problem == "" && (m.selectedItem == nil || m.selectedListing.NewerThan(selected.Version))
 	m.details = [5]string{selected.Label(), meta, selected.Description, status, selected.Path}
 }

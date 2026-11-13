@@ -100,7 +100,7 @@ func testDelveSession(t *testing.T, contributed bool) {
 	}
 	defer func() { _ = c.Close(); <-serverDone }()
 	if contributed {
-		upload, err := c.BeginExtension(ctx)
+		upload, err := c.BeginExtension(ctx, "")
 		if err != nil {
 			t.Fatal(err)
 		}

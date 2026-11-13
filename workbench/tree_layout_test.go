@@ -18,10 +18,10 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 	project.ExpandedDirs = make(map[string]bool)
 	for i := range 30 {
 		name := fmt.Sprintf("folder-%02d", i)
-		project.Entries = append(project.Entries, treeEntry{Path: name, Name: name, IsDir: true})
+		project.Entries = append(project.Entries, treeEntry{Path: name, IsDir: true})
 		for j := range 7 {
 			child := fmt.Sprintf("child-%02d-%02d", i, j)
-			project.Entries = append(project.Entries, treeEntry{Path: name + "/" + child, Name: child, Depth: 1})
+			project.Entries = append(project.Entries, treeEntry{Path: name + "/" + child, Depth: 1})
 		}
 	}
 	project.tree.revision++
@@ -45,7 +45,7 @@ func TestPencodeTreeToggleKeepsScrolledRowPositions(t *testing.T) {
 			found := false
 			y := bounds.Y + scroll.Position.Y()
 			for entity, access := range app.World.Query[scene.Text2D]().All {
-				if access.Ref().Text().String() != entry.Name {
+				if access.Ref().Text().String() != entry.Name() {
 					continue
 				}
 				found = true

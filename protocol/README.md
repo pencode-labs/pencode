@@ -1,4 +1,8 @@
-# Pencode CS v13
+# Pencode CS v15
+
+v15 移除 IndexNext 中重复的 name 字符串，名称由完整路径的末段取得。无变化的索引刷新共享已有不可变记录；有变化时批量复制未变区间。
+
+v14 为 ExtensionList 增加服务端 OS 和架构，并为 ExtensionBegin 增加待替换的扩展 ID。更新先校验暂存包，再替换已安装扩展，保留原有启用／禁用状态。
 
 GUI 和无头服务通过有序双向字节流通信。本地传输是子进程管道，远端传输是 OpenSSH 加密的 stdin/stdout；不监听或转发服务端端口，协议与具体传输无关。所有整数采用小端编码；不传递 Go 指针或渲染对象。旧版本不兼容。
 
@@ -7,7 +11,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 13 |
+| 4 | 2 | 协议版本，当前 15 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -76,14 +80,14 @@ IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功�
 | StreamResize | stream:u64, cols:u32, rows:u32 | 空 |
 | StreamClose / StreamWait | stream:u64 | 空；Wait 非零退出码为 Failure |
 | IndexOpen | previous:u64（0：完整扫描；非零：基于该索引校准，保留其查询句柄直到 IndexClose） | index:u64 |
-| IndexNext | index:u64, offset:u32 | done:u32, warning:string, count:u32, {path:string, name:string, depth:u32, directory:u32}[] |
+| IndexNext | index:u64, offset:u32 | done:u32, warning:string, count:u32, {path:string, depth:u32, directory:u32}[] |
 | IndexClose | index:u64 | 空 |
 | PathSearch | index:u64, query:string, preferred:string[] | paths:string[] |
 | SyntaxAnalyze | parser:u64, baseVersion:u64, filename:string, start:u32, end:u32, insert:string | version:u64, language:string, captures（见下） |
 | SyntaxRelease | parser:u64 | 空 |
-| ExtensionList | 空 | directory:string, count:u32, ExtensionInfo[] |
+| ExtensionList | 空 | directory:string, os:string, arch:string, count:u32, ExtensionInfo[] |
 | ExtensionLoad | id:string | handle:u64, ExtensionInfo, contributions:bytes, diagnostics:string |
-| ExtensionBegin | 空 | upload:u64 |
+| ExtensionBegin | replace:string（空：新安装；非空：更新指定扩展） | upload:u64 |
 | ExtensionWrite | upload:u64, path:string, offset:u64, mode:u32, final:u32, data:bytes | 空；data 最大 32 KiB |
 | ExtensionPrepare | upload:u64 | handle:u64, ExtensionInfo, contributions:bytes, diagnostics:string |
 | ExtensionResources | handle:u64, limit:u32, count:u32, path:string[] | count:u32, {path:string, data:bytes}[]；返回请求路径的有序前缀 |

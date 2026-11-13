@@ -15,6 +15,10 @@ import (
 // Install uploads a selected local package to the server. Only this explicit
 // file-transfer source is opened locally; installed packages always live there.
 func Install(ctx context.Context, backend *client.Client, source string) (Installed, *Bundle, error) {
+	return install(ctx, backend, source, "")
+}
+
+func install(ctx context.Context, backend *client.Client, source, replace string) (Installed, *Bundle, error) {
 	root, err := os.OpenRoot(source)
 	if err != nil {
 		return Installed{}, nil, err
@@ -24,7 +28,7 @@ func Install(ctx context.Context, backend *client.Client, source string) (Instal
 	if _, err := readResource(root.FS(), "resources/extension.json", 64<<10); err != nil {
 		return Installed{}, nil, err
 	}
-	upload, err := backend.BeginExtension(ctx)
+	upload, err := backend.BeginExtension(ctx, replace)
 	if err != nil {
 		return Installed{}, nil, err
 	}

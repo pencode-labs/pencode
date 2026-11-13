@@ -844,7 +844,7 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 		restore = s.ownsFocus(model.fontResources)
 	}
 	if state.editor == s {
-		model.selectExtensionTabNeighbor(s)
+		model.selectEditorTabNeighbor(pencodeEditorTab{surface: s})
 	}
 	for i, candidate := range state.surfaces {
 		if candidate == s {

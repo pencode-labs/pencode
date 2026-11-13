@@ -37,38 +37,6 @@ func (model *workspaceModel) selectFirstExtensionTab() {
 	}
 }
 
-func (model *workspaceModel) selectExtensionTabNeighbor(closed *pencodeExtensionSurface) {
-	var previous, next pencodeEditorTab
-	found := false
-	for tab := range model.editorTabs() {
-		if found {
-			next = tab
-			break
-		}
-		if tab.surface == closed {
-			found = true
-		} else {
-			previous = tab
-		}
-	}
-	if next == (pencodeEditorTab{}) {
-		next = previous
-	}
-	model.actions.ui.editor = nil
-	switch {
-	case next.surface != nil:
-		model.selectExtensionTab(next.surface)
-	case next.source != nil:
-		s := model.sourceState()
-		s.Active, s.RestoreScroll = next.source.Key, true
-		s.Selection++
-	case next.path != "":
-		model.selectTab(next.path)
-	case len(model.tabs) > 0:
-		model.selectTab(model.tabs[len(model.tabs)-1])
-	}
-}
-
 func (model *workspaceModel) renderExtensionTabs(view *htmlui.View, definition *htmlui.Definition[tabProps, struct{}]) {
 	for _, surface := range model.actions.ui.surfaces {
 		if surface.ui.Kind != peb.EditorTab {

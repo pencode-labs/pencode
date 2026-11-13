@@ -117,9 +117,17 @@ func TestUpdateSettingsControls(t *testing.T) {
 	assertAction("安装并重启", false)
 	u.stage, u.root = "", ""
 	u.release = updater.Release{}
-	assertAction("检查更新", true)
-	if !m.handleUpdateEvent("update-action") || u.busy {
+	assertAction("检查更新", false)
+	editorContextClick(t, app, m, state, "update-action")
+	if u.busy || u.results != nil {
 		t.Fatal("unsupported installation started an update")
+	}
+	markup, err := htmlui.Serialize(app.World, m.surface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(markup, `data-ref="settings-feedback" role="status">无法检查更新：请先安装支持自动更新的发行包</div>`) {
+		t.Fatal("unsupported update feedback is missing or hidden")
 	}
 	for _, ref := range []string{"check-update", "download-update", "restart-update"} {
 		if _, ok := m.fontResources.HTMLNode(m.surface, ref); ok {

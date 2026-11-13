@@ -137,12 +137,12 @@ func TestProjectWatchRefreshesTreeAndGitWithoutReloadingDrafts(t *testing.T) {
 func TestProjectWatchPublishesCompleteTreeSnapshot(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(fmt.Sprint(fail), func(t *testing.T) {
-			old := treeEntry{Path: "old.go", Name: "old.go"}
+			old := treeEntry{Path: "old.go"}
 			scan := &pencodeProjectScan{staged: true, cancel: func() {}, results: make(chan *pencodeTreeBatch, 1), buffers: make(chan *pencodeTreeBatch, 2)}
 			p := &pencodeProject{Path: "/project", Entries: []treeEntry{old}, scan: scan, index: 3}
 			m := &workspaceModel{projects: []*pencodeProject{p}, activeProjectIndex: 0}
 			batch := &pencodeTreeBatch{index: 7, count: 1}
-			batch.entries[0] = treeEntry{Path: "new.go", Name: "new.go"}
+			batch.entries[0] = treeEntry{Path: "new.go"}
 			scan.results <- batch
 			if m.pollProjectScans() || len(p.Entries) != 1 || p.Entries[0] != old || p.index != 3 {
 				t.Fatal("partial refresh changed the visible tree")

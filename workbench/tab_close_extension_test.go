@@ -201,3 +201,92 @@ func TestClosingDirtyFileRevealsExtensionAfterDiscard(t *testing.T) {
 		t.Fatal("discarding changes did not activate the remaining extension tab")
 	}
 }
+
+func TestClosingComparisonSelectsAdjacentEditorTab(t *testing.T) {
+	for _, mode := range []string{"project", "standalone"} {
+		for _, tc := range []struct {
+			name, active, close, wantSource, wantFile string
+			comparisons                               int
+			files, extension, selected, wantExtension bool
+		}{
+			{name: "right comparison", active: "one", close: "one", comparisons: 3, wantSource: "two"},
+			{name: "middle comparison", active: "two", close: "two", comparisons: 3, wantSource: "three"},
+			{name: "left comparison", active: "three", close: "three", comparisons: 3, wantSource: "two"},
+			{name: "left extension", active: "one", close: "one", comparisons: 1, files: true, extension: true, wantExtension: true},
+			{name: "left file", active: "one", close: "one", comparisons: 1, files: true, wantFile: "b.go"},
+			{name: "background comparison", active: "two", close: "one", comparisons: 2, wantSource: "two"},
+			{name: "selected extension", close: "one", comparisons: 1, extension: true, selected: true, wantExtension: true},
+			{name: "selected file", close: "one", comparisons: 1, files: true, wantFile: "a.go"},
+			{name: "last tab", active: "one", close: "one", comparisons: 1},
+		} {
+			t.Run(mode+"/"+tc.name, func(t *testing.T) {
+				m := &workspaceModel{}
+				if tc.files {
+					m.tabs, m.activePath = []string{"a.go", "b.go"}, "a.go"
+					m.files = map[string]*openFile{"a.go": {Path: "a.go"}, "b.go": {Path: "b.go"}}
+				}
+				if mode == "project" {
+					m.projects = []*pencodeProject{{Tabs: m.tabs, ActivePath: m.activePath, Files: m.files}}
+					m.syncActiveProjectFields()
+				}
+				panel := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.Panel}}
+				chat := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.EditorTab}}
+				m.actions.ui.surfaces = []*pencodeExtensionSurface{panel}
+				if tc.extension {
+					m.actions.ui.surfaces = append(m.actions.ui.surfaces, chat)
+				}
+				if tc.selected {
+					m.selectExtensionTab(chat)
+				}
+				s := m.sourceState()
+				s.Tabs = []*sourceTab{{Key: "one", Kind: "changes"}, {Key: "two", Kind: "staged"}, {Key: "three", Kind: "history"}}
+				s.Tabs, s.Active = s.Tabs[:tc.comparisons], tc.active
+				m.sourceAction("sc-close-tab:" + tc.close)
+				if len(s.Tabs) != tc.comparisons-1 || s.Active != tc.wantSource {
+					t.Fatalf("remaining comparisons=%d, active=%q; want %d, %q", len(s.Tabs), s.Active, tc.comparisons-1, tc.wantSource)
+				}
+				if tc.wantSource != "" && tc.active == tc.close && !s.RestoreScroll {
+					t.Fatal("adjacent comparison scroll was not restored")
+				}
+				if tc.wantExtension != (m.actions.ui.editor == chat) || !tc.wantExtension && m.actions.ui.editor != nil {
+					t.Fatal("wrong extension selected after closing comparison")
+				}
+				if tc.wantFile != "" && m.activePath != tc.wantFile {
+					t.Fatalf("selected file=%q, want %q", m.activePath, tc.wantFile)
+				}
+			})
+		}
+	}
+}
+
+func TestClosingDirtyComparisonRevealsExtensionAfterDiscard(t *testing.T) {
+	for _, action := range []string{"button", "context"} {
+		t.Run(action, func(t *testing.T) {
+			m, p, chat := mixedEditorTabs(t)
+			s := m.sourceState()
+			s.Tabs = s.Tabs[:1]
+			tab := s.Tabs[0]
+			tab.Result, s.Active = "unsaved", tab.Key
+			closeTab := func() {
+				if action == "button" {
+					m.sourceAction("sc-close-tab:" + tab.Key)
+				} else {
+					m.closeEditorTabs(pencodeCloseTab, pencodeEditorTab{project: p, source: tab})
+				}
+			}
+			closeTab()
+			if s.Prompt == "" || s.Active != tab.Key || m.actions.ui.editor != nil {
+				t.Fatal("dirty comparison did not wait for the discard decision")
+			}
+			m.sourceAction("sc-prompt-cancel")
+			if len(s.Tabs) != 1 || s.Active != tab.Key || m.actions.ui.editor != nil {
+				t.Fatal("cancelling close changed the active tab")
+			}
+			closeTab()
+			m.sourceAction("sc-prompt-confirm")
+			if len(s.Tabs) != 0 || s.Active != "" || s.Prompt != "" || m.actions.ui.editor != chat {
+				t.Fatal("discarding comparison did not activate the adjacent extension tab")
+			}
+		})
+	}
+}

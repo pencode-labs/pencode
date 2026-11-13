@@ -7,6 +7,7 @@ import (
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 const pencodeTreeRowHeight = 30
@@ -15,9 +16,11 @@ const pencodeTreeOverscan = 8
 // Expanded entry indexes are retained; -1 reserves the inline creation row.
 // HTML components cover only the viewport.
 type pencodeTreeView struct {
+	source            *treeEntry
 	directory         string
-	rows              []int
+	rows              []int32
 	revision, built   uint64
+	indexed           int
 	entries, expanded int
 	first, end        int
 	area              ecs.Entity
@@ -26,29 +29,58 @@ type pencodeTreeView struct {
 	editing           bool
 }
 
-func (project *pencodeProject) visibleTreeRows(model *workspaceModel) []int {
+func (tree *pencodeTreeView) entriesChanged() {
+	tree.source = nil
+	tree.revision++
+}
+
+// Directory boundaries depend only on entries, so folding reuses this index.
+// The fixed stack also handles a progressively published, unfinished subtree.
+func (tree *pencodeTreeView) index(entries []treeEntry) {
+	first := sourceFirst(entries)
+	if tree.source == first && tree.indexed == len(entries) {
+		return
+	}
+	var stack [protocol.IndexDepthLimit + 1]int32
+	count := 0
+	for i := range entries {
+		for count > 0 && entries[stack[count-1]].Depth >= entries[i].Depth {
+			count--
+			entries[stack[count]].end = uint32(i)
+		}
+		if entries[i].IsDir {
+			stack[count] = int32(i)
+			count++
+		}
+	}
+	for _, i := range stack[:count] {
+		entries[i].end = uint32(len(entries))
+	}
+	tree.source, tree.indexed = first, len(entries)
+}
+
+func (project *pencodeProject) visibleTreeRows(model *workspaceModel) []int32 {
 	tree := &project.tree
 	c := &model.fileContext
 	editing := c.project == project && c.inline()
-	if tree.rows != nil && tree.built == tree.revision && tree.entries == len(project.Entries) && tree.expanded == len(project.ExpandedDirs) && tree.editing == editing && (!editing || tree.directory == c.path) {
+	if tree.rows != nil && tree.source == sourceFirst(project.Entries) && tree.built == tree.revision && tree.entries == len(project.Entries) && tree.expanded == len(project.ExpandedDirs) && tree.editing == editing && (!editing || tree.directory == c.path) {
 		return tree.rows
 	}
+	tree.index(project.Entries)
 	tree.rows = tree.rows[:0]
 	if editing && c.path == "" {
 		tree.rows = append(tree.rows, -1)
 	}
-	hiddenDepth := -1
-	for i, entry := range project.Entries {
-		if hiddenDepth >= 0 && entry.Depth > hiddenDepth {
-			continue
-		}
-		hiddenDepth = -1
-		tree.rows = append(tree.rows, i)
+	for i := 0; i < len(project.Entries); {
+		entry := project.Entries[i]
+		tree.rows = append(tree.rows, int32(i))
 		if editing && entry.IsDir && entry.Path == c.path {
 			tree.rows = append(tree.rows, -1)
 		}
 		if entry.IsDir && !project.ExpandedDirs[entry.Path] {
-			hiddenDepth = entry.Depth
+			i = int(entry.end)
+		} else {
+			i++
 		}
 	}
 	tree.built, tree.entries, tree.expanded = tree.revision, len(project.Entries), len(project.ExpandedDirs)
@@ -101,7 +133,7 @@ func renderPencodeTree(context module.ContentRenderContext[projectProps, struct{
 		}
 		entry := project.Entries[index]
 		view.AppendComponentChild("tree-window", componentKey(entry.Path), definition,
-			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name, Depth: entry.Depth, IsDir: entry.IsDir, Openable: entry.Openable, HasErrors: !entry.IsDir && model.fileHasErrors(project, entry.Path)}, struct{}{})
+			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name(), Depth: int(entry.Depth), IsDir: entry.IsDir, Openable: entry.Openable, HasErrors: !entry.IsDir && model.fileHasErrors(project, entry.Path)}, struct{}{})
 	}
 }
 

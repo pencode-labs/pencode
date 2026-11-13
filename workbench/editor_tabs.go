@@ -39,6 +39,38 @@ func (m *workspaceModel) editorTabs() iter.Seq[pencodeEditorTab] {
 	}
 }
 
+func (m *workspaceModel) selectEditorTabNeighbor(closed pencodeEditorTab) {
+	var previous, next pencodeEditorTab
+	found := false
+	for tab := range m.editorTabs() {
+		if found {
+			next = tab
+			break
+		}
+		if tab == closed {
+			found = true
+		} else {
+			previous = tab
+		}
+	}
+	if next == (pencodeEditorTab{}) {
+		next = previous
+	}
+	m.actions.ui.editor = nil
+	switch {
+	case next.surface != nil:
+		m.selectExtensionTab(next.surface)
+	case next.source != nil:
+		s := m.sourceState()
+		s.Active, s.RestoreScroll = next.source.Key, true
+		s.Selection++
+	case next.path != "":
+		m.selectTab(next.path)
+	case len(m.tabs) > 0:
+		m.selectTab(m.tabs[len(m.tabs)-1])
+	}
+}
+
 func (tab pencodeEditorTab) dirty() bool {
 	if tab.source != nil {
 		return tab.source.Result != tab.source.Saved

@@ -3,6 +3,7 @@ package workbench
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -64,7 +65,7 @@ func TestProjectStateRoundTrip(t *testing.T) {
 	if restored.Files["second.go"].editorID != "preview" || !restored.Files["second.go"].editorSplit || restored.PreviewPath != "second.go" || !restored.Files["second.go"].Preview {
 		t.Fatal("custom editor selection was lost")
 	}
-	if !restored.Collapsed || !reflect.DeepEqual(restored.ExpandedDirs, p.ExpandedDirs) || restored.tree.position != -1230 || !restored.tree.restore || next.revealProject != nil {
+	if !restored.Collapsed || !maps.Equal(restored.ExpandedDirs, p.ExpandedDirs) || restored.tree.position != -1230 || !restored.tree.restore || next.revealProject != nil {
 		t.Fatal("restoration expanded or recentered the saved tree")
 	}
 	if next.bottom.active != m.bottom.active || next.bottom.heightStyle != m.bottom.heightStyle || next.sidebarHidden != m.sidebarHidden || next.sidebarWidthStyle != m.sidebarWidthStyle || next.sourceChangesWidthStyle != m.sourceChangesWidthStyle || next.bottom.source.Name != "server" || next.bottom.filter != "error" {
@@ -170,7 +171,7 @@ func TestProjectStateTreeScrollWaitsForIndexAndLayout(t *testing.T) {
 	p.Entries = make([]treeEntry, 500)
 	for i := range p.Entries {
 		name := fmt.Sprintf("file-%04d.go", i)
-		p.Entries[i] = treeEntry{Path: name, Name: name, Openable: true}
+		p.Entries[i] = treeEntry{Path: name, Openable: true}
 	}
 	p.tree.revision++
 	p.tree.position, p.tree.restore = -6000, true

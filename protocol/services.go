@@ -1,5 +1,7 @@
 package protocol
 
+import "strings"
+
 // Service operations share the connection's cancellation and chunking rules.
 type Operation uint32
 
@@ -62,11 +64,19 @@ type Port struct {
 	Number  uint16
 }
 
+const (
+	IndexPageSize   = 256
+	IndexEntryLimit = 262144
+	IndexDepthLimit = 256
+)
+
 type IndexEntry struct {
-	Path, Name string
-	Depth      int
-	Directory  bool
+	Path      string
+	Depth     uint16
+	Directory bool
 }
+
+func (e IndexEntry) Name() string { return e.Path[strings.LastIndexByte(e.Path, '/')+1:] }
 
 // FileOperation is shared by every native watcher and file-service consumer.
 type FileOperation uint8

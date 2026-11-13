@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,22 @@ import (
 
 	"github.com/pencode-labs/pencode/protocol"
 )
+
+func TestIndexCleanSnapshotSharesImmutableEntries(t *testing.T) {
+	previous := []protocol.IndexEntry{{Path: "nested/file.go", Depth: 1}}
+	p := &serviceIndex{root: t.TempDir(), changed: make(chan struct{})}
+	p.walkSnapshot(t.Context(), previous, workspaceTreeDelta{})
+	if !p.done || p.err != nil || len(p.entries) != 1 || &p.entries[0] != &previous[0] {
+		t.Fatal("clean refresh copied or changed the completed snapshot")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	p = &serviceIndex{changed: make(chan struct{})}
+	p.walkSnapshot(ctx, previous, workspaceTreeDelta{})
+	if !p.done || p.err != context.Canceled {
+		t.Fatal("clean refresh ignored cancellation")
+	}
+}
 
 func indexSnapshot(t *testing.T, root string, previous []protocol.IndexEntry, delta workspaceTreeDelta) []protocol.IndexEntry {
 	t.Helper()
@@ -124,4 +141,14 @@ func BenchmarkIndexSnapshot(b *testing.B) {
 			}
 		})
 	}
+	b.Run("clean", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			p := &serviceIndex{root: root, changed: make(chan struct{})}
+			p.walkSnapshot(b.Context(), base.entries, workspaceTreeDelta{})
+			if p.err != nil {
+				b.Fatal(p.err)
+			}
+		}
+	})
 }

@@ -1,8 +1,8 @@
 # Extension releases
 
 Each extension is an independent repository and publishes its own GitHub Release
-when a version tag such as `v0.1.0` is pushed. Workflows test before publishing and
-build Linux (`linux`), macOS (`darwin`) and Windows (`windows`), each for `amd64`
+when a version tag such as `v0.1.0` is pushed. Workflows test before publishing unless the tagged commit includes `[skip tests]`,
+and build Linux (`linux`), macOS (`darwin`) and Windows (`windows`), each for `amd64`
 and `arm64`. Tags with a prerelease suffix create GitHub prereleases.
 
 The fixed asset format is `<extension-id>-<tag>-<os>-<arch>.zip`, plus one
@@ -12,7 +12,18 @@ resource notices. Manifest versions follow the tag without `v`. Go entries live
 in `bin/` and use `.exe` on Windows; Office Viewer includes its bundled JavaScript
 in `dist/` and `package.json`, with no development dependencies.
 
-Download for the **workspace server's** OS and architecture and extract directly
+The extension marketplace loads [the official catalog](https://pencode-labs.github.io/extensions/extensions.json)
+and resolves each repository's latest GitHub Release. Opening or refreshing the
+marketplace only checks version metadata; it never downloads packages automatically.
+Select **Install extension** to install an extension, or **Update extension** when
+a newer version is available. Pencode selects
+the **workspace server's** OS and architecture, downloads and extracts its ZIP,
+checks its release digest when provided, and validates the manifest and resources
+before publishing. Updates preserve the enabled/disabled state and reload enabled
+extensions immediately; failed validation leaves the installed package intact.
+The local-directory installation option remains available.
+
+For manual installation, download for the **workspace server's** OS and architecture and extract directly
 into `~/.pencode/extensions/` (`%USERPROFILE%/.pencode/extensions/` on Windows).
 For example:
 

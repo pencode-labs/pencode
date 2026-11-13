@@ -76,27 +76,30 @@
       <button data-ref="close-marketplace" class="pencode-icon-button" type="button" title="关闭扩展市场" aria-label="关闭扩展市场"><img data-ref="close-marketplace-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
     </header>
     <div class="pencode-market-toolbar">
-      <input id="market-search" data-ref="market-search" type="search" placeholder="搜索已安装扩展" aria-label="搜索已安装扩展">
+      <input id="market-search" data-ref="market-search" type="search" placeholder="搜索扩展" aria-label="搜索扩展">
       <button data-ref="market-refresh" type="button">刷新</button>
       <button data-ref="market-install" class="pencode-market-install" type="button">从本地目录安装</button>
     </div>
     <div data-ref="market-feedback" class="pencode-market-feedback" role="status" aria-live="polite"></div>
     <div class="pencode-market-body">
       <div class="pencode-market-sidebar">
-        <h3>已安装</h3>
-        <nav data-ref="market-list" class="pencode-market-list" aria-label="已安装扩展"></nav>
+        <h3>全部扩展</h3>
+        <nav data-ref="market-list" class="pencode-market-list" aria-label="扩展列表"></nav>
         <p data-ref="market-empty" class="pencode-market-empty">没有找到扩展</p>
       </div>
       <section class="pencode-market-detail" aria-labelledby="market-extension-name">
-        <h3 id="market-extension-name" data-ref="market-name">暂无已安装扩展</h3>
-        <p data-ref="market-meta" class="pencode-market-meta"></p>
+        <h3 id="market-extension-name" data-ref="market-name">暂无扩展</h3>
+        <div class="pencode-market-summary">
+          <p data-ref="market-meta" class="pencode-market-meta"></p>
+          <div class="pencode-market-actions">
+            <button data-ref="market-download" class="pencode-market-download" type="button" hidden disabled>安装扩展</button>
+            <button data-ref="market-toggle" type="button" disabled>禁用扩展</button>
+            <button data-ref="market-uninstall" class="pencode-market-uninstall" type="button" disabled>卸载扩展</button>
+          </div>
+        </div>
         <p data-ref="market-description" class="pencode-market-description"></p>
         <p data-ref="market-status" class="pencode-market-status"></p>
         <p data-ref="market-path" class="pencode-market-path"></p>
-        <div class="pencode-market-actions">
-          <button data-ref="market-toggle" type="button" disabled>禁用扩展</button>
-          <button data-ref="market-uninstall" class="pencode-market-uninstall" type="button" disabled>卸载扩展</button>
-        </div>
       </section>
     </div>
     <footer class="pencode-market-footer">

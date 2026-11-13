@@ -1,7 +1,14 @@
 package workbench
 
 import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -10,12 +17,15 @@ import (
 	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/connection"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 	"github.com/pencode-labs/pencode/remote"
 )
 
 func TestMarketplaceDirectoryButtonFollowsWorkspace(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
+	mockMarketplace(t, session)
 	session.ConfigureConnection(nil, connection.Profile{})
 	model.market.open = true
 	model.market.directory = t.TempDir()
@@ -121,6 +131,7 @@ func TestMarketplaceButtonOutsideWindowDragRegion(t *testing.T) {
 
 func TestMarketplaceAndSettingsDismissOutsideClick(t *testing.T) {
 	app, session := newPencodeTestApp(t)
+	mockMarketplace(t, session)
 	model := session.active.model
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
 	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
@@ -226,6 +237,7 @@ func TestMarketplaceAndSettingsDismissOutsideClick(t *testing.T) {
 
 func TestMarketplaceStateFollowsRetainedViews(t *testing.T) {
 	app, session := newPencodeTestApp(t)
+	mockMarketplace(t, session)
 	workspace := session.active
 	model := workspace.model
 	model.market.open = true
@@ -245,5 +257,166 @@ func TestMarketplaceStateFollowsRetainedViews(t *testing.T) {
 	waitPencodeMarket(t, launcher.model)
 	if launcher.model.market.busy {
 		t.Fatal("launcher did not consume the background operation")
+	}
+}
+
+func mockMarketplace(t *testing.T, session *Session) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"extensions":[]}`) }))
+	t.Cleanup(server.Close)
+	session.market.source = extensions.Marketplace{Source: server.URL}
+}
+
+func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
+	_, session := newPencodeTestApp(t)
+	model := session.active.model
+	source := t.TempDir()
+	if err := os.Mkdir(filepath.Join(source, "resources"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "resources", "extension.json"), []byte(`{"id":"test","version":"1.0.0","entry":"test","disabled":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "test"), []byte("disabled fixture"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := extensions.Install(t.Context(), session.backend, source); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := session.backend.ListExtensions(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var downloads, checks atomic.Int32
+	var server *httptest.Server
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/extensions.json":
+			io.WriteString(w, `{"extensions":[{"name":"test","repository":"https://github.com/pencode-labs/test"}]}`)
+		case "/repos/pencode-labs/test/releases/latest":
+			checks.Add(1)
+			fmt.Fprintf(w, `{"tag_name":"v1.1.0","assets":[{"name":%q,"browser_download_url":%q}]}`, "test-v1.1.0-"+catalog.OS+"-"+catalog.Arch+".zip", server.URL+"/package.zip")
+		case "/package.zip":
+			downloads.Add(1)
+			http.Error(w, "download fixture", http.StatusForbidden)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	model.market.source = extensions.Marketplace{Source: server.URL + "/extensions.json", API: server.URL, Client: server.Client()}
+	for _, ref := range [...]string{"open-marketplace", "market-refresh"} {
+		model.handleMarketplaceEvent(&module.ContentEventContext[appProps, appState]{Ref: ref})
+		waitPencodeMarket(t, model)
+		if len(model.market.items) != 1 || model.market.items[0].Version != "1.0.0" || model.market.feedback != "" {
+			t.Fatal("update check changed the installed extension", model.market.items, model.market.feedback)
+		}
+		model.cacheMarketDetails(&model.market.items[0])
+		if !model.market.download || !strings.Contains(model.market.details[3], "1.1.0") || downloads.Load() != 0 {
+			t.Fatal("update check did not offer a manual update", model.market.details, downloads.Load())
+		}
+	}
+	if checks.Load() != 2 {
+		t.Fatalf("got %d release checks, want 2", checks.Load())
+	}
+	model.handleMarketplaceEvent(&module.ContentEventContext[appProps, appState]{Ref: "market-download"})
+	waitPencodeMarket(t, model)
+	if downloads.Load() != 1 || !strings.Contains(model.market.feedback, "HTTP 403") {
+		t.Fatal("explicit update did not initiate the download", downloads.Load(), model.market.feedback)
+	}
+}
+
+func TestMarketplaceUpdateCheckFailurePreservesInstalledStatus(t *testing.T) {
+	_, session := newPencodeTestApp(t)
+	model := session.active.model
+	model.market.items = []extensions.Installed{{ExtensionManifest: extensions.Manifest{ID: "test", Version: "1.0.0"}}}
+	model.market.listings = []extensions.Listing{{Name: "test", Problem: "HTTP 403"}}
+	model.cacheMarketDetails(&model.market.items[0])
+	status := model.market.details[3]
+	if !strings.Contains(status, model.tr("已安装")) || !strings.Contains(status, fmt.Sprintf(model.tr("更新检查失败：%s"), "HTTP 403")) || model.market.download {
+		t.Fatal("update check failure was confused with an installation failure", status)
+	}
+}
+
+func TestMarketplaceDownloadActions(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	m.market.open = true
+	m.market.listings = []extensions.Listing{{Name: "test", Version: "1.10.0", URL: "https://example.com/package.zip", Description: "Online extension"}}
+	m.market.selected = "test"
+	for _, screen := range [...]pencodeScreen{pencodeWorkspace, pencodeLauncher} {
+		m.screen = screen
+		if err := app.Modules().UpdateFrame(1.0 / 60); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.Modules().Dispatch(); err != nil {
+			t.Fatal(err)
+		}
+		m = session.active.model
+		for _, state := range []struct {
+			version, label     string
+			visible, installed bool
+		}{
+			{label: "安装扩展", visible: true},
+			{version: "1.9.0", label: "更新扩展", visible: true, installed: true},
+			{version: "1.10.0", label: "更新扩展", installed: true},
+			{version: "1.11.0", label: "更新扩展", installed: true},
+		} {
+			m.market.items = nil
+			if state.installed {
+				m.market.items = []extensions.Installed{{ExtensionManifest: extensions.Manifest{ID: "test", Version: state.version}}}
+			}
+			m.market.revision++
+			markPencodeRootDirtyByModel(m.fontResources, m)
+			if err := m.fontResources.SyncHTML(); err != nil {
+				t.Fatal(err)
+			}
+			node, ok := m.fontResources.HTMLNode(m.surface, "market-download")
+			if !ok {
+				t.Fatal("missing download button")
+			}
+			markup, err := node.Serialize()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(markup, m.tr(state.label)) || strings.Contains(markup, " hidden") == state.visible {
+				t.Fatalf("unexpected download action for %s: %s", state.version, markup)
+			}
+			node, _ = m.fontResources.HTMLNode(m.surface, "market-uninstall")
+			markup, err = node.Serialize()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(markup, " disabled") == state.installed {
+				t.Fatalf("unexpected uninstall action: %s", markup)
+			}
+		}
+	}
+}
+
+func TestMarketplaceUpdateReplacesLoadedContributions(t *testing.T) {
+	_, session := newPencodeTestApp(t)
+	model := session.active.model
+	model.setExtensionState("test", pencodeExtensionLoaded)
+	model.importExtensionSettings("test", "Test", []peb.Setting{{ID: "old", Label: "Old setting", Type: peb.SettingBoolean, Default: []byte("true")}})
+	model.extensionIcons = map[string][]byte{"peb://test/resources/old.svg": []byte("old")}
+	model.market.busy = true
+	model.market.results = make(chan pencodeMarketResult, 1)
+	model.market.results <- pencodeMarketResult{
+		op: pencodeMarketUpdate, id: "test",
+		items: []extensions.Installed{{ExtensionManifest: extensions.Manifest{ID: "test", Version: "1.1.0"}}},
+		bundles: map[string]*extensions.Bundle{"test": {
+			ID: "test", Label: "Test", Icons: map[string][]byte{"peb://test/resources/new.svg": []byte("new")},
+			Settings: []peb.Setting{{ID: "new", Label: "New setting", Type: peb.SettingBoolean, Default: []byte("true")}},
+		}},
+	}
+	if !model.pollMarketplace() || model.extensionStates["test"] != pencodeExtensionLoaded {
+		t.Fatal("updated extension was not reloaded")
+	}
+	if len(model.extensionIcons["peb://test/resources/old.svg"]) != 0 || string(model.extensionIcons["peb://test/resources/new.svg"]) != "new" {
+		t.Fatal("update retained old resources or discarded new contributions")
+	}
+	if len(model.extensionSettings) != 1 || model.extensionSettings[0].schema[0].ID != "new" {
+		t.Fatal("update did not replace extension settings")
 	}
 }

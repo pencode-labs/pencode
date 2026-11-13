@@ -162,7 +162,7 @@ func TestPencodeScanShowsRootBeforeWatchIsReady(t *testing.T) {
 		t.Fatal("root preview started indexing before the watch was ready or lost directory ordering")
 	}
 	for _, entry := range p.Entries {
-		if entry.Depth != 0 || skipProjectEntry(entry.Name) {
+		if entry.Depth != 0 || skipProjectEntry(entry.Name()) {
 			t.Fatalf("preview included a nested or excluded entry: %+v", entry)
 		}
 	}
@@ -198,10 +198,10 @@ func TestPencodeScanShowsRootBeforeWatchIsReady(t *testing.T) {
 }
 
 func TestPencodeScanKeepsRootSiblingsWhileIndexingSubtree(t *testing.T) {
-	a := treeEntry{Path: "a", Name: "a", IsDir: true}
-	z := treeEntry{Path: "z", Name: "z", IsDir: true}
-	main := treeEntry{Path: "main.go", Name: "main.go", Openable: true}
-	child := treeEntry{Path: "a/child.go", Name: "child.go", Depth: 1, Openable: true}
+	a := treeEntry{Path: "a", IsDir: true}
+	z := treeEntry{Path: "z", IsDir: true}
+	main := treeEntry{Path: "main.go", Openable: true}
+	child := treeEntry{Path: "a/child.go", Depth: 1, Openable: true}
 	scan := &pencodeProjectScan{cancel: func() {}, results: make(chan *pencodeTreeBatch, 1), buffers: make(chan *pencodeTreeBatch, 2)}
 	p := &pencodeProject{scan: scan, ExpandedDirs: map[string]bool{"a": true}}
 	m := workspaceModel{projects: []*pencodeProject{p}, activeProjectIndex: 0}
@@ -215,7 +215,9 @@ func TestPencodeScanKeepsRootSiblingsWhileIndexingSubtree(t *testing.T) {
 		{batch: pencodeTreeBatch{index: 7, count: 2, done: true, entries: [pencodeTreeBatchSize]treeEntry{z, main}}, want: []treeEntry{a, child, z, main}},
 	} {
 		scan.results <- &step.batch
-		if !m.pollProjectScans() || !slices.Equal(p.Entries, step.want) {
+		if !m.pollProjectScans() || !slices.EqualFunc(p.Entries, step.want, func(a, b treeEntry) bool {
+			return a.Path == b.Path && a.Depth == b.Depth && a.IsDir == b.IsDir && a.Openable == b.Openable
+		}) {
 			t.Fatalf("partial index hid root siblings or duplicated entries: %+v", p.Entries)
 		}
 		rows := p.visibleTreeRows(&m)

@@ -5,27 +5,32 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"slices"
+	"sort"
 	"unicode/utf8"
 
 	"github.com/pencode-labs/pencode/internal/buffer"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
+const pagedPieceSpareLimit = 256
+
 // Pieces reference the original file or an append-only edit spool. Neither
 // opening nor saving retains a copy of the entire file in the Go heap.
 type filePiece struct {
-	offset, length int64
-	added          bool
+	// Negative offsets are complemented positions in the edit spool.
+	// end is the exclusive logical offset, making pieces a searchable index.
+	offset, end int64
 }
 
 type pagedDocument struct {
-	file, edits     *os.File
-	info            fs.FileInfo
-	pieces, scratch []filePiece
-	page            protocol.DocumentPage
-	size            int64
-	editEnd         int64
-	forced          bool
+	file, edits *os.File
+	info        fs.FileInfo
+	pieces      []filePiece
+	page        protocol.DocumentPage
+	size        int64
+	editEnd     int64
+	forced      bool
 }
 
 func (p *pagedDocument) close() {
@@ -38,18 +43,24 @@ func (p *pagedDocument) close() {
 }
 
 func (p *pagedDocument) readAt(dst []byte, offset int64) (int, error) {
+	if len(dst) == 0 {
+		return 0, nil
+	}
 	n := 0
-	for _, piece := range p.pieces {
-		if offset >= piece.length {
-			offset -= piece.length
-			continue
+	for i := p.pieceAt(offset); i < len(p.pieces); i++ {
+		piece := p.pieces[i]
+		start := int64(0)
+		if i > 0 {
+			start = p.pieces[i-1].end
 		}
 		f := p.file
-		if piece.added {
+		position := piece.offset
+		if position < 0 {
 			f = p.edits
+			position = ^position
 		}
-		count := min(int64(len(dst)-n), piece.length-offset)
-		read, err := f.ReadAt(dst[n:n+int(count)], piece.offset+offset)
+		count := min(int64(len(dst)-n), piece.end-offset)
+		read, err := f.ReadAt(dst[n:n+int(count)], position+offset-start)
 		n += read
 		if err != nil {
 			return n, err
@@ -57,12 +68,15 @@ func (p *pagedDocument) readAt(dst []byte, offset int64) (int, error) {
 		if n == len(dst) {
 			return n, nil
 		}
-		offset = 0
+		offset = piece.end
 	}
 	return n, io.EOF
 }
 
 func (p *pagedDocument) replace(start, end int64, text string) error {
+	if start == end && text == "" {
+		return nil
+	}
 	var inserted filePiece
 	if text != "" {
 		if p.edits == nil {
@@ -78,47 +92,89 @@ func (p *pagedDocument) replace(start, end int64, text string) error {
 		if err != nil {
 			return err
 		}
-		inserted = filePiece{offset: offset, length: int64(len(text)), added: true}
+		inserted = filePiece{offset: ^offset, end: start + int64(len(text))}
 	}
-	pieces := p.scratch[:0]
-	position := int64(0)
-	for _, piece := range p.pieces {
-		next := position + piece.length
-		if position < start {
-			prefix := piece
-			prefix.length = min(next, start) - position
-			pieces = appendFilePiece(pieces, prefix)
+	first, last := p.pieceAt(start), p.pieceAt(end)
+	left, right := first, min(last+1, len(p.pieces))
+	delta := int64(len(text)) - (end - start)
+	var storage [5]filePiece
+	// Reconcile both neighbours with the edited prefix, insertion and suffix.
+	// Equal-length edits leave the tail's cumulative offsets unchanged.
+	parts := storage[:0]
+	base := int64(0)
+	if left > 0 {
+		left--
+		if left > 0 {
+			base = p.pieces[left-1].end
 		}
-		if inserted.length != 0 && next >= start {
-			pieces = appendFilePiece(pieces, inserted)
-			inserted.length = 0
-		}
-		if next > end {
-			suffix := piece
-			skip := max(end-position, 0)
-			suffix.offset += skip
-			suffix.length -= skip
-			pieces = appendFilePiece(pieces, suffix)
-		}
-		position = next
+		parts = appendFilePiece(parts, p.pieces[left], base)
 	}
-	if inserted.length != 0 {
-		pieces = appendFilePiece(pieces, inserted)
+	if first < len(p.pieces) {
+		prefix := p.pieces[first]
+		prefix.end = start
+		parts = appendFilePiece(parts, prefix, base)
 	}
-	p.pieces, p.scratch = pieces, p.pieces[:0]
-	p.size += int64(len(text)) - (end - start)
+	if text != "" {
+		parts = appendFilePiece(parts, inserted, base)
+	}
+	if last < len(p.pieces) {
+		position := int64(0)
+		if last > 0 {
+			position = p.pieces[last-1].end
+		}
+		suffix := p.pieces[last]
+		suffix.offset = suffix.advance(end - position)
+		suffix.end += delta
+		parts = appendFilePiece(parts, suffix, base)
+	}
+	if right < len(p.pieces) {
+		next := p.pieces[right]
+		next.end += delta
+		parts = appendFilePiece(parts, next, base)
+		right++
+	}
+	length := left + len(parts) + len(p.pieces) - right
+	pieces := slices.Grow(p.pieces, max(0, length-len(p.pieces)))[:length]
+	copy(pieces[left+len(parts):], p.pieces[right:])
+	copy(pieces[left:], parts)
+	if delta != 0 {
+		for i := left + len(parts); i < len(pieces); i++ {
+			pieces[i].end += delta
+		}
+	}
+	p.pieces = pieces
+	p.size += delta
 	p.page.Size = uint64(p.size)
 	return nil
 }
 
-func appendFilePiece(pieces []filePiece, next filePiece) []filePiece {
-	if next.length == 0 {
+func (p *pagedDocument) pieceAt(offset int64) int {
+	return sort.Search(len(p.pieces), func(i int) bool { return p.pieces[i].end > offset })
+}
+
+func (piece filePiece) advance(n int64) int64 {
+	if piece.offset < 0 {
+		return piece.offset - n
+	}
+	return piece.offset + n
+}
+
+func appendFilePiece(pieces []filePiece, next filePiece, base int64) []filePiece {
+	start := base
+	if len(pieces) != 0 {
+		start = pieces[len(pieces)-1].end
+	}
+	if next.end == start {
 		return pieces
 	}
 	if n := len(pieces); n > 0 {
 		last := &pieces[n-1]
-		if last.added == next.added && last.offset+last.length == next.offset {
-			last.length += next.length
+		previous := base
+		if n > 1 {
+			previous = pieces[n-2].end
+		}
+		if last.advance(last.end-previous) == next.offset {
+			last.end = next.end
 			return pieces
 		}
 	}

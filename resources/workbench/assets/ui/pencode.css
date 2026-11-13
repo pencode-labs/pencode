@@ -2011,12 +2011,14 @@ textarea:focus {
     background: var(--vscode-button-secondaryHoverBackground);
 }
 
-.pencode-market-toolbar .pencode-market-install {
+.pencode-market-toolbar .pencode-market-install,
+.pencode-market-actions .pencode-market-download {
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
 }
 
-.pencode-market-toolbar .pencode-market-install:hover:enabled {
+.pencode-market-toolbar .pencode-market-install:hover:enabled,
+.pencode-market-actions .pencode-market-download:hover:enabled {
     background: var(--vscode-button-hoverBackground);
 }
 
@@ -2156,10 +2158,28 @@ textarea:focus {
     overflow-wrap: anywhere;
 }
 
+.pencode-market-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.pencode-market-summary .pencode-market-meta {
+    margin: 0;
+}
+
 .pencode-market-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pencode-market-actions button {
+    padding: 3px 8px;
+    font-size: calc(12rem / 14);
+    line-height: 18px;
+    white-space: nowrap;
 }
 
 .pencode-market-footer {

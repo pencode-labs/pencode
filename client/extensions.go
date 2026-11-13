@@ -23,6 +23,7 @@ type Extension struct {
 
 type ExtensionCatalog struct {
 	Directory string
+	OS, Arch  string
 	Items     []protocol.ExtensionInfo
 }
 
@@ -32,7 +33,7 @@ func (c *Client) ListExtensions(ctx context.Context) (ExtensionCatalog, error) {
 	if err != nil {
 		return ExtensionCatalog{}, err
 	}
-	catalog := ExtensionCatalog{Directory: d.String()}
+	catalog := ExtensionCatalog{Directory: d.String(), OS: d.String(), Arch: d.String()}
 	n := d.U32()
 	if n > 64 {
 		return ExtensionCatalog{}, protocol.ErrProtocol
@@ -220,8 +221,10 @@ type ExtensionUpload struct {
 	handle uint64
 }
 
-func (c *Client) BeginExtension(ctx context.Context) (*ExtensionUpload, error) {
+// BeginExtension stages a package. A nonempty replace ID updates that package.
+func (c *Client) BeginExtension(ctx context.Context, replace string) (*ExtensionUpload, error) {
 	e := service(protocol.ExtensionBegin, "")
+	e.String(replace)
 	d, err := c.execute(ctx, &e)
 	if err != nil {
 		return nil, err

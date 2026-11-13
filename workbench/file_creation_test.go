@@ -107,7 +107,7 @@ func TestFileCreationVirtualTreeAndInactiveProject(t *testing.T) {
 	model.projects = append(model.projects, other)
 	for i := range 100 {
 		name := fmt.Sprintf("folder-%03d", i)
-		other.Entries = append(other.Entries, treeEntry{Path: name, Name: name, IsDir: true})
+		other.Entries = append(other.Entries, treeEntry{Path: name, IsDir: true})
 	}
 	model.fileContext = pencodeFileContext{project: other, path: "folder-099", directory: true, open: true}
 	model.handleFileContextEvent(world, "file-context-new-file", "")

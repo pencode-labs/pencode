@@ -31,6 +31,14 @@ func (p *serviceIndex) walk(ctx context.Context) {
 }
 
 func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []protocol.IndexEntry, delta workspaceTreeDelta) {
+	if !delta.full && delta.count == 0 {
+		// Completed snapshots are immutable, so a clean refresh can share them.
+		p.mu.Lock()
+		p.entries, p.err, p.done = previous, ctx.Err(), true
+		p.signal()
+		p.mu.Unlock()
+		return
+	}
 	root, err := os.OpenRoot(p.root)
 	if err == nil {
 		defer root.Close()
@@ -52,15 +60,30 @@ func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []protocol.Ind
 	p.mu.Unlock()
 }
 
-func (p *serviceIndex) append(entry protocol.IndexEntry) error {
+func (p *serviceIndex) append(entries ...protocol.IndexEntry) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.entries) >= 262144 {
-		return fmt.Errorf("index exceeds 262144 entry budget")
+	previous := len(p.entries)
+	if len(entries) > protocol.IndexEntryLimit-previous {
+		return fmt.Errorf("index exceeds %d entry budget", protocol.IndexEntryLimit)
 	}
-	p.entries = append(p.entries, entry)
-	if len(p.entries)%256 == 0 || len(p.entries) == 1 {
+	p.entries = append(p.entries, entries...)
+	if len(p.entries) > previous && (previous == 0 || previous/protocol.IndexPageSize != len(p.entries)/protocol.IndexPageSize) {
 		p.signal()
+	}
+	return nil
+}
+
+func (p *serviceIndex) reuse(ctx context.Context, entries []protocol.IndexEntry) error {
+	for len(entries) != 0 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		n := min(len(entries), protocol.IndexPageSize)
+		if err := p.append(entries[:n]...); err != nil {
+			return err
+		}
+		entries = entries[n:]
 	}
 	return nil
 }
@@ -91,27 +114,26 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if depth > 256 {
+	if depth > protocol.IndexDepthLimit {
 		return fmt.Errorf("directory depth exceeds budget")
 	}
 	if delta != nil && !delta.full && !delta.contains(directory) {
+		start := 0
 		for i := 0; i < len(previous); i++ {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
 			entry := previous[i]
-			if err := p.append(entry); err != nil {
-				return err
-			}
 			if entry.Directory && delta.contains(entry.Path) {
-				end := indexSubtreeEnd(previous, i)
-				if err := p.reconcile(ctx, root, entry.Path, entry.Depth+1, previous[i+1:end], delta); err != nil {
+				if err := p.reuse(ctx, previous[start:i+1]); err != nil {
 					return err
 				}
+				end := indexSubtreeEnd(previous, i)
+				if err := p.reconcile(ctx, root, entry.Path, int(entry.Depth)+1, previous[i+1:end], delta); err != nil {
+					return err
+				}
+				start = end
 				i = end - 1
 			}
 		}
-		return nil
+		return p.reuse(ctx, previous[start:])
 	}
 	f, err := root.Open(directory)
 	if err != nil {
@@ -125,12 +147,12 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 		}
 		return err
 	}
-	children, err := f.ReadDir(262145)
+	children, err := f.ReadDir(protocol.IndexEntryLimit + 1)
 	f.Close()
 	if err != nil && err != io.EOF {
 		return err
 	}
-	if len(children) > 262144 {
+	if len(children) > protocol.IndexEntryLimit {
 		return fmt.Errorf("directory exceeds index budget")
 	}
 	slices.SortFunc(children, func(a, b fs.DirEntry) int {
@@ -150,19 +172,19 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 		case ".DS_Store", ".git", "dist", "node_modules":
 			continue
 		}
-		for offset < len(previous) && compareIndexNames(previous[offset].Name, previous[offset].Directory, name, child.IsDir()) < 0 {
+		for offset < len(previous) && compareIndexNames(previous[offset].Name(), previous[offset].Directory, name, child.IsDir()) < 0 {
 			offset = indexSubtreeEnd(previous, offset)
 		}
 		var entry protocol.IndexEntry
 		var cached []protocol.IndexEntry
-		matched := offset < len(previous) && previous[offset].Name == name && previous[offset].Directory == child.IsDir()
+		matched := offset < len(previous) && previous[offset].Name() == name && previous[offset].Directory == child.IsDir()
 		if matched {
 			entry = previous[offset]
 			end := indexSubtreeEnd(previous, offset)
 			cached = previous[offset+1 : end]
 			offset = end
 		} else {
-			entry = protocol.IndexEntry{Path: prefix + name, Name: name, Depth: depth, Directory: child.IsDir()}
+			entry = protocol.IndexEntry{Path: prefix + name, Depth: uint16(depth), Directory: child.IsDir()}
 		}
 		if err := p.append(entry); err != nil {
 			return err
@@ -281,7 +303,7 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 				return protocol.ErrProtocol
 			}
 			if offset < len(p.entries) || p.done {
-				end := min(offset+256, len(p.entries))
+				end := min(offset+protocol.IndexPageSize, len(p.entries))
 				done := p.done && end == len(p.entries)
 				if done {
 					e.U32(1)
@@ -296,7 +318,6 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 				e.U32(uint32(end - offset))
 				for _, entry := range p.entries[offset:end] {
 					e.String(entry.Path)
-					e.String(entry.Name)
 					e.U32(uint32(entry.Depth))
 					if entry.Directory {
 						e.U32(1)

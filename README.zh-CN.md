@@ -1,8 +1,14 @@
 # Pencode
 
+<img src="resources/icons/pencode.svg" alt="Pencode 标志" width="80" height="80">
+
 使用 Go 编写的代码编辑器，基于 Onix 构建桌面界面，通过统一后端支持本地、SSH 与 WebSocket 远程工作区。
 
 [English](README.md) · **简体中文**
+
+[主页](https://pencode-labs.github.io/) · [下载](https://github.com/pencode-labs/pencode/releases)
+
+![Pencode 在 Linux 上运行，展示 Go 源码、项目文件树和内置终端](docs/images/pencode-workbench.png)
 
 Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整合到同一个工作台。客户端／服务端架构让界面留在本机，文件操作和开发工具则在项目所在的设备上执行。
 

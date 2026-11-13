@@ -65,8 +65,10 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 		return true
 	}
 	if u.root == "" {
+		m.settingsFeedback = m.tr("无法检查更新：请先安装支持自动更新的发行包")
 		return true
 	}
+	m.settingsFeedback = ""
 	check := u.release.URL == ""
 	u.busy = true
 	u.message = m.tr("正在检查 GitHub tag…")
@@ -169,7 +171,7 @@ func (m *workspaceModel) renderUpdates(v *htmlui.View) {
 		label = "正在检查…"
 	}
 	v.Text("update-action", m.tr(label))
-	if u.busy || u.root == "" {
+	if u.busy {
 		v.Attr("update-action", "disabled", "")
 	} else {
 		v.RemoveAttr("update-action", "disabled")

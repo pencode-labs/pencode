@@ -179,7 +179,7 @@ func TestTitlebarSearchFailedOpenDoesNotRecordHistory(t *testing.T) {
 	}
 	const missing = "missing.go"
 	project := model.activeProjectState()
-	project.Entries = append(project.Entries, treeEntry{Path: missing, Name: missing, Openable: true})
+	project.Entries = append(project.Entries, treeEntry{Path: missing, Openable: true})
 	model.quickQuery = missing
 	model.openQuickOpen()
 	settleQuick(t, model)

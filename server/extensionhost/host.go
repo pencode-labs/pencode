@@ -159,54 +159,61 @@ func SetDisabled(ctx context.Context, directory, id string, disabled bool) (Inst
 	if manifest.ID != id {
 		return Installed{}, fmt.Errorf("manifest id must match directory")
 	}
+	if err := writeDisabled(ctx, root, disabled); err != nil {
+		return Installed{}, err
+	}
 	manifest.Disabled = disabled
-	enabled := !disabled
+	return Installed{ExtensionManifest: manifest, Path: target}, nil
+}
+
+func writeDisabled(ctx context.Context, root *os.Root, disabled bool) error {
 	// Preserve package metadata outside the host's manifest fields.
 	data, err := ReadResource(root, "resources/extension.json", 64<<10)
 	if err != nil {
-		return Installed{}, err
+		return err
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
-		return Installed{}, err
+		return err
 	}
 	fields["disabled"] = json.RawMessage("false")
-	if !enabled {
+	if disabled {
 		fields["disabled"] = json.RawMessage("true")
 	}
 	data, err = json.MarshalIndent(fields, "", "  ")
 	if err != nil {
-		return Installed{}, err
+		return err
 	}
 	if len(data)+1 > 64<<10 {
-		return Installed{}, fmt.Errorf("扩展清单超过 64 KiB")
+		return fmt.Errorf("扩展清单超过 64 KiB")
 	}
 	info, err := root.Stat("resources/extension.json")
 	if err != nil {
-		return Installed{}, err
+		return err
 	}
 	stage := "resources/.extension-" + rand.Text() + ".tmp"
 	file, err := root.OpenFile(stage, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
 	if err != nil {
-		return Installed{}, err
+		return err
 	}
 	defer root.Remove(stage)
 	_, writeErr := file.Write(append(data, '\n'))
 	closeErr := file.Close()
 	if writeErr != nil {
-		return Installed{}, writeErr
+		return writeErr
 	}
 	if closeErr != nil {
-		return Installed{}, closeErr
+		return closeErr
 	}
 	if err := ctx.Err(); err != nil {
-		return Installed{}, err
+		return err
 	}
 	if err := root.Rename(stage, "resources/extension.json"); err != nil {
-		return Installed{}, err
+		return err
 	}
-	return Installed{ExtensionManifest: manifest, Path: target}, nil
+	return nil
 }
+
 func ReadResource(root *os.Root, name string, limit int64) ([]byte, error) {
 	f, err := root.Open(filepath.FromSlash(name))
 	if err != nil {

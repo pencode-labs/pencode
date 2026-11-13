@@ -1,8 +1,14 @@
 # Pencode
 
+<img src="resources/icons/pencode.svg" alt="Pencode logo" width="80" height="80">
+
 A code editor written in Go, with an Onix-powered desktop interface and a shared backend for local, SSH, and WebSocket workspaces.
 
 **English** · [简体中文](README.zh-CN.md)
+
+[Homepage](https://pencode-labs.github.io/) · [Downloads](https://github.com/pencode-labs/pencode/releases)
+
+![Pencode running on Linux with Go source code, the project tree and the integrated terminal](docs/images/pencode-workbench.png)
 
 Pencode brings editing, language tools, a terminal, Git, and native process extensions into one workbench. Its client/server design keeps the interface on your machine while file operations and development tools run where your project lives.
 

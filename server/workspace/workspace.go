@@ -201,7 +201,7 @@ func (s *Store) OpenDocument(projectID uint64, name string, mode protocol.Docume
 		}
 		if info.Size() > protocol.TextPagingThreshold {
 			paged := &pagedDocument{file: f, info: info, size: info.Size(), forced: mode == protocol.DocumentTextForced,
-				pieces: []filePiece{{length: info.Size()}}}
+				pieces: []filePiece{{end: info.Size()}}}
 			content, err := paged.readPage(0)
 			if err != nil {
 				paged.close()
@@ -373,9 +373,13 @@ func (s *Store) Save(id, version uint64) error {
 		}
 		p.close()
 		p.file, p.info, p.edits, p.editEnd = file, info, nil, 0
-		p.pieces, p.scratch = p.pieces[:0], p.scratch[:0]
+		if cap(p.pieces) > pagedPieceSpareLimit {
+			p.pieces = nil
+		} else {
+			p.pieces = p.pieces[:0]
+		}
 		if p.size > 0 {
-			p.pieces = append(p.pieces, filePiece{length: p.size})
+			p.pieces = append(p.pieces, filePiece{end: p.size})
 		}
 	}
 	buffer.hash.Sum(buffer.sum[:0])

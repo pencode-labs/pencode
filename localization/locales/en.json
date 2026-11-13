@@ -294,6 +294,7 @@
     "更多配置": "More options",
     "更新 UI 不能改变 Kind": "A UI update cannot change Kind",
     "更新失败：": "Update failed: ",
+    "无法检查更新：请先安装支持自动更新的发行包": "Cannot check for updates: install a release package that supports automatic updates first",
     "替换": "Replace",
     "替换为": "Replace with",
     "替换为（正则支持 $1、${name}）": "Replace with ($1 and ${name} for regex)",
@@ -716,6 +717,21 @@
     "（未保存）": " (unsaved)",
     "（已完成，尚未查看）": " (completed, unread)",
     "正在检查…": "Checking…",
-    "正在下载…": "Downloading…"
+    "正在下载…": "Downloading…",
+    "全部扩展": "All extensions",
+    "刷新扩展市场，或从本地目录安装扩展。": "Refresh the marketplace or install an extension from a local directory.",
+    "可更新至 %s": "Update available: %s",
+    "安装扩展": "Install extension",
+    "扩展列表": "Extensions",
+    "扩展已更新": "Extension updated",
+    "扩展源加载失败：%v": "Failed to load extension catalog: %v",
+    "扩展需要检查：%s": "Extension needs attention: %s",
+    "搜索扩展": "Search extensions",
+    "暂无扩展": "No extensions",
+    "更新扩展": "Update extension",
+    "更新检查失败：%s": "Update check failed: %s",
+    "版本信息获取失败：%s": "Failed to fetch version information: %s",
+    "未安装": "Not installed",
+    "正在更新扩展…": "Updating extension…"
   }
 }

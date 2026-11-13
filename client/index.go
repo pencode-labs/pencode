@@ -35,12 +35,16 @@ func (c *Client) IndexPage(ctx context.Context, id uint64, offset int, dst []pro
 		return dst[:0], false, "", err
 	}
 	done, message, count := d.U32() != 0, d.String(), d.U32()
-	if count > 256 {
+	if count > protocol.IndexPageSize {
 		return nil, false, "", protocol.ErrProtocol
 	}
 	dst = dst[:0]
 	for range count {
-		dst = append(dst, protocol.IndexEntry{Path: d.String(), Name: d.String(), Depth: int(d.U32()), Directory: d.U32() != 0})
+		name, depth, directory := d.String(), d.U32(), d.U32()
+		if depth > protocol.IndexDepthLimit || directory > 1 {
+			return nil, false, "", protocol.ErrProtocol
+		}
+		dst = append(dst, protocol.IndexEntry{Path: name, Depth: uint16(depth), Directory: directory != 0})
 	}
 	return dst, done, message, d.Done()
 }

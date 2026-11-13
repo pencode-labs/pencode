@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	pencodeTreeBatchSize    = 256
+	pencodeTreeBatchSize    = protocol.IndexPageSize
 	pencodeTreeFrameBatches = 4
 	pencodeTreeLoading      = "正在加载项目目录…"
 	pencodeTreeReloading    = "正在从磁盘重新加载…"
@@ -94,7 +94,7 @@ func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace,
 			}
 			batch.index = id
 			for _, entry := range entries {
-				batch.entries[batch.count] = treeEntry{Path: entry.Path, Name: entry.Name, Depth: entry.Depth, IsDir: entry.Directory, Openable: !entry.Directory && isTextFile(entry.Name)}
+				batch.entries[batch.count] = treeEntry{Path: entry.Path, Depth: entry.Depth, IsDir: entry.Directory, Openable: !entry.Directory && isTextFile(entry.Name())}
 				batch.count++
 			}
 			offset += len(entries)
@@ -151,7 +151,7 @@ func (scan *pencodeProjectScan) publishRoot(ctx context.Context, entries []fs.Di
 			if skipProjectEntry(name) {
 				continue
 			}
-			batch.entries[batch.count] = treeEntry{Path: name, Name: name, IsDir: entry.IsDir(), Openable: !entry.IsDir() && isTextFile(name)}
+			batch.entries[batch.count] = treeEntry{Path: name, IsDir: entry.IsDir(), Openable: !entry.IsDir() && isTextFile(name)}
 			batch.count++
 		}
 		select {
@@ -182,7 +182,7 @@ func (scan *pencodeProjectScan) appendBatch(project *pencodeProject, batch *penc
 		if entry.Depth != 0 {
 			continue
 		}
-		for remaining < len(entries) && compareTreeNames(entries[remaining].Name, entries[remaining].IsDir, entry.Name, entry.IsDir) <= 0 {
+		for remaining < len(entries) && compareTreeNames(entries[remaining].Name(), entries[remaining].IsDir, entry.Name(), entry.IsDir) <= 0 {
 			remaining++
 		}
 	}
@@ -224,7 +224,7 @@ func (model *workspaceModel) startProjectSnapshot(project *pencodeProject, initi
 		model.quickRevision++
 		clear(project.Entries)
 		project.Entries = project.Entries[:0]
-		project.tree.revision++
+		project.tree.entriesChanged()
 	}
 	if !refresh && project == model.activeProjectState() {
 		model.quickCount = -1
@@ -272,7 +272,7 @@ func (model *workspaceModel) pollProjectScans() bool {
 					}
 				} else {
 					scan.appendBatch(project, batch)
-					project.tree.revision++
+					project.tree.entriesChanged()
 					changed = true
 				}
 				if batch.index != 0 && !scan.staged {
@@ -285,7 +285,7 @@ func (model *workspaceModel) pollProjectScans() bool {
 					changed = true
 					if scan.staged && batch.err == nil {
 						project.Entries, project.index = scan.entries, batch.index
-						project.tree.revision++
+						project.tree.entriesChanged()
 						if project == model.activeProjectState() {
 							model.quickRevision++
 						}

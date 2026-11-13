@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -61,6 +62,7 @@ func (m *workspaceModel) saveProjectState(p *pencodeProject) {
 	if file == "" {
 		return
 	}
+	maps.DeleteFunc(p.ExpandedDirs, func(_ string, expanded bool) bool { return !expanded })
 	if m.fontResources != nil {
 		m.editor.saveView(m.fontResources, m)
 		if !p.tree.restore {
@@ -146,6 +148,7 @@ func (m *workspaceModel) restoreProjectState(p *pencodeProject) {
 		m.logOutput("pencode", m.tr("读取项目状态失败：")+err.Error())
 		return
 	}
+	maps.DeleteFunc(state.ExpandedDirs, func(_ string, expanded bool) bool { return !expanded })
 	p.ExpandedDirs, p.Collapsed, p.AllDirectoriesCollapsed = state.ExpandedDirs, state.Collapsed, state.AllDirectoriesCollapsed
 	p.tree.position, p.tree.restore = min(0, state.TreePosition), true
 	p.tree.revision++

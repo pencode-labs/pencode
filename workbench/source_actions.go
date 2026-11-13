@@ -105,11 +105,8 @@ func (a *workspaceModel) sourceAction(id string) {
 	}
 	if strings.HasPrefix(id, "sc-folder:") || strings.HasPrefix(id, "sc-group:") {
 		height := s.graphDetailsHeight()
-		if s.Collapsed == nil {
-			s.Collapsed = make(map[string]bool)
-		}
 		key := strings.TrimPrefix(strings.TrimPrefix(id, "sc-"), "folder:")
-		s.Collapsed[key] = !s.Collapsed[key]
+		s.Collapsed = togglePencodeFlag(s.Collapsed, key)
 		s.TreeRevision++
 		s.resizeGraphDetails(height)
 		a.sourceChanged()
@@ -432,15 +429,13 @@ func (a *workspaceModel) closeSourceTab(key string) {
 	for i, tab := range s.Tabs {
 		if tab.Key == key {
 			s.releaseTab(tab)
-			s.Tabs = slices.Delete(s.Tabs, i, i+1)
 			if s.Active == key {
 				s.Active = ""
 				s.Selection++
 				s.RestoreScroll = true
-				if len(s.Tabs) > 0 {
-					s.Active = s.Tabs[min(i, len(s.Tabs)-1)].Key
-				}
+				a.selectEditorTabNeighbor(pencodeEditorTab{project: a.activeProjectState(), source: tab})
 			}
+			s.Tabs = slices.Delete(s.Tabs, i, i+1)
 			return
 		}
 	}

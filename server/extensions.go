@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -160,6 +161,8 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 			return err
 		}
 		e.String(s.directory)
+		e.String(runtime.GOOS)
+		e.String(runtime.GOARCH)
 		if len(items) > extensionhost.MaxExtensions {
 			return &protocol.Error{Code: protocol.Busy, Message: "extension limit exceeded"}
 		}
@@ -239,13 +242,14 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		s.entries[id] = entry
 		return s.encode(id, entry, e)
 	case protocol.ExtensionBegin:
+		replace := d.String()
 		if err := d.Done(); err != nil {
 			return err
 		}
 		if s.pending() >= 2 || len(s.entries) >= extensionhost.MaxExtensions+2 {
 			return &protocol.Error{Code: protocol.Busy, Message: "at most two extension transactions may be pending"}
 		}
-		upload, err := extensionhost.Begin(s.directory)
+		upload, err := extensionhost.Begin(s.directory, replace)
 		if err != nil {
 			return err
 		}
@@ -360,7 +364,6 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 					return err
 				}
 				entry.registration.Info.Path = target
-				entry.upload = nil
 			} else if entry.enable {
 				item, err := extensionhost.SetDisabled(ctx, s.directory, entry.registration.Info.ID, false)
 				if err != nil {
@@ -370,6 +373,10 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 			}
 			entry.committed = true
 			s.revoke(entry.registration.Info.ID, id)
+			if entry.upload != nil {
+				entry.upload.Close()
+				entry.upload = nil
+			}
 		}
 		protocol.EncodeExtension(e, entry.registration.Info)
 		return nil

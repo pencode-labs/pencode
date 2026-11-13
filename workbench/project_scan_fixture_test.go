@@ -90,7 +90,7 @@ func (scan *pencodeProjectScan) run(ctx context.Context, readDir func(string) ([
 			}
 			relative := prefix + name
 			isDir := child.IsDir()
-			entry := treeEntry{Path: relative, Name: name, Depth: depth, IsDir: isDir, Openable: !isDir && isTextFile(name)}
+			entry := treeEntry{Path: relative, Depth: uint16(depth), IsDir: isDir, Openable: !isDir && isTextFile(name)}
 			batch.entries[batch.count] = entry
 			batch.count++
 			// Publish the first directory before descending, even when the next

@@ -149,6 +149,8 @@ For remote workspaces, settings and extensions belong to the workspace host; sys
 
 Extensions are native executables or JavaScript bundles compiled from TypeScript, communicating with the server through **peb v20**, a binary protocol over stdin/stdout. Within each window, one process per extension serves its workbench actions and document views; closing a view releases its session while the process remains until the connection closes or the extension is revoked. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
 
+Download prebuilt extension packages from their releases and extract them directly into the workspace server's `~/.pencode/extensions/` directory. See [extension releases](extensions/README.md) for the fixed package format, platform support and download links.
+
 Extensions live under `~/.pencode/extensions/<extension-id>/` on the server host and include an executable and a `resources/extension.json` manifest. Use the extension manager's local-directory installation flow to register one.
 
 Bundled extensions include the following; see each extension for its license and build instructions:

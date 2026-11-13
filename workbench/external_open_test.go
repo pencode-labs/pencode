@@ -64,6 +64,38 @@ func TestExternalPathsMultipleFilesAndDirectories(t *testing.T) {
 	}
 }
 
+func TestExternalFilesDoNotRememberParentProjects(t *testing.T) {
+	s, m := externalTestSession(t)
+	s.recentProjects = loadPencodeRecentProjects(t.TempDir())
+	root, other := t.TempDir(), t.TempDir()
+	resourceTestWrite(t, &pencodeProject{Path: root}, "file.txt", "text")
+	resourceTestWrite(t, &pencodeProject{Path: other}, "other.txt", "other")
+	s.OpenPaths(filepath.Join(root, "file.txt"), filepath.Join(other, "other.txt"))
+	settleExternalPaths(t, s, m)
+	if s.recentProjects.count != 0 {
+		t.Fatal("opening files remembered their parent directories as projects")
+	}
+	m.discardProject(m.activeProjectState())
+	if h := loadPencodeRecentProjects(filepath.Dir(s.recentProjects.file)); h.count != 0 {
+		t.Fatal("a closed file's parent directory reappeared after reloading history")
+	}
+	// Explicitly opening the same directory must still record the project.
+	s.OpenPaths(root)
+	settleExternalPaths(t, s, m)
+	if err := loadProjectAndWait(t, m, other); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenPaths(filepath.Join(root, "file.txt"))
+	settleExternalPaths(t, s, m)
+	for len(m.projects) != 0 {
+		m.discardProject(m.projects[len(m.projects)-1])
+	}
+	h := loadPencodeRecentProjects(filepath.Dir(s.recentProjects.file))
+	if h.count != 2 || h.entries[0].Path != other || h.entries[1].Path != root {
+		t.Fatal("file opens changed persisted project history or explicit folder opens were lost")
+	}
+}
+
 func TestExternalPathsReuseDirtyPreviewAndContinueAfterFailure(t *testing.T) {
 	s, m := externalTestSession(t)
 	root := t.TempDir()

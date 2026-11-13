@@ -1399,7 +1399,6 @@ func (model *workspaceModel) loadProject(directory string) error {
 }
 
 func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace protocol.Workspace) {
-	model.rememberRecentProject(workspace)
 	if index := model.projectIndex(workspace.Path); index >= 0 {
 		model.activeProjectIndex = index
 		model.screen = pencodeWorkspace

@@ -415,6 +415,7 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 			m.setActiveStatus(m.tr("打开项目失败：") + r.err.Error())
 			return
 		}
+		m.rememberRecentProject(r.workspace)
 		m.acceptWorkspace(j.backend, r.workspace)
 		return
 	}

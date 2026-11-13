@@ -160,6 +160,10 @@ func (m *workspaceModel) acceptExternalOpen(r *fileIOResult) {
 		}
 		return
 	}
+	// A file's parent is only an editing workspace, not an opened project.
+	if r.destination == "" {
+		m.rememberRecentProject(r.workspace)
+	}
 	m.acceptWorkspace(r.job.backend, r.workspace)
 	if r.destination == "" {
 		return

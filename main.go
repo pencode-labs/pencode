@@ -16,6 +16,7 @@ import (
 	"github.com/pencode-labs/pencode/internal/environment"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/internal/updater"
+	"github.com/pencode-labs/pencode/internal/version"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
 	"github.com/pencode-labs/pencode/transport"
@@ -23,6 +24,15 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		executable, _ := os.Executable()
+		_, current, err := updater.Installation(executable)
+		if err != nil {
+			current = version.Value
+		}
+		fmt.Println(current)
+		return
+	}
 	if handled, err := updater.RunHelper(); handled {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -94,7 +104,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "启动更新失败：", err)
 		}
 	}()
-	dialer := connection.DefaultDialer(executable, session.Output.Channel("SSH"))
+	dialer := connection.DefaultDialer(executable, session.Output.Channel(remote.OutputChannelName))
 	if serverDirectory != "" {
 		dialer.SSH.ServerDirectory = serverDirectory
 	}

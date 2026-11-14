@@ -8,6 +8,7 @@ on:
       - '.github/workflows/release.yml'
       - 'cmd/pencode-release/**'
       - 'cmd/pencode-server/**'
+      - 'internal/version/**'
       - 'packaging/**'
   workflow_dispatch:
 
@@ -127,7 +128,7 @@ jobs:
         run: |
           $name = "pencode-server-$env:RELEASE_VERSION-${{ matrix.os }}-${{ matrix.arch }}"
           if ('${{ matrix.os }}' -eq 'windows') { $name += '.exe' }
-          go build -mod=readonly -trimpath '-ldflags=-s -w -buildid=' -o "dist/$name" ./cmd/pencode-server
+          go build -mod=readonly -trimpath "-ldflags=-s -w -buildid= -X github.com/pencode-labs/pencode/internal/version.Value=$env:RELEASE_VERSION" -o "dist/$name" ./cmd/pencode-server
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $digest = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$digest  $name`n" | Set-Content -LiteralPath "dist/$name.sha256" -NoNewline -Encoding utf8

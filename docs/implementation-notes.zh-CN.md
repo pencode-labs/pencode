@@ -96,15 +96,17 @@ Linux amd64 / i5-11500 的一次参考结果：50 ms RTT、每方向 4 MiB/s 时
 
 使用系统 `ssh`，沿用 SSH config、agent、IdentityFile 和 ProxyJump。需要密码或密钥口令时，通过 OpenSSH askpass 弹窗输入。密码仅交给本次认证，提交或取消后清空，不写入配置、文件、命令行或环境变量；断线重连时重新询问，不自动将解锁的密钥加入 agent。已有密钥或 agent 可免密码认证。首次连接会弹窗显示主机和指纹，点击“信任并连接”后由 OpenSSH 写入 `known_hosts`；取消不记录信任。已知主机密钥发生变化时拒绝连接，不自动覆盖。服务协议直接走加密的 SSH 标准流，不开放服务端端口，不需要端口转发；启动时通过远端用户的登录 shell（`$SHELL -lc`）加载环境，使服务端和扩展继承 Homebrew 等工具的 PATH，再由 `sh` 执行安装脚本。远端 shell 初始化不能向 stdout 打印欢迎语或调试信息。
 
-连接时依次检查远端 PATH 中的 `pencode-server`、`pencode`，以及安装目录中的 `pencode-server`（默认 `~/.pencode/pencode-server`），使用首个可执行程序直接启动；`pencode` 通过 `pencode --pencode-server` 启动无头服务。复用已安装程序时无需准备本地服务端文件，也不会上传或重复安装。
+客户端以发行包中的 `pencode-version` 确定当前版本；`pencode --version` 和独立服务端的 `pencode-server --version` 可查看各自版本。连接时先检查安装目录中的 `pencode-server`（默认 `~/.pencode/pencode-server`），再检查远端 PATH 中的 `pencode-server`。仅当 `--version` 输出与客户端版本完全相同时复用；版本缺失、较旧或较新都重新安装。复用时无需准备本地文件，也不会下载或上传。
 
-均不可用时才自动安装。远端支持 Linux/macOS 的 amd64、arm64，需要 POSIX shell、`uname`、`mktemp`、`head`、`wc`、`tr`、`sha256sum`（Linux）或 `shasum`（macOS）。先在仓库根目录准备对应平台的独立程序，远端无需 Go 工具链：
+找不到匹配版本时，发行版客户端自动从 `https://github.com/pencode-labs/pencode/releases/download/<版本>/pencode-server-<版本>-<os>-<arch>` 下载，并使用同一 release 的 `SHA256SUMS` 校验。下载在客户端进行，再通过当前 SSH 会话上传；远端无需访问 GitHub，也无需 `curl` 或 Go 工具链。不会回退到 latest 或其他版本。远端支持 Linux/macOS 的 amd64、arm64，需要 POSIX shell、`uname`、`mktemp`、`head`、`wc`、`tr`、`sha256sum`（Linux）或 `shasum`（macOS）。
+
+未发布的 `dev` 开发版使用本地独立服务端；也可显式指定本地文件或目录离线安装。在仓库根目录构建对应平台程序，并通过 `-version` 写入与客户端相同的版本（默认 `dev`）：
 
 ```sh
 go run -p 1 ./cmd/pencode-build-servers
 ```
 
-默认生成 `resources/servers/<os>-<arch>/pencode-server`。发布时将整个 `resources/servers` 放在 GUI 可执行文件旁；开发运行可显式指定目录：
+默认生成 `resources/servers/<os>-<arch>/pencode-server`。开发版默认查找 GUI 可执行文件旁的 `resources/servers`；也可显式指定目录：
 
 ```sh
 go build -p 1 -o /tmp/pencode .
@@ -114,9 +116,9 @@ go build -p 1 -o /tmp/pencode .
 
 也可以用 `--server-binary /absolute/pencode-server` 指定与远端平台一致的单个本地程序。同平台时，GUI 旁的独立 `pencode-server` 也可作为备选。上传前验证独立服务的 Go 构建信息与平台；不能用 GUI 可执行文件代替独立服务。
 
-其他选项：`--ssh-port`、`--ssh-identity`、`--ssh-config`、`--remote-server-directory`。最后一项必须是远端绝对路径；服务端默认安装到远端 `~/.pencode/pencode-server`，指定目录时使用 `<指定目录>/pencode-server`，检测与安装使用同一路径。已有可执行程序直接复用；不可用时流式上传到暂存目录，核对 SHA-256 后原子替换。升级时直接替换该文件。扩展仍安装到服务端用户的扩展目录，扩展、语言服务和 shell 均在远端执行。
+其他选项：`--ssh-port`、`--ssh-identity`、`--ssh-config`、`--remote-server-directory`。最后一项必须是远端绝对路径；服务端默认安装到远端 `~/.pencode/pencode-server`，指定目录时使用 `<指定目录>/pencode-server`，检测与安装使用同一路径。安装时流式上传到暂存目录，核对 SHA-256 并执行 `--version` 再次确认版本后，原子替换该文件；失败保留原文件并清理暂存文件。扩展仍安装到服务端用户的扩展目录，扩展、语言服务和 shell 均在远端执行。
 
-连接和恢复在后台进行，一轮最长 2 分钟；SSH 建连超时 10 秒，保活间隔 15 秒、连续 3 次无响应断开。检测到断线后，一轮最多尝试连接 3 次，失败间隔为 1、2 秒；连接刚恢复又在 30 秒内中断时，最多启动 3 轮自动恢复，之后需手动重连。稳定运行 30 秒后重置连续中断计数。SSH 诊断进入 Output 的 `SSH` 信息源。
+连接和恢复在后台进行，一轮最长 2 分钟；SSH 建连超时 10 秒，保活间隔 15 秒、连续 3 次无响应断开。检测到断线后，一轮最多尝试连接 3 次，失败间隔为 1、2 秒；连接刚恢复又在 30 秒内中断时，最多启动 3 轮自动恢复，之后需手动重连。稳定运行 30 秒后重置连续中断计数。版本检测、下载地址、校验、上传、安装、启动、连接状态和失败原因均写入 Output 的 `Remote Development` 信息源。
 
 恢复只重建读句柄和服务端内存中的当前文档，不执行保存、Git 写入或重发终端输入。如果远端磁盘内容等于上次保存的原文，可继续编辑和显式保存；如果等于当前缓冲，认定该内容已保存；其他变化保留 GUI 文本并提示冲突，阻止覆盖，需比较或重载后保存。终端保留已显示的屏幕与历史，旧进程结束；新终端由用户创建，LSP 与扩展进程按需重启。连接配置保存在系统用户配置目录的 `pencode/resources/connection.json`，只保存主机与路径等配置，不保存密钥内容或密码。
 

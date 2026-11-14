@@ -8,19 +8,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/pencode-labs/pencode/internal/version"
 )
 
 func main() {
 	platforms := flag.String("platforms", "linux/amd64,linux/arm64,darwin/amd64,darwin/arm64", "Comma-separated SSH server platforms")
 	output := flag.String("output", "resources/servers", "Artifact directory")
+	releaseVersion := flag.String("version", "dev", "Server release version or tag")
 	flag.Parse()
-	if err := build(*platforms, *output); err != nil {
+	if err := build(*platforms, *output, *releaseVersion); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func build(platforms, output string) error {
+func build(platforms, output, releaseVersion string) error {
+	if !version.Valid(releaseVersion) {
+		return fmt.Errorf("invalid release version %q", releaseVersion)
+	}
 	baseEnv := make([]string, 0, len(os.Environ())+3)
 	for _, value := range os.Environ() {
 		key, _, _ := strings.Cut(value, "=")
@@ -42,7 +48,7 @@ func build(platforms, output string) error {
 			return err
 		}
 		binary := filepath.Join(stage, "pencode-server")
-		cmd := exec.Command("go", "build", "-p", "1", "-trimpath", "-ldflags=-s -w -buildid=", "-o", binary, "./cmd/pencode-server")
+		cmd := exec.Command("go", "build", "-p", "1", "-trimpath", "-ldflags=-s -w -buildid= -X "+version.Symbol+"="+releaseVersion, "-o", binary, "./cmd/pencode-server")
 		cmd.Env = append(baseEnv[:len(baseEnv):len(baseEnv)], "GOOS="+goos, "GOARCH="+arch, "CGO_ENABLED=0")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		fmt.Println("Building", platform)

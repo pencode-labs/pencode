@@ -12,6 +12,8 @@ import (
 	"runtime"
 
 	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/internal/updater"
+	"github.com/pencode-labs/pencode/internal/version"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/transport"
@@ -87,15 +89,23 @@ type Dialer struct {
 }
 
 func DefaultDialer(executable string, output io.Writer) Dialer {
+	_, releaseVersion, err := updater.Installation(executable)
+	if err != nil {
+		releaseVersion = version.Value
+	}
 	directory := filepath.Dir(executable)
 	server := "pencode-server"
 	if runtime.GOOS == "windows" {
 		server += ".exe"
 	}
-	return Dialer{LocalExecutable: executable, SSH: remote.Connector{
-		ServerDirectory: filepath.Join(directory, "resources", "servers"),
-		LocalServer:     filepath.Join(directory, server), Output: output,
+	dialer := Dialer{LocalExecutable: executable, SSH: remote.Connector{
+		Version:     releaseVersion,
+		LocalServer: filepath.Join(directory, server), Output: output,
 	}}
+	if releaseVersion == "dev" {
+		dialer.SSH.ServerDirectory = filepath.Join(directory, "resources", "servers")
+	}
+	return dialer
 }
 
 func (d Dialer) Dial(ctx context.Context, profile Profile, progress func(string)) (*client.Client, error) {

@@ -23,10 +23,10 @@ endif
 
 # Usage: make run ARGS="--ssh user@host --remote-path /path/to/project"
 run: install-server install-extensions
-	$(GO) run . $(ARGS)
+	$(GO) run -ldflags "-X github.com/pencode-labs/pencode/internal/version.Value=$(VERSION)" . $(ARGS)
 
 install-server:
-	$(GO) build -o "$(SERVER_DIR)/pencode-server$(EXE)" ./cmd/pencode-server
+	$(GO) build -ldflags "-X github.com/pencode-labs/pencode/internal/version.Value=$(VERSION)" -o "$(SERVER_DIR)/pencode-server$(EXE)" ./cmd/pencode-server
 
 install-extensions:
 	$(GO) run ./cmd/pencode-install-extensions -go "$(GO)" -directory "$(EXTENSIONS_DIR)"

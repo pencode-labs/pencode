@@ -10,10 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/onix-engine/onix/editor"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
+	buildversion "github.com/pencode-labs/pencode/internal/version"
 )
 
 func main() {
@@ -28,9 +28,7 @@ func main() {
 }
 
 func release(output, version string) error {
-	if version == "" || strings.IndexFunc(version, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune(".-_", r))
-	}) >= 0 {
+	if !buildversion.Valid(version) {
 		return fmt.Errorf("invalid release version %q", version)
 	}
 	platform := editor.BuildPlatform(runtime.GOOS)

@@ -10,12 +10,17 @@ import (
 
 	"github.com/pencode-labs/pencode/internal/environment"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
+	"github.com/pencode-labs/pencode/internal/version"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
 	"github.com/pencode-labs/pencode/transport"
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(version.Value)
+		return
+	}
 	environment.Configure()
 	systemproxy.Configure()
 	listen := flag.String("listen", "", "WebSocket listen address, e.g. 0.0.0.0:8080 (endpoint: /ws); empty uses stdio")

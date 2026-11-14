@@ -47,19 +47,15 @@ func TestSSHConnectReusesInstalledCommands(t *testing.T) {
 		t.Skip(err)
 	}
 	for _, fixture := range []struct {
-		name       string
-		want       string
-		serverMode os.FileMode
-		pencode    bool
-		homeServer bool
+		name          string
+		want          string
+		serverVersion string
+		homeVersion   string
 	}{
-		{name: "server", serverMode: 0o700, want: "pencode-server:\n"},
-		{name: "pencode", pencode: true, want: "pencode:--pencode-server\n"},
-		{name: "prefer server", serverMode: 0o700, pencode: true, want: "pencode-server:\n"},
-		{name: "nonexecutable server", serverMode: 0o600, pencode: true, want: "pencode:--pencode-server\n"},
-		{name: "home server", homeServer: true, want: "home-server:\n"},
-		{name: "prefer PATH server over home", serverMode: 0o700, homeServer: true, want: "pencode-server:\n"},
-		{name: "prefer PATH pencode over home", pencode: true, homeServer: true, want: "pencode:--pencode-server\n"},
+		{name: "PATH server", serverVersion: "dev", want: "pencode-server:\n"},
+		{name: "home server", homeVersion: "dev", want: "home-server:\n"},
+		{name: "prefer managed server", serverVersion: "dev", homeVersion: "dev", want: "home-server:\n"},
+		{name: "outdated managed server", serverVersion: "dev", homeVersion: "v0.0.1", want: "pencode-server:\n"},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			directory := filepath.Join(t.TempDir(), "remote's bin")
@@ -84,22 +80,19 @@ func TestSSHConnectReusesInstalledCommands(t *testing.T) {
 				return path
 			}
 			t.Setenv("SHELL", writeCommand(filepath.Join(directory, "login-shell"), "[ \"$1\" = -lc ] || exit 1\nexec "+shellQuote(shell)+" -c \"$2\"\n", 0o700))
-			peer := func(name string) string {
-				return "printf '" + name + ":%s\\n' \"$*\"\nIFS= read -r request\nprintf '%s\\n' \"$request\"\n"
+			peer := func(name, version string) string {
+				return "if [ \"${1:-}\" = --version ]; then printf '%s\\n' " + shellQuote(version) + "; exit; fi\nprintf '" + name + ":%s\\n' \"$*\"\nIFS= read -r request\nprintf '%s\\n' \"$request\"\n"
 			}
-			if fixture.serverMode != 0 {
-				writeCommand(filepath.Join(directory, "pencode-server"), peer("pencode-server"), fixture.serverMode)
+			if fixture.serverVersion != "" {
+				writeCommand(filepath.Join(directory, "pencode-server"), peer("pencode-server", fixture.serverVersion), 0o700)
 			}
-			if fixture.pencode {
-				writeCommand(filepath.Join(directory, "pencode"), peer("pencode"), 0o700)
-			}
-			if fixture.homeServer {
-				writeCommand(filepath.Join(home, ".pencode", "pencode-server"), peer("home-server"), 0o700)
+			if fixture.homeVersion != "" {
+				writeCommand(filepath.Join(home, ".pencode", "pencode-server"), peer("home-server", fixture.homeVersion), 0o700)
 			}
 			ssh := writeCommand(filepath.Join(directory, "ssh"), "for command do :; done\nexec sh -c \"$command\"\n", 0o700)
 			root := filepath.Join(directory, "unneeded install")
 			serverRoot := root
-			if fixture.homeServer {
+			if fixture.homeVersion != "" {
 				serverRoot = ""
 			}
 			var progress []string
@@ -176,7 +169,7 @@ func TestSSHAtomicInstallReuseAndFailureCleanup(t *testing.T) {
 				root = filepath.Join(t.TempDir(), `server's \directory with spaces`)
 				target.ServerRoot = root
 			}
-			data := []byte("#!/bin/sh\nprintf 'server ready\\n'\n")
+			data := []byte("#!/bin/sh\nif [ \"${1:-}\" = --version ]; then printf 'dev\\n'; exit; fi\nprintf 'server ready\\n'\n")
 			hash := sha256.Sum256(data)
 			digest := hex.EncodeToString(hash[:])
 			run := func(payload []byte) (string, error) {
@@ -188,13 +181,13 @@ func TestSSHAtomicInstallReuseAndFailureCleanup(t *testing.T) {
 				if payload != nil {
 					input = io.MultiReader(strings.NewReader(fmt.Sprintf("%s\n%d\n", digest, len(payload))), bytes.NewReader(payload))
 				}
-				err := transport.Run(ctx, input, &output, &output, "sh", "-c", bootstrapCommand(target))
+				err := transport.Run(ctx, input, &output, &output, "sh", "-c", bootstrapCommand(target, "dev"))
 				return output.String(), err
 			}
-			if output, err := run(data); err != nil || !strings.HasSuffix(output, "missing\nstarted\nserver ready\n") {
+			if output, err := run(data); err != nil || !strings.Contains(output, "missing\n") || !strings.HasSuffix(output, "started\nserver ready\n") {
 				t.Fatal(output, err)
 			}
-			if output, err := run(nil); err != nil || output != "installed\nstarted\nserver ready\n" {
+			if output, err := run(nil); err != nil || !strings.HasSuffix(output, "installed\nstarted\nserver ready\n") {
 				t.Fatal("installed server was not reused without local metadata", output, err)
 			}
 			installed := filepath.Join(root, "pencode-server")
@@ -215,7 +208,7 @@ func TestSSHAtomicInstallReuseAndFailureCleanup(t *testing.T) {
 			if err != nil || len(entries) != 1 || entries[0].Name() != "pencode-server" {
 				t.Fatal("failed install retained staging files", entries, err)
 			}
-			if output, err := run(data); err != nil || !strings.HasSuffix(output, "missing\nstarted\nserver ready\n") {
+			if output, err := run(data); err != nil || !strings.Contains(output, "missing\n") || !strings.HasSuffix(output, "started\nserver ready\n") {
 				t.Fatal("incomplete binary was not replaced", output, err)
 			}
 			got, err = os.ReadFile(installed)
@@ -231,7 +224,7 @@ func TestSSHArtifactRejectsOtherGoPrograms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = (Connector{}).artifact(Target{ServerBinary: self}, Platform{runtime.GOOS, runtime.GOARCH})
+	_, err = (Connector{Version: "dev"}).artifact(t.Context(), Target{ServerBinary: self}, Platform{runtime.GOOS, runtime.GOARCH})
 	if err == nil {
 		t.Fatal("accepted a test binary as a standalone pencode-server")
 	}

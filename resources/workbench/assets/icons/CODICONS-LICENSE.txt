@@ -20,6 +20,7 @@ Additional Codicons retrieved with better-icons through Iconify:
 copy.svg: codicon:copy
 edit.svg: codicon:edit
 globe.svg: codicon:globe
+trash.svg: codicon:trash
 
 All UI icons use the upstream 16x16 geometry and currentColor.
 Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/

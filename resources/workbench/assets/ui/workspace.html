@@ -192,8 +192,15 @@
         </section>
         <section id="settings-shortcuts-pane" data-ref="settings-shortcuts-pane" aria-label="快捷键设置" hidden>
           <div class="pencode-settings-row"><label for="keymap-select">快捷键方案</label><select id="keymap-select" data-ref="keymap-select" class="pencode-settings-select"></select></div>
-          <div class="pencode-settings-row"><label for="keymap-name">方案名称</label><input id="keymap-name" data-ref="keymap-name" class="pencode-settings-select" placeholder="输入新方案名称"></div>
-          <div class="pencode-settings-row pencode-keymap-controls"><button data-ref="keymap-create" class="pencode-settings-binding" type="button">复制为新方案</button><button data-ref="keymap-rename" class="pencode-settings-binding" type="button">重命名</button><button data-ref="keymap-delete" class="pencode-settings-binding" type="button">删除方案</button></div>
+          <div class="pencode-settings-row">
+            <label for="keymap-name">方案名称</label>
+            <div class="pencode-keymap-controls">
+              <input id="keymap-name" data-ref="keymap-name" class="pencode-settings-select" placeholder="输入新方案名称">
+              <button data-ref="keymap-create" class="pencode-icon-button" type="button" title="复制为新方案" aria-label="复制为新方案"><img data-ref="keymap-create-icon" src="icons/copy.svg" alt=""></button>
+              <button data-ref="keymap-rename" class="pencode-icon-button" type="button" title="重命名" aria-label="重命名"><img data-ref="keymap-rename-icon" src="icons/edit.svg" alt=""></button>
+              <button data-ref="keymap-delete" class="pencode-icon-button" type="button" title="删除方案" aria-label="删除方案"><img data-ref="keymap-delete-icon" src="icons/trash.svg" alt=""></button>
+            </div>
+          </div>
           <p class="pencode-setting-description">点击命令录制快捷键；Backspace 清除，Esc 取消。同一上下文内检测冲突。恢复默认仅影响当前方案。</p>
           <div class="pencode-settings-row"><label for="shortcut-query">筛选命令</label><input id="shortcut-query" data-ref="shortcut-query" class="pencode-settings-select" placeholder="名称或命令 ID"></div>
           <div data-ref="settings-shortcut-fields"></div>

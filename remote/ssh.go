@@ -5,20 +5,18 @@ package remote
 import (
 	"bufio"
 	"context"
-	"crypto/sha256"
-	"debug/buildinfo"
-	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"runtime"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/pencode-labs/pencode/internal/version"
 	"github.com/pencode-labs/pencode/transport"
 )
+
+const OutputChannelName = "Remote Development"
 
 type Target struct {
 	Host         string `json:"host"`
@@ -50,9 +48,12 @@ func (p Platform) String() string { return p.OS + "-" + p.Arch }
 
 type Connector struct {
 	Output          io.Writer
-	Executable      string // Empty selects ssh from PATH.
-	ServerDirectory string // resources/servers/<os>-<arch>/pencode-server.
-	LocalServer     string // Adjacent native standalone binary.
+	HTTP            *http.Client // Nil uses http.DefaultClient with the connection context.
+	Executable      string       // Empty selects ssh from PATH.
+	Version         string       // Empty selects the current build version.
+	ReleaseURL      string       // Empty selects GitHub release downloads.
+	ServerDirectory string       // resources/servers/<os>-<arch>/pencode-server.
+	LocalServer     string       // Adjacent native standalone binary.
 }
 
 func (c Connector) arguments(t Target, command string, interactive bool) []string {
@@ -112,45 +113,6 @@ func parsePlatform(data string) (Platform, error) {
 	return platform, nil
 }
 
-func (c Connector) artifact(t Target, platform Platform) (*os.File, string, error) {
-	name := t.ServerBinary
-	if name == "" {
-		name = filepath.Join(c.ServerDirectory, platform.String(), "pencode-server")
-		if _, err := os.Stat(name); os.IsNotExist(err) && platform.OS == runtime.GOOS && platform.Arch == runtime.GOARCH {
-			name = c.LocalServer
-		}
-	}
-	info, err := buildinfo.ReadFile(name)
-	if err != nil {
-		return nil, "", fmt.Errorf("需要 %s 的独立 pencode-server（%s）：%w", platform, name, err)
-	}
-	var target Platform
-	for _, setting := range info.Settings {
-		switch setting.Key {
-		case "GOOS":
-			target.OS = setting.Value
-		case "GOARCH":
-			target.Arch = setting.Value
-		}
-	}
-	if target != platform || info.Path != "github.com/pencode-labs/pencode/cmd/pencode-server" {
-		return nil, "", fmt.Errorf("服务端程序必须是为 %s 构建的独立 pencode-server", platform)
-	}
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, "", err
-	}
-	hash := sha256.New()
-	if _, err = io.Copy(hash, f); err == nil {
-		_, err = f.Seek(0, io.SeekStart)
-	}
-	if err != nil {
-		f.Close()
-		return nil, "", err
-	}
-	return f, hex.EncodeToString(hash.Sum(nil)), nil
-}
-
 func installBase(target Target) string {
 	if target.ServerRoot != "" {
 		return shellQuote(target.ServerRoot)
@@ -159,23 +121,27 @@ func installBase(target Target) string {
 }
 
 // bootstrapCommand keeps authentication, installation and the protocol on one
-// SSH session. Installed commands are reused before requesting a local binary.
-func bootstrapCommand(target Target) string {
+// SSH session. Only a server reporting the exact client version is reused.
+func bootstrapCommand(target Target, version string) string {
 	return `set -eu
-if command -v pencode-server >/dev/null 2>&1; then
-  printf 'installed\nstarted\n'
-  exec pencode-server
-fi
-if command -v pencode >/dev/null 2>&1; then
-  printf 'installed\nstarted\n'
-  exec pencode --pencode-server
-fi
+expected=` + shellQuote(version) + `
 base=` + installBase(target) + `
 server="$base/pencode-server"
-if [ -f "$server" ] && [ -x "$server" ]; then
-  printf 'installed\nstarted\n'
-  exec "$server"
+reuse() {
+  [ -f "$1" ] && [ -x "$1" ] || return 0
+  actual=$("$1" --version 2>/dev/null) || actual=unknown
+  if [ "$actual" = "$expected" ]; then
+    printf '[SSH] 使用 %s，版本 %s\n' "$1" "$actual" >&2
+    printf 'installed\nstarted\n'
+    exec "$1"
+  fi
+  printf '[SSH] %s 版本不匹配（当前 %s，需要 %s）\n' "$1" "$actual" "$expected" >&2
+}
+reuse "$server"
+if candidate=$(command -v pencode-server); then
+  reuse "$candidate"
 fi
+printf '[SSH] 未找到匹配的 pencode-server %s，准备安装\n' "$expected" >&2
 ` + platformCommand + `
 IFS= read -r digest
 IFS= read -r size
@@ -195,18 +161,31 @@ head -c "$size" > "$stage/pencode-server"
 actual=$(checksum < "$stage/pencode-server")
 [ "${actual%% *}" = "$digest" ] || exit 1
 chmod 700 "$stage/pencode-server"
+[ "$("$stage/pencode-server" --version)" = "$expected" ] || { printf '[SSH] 下载的服务端版本不匹配\n' >&2; exit 1; }
 mv -f "$stage/pencode-server" "$server"
 rm -rf "$stage"
 trap - EXIT HUP INT TERM
+printf '[SSH] 已安装 %s，版本 %s\n' "$server" "$expected" >&2
 printf 'started\n'
 exec "$server"`
 }
 
 // Connect authenticates once and returns the same encrypted stdio stream after
 // bootstrap. Passwords are requested through askpass and never retained here.
-func (c Connector) Connect(ctx context.Context, target Target, progress func(string)) (io.ReadWriteCloser, error) {
+func (c Connector) Connect(ctx context.Context, target Target, progress func(string)) (conn io.ReadWriteCloser, err error) {
+	defer func() {
+		if err != nil && c.Output != nil {
+			fmt.Fprintf(c.Output, "[SSH %s] 连接失败：%v\n", target.Host, err)
+		}
+	}()
 	if err := target.Validate(); err != nil {
 		return nil, err
+	}
+	if c.Version == "" {
+		c.Version = version.Value
+	}
+	if !version.Valid(c.Version) {
+		return nil, fmt.Errorf("无效的服务端版本 %q", c.Version)
 	}
 	if c.Executable == "" {
 		c.Executable = "ssh"
@@ -217,13 +196,16 @@ func (c Connector) Connect(ctx context.Context, target Target, progress func(str
 	}
 	defer closePrompt()
 	report := func(message string) {
+		if c.Output != nil {
+			fmt.Fprintf(c.Output, "[SSH %s] %s\n", target.Host, message)
+		}
 		if progress != nil {
 			progress(message)
 		}
 	}
-	report("正在连接 SSH 并检测远端服务…")
+	report("正在连接 SSH 并检测 pencode-server " + c.Version + "…")
 	diagnostics := &boundedOutput{output: c.Output}
-	stream, err := transport.StartPeerWithEnv(c.Executable, diagnostics, env, c.arguments(target, bootstrapCommand(target), env != nil)...)
+	stream, err := transport.StartPeerWithEnv(c.Executable, diagnostics, env, c.arguments(target, bootstrapCommand(target, c.Version), env != nil)...)
 	if err != nil {
 		return nil, err
 	}
@@ -264,16 +246,20 @@ func (c Connector) Connect(ctx context.Context, target Target, progress func(str
 			return nil, err
 		}
 		report("正在校验 " + platform.String() + " 服务端…")
-		file, digest, err := c.artifact(target, platform)
+		if target.ServerBinary == "" && c.ServerDirectory == "" && c.Version != "dev" {
+			report("正在从 GitHub 下载 " + c.releaseAddress(platform) + "…")
+		}
+		artifact, err := c.artifact(ctx, target, platform)
 		if err != nil {
 			return nil, err
 		}
-		defer file.Close()
-		info, err := file.Stat()
+		defer artifact.Close()
+		report("服务端 SHA-256 校验通过：" + artifact.digest)
+		info, err := artifact.file.Stat()
 		if err != nil {
 			return nil, err
 		}
-		if _, err := fmt.Fprintf(stream, "%s\n%d\n", digest, info.Size()); err != nil {
+		if _, err := fmt.Fprintf(stream, "%s\n%d\n", artifact.digest, info.Size()); err != nil {
 			return nil, err
 		}
 		status, err = line()
@@ -283,8 +269,8 @@ func (c Connector) Connect(ctx context.Context, target Target, progress func(str
 		if status != "missing\n" {
 			return nil, fmt.Errorf("服务端校验响应无效")
 		}
-		report("正在上传并安装 pencode-server…")
-		if _, err := io.CopyN(stream, file, info.Size()); err != nil {
+		report("正在上传并安装 pencode-server " + c.Version + "…")
+		if _, err := io.CopyN(stream, artifact.file, info.Size()); err != nil {
 			return nil, err
 		}
 	}
@@ -298,6 +284,7 @@ func (c Connector) Connect(ctx context.Context, target Target, progress func(str
 		return nil, ctx.Err()
 	}
 	success = true
+	report("远端 pencode-server " + c.Version + " 已启动")
 	return &sshStream{ReadWriteCloser: stream, reader: reader, diagnostics: diagnostics, host: target.Host}, nil
 }
 
@@ -314,8 +301,10 @@ func (s *sshStream) Read(data []byte) (int, error) {
 		return n, fmt.Errorf("SSH %s: %w: %s", s.host, err, s.diagnostics.String())
 	}
 	if err == io.EOF {
-		if diagnostics := s.diagnostics.String(); diagnostics != "" {
-			err = fmt.Errorf("SSH %s: %w: %s", s.host, err, diagnostics)
+		if peer, ok := s.ReadWriteCloser.(interface{ Wait() error }); ok {
+			if exit := peer.Wait(); exit != nil {
+				err = fmt.Errorf("SSH %s: %w: %v: %s", s.host, err, exit, s.diagnostics.String())
+			}
 		}
 	}
 	return n, err

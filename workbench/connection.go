@@ -389,7 +389,7 @@ func (model *workspaceModel) pollConnection() bool {
 			c.recentProject = ""
 			c.setMessage(model.tr("连接失败：")+result.err.Error(), true)
 			c.open = true
-			model.logOutput(model.tr("远程连接"), c.message)
+			model.logOutput(remote.OutputChannelName, c.message)
 			return true
 		}
 		if result.profile.Remote() {
@@ -439,7 +439,7 @@ func (model *workspaceModel) pollConnection() bool {
 	if !c.busy && !c.lostHandled && s.backend != nil {
 		select {
 		case <-s.backend.Done():
-			model.logOutput(model.tr("远程连接"), fmt.Sprintf(model.tr("连接已断开：%v"), s.backend.Err()))
+			model.logOutput(remote.OutputChannelName, fmt.Sprintf(model.tr("连接已断开：%v"), s.backend.Err()))
 			if time.Since(c.connectedAt) >= 30*time.Second {
 				c.rapidLosses = 0
 			}

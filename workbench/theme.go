@@ -201,7 +201,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 		case "diffEditor.removedTextBackground":
 			return syntax.Color{R: 220, G: 53, B: 69, A: 96}, nil
 		// VS Code's default Git decoration colors; themes may still override them.
-		case "gitDecoration.addedResourceForeground", "testing.iconPassed":
+		case "gitDecoration.addedResourceForeground", "gitDecoration.untrackedResourceForeground", "testing.iconPassed":
 			return decoration(syntax.Color{R: 129, G: 184, B: 139, A: 255}, syntax.Color{R: 88, G: 124, B: 12, A: 255}), nil
 		case "gitDecoration.modifiedResourceForeground":
 			return decoration(syntax.Color{R: 226, G: 192, B: 141, A: 255}, syntax.Color{R: 137, G: 85, B: 3, A: 255}), nil
@@ -211,6 +211,8 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return decoration(syntax.Color{R: 115, G: 201, B: 145, A: 255}, syntax.Color{R: 0, G: 113, B: 0, A: 255}), nil
 		case "gitDecoration.conflictingResourceForeground":
 			return decoration(syntax.Color{R: 228, G: 103, B: 107, A: 255}, syntax.Color{R: 173, G: 7, B: 7, A: 255}), nil
+		case "gitDecoration.ignoredResourceForeground":
+			return decoration(syntax.Color{R: 140, G: 140, B: 140, A: 255}, syntax.Color{R: 142, G: 142, B: 142, A: 255}), nil
 		}
 		return syntax.Color{}, fmt.Errorf("unknown workbench theme color %q", key)
 	}

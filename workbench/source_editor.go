@@ -205,7 +205,13 @@ var sourceCommitActions = []struct{ ID, Label string }{
 
 func (a *workspaceModel) renderSourceMenu(b *sourceVNodeView) {
 	s := a.sourceState()
-	b.open("div", "context", "id", "sc-context-menu", "class", "pencode-editor-context sc-context-menu", "role", "menu", "aria-label", "Git commit actions", "style", fmt.Sprintf("left:%gpx;top:%gpx", s.MenuX, s.MenuY))
+	b.open("div", "context", "id", "sc-context-menu", "class", "pencode-editor-context sc-context-menu", "role", "menu", "aria-label", "Git actions", "style", fmt.Sprintf("left:%gpx;top:%gpx", s.MenuX, s.MenuY))
+	if s.MenuPath != "" {
+		b.button("sc-use:local", "Use Current", "role", "menuitem")
+		b.button("sc-use:incoming", "Use Incoming", "role", "menuitem")
+		b.close()
+		return
+	}
 	for _, action := range sourceCommitActions {
 		b.button("sc-op:"+action.ID, action.Label, "role", "menuitem")
 	}

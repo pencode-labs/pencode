@@ -8,6 +8,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/ebitengine/purego v0.11.2
 	github.com/go-gl/mathgl v1.2.0
+	github.com/google/pprof v0.0.0-20261111200114-fac431ef4d26
 	github.com/onix-engine/onix v0.0.0-00010101000000-000000000000
 	github.com/yuin/goldmark/v2 v2.1.9
 	golang.org/x/image v0.45.0

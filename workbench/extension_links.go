@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -43,7 +44,8 @@ func (s *pencodeExtensionSurface) openLink(href string) {
 	if u.Scheme == "" && u.Host != "" {
 		u.Scheme = "https"
 	}
-	switch strings.ToLower(u.Scheme) {
+	scheme := strings.ToLower(u.Scheme)
+	switch scheme {
 	case "http", "https", "mailto":
 		channel := s.model.outputStore().Channel("Extension: " + s.owner)
 		go func() {
@@ -53,16 +55,22 @@ func (s *pencodeExtensionSurface) openLink(href string) {
 				fmt.Fprintf(channel, "无法打开链接：%v\n", err)
 			}
 		}()
-	case "", "file":
+	case "", "file", "pencode-diff":
 		if u.Path == "" || u.Host != "" && u.Host != "localhost" {
 			return
 		}
 		name, line := extensionLinkLocation(u)
+		if scheme == "pencode-diff" {
+			name = path.Clean(u.Path)
+			if len(name) > 1 && filepath.VolumeName(filepath.FromSlash(name[1:])) != "" {
+				name = name[1:]
+			}
+		}
 		root := s.invocation.context.ProjectPath
 		if root == "" {
 			root = s.model.projectPath
 		}
-		if !path.IsAbs(name) {
+		if !path.IsAbs(name) && !filepath.IsAbs(filepath.FromSlash(name)) {
 			name = path.Join(root, name)
 		}
 		name = path.Clean(name)
@@ -81,6 +89,10 @@ func (s *pencodeExtensionSurface) openLink(href string) {
 			return
 		}
 		s.model.activateProject(project)
+		if scheme == "pencode-diff" {
+			s.model.sourceAction("sc-diff:" + url.PathEscape(name))
+			return
+		}
 		if err := s.model.requestFileOpen(project, relative, false, true, &fileNavigation{line: max(1, line)}); err != nil {
 			s.model.setProjectStatus(project, err.Error())
 		}

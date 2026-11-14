@@ -15,13 +15,24 @@ import (
 )
 
 func command(ctx context.Context, root string, args []string) ([]byte, error) {
+	return commandInput(ctx, root, args, nil)
+}
+
+func commandInput(ctx context.Context, root string, args []string, input []byte) ([]byte, error) {
 	if len(args) == 0 {
 		return nil, protocol.ErrProtocol
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	argv := []string{"--no-optional-locks", "--literal-pathspecs", "-c", "core.quotePath=false", "-c", "color.ui=false", "-C", root}
+	argv := []string{"--no-optional-locks"}
+	if args[0] != "check-ignore" {
+		argv = append(argv, "--literal-pathspecs")
+	}
+	argv = append(argv, "-c", "core.quotePath=false", "-c", "color.ui=false", "-C", root)
 	cmd := exec.CommandContext(ctx, "git", append(argv, args...)...)
+	if input != nil {
+		cmd.Stdin = bytes.NewReader(input)
+	}
 	hideServiceWindow(cmd)
 	cmd.WaitDelay = 200 * time.Millisecond
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
@@ -31,6 +42,10 @@ func command(ctx context.Context, root string, args []string) ([]byte, error) {
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("Git operation interrupted: %w", ctx.Err())
 	}
+	var exit *exec.ExitError
+	if input != nil && args[0] == "check-ignore" && errors.As(err, &exit) && exit.ExitCode() == 1 {
+		err = nil // No paths matched an ignore rule.
+	}
 	if err != nil {
 		message := strings.TrimSpace(string(stderr.data))
 		if message == "" {
@@ -39,6 +54,52 @@ func command(ctx context.Context, root string, args []string) ([]byte, error) {
 		return nil, fmt.Errorf("git %s: %s", args[0], message)
 	}
 	return output.data, nil
+}
+
+func (s *services) gitCheckIgnore(ctx context.Context, root string, d *protocol.Decoder, e *protocol.Encoder) error {
+	count := d.U32()
+	if count == 0 || count > protocol.IndexPageSize {
+		return protocol.ErrProtocol
+	}
+	var input []byte
+	for range count {
+		name := d.String()
+		if name == "" || strings.IndexByte(name, 0) >= 0 {
+			return protocol.ErrProtocol
+		}
+		input = append(input, name...)
+		input = append(input, 0)
+	}
+	if err := d.Done(); err != nil {
+		return err
+	}
+	data, err := commandInput(ctx, root, []string{"check-ignore", "--stdin", "-z", "--verbose", "--non-matching"}, input)
+	if err != nil {
+		return err
+	}
+	e.U32(count)
+	for range count {
+		var pattern []byte
+		for field := range 4 {
+			value, rest, found := bytes.Cut(data, []byte{0})
+			if !found {
+				return protocol.ErrProtocol
+			}
+			if field == 2 {
+				pattern = value
+			}
+			data = rest
+		}
+		if len(pattern) != 0 && pattern[0] != '!' {
+			e.U32(1)
+		} else {
+			e.U32(0)
+		}
+	}
+	if len(data) != 0 {
+		return protocol.ErrProtocol
+	}
+	return nil
 }
 
 type limitedOutput struct{ data []byte }

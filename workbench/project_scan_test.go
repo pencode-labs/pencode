@@ -137,7 +137,7 @@ func TestPencodeScanShowsRootBeforeWatchIsReady(t *testing.T) {
 	connectPencodeProject(t, p)
 	ready := make(chan struct{})
 	wakes := make(chan struct{}, 1)
-	p.scan = newBackendProjectScan(p.backend, p.workspace, true, 0, func() {
+	p.scan = newBackendProjectScan(p.backend, p.workspace, true, 0, nil, func() {
 		select {
 		case wakes <- struct{}{}:
 		default:
@@ -287,7 +287,7 @@ func TestPencodeScanBatchesInvalidateQuickOpen(t *testing.T) {
 	}
 	project := &pencodeProject{Path: root, Files: make(map[string]*openFile)}
 	connectPencodeProject(t, project)
-	project.scan = newBackendProjectScan(project.backend, project.workspace, false, 0, nil, nil)
+	project.scan = newBackendProjectScan(project.backend, project.workspace, false, 0, nil, nil, nil)
 	t.Cleanup(project.stopScan)
 	model := workspaceModel{backend: project.backend, projects: []*pencodeProject{project}, activeProjectIndex: 0, quickQuery: "file-2999"}
 	model.refreshQuickMatches()

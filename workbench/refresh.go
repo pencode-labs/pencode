@@ -15,6 +15,8 @@ const (
 	pencodeRefreshOutput
 	pencodeRefreshSelection
 	pencodeRefreshSourcePanel
+	pencodeRefreshSave
+	pencodeRefreshGit
 )
 
 func (m *workspaceModel) refreshRegion(world *module.Content, region pencodeRefresh) {
@@ -49,6 +51,8 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 			}
 		}
 		view.Text("line-info", m.lineInfo)
+	}
+	if regions&(pencodeRefreshEditor|pencodeRefreshSave) != 0 {
 		view.Text("launcher-status", m.status)
 		// A first edit pins the preview and changes the dirty indicator, without
 		// reconciling the explorer or the other workbench regions.
@@ -65,6 +69,20 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 				props.Dirty, props.Preview = file.Dirty, file.Preview
 				c.World.Mut[htmlui.Component[tabProps, struct{}]](entity).Props = props
 				c.World.UpdateState[tabProps, struct{}](entity, func(*struct{}) {})
+			}
+		}
+	}
+	if regions&pencodeRefreshGit != 0 {
+		m.renderSourceStatus(view)
+		for entity, access := range c.World.Query[htmlui.Component[treeProps, struct{}]]() {
+			props := access.Ref().Props
+			if props.Model != m || props.Project == nil {
+				continue
+			}
+			if status := props.Project.treeGit.names[props.Path]; props.GitStatus != status {
+				props.GitStatus = status
+				c.World.Mut[htmlui.Component[treeProps, struct{}]](entity).Props = props
+				c.World.UpdateState[treeProps, struct{}](entity, func(*struct{}) {})
 			}
 		}
 	}

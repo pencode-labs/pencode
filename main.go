@@ -14,6 +14,7 @@ import (
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/internal/desktopopen"
 	"github.com/pencode-labs/pencode/internal/environment"
+	"github.com/pencode-labs/pencode/internal/profiling"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/internal/updater"
 	"github.com/pencode-labs/pencode/internal/version"
@@ -49,6 +50,11 @@ func main() {
 	}
 	systemproxy.Configure()
 	if len(os.Args) == 2 && os.Args[1] == "--pencode-server" {
+		recorder, err := profiling.Start("server")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Pencode profiling:", err)
+		}
+		defer recorder.Close()
 		if err := server.Serve(context.Background(), transport.Stdio{}, server.Options{}); err != nil {
 			panic(err)
 		}
@@ -71,6 +77,11 @@ func main() {
 		os.Exit(2)
 	}
 	initial.SSH.Port = uint16(port)
+	recorder, err := profiling.Start("gui")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Pencode profiling:", err)
+	}
+	defer recorder.Close()
 	plan, source, err := project.OpenModuleProject()
 	if err != nil {
 		panic(err)
@@ -121,6 +132,11 @@ func main() {
 	}
 	if err := app.AddSystems(onix.StagePostUpdate, session.ScrollSystem(), session.LayoutSystem()); err != nil {
 		panic(err)
+	}
+	if recorder != nil {
+		if err := app.AddSystems(onix.StageRender, session.ProfilingSystem(recorder)); err != nil {
+			panic(err)
+		}
 	}
 
 	if err := OnixOpenWindow(app, plan.Spec, source); err != nil {

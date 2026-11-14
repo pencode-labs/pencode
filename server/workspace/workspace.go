@@ -277,6 +277,9 @@ func (s *Store) Change(id, version, offset uint64, start, end uint32, text strin
 	return d.version, nil
 }
 
+// SaveTemporaryPrefix identifies files staged for an atomic save.
+const SaveTemporaryPrefix = ".pencode-save-"
+
 func (s *Store) Save(id, version uint64) error {
 	d := s.documents[id]
 	if d == nil {
@@ -319,7 +322,7 @@ func (s *Store) Save(id, version uint64) error {
 	if err != nil {
 		return err
 	}
-	name := filepath.Join(filepath.Dir(relative), ".pencode-"+rand.Text())
+	name := filepath.Join(filepath.Dir(relative), SaveTemporaryPrefix+rand.Text())
 	f, err := d.project.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
 	if err != nil {
 		return err

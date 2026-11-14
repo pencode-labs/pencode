@@ -143,12 +143,16 @@ func (m *workspaceModel) pollProjectWatches() bool {
 			if count != 0 || reset {
 				m.distributeFileChanges(project, files[:count], reset)
 			}
+			if !reset && count != 0 && changes&protocol.WorkspaceTreeChanged != 0 && changes&(protocol.WorkspaceIgnoreChanged|protocol.WorkspaceRepositoriesChanged) == 0 && !project.watchTreeChanged(files[:count]) {
+				changes &^= protocol.WorkspaceTreeChanged
+			}
 			project.treePending = project.treePending || changes&protocol.WorkspaceTreeChanged != 0
 			if changes&protocol.WorkspaceGitChanged != 0 {
 				project.sourceControl.RefreshPending = true
 			}
 			if changes&protocol.WorkspaceRepositoriesChanged != 0 {
 				project.sourceControl.RepositoriesLoaded = false
+				project.treeRepositories = nil
 			}
 			select {
 			case err := <-w.errors:
@@ -171,6 +175,31 @@ func (m *workspaceModel) pollProjectWatches() bool {
 		}
 	}
 	return changed
+}
+
+// Atomic replacement can report Created for a file already in the explorer.
+// Only structural changes and ignore rules require another directory snapshot.
+func (project *pencodeProject) watchTreeChanged(files []protocol.FileEvent) bool {
+	for _, event := range files {
+		name := event.Path[strings.LastIndexByte(event.Path, '/')+1:]
+		if name == ".gitignore" || name == ".git" || event.Directory || event.Op&(protocol.FileRemoved|protocol.FileRenamed) != 0 {
+			return true
+		}
+		if event.Op&protocol.FileCreated == 0 {
+			continue
+		}
+		found := false
+		for _, entry := range project.Entries {
+			if entry.Path == event.Path {
+				found = !entry.IsDir
+				break
+			}
+		}
+		if !found {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *pencodeProjectWatch) collect(batch protocol.FileChanges) {
@@ -214,6 +243,9 @@ func (m *workspaceModel) distributeFileChanges(project *pencodeProject, files []
 				break
 			}
 		}
+	}
+	if len(m.actions.sessions) == 0 && len(m.customDocuments) == 0 {
+		return
 	}
 	var events [128]peb.FileEvent
 	for i, file := range files {

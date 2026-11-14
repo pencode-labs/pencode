@@ -12,6 +12,7 @@ import (
 
 	"github.com/pencode-labs/pencode/internal/filewatch"
 	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/server/workspace"
 )
 
 const (
@@ -223,6 +224,9 @@ func (w *workspaceWatch) event(ctx context.Context, event filewatch.Event) error
 	// Native event paths are already clean. Split without Dir's Windows
 	// volume concatenation, preserving drive, UNC and Unix roots.
 	parent, name := filepath.Split(event.Name)
+	if strings.HasPrefix(name, workspace.SaveTemporaryPrefix) {
+		return nil
+	}
 	if len(parent) > len(filepath.VolumeName(parent))+1 {
 		parent = parent[:len(parent)-1]
 	}
@@ -264,6 +268,9 @@ func (w *workspaceWatch) event(ctx context.Context, event filewatch.Event) error
 		w.record(event)
 	}
 	changes := protocol.WorkspaceGitChanged
+	if name == ".gitignore" || metadata && (name == "index" || name == "exclude" || name == "config") {
+		changes |= protocol.WorkspaceTreeChanged | protocol.WorkspaceIgnoreChanged
+	}
 	gitPointer := name == ".git"
 	if gitPointer {
 		metadata = false

@@ -751,6 +751,7 @@ func (model *workspaceModel) runShortcut(world *module.Content, action pencodeSh
 	switch action {
 	case pencodeShortcutSave:
 		model.saveActiveFile()
+		model.refreshRegion(world, pencodeRefreshSave)
 	case pencodeShortcutUndo:
 		model.undoActiveContent(world)
 	case pencodeShortcutRedo:

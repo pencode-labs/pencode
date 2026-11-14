@@ -57,7 +57,7 @@ func TestWorkspaceWatchNativeEvents(t *testing.T) {
 		{"create", all},
 		{"remove", all},
 		{"rename", all},
-		{"git-index", protocol.WorkspaceGitChanged},
+		{"git-index", all | protocol.WorkspaceIgnoreChanged},
 		{"git-ref", protocol.WorkspaceGitChanged},
 	} {
 		t.Run(test.name, func(t *testing.T) {

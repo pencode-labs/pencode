@@ -39,12 +39,13 @@ type sourceCommit struct {
 }
 type sourceEdge struct{ From, To, Color, ToColor int }
 type sourceSnapshot struct {
-	Repository  sourceRepository
-	Branch      string
-	HistoryRefs string
-	Groups      [3][]sourceFile // conflicts, index, working tree
-	Branches    []sourceBranch
-	Files       []sourceFile
+	Repository   sourceRepository
+	Branch       string
+	HistoryRefs  string
+	MergeMessage string
+	Groups       [3][]sourceFile // conflicts, index, working tree
+	Branches     []sourceBranch
+	Files        []sourceFile
 	sourceHistoryPage
 	Sync    sourceSyncStatus
 	HasHead bool
@@ -176,6 +177,13 @@ func (r sourceRepository) statusSnapshot() (sourceSnapshot, error) {
 			s.Groups[2] = append(s.Groups[2], f)
 		}
 	}
+	if head, err := r.command("rev-parse", "--verify", "--quiet", "MERGE_HEAD"); err == nil {
+		name := strings.TrimSpace(string(head))
+		if ref, err := r.command("name-rev", "--name-only", "--no-undefined", name); err == nil {
+			name = strings.TrimPrefix(strings.TrimSpace(string(ref)), "remotes/")
+		}
+		s.MergeMessage = "Merge from " + name
+	}
 	return s, nil
 }
 
@@ -213,7 +221,7 @@ func (r sourceRepository) snapshot(limit int) (sourceSnapshot, error) {
 type sourceSyncStatus struct{ Ahead, Behind int }
 
 func (s sourceSnapshot) syncPending() bool {
-	return len(s.Files) == 0 && (s.Sync.Ahead != 0 || s.Sync.Behind != 0)
+	return s.MergeMessage == "" && len(s.Files) == 0 && (s.Sync.Ahead != 0 || s.Sync.Behind != 0)
 }
 
 func (r sourceRepository) syncStatus() (sourceSyncStatus, error) {
@@ -233,30 +241,30 @@ func (r sourceRepository) syncStatus() (sourceSyncStatus, error) {
 	return status, err
 }
 
-func (r sourceRepository) syncChanges() error {
+func (r sourceRepository) syncChanges() (bool, error) {
 	data, err := r.command("status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(data) != 0 {
-		return errors.New("请先提交或清理工作区修改，再同步远程。")
+		return false, errors.New("请先提交或清理工作区修改，再同步远程。")
 	}
 	if _, err := r.command("fetch"); err != nil {
-		return err
+		return false, err
 	}
 	status, err := r.syncStatus()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if status.Behind != 0 {
 		if _, err := r.command("pull", "--no-rebase", "--no-edit"); err != nil {
-			return err
+			return true, err
 		}
 	}
 	if status.Ahead != 0 {
-		_, err = r.command("push")
+		err = r.push()
 	}
-	return err
+	return status.Behind != 0, err
 }
 
 type sourceHistoryPage struct {
@@ -814,4 +822,32 @@ func (r sourceRepository) saveWorktree(t sourceTab) error {
 		return err
 	}
 	return r.Backend.SaveFile(r.baseContext(), r.Root, t.Path, t.Disk, t.Result)
+}
+
+func (r sourceRepository) push() error {
+	_, err := r.command("push")
+	if sourcePushRejected(err) {
+		if _, fetchErr := r.command("fetch"); fetchErr != nil {
+			return fetchErr
+		}
+	}
+	return err
+}
+
+func sourcePushRejected(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "(fetch first)") || strings.Contains(err.Error(), "(non-fast-forward)"))
+}
+
+func (result sourceResult) expectedGitError() bool {
+	if result.Err == nil {
+		return false
+	}
+	if sourcePushRejected(result.Err) {
+		return true
+	}
+	switch result.Message {
+	case "Changes synchronized", "Git pull completed", "Git merge completed":
+		return result.Snapshot != nil && len(result.Snapshot.Groups[0]) != 0
+	}
+	return false
 }

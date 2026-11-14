@@ -40,6 +40,8 @@ type EditorReply struct {
 // resolve against ActionContext.ProjectPath. File links accept :line[:column]
 // and #Lline locations. An explicit click binding takes ownership of the link.
 // Native buttons can use role="link" and data-pencode-href for the same navigation.
+// pencode-diff:/absolute/path opens the host Source Control comparison for the
+// file's current changes (working tree, staged, or merge), using its preview tab.
 // EditorTab and Panel fragments can use data-pencode-layout="fill" without host
 // padding or scrolling. A fill Panel supplies its own header; reserve 40px on
 // the header's right for the workbench close button. An element with data-ref and

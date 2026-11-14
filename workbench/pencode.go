@@ -61,6 +61,7 @@ type treeEntry struct {
 	Depth    uint16
 	IsDir    bool
 	Openable bool
+	Ignored  bool
 }
 
 func (e treeEntry) Name() string { return e.Path[strings.LastIndexByte(e.Path, '/')+1:] }
@@ -102,6 +103,7 @@ type pencodeProject struct {
 	scan                    *pencodeProjectScan
 	backend                 *client.Client
 	ExpandedDirs            map[string]bool
+	treeGit                 pencodeTreeGit
 	Name                    string
 	PreviewPath             string
 	historyKey              string
@@ -111,6 +113,7 @@ type pencodeProject struct {
 	workspace               protocol.Workspace
 	Tabs                    []string
 	Entries                 []treeEntry
+	treeRepositories        []string
 	tree                    pencodeTreeView
 	sourceControl           pencodeSourceControl
 	index                   uint64
@@ -315,6 +318,8 @@ type treeProps struct {
 	Openable  bool
 	HasErrors bool
 	Editing   bool
+	Ignored   bool
+	GitStatus treeGitStatus
 }
 
 type tabProps struct {
@@ -426,8 +431,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				view.Attr("icon", "src", props.Model.themedIcon(treeIcon(props), treeIconForeground(props)))
 				view.Text("name", props.Name)
-				nameClass := "pencode-tree-name"
-				if props.HasErrors {
+				nameClass := props.GitStatus.nameClass()
+				if props.Ignored {
+					nameClass = "pencode-tree-name pencode-ignored-name"
+				} else if props.HasErrors {
 					nameClass = "pencode-tree-name pencode-error-name"
 				}
 				view.Attr("name", "class", nameClass)
@@ -2378,7 +2385,12 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 		changed = true
 	}
 	if model.updateSourceControl(context.World, state) {
-		changed = true
+		s := model.sourceState()
+		if !s.visible() && model.bottom.active != pencodePanelSourceControl && !s.modal() {
+			model.refreshRegion(context.World, pencodeRefreshGit)
+		} else {
+			changed = true
+		}
 	}
 	if model.dismissPopupsOutside(context.World, state) {
 		changed = true
@@ -2396,6 +2408,9 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 		changed = true
 	}
 	if model.handleShortcutKeys(context.World, state, runtime.GOOS) {
+		if !changed && model.refresh&pencodeRefreshSave != 0 && !model.sourceState().visible() && model.settings.Bindings[pencodeShortcutDefinitions[pencodeShortcutSave].id].matches(state, runtime.GOOS) {
+			return nil
+		}
 		changed = true
 	}
 	if changed {

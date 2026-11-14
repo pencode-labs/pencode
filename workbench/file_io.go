@@ -381,7 +381,17 @@ func (m *workspaceModel) pollFileIO() bool {
 			j := r.job
 			delete(q.pending, j.id)
 			j.finished, j.err = true, r.err
-			changed = true
+			structural := j.kind != fileSave || m.closing.action != pencodeCloseNone
+			if j.kind == fileReload && r.external && r.err == nil && m.closing.action == pencodeCloseNone {
+				structural = false
+				for _, item := range r.reload {
+					if item.err != nil || item.file == nil || !item.file.text() || m.customDocuments[item.file] != nil || item.before != item.content || item.file.content() != item.before {
+						structural = true
+						break
+					}
+				}
+			}
+			changed = changed || structural
 			if j.backend != m.backend {
 				j.cancel()
 				r.release()
@@ -391,6 +401,9 @@ func (m *workspaceModel) pollFileIO() bool {
 			j.cancel()
 			r.release()
 			m.finishFileClose()
+			if !structural {
+				m.refreshRegion(m.fontResources, pencodeRefreshSave)
+			}
 		default:
 			return changed
 		}

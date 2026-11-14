@@ -329,7 +329,8 @@ func TestSourceControlSyncChanges(t *testing.T) {
 			}
 			var err error
 			if mode == "push" {
-				m := &workspaceModel{projectPath: local.Root, backend: local.Backend}
+				p := &pencodeProject{Path: local.Root, Entries: []treeEntry{{Path: "resources", IsDir: true}}, index: 7}
+				m := &workspaceModel{projectPath: local.Root, backend: local.Backend, projects: []*pencodeProject{p}, activeProjectIndex: 0}
 				s := m.sourceState()
 				s.Snapshot, s.CommitMessage = snapshot, "keep this draft"
 				m.sourceAction("sc-create-commit")
@@ -338,17 +339,24 @@ func TestSourceControlSyncChanges(t *testing.T) {
 				}
 				result := <-s.Done
 				err = result.Err
-				if !result.Reload || result.Message != "Changes synchronized" {
-					t.Fatal("synchronization did not request a workspace refresh")
+				if result.Reload || result.Message != "Changes synchronized" {
+					t.Fatal("push-only synchronization requested a workspace refresh")
 				}
 				s.Done <- result
-				m.pollSourceResult(s, nil)
+				m.pollSourceResult(s, p)
 				s.stop()
+				if p.scan != nil || p.index != 7 || len(p.Entries) != 1 || m.fileIO != nil {
+					t.Fatal("push-only synchronization reloaded the explorer or documents")
+				}
 				if s.CommitMessage != "keep this draft" || s.Snapshot.syncPending() {
 					t.Fatal("synchronization lost the draft message or retained stale counts")
 				}
 			} else {
-				err = local.syncChanges()
+				var reload bool
+				reload, err = local.syncChanges()
+				if reload != (want.Behind != 0) {
+					t.Fatalf("worktree reload=%v, behind=%d", reload, want.Behind)
+				}
 			}
 			after := sourceTestSnapshot(t, local)
 			if mode == "conflict" || mode == "dirty" {

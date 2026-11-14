@@ -174,7 +174,8 @@ func TestPencodeCustomWorkbenchThemeAndLightDefaults(t *testing.T) {
    "input.background":"#eeddcc", "dropdown.background":"#ffeedd",
    "widget.shadow":"#00000000", "icon.foreground":"#2468ac",
    "window.activeBorder":"#135790", "editorRuler.foreground":"#456789",
-   "scmGraph.foreground2":"#8c36b0", "symbolIcon.functionForeground":"#bc246880"
+   "scmGraph.foreground2":"#8c36b0", "symbolIcon.functionForeground":"#bc246880",
+   "gitDecoration.ignoredResourceForeground":"#789abc"
   }
  }`)}}, "resources/custom.json")
 	if err != nil {
@@ -193,8 +194,15 @@ func TestPencodeCustomWorkbenchThemeAndLightDefaults(t *testing.T) {
   <select data-ref="theme-select" class="pencode-settings-select"></select>
   <span data-ref="graph-main" class="sc-graph-color-0"></span>
   <span data-ref="graph-branch" class="sc-graph-color-1"></span>
+  <button class="pencode-tree-row directory"><span data-ref="ignored-directory" class="pencode-tree-name pencode-ignored-name">cache</span></button>
+  <button class="pencode-tree-row active"><span data-ref="ignored-active" class="pencode-tree-name pencode-ignored-name">debug.log</span></button>
  </div>`
 	computed := pencodeComputedTheme(t, prepared, fixture)
+	for _, ref := range []string{"ignored-directory", "ignored-active"} {
+		if computed[ref].Color.Color != (style.Color{R: 0x78, G: 0x9a, B: 0xbc, A: 255}) {
+			t.Fatalf("%s did not use the custom Git ignore color", ref)
+		}
+	}
 	if computed["graph-main"].Color.Color != (style.Color{G: 109, B: 190, A: 255}) || computed["graph-branch"].Color.Color != (style.Color{R: 140, G: 54, B: 176, A: 255}) {
 		t.Fatal("graph colors lost the light palette or custom theme override")
 	}

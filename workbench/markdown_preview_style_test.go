@@ -87,6 +87,10 @@ func TestMarkdownPreviewStylesFollowWorkbenchTheme(t *testing.T) {
 	model := &workspaceModel{}
 	document := &pencodeCustomDocument{model: model}
 	view := &peb.EditorView{HTML: `<article class="markdown-preview"><a data-ref="link" href="https://example.com">Link</a><table data-ref="table"><thead><tr><th data-ref="header">Title</th></tr></thead><tbody><tr><td data-ref="cell">Body</td></tr></tbody></table><pre><code><span data-ref="syntax-keyword" class="tok-keyword">return</span> <span data-ref="syntax-string" class="tok-string">value</span> <span data-ref="syntax-number" class="tok-number">42</span><span data-ref="syntax-comment" class="tok-comment">comment</span><span data-ref="syntax-type" class="tok-type">Type</span><span data-ref="syntax-function" class="tok-function">fn</span><span data-ref="syntax-operator" class="tok-operator">+</span></code></pre><div class="mermaid"><div class="diagram" style="width:200px;height:100px"><div class="diagram-node" data-ref="diagram-node" style="left:10px;top:10px;width:80px;height:42px"></div><div class="diagram-node diagram-decision" data-ref="diagram-decision" style="left:110px;top:10px;width:80px;height:42px"></div><span class="diagram-label diagram-edge-label" data-ref="diagram-edge" style="left:100px;top:70px">是</span><span class="diagram-label" data-ref="diagram-label" style="left:100px;top:50px;transform:translateX(-50%);">中文标签</span></div></div></article>`, CSS: string(previewCSS)}
+	headingScales := [...]float64{2, 1.75, 1.5, 1.25, 1.125, 1}
+	for i := range headingScales {
+		view.HTML = strings.Replace(view.HTML, "</article>", fmt.Sprintf(`<h%d data-ref="heading-%d">标题 <span data-ref="heading-%d-text">文字</span></h%d></article>`, i+1, i+1, i+1, i+1), 1)
+	}
 	syntaxScopes := map[string]string{
 		"syntax-keyword": "keyword", "syntax-string": "string", "syntax-number": "constant.numeric",
 		"syntax-comment": "comment", "syntax-type": "entity.name.type", "syntax-function": "entity.name.function", "syntax-operator": "keyword.operator",
@@ -142,6 +146,13 @@ func TestMarkdownPreviewStylesFollowWorkbenchTheme(t *testing.T) {
 			}
 			for node, value := range computed {
 				ref, _ := node.Attr("data-ref")
+				if strings.HasPrefix(ref, "heading-") {
+					level := int(ref[len("heading-")] - '1')
+					wantSize := style.LengthPx(16 * headingScales[level])
+					if value.FontSize != wantSize || value.FontWeight != style.Number(700) {
+						t.Errorf("%s font = %v/%v, want %v/bold", ref, value.FontSize, value.FontWeight, wantSize)
+					}
+				}
 				if scope := syntaxScopes[ref]; scope != "" {
 					want := style.ColorValue(style.Color(theme.Resolve(scope).Foreground))
 					if value.Color != want {

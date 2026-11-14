@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/server/workspace"
 )
 
 func readServiceFile(root, name string, links bool, limit int) ([]byte, error) {
@@ -82,7 +83,7 @@ func saveServiceFile(root, name, before, after string) error {
 	var tmp string
 	var f *os.File
 	for n := 0; n < 8; n++ {
-		tmp = filepath.Join(filepath.Dir(name), fmt.Sprintf(".pencode-save-%d-%d", time.Now().UnixNano(), n))
+		tmp = filepath.Join(filepath.Dir(name), fmt.Sprintf("%s%d-%d", workspace.SaveTemporaryPrefix, time.Now().UnixNano(), n))
 		f, err = r.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 		if err == nil {
 			break

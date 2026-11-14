@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/pencode-labs/pencode/output"
 )
 
 func marketArchive(t *testing.T, files map[string]string) []byte {
@@ -93,6 +95,67 @@ func TestMarketplaceReleaseCheckFailureIsNotDownloadFailure(t *testing.T) {
 	}
 	if !strings.Contains(items[0].Problem, "HTTP 403") || strings.Contains(items[0].Problem, "下载") || items[0].URL != "" {
 		t.Fatal(items[0])
+	}
+}
+
+func TestMarketplaceHTTPDiagnostics(t *testing.T) {
+	for _, test := range []struct {
+		name, body, message string
+		status              int
+	}{
+		{name: "success", body: "package contents", status: http.StatusOK},
+		{name: "rate limit", body: `{"message":"API rate limit exceeded"}`, message: "API rate limit exceeded", status: http.StatusForbidden},
+		{name: "proxy denial", body: "Blocked by proxy", status: http.StatusForbidden},
+		{name: "secondary limit", body: `{"message":"You have exceeded a secondary rate limit"}`, message: "You have exceeded a secondary rate limit", status: http.StatusTooManyRequests},
+		{name: "large body", body: strings.Repeat("x", 8<<10) + "body-tail", status: http.StatusBadGateway},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.UserAgent() != "Pencode-Extensions" {
+					t.Error("missing marketplace user agent")
+				}
+				w.Header().Set("X-GitHub-Request-Id", "request-id")
+				w.Header().Set("X-RateLimit-Limit", "60")
+				w.Header().Set("X-RateLimit-Remaining", "0")
+				w.Header().Set("X-RateLimit-Reset", "1794642007")
+				w.Header().Set("Retry-After", "60")
+				w.WriteHeader(test.status)
+				io.WriteString(w, test.body)
+			}))
+			defer server.Close()
+			var store output.Store
+			response, err := (Marketplace{}).get(output.WithStore(t.Context(), &store), server.URL)
+			logs, _ := store.Channel(MarketplaceOutputChannelName).Snapshot()
+			if !strings.Contains(logs, "GET "+server.URL) || !strings.Contains(logs, fmt.Sprintf("HTTP %d", test.status)) {
+				t.Fatal("missing request diagnostics", logs)
+			}
+			if test.status == http.StatusOK {
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer response.Body.Close()
+				body, err := io.ReadAll(response.Body)
+				if err != nil || string(body) != test.body || strings.Contains(logs, test.body) {
+					t.Fatal("successful response was consumed or logged", string(body), err, logs)
+				}
+				return
+			}
+			if response != nil || err == nil || !strings.Contains(err.Error(), test.message) {
+				t.Fatal(response, err)
+			}
+			for _, detail := range [...]string{"X-Github-Request-Id: request-id", "X-RateLimit-Limit: 60", "X-RateLimit-Remaining: 0", "X-RateLimit-Reset: 1794642007", "Retry-After: 60", "Response body:"} {
+				if !strings.Contains(strings.ToLower(logs), strings.ToLower(detail)) {
+					t.Errorf("missing %q in %s", detail, logs)
+				}
+			}
+			if len(test.body) > 4<<10 {
+				if !strings.Contains(logs, "truncated at 4 KiB") || strings.Contains(logs, "body-tail") || len(logs) > 5<<10 {
+					t.Fatal("error body logging was not bounded", len(logs))
+				}
+			} else if !strings.Contains(logs, fmt.Sprintf("%q", []byte(test.body))) {
+				t.Fatal("missing response body", logs)
+			}
+		})
 	}
 }
 

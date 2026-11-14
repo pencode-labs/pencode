@@ -100,6 +100,8 @@ pencode-server --listen 0.0.0.0:8080 --token 'your-secret-token'
 
 `--listen` 模式必须指定非空 token，通过 HTTP `Authorization: Bearer` 请求头校验；不指定 `--listen` 时继续使用标准输入输出。`ws://` 为明文传输，跨公网使用时应通过 TLS 反向代理提供 `wss://`。
 
+开发版本默认持续记录 CPU、Go 堆、进程／系统内存与可用的 GPU 指标，保存到 `~/.pencode/profiles/`。使用 `PENCODE_DEBUG=0` 关闭，或用 `PENCODE_PROFILE_DIR` 指定目录。采样、留存和 pprof 分析方法见[持续性能记录](docs/profiling.zh-CN.md)。
+
 ### 验证独立包
 
 在 Pencode 仓库根目录执行：

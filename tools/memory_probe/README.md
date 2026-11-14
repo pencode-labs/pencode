@@ -1,6 +1,6 @@
 # 按需内存诊断
 
-该工具用 Go overlay 注入诊断代码。普通构建不会包含 HTTP 服务、采样或强制 GC。
+该工具用 Go overlay 注入按需诊断代码及 HTTP 服务。开发构建现已默认提供[持续性能记录](../../docs/profiling.zh-CN.md)；普通构建不包含本工具的 HTTP 服务或强制 GC。需要隔离按需实验时可设置 `PENCODE_DEBUG=0`，关闭持续采样。
 
 在 Pencode 仓库的物理路径执行（macOS 的 `/tmp` 是 `/private/tmp` 的符号链接，Go 构建路径需与 overlay 一致）：
 

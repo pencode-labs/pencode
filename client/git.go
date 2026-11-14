@@ -39,3 +39,35 @@ func (c *Client) Git(ctx context.Context, root string, args ...string) ([]byte, 
 	}
 	return data, d.Done()
 }
+
+// CheckGitIgnore uses Git's index and exclusion rules, including negation and
+// global excludes. Paths are sent on stdin to avoid platform argv size limits.
+func (c *Client) CheckGitIgnore(ctx context.Context, root string, paths []string, dst []bool) ([]bool, error) {
+	if len(paths) == 0 {
+		return dst[:0], nil
+	}
+	if len(paths) > protocol.IndexPageSize {
+		return nil, protocol.ErrProtocol
+	}
+	e := service(protocol.GitCheckIgnore, root)
+	e.U32(uint32(len(paths)))
+	for _, name := range paths {
+		e.String(name)
+	}
+	d, err := c.execute(ctx, &e)
+	if err != nil {
+		return nil, err
+	}
+	if d.U32() != uint32(len(paths)) {
+		return nil, protocol.ErrProtocol
+	}
+	dst = dst[:0]
+	for range paths {
+		ignored := d.U32()
+		if ignored > 1 {
+			return nil, protocol.ErrProtocol
+		}
+		dst = append(dst, ignored != 0)
+	}
+	return dst, d.Done()
+}

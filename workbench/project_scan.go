@@ -31,18 +31,19 @@ type pencodeTreeBatch struct {
 }
 
 type pencodeProjectScan struct {
-	cancel   context.CancelFunc
-	results  chan *pencodeTreeBatch
-	buffers  chan *pencodeTreeBatch
-	entries  []treeEntry
-	previous uint64
-	loaded   int
-	initial  bool
-	staged   bool
-	preview  bool
+	cancel       context.CancelFunc
+	results      chan *pencodeTreeBatch
+	buffers      chan *pencodeTreeBatch
+	entries      []treeEntry
+	repositories []string
+	previous     uint64
+	loaded       int
+	initial      bool
+	staged       bool
+	preview      bool
 }
 
-func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace, initial bool, previous uint64, wake func(), ready <-chan struct{}) *pencodeProjectScan {
+func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace, initial bool, previous uint64, repositories []string, wake func(), ready <-chan struct{}) *pencodeProjectScan {
 	ctx, cancel := context.WithCancel(context.Background())
 	scan := &pencodeProjectScan{cancel: cancel, initial: initial, previous: previous, results: make(chan *pencodeTreeBatch, 2), buffers: make(chan *pencodeTreeBatch, 2)}
 	for range 2 {
@@ -64,6 +65,14 @@ func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace,
 			case <-ready:
 			}
 		}
+		if repositories == nil {
+			var err error
+			repositories, err = backend.GitRepositories(ctx, workspace.Path)
+			if err == nil && repositories == nil {
+				repositories = []string{}
+			}
+		}
+		scan.repositories = repositories
 		var id uint64
 		var err error
 		if previous != 0 {
@@ -97,6 +106,7 @@ func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace,
 				batch.entries[batch.count] = treeEntry{Path: entry.Path, Depth: entry.Depth, IsDir: entry.Directory, Openable: !entry.Directory && isTextFile(entry.Name())}
 				batch.count++
 			}
+			markTreeGitIgnored(ctx, backend, workspace.Path, repositories, batch.entries[:batch.count])
 			offset += len(entries)
 			if message != "" && err == nil {
 				err = fmt.Errorf("%s", message)
@@ -119,6 +129,40 @@ func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace,
 		}
 	}()
 	return scan
+}
+
+// Decorations are resolved once per published page, never during rendering.
+// The closest repository owns each entry, including submodules and worktrees.
+func markTreeGitIgnored(ctx context.Context, backend *client.Client, root string, repositories []string, entries []treeEntry) {
+	if len(repositories) == 0 || len(entries) == 0 {
+		return
+	}
+	var names, owners, paths [pencodeTreeBatchSize]string
+	var indices [pencodeTreeBatchSize]int
+	var ignored [pencodeTreeBatchSize]bool
+	for i, entry := range entries {
+		names[i] = strings.TrimRight(root, "/") + "/" + entry.Path
+		owners[i] = sourceRepositoryForPath(repositories, names[i])
+	}
+	for _, repository := range repositories {
+		count := 0
+		for i := range entries {
+			if owners[i] == repository {
+				paths[count], indices[count] = names[i], i
+				count++
+			}
+		}
+		if count == 0 {
+			continue
+		}
+		matches, err := backend.CheckGitIgnore(ctx, repository, paths[:count], ignored[:0])
+		if err != nil {
+			continue // Missing Git or invalid metadata must not hide the file tree.
+		}
+		for i, match := range matches {
+			entries[indices[i]].Ignored = match
+		}
+	}
 }
 
 func compareTreeNames(a string, aDir bool, b string, bDir bool) int {
@@ -248,7 +292,11 @@ func (model *workspaceModel) startProjectSnapshot(project *pencodeProject, initi
 	if project.watch != nil {
 		ready = project.watch.ready
 	}
-	project.scan = newBackendProjectScan(project.backend, project.workspace, initial, previous, wake, ready)
+	repositories := project.treeRepositories
+	if !refresh {
+		repositories = nil
+	}
+	project.scan = newBackendProjectScan(project.backend, project.workspace, initial, previous, repositories, wake, ready)
 	project.scan.staged = refresh
 }
 
@@ -283,6 +331,9 @@ func (model *workspaceModel) pollProjectScans() bool {
 				}
 				if batch.done {
 					changed = true
+					if batch.err == nil && !project.treePending {
+						project.treeRepositories = scan.repositories
+					}
 					if scan.staged && batch.err == nil {
 						project.Entries, project.index = scan.entries, batch.index
 						project.tree.entriesChanged()

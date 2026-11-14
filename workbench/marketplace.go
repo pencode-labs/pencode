@@ -119,6 +119,7 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 		m.feedback = model.tr("正在打开扩展目录…")
 		source = m.directory
 	}
+	model.logOutput(extensions.MarketplaceOutputChannelName, fmt.Sprintf("[Info] %s %s", m.feedback, id))
 	ctx, cancel := context.WithCancel(output.WithStore(context.Background(), model.outputStore()))
 	m.cancel, m.done = cancel, make(chan struct{})
 	if m.results == nil {
@@ -225,6 +226,7 @@ func (model *workspaceModel) pollMarketplace() bool {
 				bundle.Close()
 			}
 			m.feedback = fmt.Sprintf(model.tr("操作失败：%v"), result.err)
+			model.logOutput(extensions.MarketplaceOutputChannelName, "[Error] "+m.feedback)
 			return true
 		}
 		if result.op == pencodeMarketOpenDirectory {
@@ -296,6 +298,26 @@ func (model *workspaceModel) pollMarketplace() bool {
 		}
 		if loadError != "" {
 			m.feedback = loadError
+		}
+		if result.op == pencodeMarketRefresh {
+			model.logOutput(extensions.MarketplaceOutputChannelName, fmt.Sprintf("[Info] Refresh: %d installed, %d available", len(m.items), len(m.listings)))
+			for _, listing := range m.listings {
+				if listing.Problem != "" {
+					model.logOutput(extensions.MarketplaceOutputChannelName, "[Error] "+listing.Name+": "+listing.Problem)
+				}
+			}
+			for _, item := range m.items {
+				if item.Problem != "" {
+					model.logOutput(extensions.MarketplaceOutputChannelName, "[Error] "+item.ID+": "+item.Problem)
+				}
+			}
+		}
+		if m.feedback != "" {
+			level := "[Info] "
+			if result.marketError != nil || loadError != "" {
+				level = "[Error] "
+			}
+			model.logOutput(extensions.MarketplaceOutputChannelName, level+m.feedback)
 		}
 		if !found {
 			m.selected = ""

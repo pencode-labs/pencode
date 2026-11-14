@@ -154,6 +154,65 @@ func TestExtensionLinksNativeClickAndThemeIcons(t *testing.T) {
 	}
 }
 
+func TestCodexFileLinksNativeClick(t *testing.T) {
+	for _, part := range []string{"text", "icon"} {
+		t.Run(part, func(t *testing.T) {
+			app, m, _, state := languageInteractionFixture(t)
+			project := m.activeProjectState()
+			const name = "冲刺活动开发文档.md"
+			resourceTestWrite(t, project, name, "# 冲刺活动\n开发文档\n")
+			css, err := os.ReadFile("../extensions/codex/resources/chat.css")
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := url.URL{Scheme: "file", Path: project.Path + "/" + name, Fragment: "L2"}
+			if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{
+				ID: "file-link", Kind: peb.EditorTab, Context: peb.ActionContext{ProjectPath: t.TempDir()},
+				View: &peb.EditorView{
+					HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-selectable><article class="codex-chat"><section data-ref="message" data-pencode-region><p>已保存：<a role="link" class="codex-link" data-ref="file" href="` + target.String() + `"><img class="codex-link-icon" data-ref="file/icon" data-pencode-icon="file-text" alt="" aria-hidden="true">冲刺活动开发文档</a>。</p></section></article></div></section></main>`,
+					CSS:  string(css),
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			markPencodeRootDirtyByModel(m.fontResources, m)
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
+			var x, y float64
+			for entity, text := range m.fontResources.Query[scene.Text2D]() {
+				if text.Ref().Value == "冲" {
+					matrix := m.fontResources.Ref[scene.UIGlobalTransform](entity).Matrix
+					x, y = float64(matrix[12]+2), float64(matrix[13]+7)
+					break
+				}
+			}
+			if x == 0 {
+				t.Fatal("missing link text")
+			}
+			if part == "icon" {
+				x -= 13 // 14px icon, 4px gap, and the 2px text inset above.
+			}
+			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			if err := awaitFileIO(t, m); err != nil {
+				t.Fatal(err)
+			}
+			if m.quickTargetLine != 2 {
+				t.Fatalf("link lost its line reference: %d", m.quickTargetLine)
+			}
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
+			if f := m.activeFile(); f == nil || f.Path != name || f.Preview || m.actions.ui.editor != nil {
+				t.Fatalf("click did not open the linked document: file=%v status=%s", f, m.status)
+			}
+		})
+	}
+}
+
 func TestExtensionInternetLinksUseSystemBrowser(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("intercepts the Linux browser launcher")

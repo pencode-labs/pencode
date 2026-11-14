@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/server/workspace"
 )
 
 type serviceIndex struct {
@@ -168,6 +169,9 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 			return err
 		}
 		name := child.Name()
+		if strings.HasPrefix(name, workspace.SaveTemporaryPrefix) {
+			continue
+		}
 		switch name {
 		case ".DS_Store", ".git", "dist", "node_modules":
 			continue

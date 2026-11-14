@@ -1,4 +1,6 @@
-# Pencode CS v15
+# Pencode CS v16
+
+v16 增加 GitCheckIgnore，按批调用 Git 原生忽略规则判断，用于资源树置灰；GUI 与 server 必须同时更新。
 
 v15 移除 IndexNext 中重复的 name 字符串，名称由完整路径的末段取得。无变化的索引刷新共享已有不可变记录；有变化时批量复制未变区间。
 
@@ -54,7 +56,7 @@ v12 新增 ResourceImport：source 是服务端主机的绝对原生路径，dir
 
 ConfigurationRead 与 SettingsSave 的 root 为空，分别读取和原子保存服务端用户配置目录下的 `pencode/resources`。读取返回目录路径及相对文件名和字节内容，包含 `settings.json`、`highlights.json` 与 `themes/` 下的 JSON/JSONC 文件；总量限制 16 MiB、4096 个文件。保存只接受 JSON 对象并替换 `settings.json`，不接受文件名或目录参数。GUI 在打开远程项目时使用这份配置，系统字体仍由 GUI 主机提供。
 
-WorkspaceWatch 首次调用安装根目录的原生监听：macOS 使用 FSEvents，Windows 使用递归 ReadDirectoryChangesW，Linux 使用 inotify；不依赖 fsnotify。事件统一进入文件服务的有界日志，由编辑器和扩展分别消费。每个订阅以 after 游标读取，首次或游标过期返回 reset=1，要求重新校准；慢订阅者不会抢走其他订阅者的事件。首次返回目录树、Git 状态和仓库集合三个变化位用于初始快照；后续调用阻塞到有事件或请求被取消。事件按 200 ms 固定窗口合并，不丢弃窗口内的尾部变化；持续写入也会定期交付，空闲时没有轮询或定时唤醒。跳过 `node_modules`、`dist` 以及 Git 的对象、日志、hooks 目录和锁文件。普通文件增删只使目录树与 Git 状态失效，目录或 `.git` 结构变化才重新发现仓库。工作区关闭或连接断开时释放监听。原生事件溢出时重建监听并强制完整校准；其他监听失败会释放失效实例，GUI 在首次失败时请求校准，以 100 ms 起步、上限 5 s 的指数退避重试，恢复后再校准一次。已有扫描与 Git 任务期间的变化合并成一次待刷新状态。日志最多 512 条记录，单批最多 128 个不同路径，溢出返回 reset。files 编码为 `count:u32 + {path:string, op:u32, directory:u32}[count]`；path 为工作区相对路径，使用 `/` 分隔。op 位依次为创建、写入、删除、重命名、元数据变化；重命名可拆成旧路径和新路径事件。changes 位依次为目录树、Git 状态、仓库集合。
+WorkspaceWatch 首次调用安装根目录的原生监听：macOS 使用 FSEvents，Windows 使用递归 ReadDirectoryChangesW，Linux 使用 inotify；不依赖 fsnotify。事件统一进入文件服务的有界日志，由编辑器和扩展分别消费。每个订阅以 after 游标读取，首次或游标过期返回 reset=1，要求重新校准；慢订阅者不会抢走其他订阅者的事件。首次返回目录树、Git 状态和仓库集合三个变化位用于初始快照；后续调用阻塞到有事件或请求被取消。事件按 200 ms 固定窗口合并，不丢弃窗口内的尾部变化；持续写入也会定期交付，空闲时没有轮询或定时唤醒。跳过 `node_modules`、`dist` 以及 Git 的对象、日志、hooks 目录和锁文件。普通文件增删只使目录树与 Git 状态失效，目录或 `.git` 结构变化才重新发现仓库。工作区关闭或连接断开时释放监听。原生事件溢出时重建监听并强制完整校准；其他监听失败会释放失效实例，GUI 在首次失败时请求校准，以 100 ms 起步、上限 5 s 的指数退避重试，恢复后再校准一次。已有扫描与 Git 任务期间的变化合并成一次待刷新状态。日志最多 512 条记录，单批最多 128 个不同路径，溢出返回 reset。files 编码为 `count:u32 + {path:string, op:u32, directory:u32}[count]`；path 为工作区相对路径，使用 `/` 分隔。op 位依次为创建、写入、删除、重命名、元数据变化；重命名可拆成旧路径和新路径事件。changes 位依次为目录树、Git 状态、仓库集合、忽略规则。忽略规则位与目录树位一起设置，用于 `.gitignore`、Git index/exclude/config 的变化，避免与已有文件的原子替换混淆。保存临时文件不进入目录索引和事件日志，原子替换已有文件只更新内容与 Git 装饰。
 
 IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功快照与同一原生监听器积累的脏目录提示，只重读变化目录的直接子项，复用未变化子树，新目录才递归扫描。旧索引在新快照提交前继续支持文件搜索，GUI 提交后通过 IndexClose 释放旧句柄；每个工作区最多保留可见和在建两份索引，每连接索引预算为 64 个。提示独立于通知保留，直到创建下一份索引，并绑定最近启动的索引 ID；从更旧快照更新时完整扫描，避免取消的中间快照吞掉变化。最多保存 128 个目录，超限、事件溢出、监听器更换、缺少成功快照或上次扫描失败时退回完整扫描。自动更新在后台构建新树，成功后整体替换 GUI 快照，失败时保留已有树，不覆盖打开文档与未保存编辑。显式重新加载始终完整扫描，可用于校准未收到系统通知的变化。索引分页仍传输完整快照；此优化主要减少磁盘遍历与路径分配，不是增量传输协议。
 
@@ -82,6 +84,7 @@ IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功�
 | IndexOpen | previous:u64（0：完整扫描；非零：基于该索引校准，保留其查询句柄直到 IndexClose） | index:u64 |
 | IndexNext | index:u64, offset:u32 | done:u32, warning:string, count:u32, {path:string, depth:u32, directory:u32}[] |
 | IndexClose | index:u64 | 空 |
+| GitCheckIgnore | root:string（服务头）, count:u32, paths:string[]（最多 256 项） | count:u32, ignored:u32[]（0 或 1） |
 | PathSearch | index:u64, query:string, preferred:string[] | paths:string[] |
 | SyntaxAnalyze | parser:u64, baseVersion:u64, filename:string, start:u32, end:u32, insert:string | version:u64, language:string, captures（见下） |
 | SyntaxRelease | parser:u64 | 空 |

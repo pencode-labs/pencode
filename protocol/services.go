@@ -47,6 +47,7 @@ const (
 	DebugAdapterOpen
 	DebugTerminalOpen
 	WorkspaceWatch
+	GitCheckIgnore
 )
 
 type WorkspaceChange uint32
@@ -55,6 +56,7 @@ const (
 	WorkspaceTreeChanged WorkspaceChange = 1 << iota
 	WorkspaceGitChanged
 	WorkspaceRepositoriesChanged
+	WorkspaceIgnoreChanged
 )
 
 type Port struct {

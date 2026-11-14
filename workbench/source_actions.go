@@ -1,9 +1,11 @@
 package workbench
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -123,7 +125,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	// Their private context and mailbox can be discarded without cancelling writes.
 	s.cancelRefresh()
 	if s.Done != nil {
-		if strings.HasPrefix(id, "sc-open:") {
+		if strings.HasPrefix(id, "sc-open:") || strings.HasPrefix(id, "sc-diff:") {
 			s.PendingPinned = s.PendingPinned && s.PendingOpen == id
 			s.PendingOpen = id
 			s.PendingSelection = s.Selection
@@ -206,6 +208,30 @@ func (a *workspaceModel) sourceAction(id string) {
 		a.sourceJob(sourceQuery, func() sourceResult {
 			files, err := r.commitFiles(hash)
 			return sourceResult{Hash: hash, Files: files, Err: err}
+		})
+	case strings.HasPrefix(id, "sc-diff:"):
+		name, err := url.PathUnescape(strings.TrimPrefix(id, "sc-diff:"))
+		if err != nil {
+			return
+		}
+		s.Selection++
+		if s.Context == nil {
+			s.Context, s.Cancel = context.WithCancel(context.Background())
+		}
+		backend, project, ctx := a.backend, a.projectPath, s.Context
+		a.sourceJob(sourceQuery, func() sourceResult {
+			roots, err := backend.GitRepositories(ctx, project)
+			if err != nil {
+				return sourceResult{Err: err}
+			}
+			root := sourceRepositoryForPath(roots, name)
+			if root == "" {
+				return sourceResult{Err: fmt.Errorf("文件不在 Git 仓库中：%s", name)}
+			}
+			repository := sourceRepository{Root: root, Backend: backend, Context: ctx}
+			snapshot, err := repository.statusSnapshot()
+			snapshot.Branch = repository.headLabel()
+			return sourceResult{Repositories: roots, RepositoryRefs: repository.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, DiffPath: name, Err: err, StatusOnly: true}
 		})
 	case strings.HasPrefix(id, "sc-open:"):
 		parts := strings.SplitN(strings.TrimPrefix(id, "sc-open:"), ":", 2)
@@ -314,16 +340,16 @@ func (a *workspaceModel) sourceAction(id string) {
 				break
 			}
 			a.sourceJob(sourceSync, func() sourceResult {
-				err := r.syncChanges()
+				reload, err := r.syncChanges()
 				snapshot, refreshErr := r.snapshot(sourceHistoryPageSize)
 				if err == nil {
 					err = refreshErr
 				}
-				return sourceResult{Snapshot: &snapshot, Err: err, Message: "Changes synchronized", Reload: true}
+				return sourceResult{Snapshot: &snapshot, Err: err, Message: "Changes synchronized", Reload: reload}
 			})
 			break
 		}
-		if len(s.Snapshot.Files) == 0 {
+		if len(s.Snapshot.Files) == 0 && s.Snapshot.MergeMessage == "" {
 			break
 		}
 		if s.unsaved() || len(s.Snapshot.Groups[0]) != 0 {
@@ -393,6 +419,8 @@ func (a *workspaceModel) sourceAction(id string) {
 				return sourceResult{Snapshot: &snapshot, SavedKey: value.Key, Message: "File saved", Reload: true, Err: err}
 			})
 		}
+	case strings.HasPrefix(id, "sc-use:"):
+		a.useSourceSide(strings.TrimPrefix(id, "sc-use:"), s.MenuPath)
 	case strings.HasPrefix(id, "sc-accept:"):
 		if tab := s.activeTab(); tab != nil && tab.Kind == "merge" {
 			s.Prompt, s.PromptHash = strings.TrimPrefix(id, "sc-accept:"), tab.Key
@@ -421,6 +449,30 @@ func (a *workspaceModel) sourceAction(id string) {
 	case id == "sc-prompt-confirm":
 		a.confirmSourceOperation()
 	}
+	a.sourceChanged()
+}
+
+// Resolve against freshly read status: Codex can publish a file before the
+// workspace watcher has refreshed Git, or while another repository is selected.
+func (a *workspaceModel) openSourceDiffPath(name string) {
+	s := a.sourceState()
+	relative, err := filepath.Rel(filepath.FromSlash(s.Snapshot.Repository.Root), filepath.FromSlash(name))
+	if err != nil || !filepath.IsLocal(relative) {
+		return
+	}
+	relative = filepath.ToSlash(relative)
+	for _, file := range s.Snapshot.Files {
+		if file.Path != relative {
+			continue
+		}
+		kind := "changes"
+		if file.Work == ' ' && file.Index != '?' {
+			kind = "staged"
+		}
+		a.sourceAction("sc-open:" + kind + ":" + url.PathEscape(relative))
+		return
+	}
+	s.Notice = a.tr("此文件当前没有 Git 差异。")
 	a.sourceChanged()
 }
 
@@ -532,7 +584,7 @@ func (a *workspaceModel) confirmSourceOperation() {
 	case "reset-mixed":
 		args = []string{"reset", "--mixed", hash}
 	case "pull":
-		args = []string{"pull", "--ff-only"}
+		args = []string{"pull", "--no-rebase", "--no-edit"}
 	case "push":
 		args = []string{"push"}
 	case "abort":
@@ -542,7 +594,12 @@ func (a *workspaceModel) confirmSourceOperation() {
 	}
 	r := s.Snapshot.Repository
 	a.sourceJob(sourceWrite, func() sourceResult {
-		_, err := r.command(args...)
+		var err error
+		if op == "push" {
+			err = r.push()
+		} else {
+			_, err = r.command(args...)
+		}
 		snapshot, refreshErr := r.snapshot(sourceHistoryPageSize)
 		if err == nil {
 			err = refreshErr
@@ -593,7 +650,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		FileCount: len(s.Snapshot.Files), CommitCount: len(s.Snapshot.Commits), CommitFileCount: len(s.CommitFiles),
 		First: s.GraphFirst, Visible: s.GraphVisible, Changes: s.changeRanges(), TreeRevision: s.TreeRevision,
 		Sync:    s.Snapshot.Sync,
-		Message: s.CommitMessage, Multiline: s.MessageMultiline, Selected: s.SelectedHash, Busy: s.busy(), Modal: s.modal(), HasMore: s.Snapshot.HasMore,
+		Message: s.CommitMessage, MergeMessage: s.Snapshot.MergeMessage, Multiline: s.MessageMultiline, Selected: s.SelectedHash, Busy: s.busy(), Modal: s.modal(), HasMore: s.Snapshot.HasMore,
 		Syncing:         s.Done != nil && s.JobKind == sourceSync,
 		RepositoryError: s.RepositoryError,
 		Repositories:    sourceFirst(s.Repositories), RepositoryCount: len(s.Repositories), Repository: s.Snapshot.Repository.Root,
@@ -658,7 +715,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	}
 	b.close()
 	b.open("button", "commit", "id", "sc-create-commit", "type", "button", "class", "sc-commit-action")
-	if s.busy() || len(s.Snapshot.Files) == 0 && !s.Snapshot.syncPending() {
+	if s.busy() || len(s.Snapshot.Files) == 0 && s.Snapshot.MergeMessage == "" && !s.Snapshot.syncPending() {
 		b.attr("disabled", "")
 	}
 	icon, label, iconClass := "git-commit", "Commit", "sc-icon"
@@ -932,4 +989,50 @@ func (a *workspaceModel) sourceIconButton(b *sourceVNodeView, id, label, icon st
 	}
 	a.sourceIcon(b, "icon", icon, "")
 	b.close()
+}
+
+func (a *workspaceModel) useSourceSide(side, name string) {
+	s := a.sourceState()
+	if side != "local" && side != "incoming" || s.busy() {
+		return
+	}
+	index := slices.IndexFunc(s.Snapshot.Groups[0], func(f sourceFile) bool { return f.Path == name })
+	if index < 0 {
+		return
+	}
+	if a.sourcePathDirty(name) {
+		s.Notice = a.tr("请先保存此文件的编辑内容，再解决合并。")
+		return
+	}
+	for _, tab := range s.Tabs {
+		if tab.Path == name && tab.Result != tab.Saved {
+			s.Notice = a.tr("请先保存此文件的编辑内容，再解决合并。")
+			return
+		}
+	}
+	r, file := s.Snapshot.Repository, s.Snapshot.Groups[0][index]
+	a.sourceJob(sourceWrite, func() sourceResult {
+		tab, err := r.openDiff(file, "merge", "")
+		if err == nil {
+			if tab.Binary || tab.SubmoduleSummary != "" {
+				err = fmt.Errorf("请在合并编辑器中处理此文件。")
+			} else {
+				tab.Result = tab.Local
+				if side == "incoming" {
+					tab.Result = tab.Incoming
+				}
+				err = r.saveMerge(*tab)
+			}
+		}
+		snapshot, refreshErr := r.snapshot(sourceHistoryPageSize)
+		if err == nil {
+			err = refreshErr
+		}
+		if err != nil {
+			tab = nil
+		} else {
+			tab.Disk, tab.Saved = tab.Result, tab.Result
+		}
+		return sourceResult{Snapshot: &snapshot, Tab: tab, Err: err, Message: "Merge resolved and staged", Reload: true}
+	})
 }

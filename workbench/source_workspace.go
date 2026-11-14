@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"net/url"
 	"path"
 	"path/filepath"
 	"slices"
@@ -27,6 +28,7 @@ const (
 
 type sourceResult struct {
 	Err               error
+	TreeFiles         map[string][]sourceFile
 	Snapshot          *sourceSnapshot
 	Tab               *sourceTab
 	Page              *sourceHistoryPage
@@ -34,6 +36,7 @@ type sourceResult struct {
 	PageRefs          string
 	Hash              string
 	RepositoryError   string
+	DiffPath          string
 	Files             []sourceFile
 	Repositories      []string
 	RepositoryRefs    []string
@@ -58,7 +61,7 @@ type sourcePanelKey struct {
 	Branch, Repository                       string
 	RepositoryError                          string
 	ChangesWidthStyle                        string
-	Message, Selected                        string
+	Message, Selected, MergeMessage          string
 	Changes                                  [3]sourceRowRange
 	Sync                                     sourceSyncStatus
 	RepositoryCount                          int
@@ -101,6 +104,7 @@ type pencodeSourceControl struct {
 	lastClick                               string
 	OpenID, OpenKey                         string
 	MenuHash                                string
+	MenuPath                                string
 	FollowPath                              string
 	Prompt, PromptHash, PromptValue, Notice string
 	changeCountText                         string
@@ -245,7 +249,10 @@ func (m *workspaceModel) sourceHasDrafts() bool {
 	return false
 }
 func (m *workspaceModel) sourceJob(kind sourceJobKind, job func() sourceResult) {
-	s := m.sourceState()
+	m.projectSourceJob(m.sourceState(), kind, job)
+}
+
+func (m *workspaceModel) projectSourceJob(s *pencodeSourceControl, kind sourceJobKind, job func() sourceResult) {
 	if s.Done != nil {
 		return
 	}
@@ -266,8 +273,15 @@ func (m *workspaceModel) sourceJob(kind sourceJobKind, job func() sourceResult) 
 	}()
 }
 func (m *workspaceModel) refreshSourceControl() {
-	s := m.sourceState()
-	if s.Done != nil || m.projectPath == "" {
+	m.refreshProjectSourceControl(m.activeProjectState())
+}
+
+func (m *workspaceModel) refreshProjectSourceControl(owner *pencodeProject) {
+	s, project, backend, activePath := &m.sourceControl, m.projectPath, m.backend, m.activePath
+	if owner != nil {
+		s, project, backend, activePath = &owner.sourceControl, owner.Path, owner.backend, owner.ActivePath
+	}
+	if s.Done != nil || project == "" {
 		return
 	}
 	s.RefreshPending, s.RefreshStarted = false, true
@@ -276,19 +290,17 @@ func (m *workspaceModel) refreshSourceControl() {
 	}
 	directory := s.Snapshot.Repository.Root
 	if directory == "" {
-		directory = m.projectPath
+		directory = project
 	}
-	project, discover := m.projectPath, !s.RepositoriesLoaded || s.Snapshot.Repository.Root == ""
-	activePath := m.activePath
+	discover := !s.RepositoriesLoaded || s.Snapshot.Repository.Root == ""
 	if s.FollowPath == activePath && s.Snapshot.Repository.Root != "" {
 		activePath = ""
 	}
-	backend := m.backend
 	roots := s.Repositories
-	statusOnly := !s.visible() && m.bottom.active != pencodePanelSourceControl && !s.modal()
+	statusOnly := s != m.sourceState() || !s.visible() && m.bottom.active != pencodePanelSourceControl && !s.modal()
 	ctx, cancel := context.WithCancel(s.Context)
 	s.RefreshCancel = cancel
-	m.sourceJob(sourceRefresh, func() sourceResult {
+	m.projectSourceJob(s, sourceRefresh, func() sourceResult {
 		r := sourceRepository{Root: directory, Context: ctx, Backend: backend}
 		var repositories []string
 		if discover {
@@ -316,10 +328,10 @@ func (m *workspaceModel) refreshSourceControl() {
 		if statusOnly {
 			snapshot, err := r.statusSnapshot()
 			snapshot.Branch = r.headLabel()
-			return sourceResult{Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err, StatusOnly: true}
+			return sourceResult{TreeFiles: r.treeGitFiles(roots), Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err, StatusOnly: true}
 		}
 		snapshot, err := r.snapshot(sourceHistoryPageSize)
-		return sourceResult{Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err}
+		return sourceResult{TreeFiles: r.treeGitFiles(roots), Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err}
 	})
 }
 func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *pencodeProject) bool {
@@ -328,6 +340,9 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 	}
 	select {
 	case result := <-s.Done:
+		openDiff := result.DiffPath != "" && result.Selection == s.Selection && s == m.sourceState()
+		pending, pinned, pendingSelection := s.PendingOpen, s.PendingPinned, s.PendingSelection
+		s.PendingOpen, s.PendingPinned = "", false
 		s.Done = nil
 		s.cancelRefresh()
 		if result.Repositories != nil {
@@ -366,7 +381,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			if result.StatusOnly {
 				next = s.Snapshot
 				next.Repository, next.Files, next.Groups = result.Snapshot.Repository, result.Snapshot.Files, result.Snapshot.Groups
-				next.Branch = result.Snapshot.Branch
+				next.Branch, next.MergeMessage = result.Snapshot.Branch, result.Snapshot.MergeMessage
 			}
 			next.Repository.Context = s.Context
 			if slices.Equal(next.Branches, s.Snapshot.Branches) {
@@ -381,14 +396,30 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 				s.GraphFirst, s.GraphScrollY, s.RestoreGraph = 0, 0, true
 				s.SelectedHash, s.CommitFiles = "", nil
 			}
+			if next.MergeMessage != "" && s.CommitMessage == "" {
+				s.CommitMessage = next.MergeMessage
+			}
 			s.Snapshot = next
+		}
+		if project != nil && (result.Repositories != nil || result.TreeFiles != nil || result.Snapshot != nil) {
+			project.treeGit.update(project.Path, s.Repositories, result.TreeFiles, result.Snapshot)
 		}
 		if result.Page != nil && result.Err == nil && result.PageRefs == s.Snapshot.HistoryRefs && result.PageOffset == len(s.Snapshot.Commits) {
 			s.Snapshot.Commits = append(s.Snapshot.Commits, result.Page.Commits...)
 			s.Snapshot.Graph, s.Snapshot.HasMore = result.Page.Graph, result.Page.HasMore
 		}
 		if result.Err != nil && !result.StatusOnly {
-			s.Notice = result.Err.Error()
+			if result.expectedGitError() {
+				message := result.Err.Error()
+				if sourcePushRejected(result.Err) {
+					message = m.tr("远程有新的提交，请先同步远程再推送。")
+				} else {
+					message = m.tr("合并存在冲突，请在 Merge Changes 中解决后提交。")
+				}
+				m.setProjectStatus(project, message)
+			} else {
+				s.Notice = result.Err.Error()
+			}
 		}
 		if result.Hash != "" && result.Hash == s.SelectedHash && result.Err == nil {
 			height := s.graphDetailsHeight()
@@ -474,13 +505,14 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 		if result.Reload && project != nil {
 			m.reloadSourceFiles(project)
 		}
-		pending, pinned := s.PendingOpen, s.PendingPinned
-		s.PendingOpen, s.PendingPinned = "", false
-		if pending != "" && s.PendingSelection == s.Selection && s == m.sourceState() && !s.modal() {
+		if pending != "" && (pendingSelection == s.Selection || openDiff && pendingSelection == result.Selection) && s == m.sourceState() && !s.modal() {
 			m.sourceAction(pending)
 			if pinned && s.OpenID == pending {
 				s.OpenPinned = true
 			}
+		}
+		if openDiff && pending == "" && result.Err == nil && !s.modal() {
+			m.openSourceDiffPath(result.DiffPath)
 		}
 		return true
 	default:
@@ -491,7 +523,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 // Refresh only clean buffers after a workspace mutation. An edit made while Git
 // was running must never be overwritten by the completion callback.
 func (m *workspaceModel) reloadSourceFiles(project *pencodeProject) {
-	m.startProjectScan(project, false)
+	m.startProjectSnapshot(project, false, true)
 	if err := m.requestFileReload(project, true); err != nil {
 		m.setProjectStatus(project, err.Error())
 	}
@@ -518,6 +550,13 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 	if m.projectPath != "" && (s.RefreshPending || !s.RefreshStarted) && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen && !s.RepositoryMenuOpen {
 		m.refreshSourceControl()
 		changed = true
+	}
+	for _, project := range m.projects {
+		other := &project.sourceControl
+		if other != s && (other.RefreshPending || !other.RefreshStarted) && other.Done == nil && !other.modal() {
+			m.refreshProjectSourceControl(project)
+			changed = true
+		}
 	}
 	if !s.visible() && m.bottom.active != pencodePanelSourceControl && !s.modal() {
 		return changed
@@ -560,6 +599,29 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		}
 		changed = m.positionSourceBranchSubmenu(world) || changed
 	}
+	if !s.modal() && !s.busy() && m.bottom.active == pencodePanelSourceControl && state.MousePressed(input.MouseRight) {
+		for _, row := range s.changeTrees[0].rows {
+			if row.File == nil || !m.pointerInsideRefs(world, x, y, []string{"sc-changes-list"}) {
+				continue
+			}
+			node, ok := world.HTMLNode(m.surface, "sc-open:merge:"+url.PathEscape(row.Path))
+			if !ok {
+				continue
+			}
+			bounds, ok := node.Bounds()
+			bounds.Y -= s.changesPosition
+			if !ok || !languageRectContains(bounds, x, y) {
+				continue
+			}
+			root, _ := world.HTMLNode(m.surface, "pencode-root")
+			area, _ := root.Bounds()
+			s.MenuPath, s.MenuHash, s.MenuOpen = row.Path, "", true
+			s.BranchMenuOpen, s.RepositoryMenuOpen = false, false
+			s.MenuX, s.MenuY = max(0, min(x-area.X, area.Width-270)), max(0, min(y-area.Y, area.Height-80))
+			changed = true
+			break
+		}
+	}
 	if !s.modal() && m.bottom.active == pencodePanelSourceControl && state.MousePressed(input.MouseRight) && m.pointerInsideRefs(world, x, y, []string{"sc-graph"}) {
 		var offset float32
 		if node, ok := world.HTMLNode(m.surface, "sc-graph"); ok {
@@ -576,6 +638,7 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 				if ok && languageRectContains(bounds, x, y) {
 					root, _ := world.HTMLNode(m.surface, "pencode-root")
 					area, _ := root.Bounds()
+					s.MenuPath = ""
 					s.MenuHash, s.MenuOpen, s.BranchMenuOpen = c.Hash, true, false
 					s.RepositoryMenuOpen = false
 					s.MenuX, s.MenuY = max(0, min(x-area.X, area.Width-270)), max(0, min(y-area.Y, area.Height-300))
@@ -645,13 +708,18 @@ func (m *workspaceModel) handleSourceEvent(event htmlui.Event) bool {
 	return true
 }
 
-func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
+func (m *workspaceModel) renderSourceStatus(view *htmlui.View) {
 	s := m.sourceState()
-	s.RenderRevision++
 	if count := len(s.Snapshot.Files); s.changeCount != count || s.changeCountText == "" {
 		s.changeCount, s.changeCountText = count, strconv.Itoa(count)
 	}
 	view.Text("status-source-count", s.changeCountText)
+}
+
+func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
+	s := m.sourceState()
+	s.RenderRevision++
+	m.renderSourceStatus(view)
 	view.Event("status-source-control", htmlui.EventClick)
 	view.Attr("status-source-control", "aria-expanded", strconv.FormatBool(m.bottom.active == pencodePanelSourceControl))
 	for _, ref := range []string{"source-content", "source-tabs", "source-overlay", "source-pane", "source-tools"} {

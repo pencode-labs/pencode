@@ -19,10 +19,13 @@ import (
 	"time"
 
 	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/output"
 	"golang.org/x/mod/semver"
 )
 
 const DefaultMarketplaceURL = "https://pencode-labs.github.io/extensions/extensions.json"
+
+const MarketplaceOutputChannelName = "Extension Marketplace"
 
 // Marketplace's zero value uses the official catalog and public GitHub API.
 type Marketplace struct {
@@ -55,17 +58,54 @@ func (m Marketplace) get(ctx context.Context, address string) (*http.Response, e
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Pencode-Extensions")
+	var logs *output.Channel
+	if store := output.FromContext(ctx); store != nil {
+		logs = store.Channel(MarketplaceOutputChannelName)
+		fmt.Fprintf(logs, "[Info] GET %s\n", address)
+	}
 	c := m.Client
 	if c == nil {
 		c = &http.Client{Timeout: 2 * time.Minute}
 	}
 	response, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		if logs != nil {
+			fmt.Fprintf(logs, "[Error] GET %s: %v\n", address, err)
+		}
+		return nil, fmt.Errorf("GET %s: %w", address, err)
 	}
 	if response.StatusCode != http.StatusOK {
-		response.Body.Close()
-		return nil, fmt.Errorf("请求失败（HTTP %d）：%s", response.StatusCode, address)
+		defer response.Body.Close()
+		const limit = 4 << 10
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
+		err := fmt.Errorf("请求失败（HTTP %d）：%s", response.StatusCode, address)
+		var problem struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(body, &problem) == nil && problem.Message != "" {
+			err = fmt.Errorf("%w：%s", err, problem.Message)
+		}
+		if logs != nil {
+			var detail strings.Builder
+			fmt.Fprintf(&detail, "[Error] %v\n", err)
+			for _, name := range [...]string{"Content-Type", "X-GitHub-Request-Id", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"} {
+				if value := response.Header.Get(name); value != "" {
+					fmt.Fprintf(&detail, "%s: %s\n", name, value)
+				}
+			}
+			fmt.Fprintf(&detail, "Response body: %q\n", body[:min(len(body), limit)])
+			if len(body) > limit {
+				detail.WriteString("Response body truncated at 4 KiB\n")
+			}
+			if readErr != nil {
+				fmt.Fprintf(&detail, "Read response body: %v\n", readErr)
+			}
+			_, _ = logs.Write([]byte(detail.String()))
+		}
+		return nil, err
+	}
+	if logs != nil {
+		fmt.Fprintf(logs, "[Info] HTTP %d: %s\n", response.StatusCode, address)
 	}
 	return response, nil
 }

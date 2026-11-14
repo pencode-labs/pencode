@@ -459,6 +459,8 @@ session.Actions.Remove(action.ID)
 
 `Panel` 和 `EditorTab` 内容可通过 `data-pencode-layout="fill"` 填满可用空间，移除宿主内边距和内容滚动。填满的 `Panel` 由扩展提供标题行和内部滚动区域，宿主不再显示重复标题；标题右侧需预留 40px 给工作台关闭按钮。
 
+带 `data-ref` 的链接可用 `href="pencode-diff:/absolute/path"` 打开文件当前的原生 Git 差异预览，与版本管理共用比较标签、编辑和主题。按钮使用 `role="link"` 和 `data-pencode-href`；不要为该控件添加扩展 click 绑定。宿主刷新 Git 状态后选择工作区、暂存区或冲突比较，并保留未保存编辑的保护逻辑。
+
 `UI.ID` 属于扩展自身命名空间，遵循 action 本地 ID 规则。`Title` 必须非空，用作界面的可访问名称。`Anchor` 是本扩展的 action ID，打开时留空采用触发 action；文件树和编辑器菜单中的 action 也可作为锚点。也可用 `ui:<surface ID>#<data-ref>` 锚定本扩展另一界面的可聚焦控件（该界面须已打开）。首次打开必须提供 `View`，以后 `View:nil` 保留现有视图和输入状态；非空 `View` 替换 HTML/CSS 和事件绑定。其余描述字段完整替换，同一 ID 的 `Kind` 在关闭前不能改变。
 
 浮层使用 `UI.Placement` 设置位置和大小，单位为工作区 CSS 像素（随工作区缩放）：

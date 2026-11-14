@@ -100,6 +100,8 @@ In **Remote management → Add**, select **WebSocket**, enter `ws://server-addre
 
 `--listen` requires a nonempty token, checked through the HTTP `Authorization: Bearer` header. Without `--listen`, the server uses stdio. `ws://` sends traffic in plaintext; use a TLS reverse proxy with `wss://` across public networks.
 
+Development builds continuously record CPU, Go heap, process/system memory, and available GPU metrics in `~/.pencode/profiles/`. Set `PENCODE_DEBUG=0` to disable recording or `PENCODE_PROFILE_DIR` to choose a directory. See [profiling and pprof analysis](docs/profiling.zh-CN.md) for sampling, retention, and metric definitions (Chinese).
+
 ### Verify individual packages
 
 From the Pencode repository root:

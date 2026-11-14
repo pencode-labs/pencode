@@ -699,6 +699,34 @@ textarea:focus {
     text-overflow: ellipsis;
 }
 
+.pencode-ignored-name {
+    color: var(--vscode-gitDecoration-ignoredResourceForeground);
+}
+
+.pencode-tree-name.git-added {
+    color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+
+.pencode-tree-name.git-untracked {
+    color: var(--vscode-gitDecoration-untrackedResourceForeground);
+}
+
+.pencode-tree-name.git-modified {
+    color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+
+.pencode-tree-name.git-deleted {
+    color: var(--vscode-gitDecoration-deletedResourceForeground);
+}
+
+.pencode-tree-name.git-renamed {
+    color: var(--vscode-gitDecoration-renamedResourceForeground);
+}
+
+.pencode-tree-name.git-conflict {
+    color: var(--vscode-gitDecoration-conflictingResourceForeground);
+}
+
 .pencode-tree-create {
     display: flex;
     align-items: center;

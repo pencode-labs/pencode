@@ -288,6 +288,7 @@ func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	var downloads, checks atomic.Int32
+	var forbidden atomic.Bool
 	var server *httptest.Server
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -295,6 +296,12 @@ func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
 			io.WriteString(w, `{"extensions":[{"name":"test","repository":"https://github.com/pencode-labs/test"}]}`)
 		case "/repos/pencode-labs/test/releases/latest":
 			checks.Add(1)
+			if forbidden.Load() {
+				w.Header().Set("X-RateLimit-Remaining", "0")
+				w.WriteHeader(http.StatusForbidden)
+				io.WriteString(w, `{"message":"API rate limit exceeded"}`)
+				return
+			}
 			fmt.Fprintf(w, `{"tag_name":"v1.1.0","assets":[{"name":%q,"browser_download_url":%q}]}`, "test-v1.1.0-"+catalog.OS+"-"+catalog.Arch+".zip", server.URL+"/package.zip")
 		case "/package.zip":
 			downloads.Add(1)
@@ -323,6 +330,23 @@ func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
 	waitPencodeMarket(t, model)
 	if downloads.Load() != 1 || !strings.Contains(model.market.feedback, "HTTP 403") {
 		t.Fatal("explicit update did not initiate the download", downloads.Load(), model.market.feedback)
+	}
+	logs, _ := model.outputStore().Channel(extensions.MarketplaceOutputChannelName).Snapshot()
+	if !strings.Contains(logs, "download fixture") || !strings.Contains(logs, "[Error] "+model.market.feedback) {
+		t.Fatal("download diagnostics did not reach Output", logs)
+	}
+	forbidden.Store(true)
+	model.startMarketOperation(pencodeMarketRefresh, "", "")
+	waitPencodeMarket(t, model)
+	model.cacheMarketDetails(&model.market.items[0])
+	if model.market.items[0].Version != "1.0.0" || !strings.Contains(model.market.details[3], "API rate limit exceeded") || model.market.download {
+		t.Fatal("failed update check changed installed status", model.market.details)
+	}
+	logs, _ = model.outputStore().Channel(extensions.MarketplaceOutputChannelName).Snapshot()
+	for _, detail := range [...]string{"[Info] GET ", "HTTP 403", "X-RateLimit-Remaining: 0", "API rate limit exceeded", "[Error] test:"} {
+		if !strings.Contains(logs, detail) {
+			t.Errorf("missing marketplace Output diagnostic %q in %s", detail, logs)
+		}
 	}
 }
 

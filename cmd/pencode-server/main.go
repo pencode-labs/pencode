@@ -7,8 +7,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/pencode-labs/pencode/internal/environment"
+	"github.com/pencode-labs/pencode/internal/profiling"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/internal/version"
 	"github.com/pencode-labs/pencode/remote"
@@ -33,7 +35,12 @@ func main() {
 }
 
 func run(address, token string) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	recorder, err := profiling.Start("server")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Pencode profiling:", err)
+	}
+	defer recorder.Close()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if address == "" {
 		if token != "" {

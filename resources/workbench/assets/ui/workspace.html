@@ -246,11 +246,13 @@
           aria-label="从磁盘重新加载">
           <img data-ref="reload-from-disk-icon" src="icons/refresh-cw.svg" alt="">
         </button>
+        <button id="sidebar-collapse" data-ref="sidebar-collapse" class="pencode-icon-button" type="button" title="收起侧栏" aria-label="收起侧栏" aria-controls="sidebar" aria-expanded="true"><img data-ref="sidebar-collapse-icon" src="icons/chevron-right.svg" class="pencode-sidebar-collapse-icon" alt=""></button>
       </div>
       <nav data-ref="projects" class="pencode-project-list" aria-label="打开的项目"></nav>
     </aside>
     <div id="sidebar-resize" data-ref="sidebar-resize" class="pencode-sidebar-resize" role="separator" aria-orientation="vertical" aria-label="拖动调整侧栏宽度"></div>
 
+    <div id="sidebar-collapsed" data-ref="sidebar-collapsed" class="pencode-sidebar-collapsed" hidden><button id="sidebar-expand" data-ref="sidebar-expand" class="pencode-icon-button" type="button" title="展开侧栏" aria-label="展开侧栏" aria-controls="sidebar" aria-expanded="false"><img data-ref="sidebar-expand-icon" src="icons/chevron-right.svg" alt=""></button></div>
     <main class="pencode-editor-shell">
       <div id="tabs" data-ref="tabs" class="pencode-tabs" role="tablist" aria-label="打开的文件"><div data-ref="file-tabs" class="sc-file-tabs"></div><div data-ref="source-tabs" class="sc-tab-list"></div></div>
       <div id="editor-header" data-ref="editor-header" class="pencode-editor-header" hidden>

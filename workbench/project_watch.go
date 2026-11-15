@@ -30,6 +30,9 @@ type pencodeProjectWatch struct {
 
 func (m *workspaceModel) startProjectWatch(project *pencodeProject) {
 	project.stopWatch()
+	if project.Loose {
+		return
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &pencodeProjectWatch{cancel: cancel, errors: make(chan error, 1), ready: make(chan struct{})}
 	project.watch = w

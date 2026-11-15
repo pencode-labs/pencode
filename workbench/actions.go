@@ -311,7 +311,6 @@ func (model *workspaceModel) closeActions() {
 func (model *workspaceModel) pollActions() bool {
 	changed := false
 	for id, session := range model.actions.sessions {
-		prefix := "extensions/" + id + "/"
 		for range 16 {
 			select {
 			case result, ok := <-session.Results:
@@ -385,7 +384,7 @@ func (model *workspaceModel) pollActions() bool {
 				} else {
 					model.removeEditors(change.Action.ID)
 					if err := model.actionRegistry().Update(change.Action); err != nil {
-						model.registerExtensionAction(change.Action, session, prefix)
+						model.registerExtensionAction(change.Action, session, "extensions/"+id+"/")
 					}
 				}
 			default:

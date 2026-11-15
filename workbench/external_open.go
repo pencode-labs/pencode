@@ -164,7 +164,7 @@ func (m *workspaceModel) acceptExternalOpen(r *fileIOResult) {
 	if r.destination == "" {
 		m.rememberRecentProject(r.workspace)
 	}
-	m.acceptWorkspace(r.job.backend, r.workspace)
+	m.acceptWorkspace(r.job.backend, r.workspace, r.destination != "")
 	if r.destination == "" {
 		return
 	}

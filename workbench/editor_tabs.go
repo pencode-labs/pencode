@@ -19,9 +19,12 @@ type pencodeEditorTab struct {
 func (m *workspaceModel) editorTabs() iter.Seq[pencodeEditorTab] {
 	return func(yield func(pencodeEditorTab) bool) {
 		project := m.activeProjectState()
-		if project != nil {
-			for _, path := range project.Tabs {
-				if project.Files[path] != nil && !yield(pencodeEditorTab{project: project, path: path}) {
+		for _, fileProject := range m.projects {
+			if fileProject != project && !fileProject.Loose {
+				continue
+			}
+			for _, path := range fileProject.Tabs {
+				if fileProject.Files[path] != nil && !yield(pencodeEditorTab{project: fileProject, path: path}) {
 					return
 				}
 			}
@@ -65,7 +68,7 @@ func (m *workspaceModel) selectEditorTabNeighbor(closed pencodeEditorTab) {
 		s.Active, s.RestoreScroll = next.source.Key, true
 		s.Selection++
 	case next.path != "":
-		m.selectTab(next.path)
+		m.selectProjectTab(next.project, next.path)
 	case len(m.tabs) > 0:
 		m.selectTab(m.tabs[len(m.tabs)-1])
 	}

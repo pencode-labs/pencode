@@ -86,6 +86,8 @@
     "内置": "Built-in",
     "减小代码区域宽度": "Decrease code width",
     "切换侧栏": "Toggle sidebar",
+    "收起侧栏": "Collapse sidebar",
+    "展开侧栏": "Expand sidebar",
     "切换双栏布局": "Toggle split layout",
     "切换终端": "Toggle terminal",
     "切换终端 (Ctrl+`)": "Toggle terminal (Ctrl+`)",

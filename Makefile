@@ -23,6 +23,11 @@ endif
 
 # Usage: make run ARGS="--ssh user@host --remote-path /path/to/project"
 run: install-server install-extensions
+ifeq ($(OS),Windows_NT)
+	if exist "$(USERPROFILE)\.pencode\profiles" rmdir /s /q "$(USERPROFILE)\.pencode\profiles"
+else
+	rm -rf -- "$(HOME)/.pencode/profiles"
+endif
 	$(GO) run -ldflags "-X github.com/pencode-labs/pencode/internal/version.Value=$(VERSION)" . $(ARGS)
 
 install-server:

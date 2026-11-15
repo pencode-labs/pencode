@@ -429,7 +429,7 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 			return
 		}
 		m.rememberRecentProject(r.workspace)
-		m.acceptWorkspace(j.backend, r.workspace)
+		m.acceptWorkspace(j.backend, r.workspace, false)
 		return
 	}
 	if j.kind == fileLanguageEdit {

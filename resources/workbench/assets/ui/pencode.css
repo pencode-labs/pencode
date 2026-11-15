@@ -3222,3 +3222,14 @@ textarea:focus {
     font: inherit;
 }
 .pencode-file-page button:disabled { opacity: .45; }
+
+.pencode-sidebar-collapsed {
+    flex: 0 0 36px;
+    width: 36px;
+    padding-top: 6px;
+    background: var(--vscode-editor-background);
+}
+
+.pencode-sidebar-collapse-icon {
+    transform: rotate(180deg);
+}

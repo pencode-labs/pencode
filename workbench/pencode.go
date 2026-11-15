@@ -121,6 +121,7 @@ type pencodeProject struct {
 	Collapsed               bool
 	AllDirectoriesCollapsed bool
 	treePending             bool
+	Loose                   bool
 }
 
 type workspaceModel struct {
@@ -525,7 +526,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					className += " active"
 					view.Attr("tab", "id", "active-tab")
 				} else {
-					view.Attr("tab", "id", "file-tab:"+props.Path)
+					view.Attr("tab", "id", fileTabID(props.Project, props.Path))
 				}
 				if props.Preview {
 					className += " preview"
@@ -730,6 +731,8 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("window-close", htmlui.EventClick)
 	view.Event("open-project", htmlui.EventClick)
 	view.Event("change-project", htmlui.EventClick)
+	view.Event("sidebar-collapse", htmlui.EventClick)
+	view.Event("sidebar-expand", htmlui.EventClick)
 	view.Event("collapse-directories", htmlui.EventClick)
 	view.Event("reveal-active-file", htmlui.EventClick)
 	view.Event("reload-from-disk", htmlui.EventClick)
@@ -898,6 +901,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Attr("settings-panel", "hidden", "")
 		view.Attr("open-settings", "aria-expanded", "false")
 	}
+	setPanelVisible(view, "sidebar-collapsed", model.sidebarHidden)
 	if model.sidebarHidden {
 		view.Attr("sidebar", "hidden", "")
 		view.Attr("sidebar-resize", "hidden", "")
@@ -946,7 +950,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	}
 
 	for _, project := range model.projects {
-		if project == nil {
+		if project == nil || project.Loose {
 			continue
 		}
 		view.AppendComponentChild("projects",
@@ -957,16 +961,19 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		)
 	}
 
-	if project := model.activeProjectState(); project != nil {
+	for _, project := range model.projects {
+		if project != model.activeProjectState() && !project.Loose {
+			continue
+		}
 		for _, filePath := range project.Tabs {
 			file := project.Files[filePath]
 			if file == nil {
 				continue
 			}
 			view.AppendComponentChild("file-tabs",
-				componentKey(file.Path),
+				componentKey(project.Path)*1099511628211^componentKey(file.Path),
 				tabDefinition,
-				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: model.actions.ui.editor == nil && file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty, HasErrors: model.fileHasErrors(project, file.Path)},
+				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: project == model.activeProjectState() && model.actions.ui.editor == nil && file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty, HasErrors: model.fileHasErrors(project, file.Path)},
 				struct{}{},
 			)
 		}
@@ -1137,6 +1144,9 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		if component, ok := context.World.Get[htmlui.Component[appProps, appState]](context.Component); ok {
 			setPencodeEditorValue(context.World, component.Page, model.activeContent())
 		}
+		markPencodeRootDirty(context, model)
+	case "sidebar-collapse", "sidebar-expand":
+		model.toggleSidebar()
 		markPencodeRootDirty(context, model)
 	case "collapse-directories":
 		model.collapseDirectories()
@@ -1405,8 +1415,14 @@ func (model *workspaceModel) loadProject(directory string) error {
 	return nil
 }
 
-func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace protocol.Workspace) {
+func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace protocol.Workspace, loose bool) {
 	if index := model.projectIndex(workspace.Path); index >= 0 {
+		project := model.projects[index]
+		if project.Loose && !loose {
+			project.Loose = false
+			model.startProjectWatch(project)
+			model.startProjectScan(project, true)
+		}
 		model.activeProjectIndex = index
 		model.screen = pencodeWorkspace
 		model.resetHighlight()
@@ -1414,22 +1430,26 @@ func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace p
 		return
 	}
 	project := &pencodeProject{
-		backend: backend, workspace: workspace,
+		backend: backend, workspace: workspace, Loose: loose,
 		Path: workspace.Path, Name: workspace.Name, Files: make(map[string]*openFile),
 	}
 	project.historyKey = workspace.Path
 	if model.session != nil && model.session.connection != nil {
 		project.historyKey = model.session.connection.namespace + workspace.Path
 	}
-	model.startProjectWatch(project)
-	model.startProjectScan(project, true)
+	if !loose {
+		model.startProjectWatch(project)
+		model.startProjectScan(project, true)
+	}
 	model.projects = append(model.projects, project)
 	model.activeProjectIndex = len(model.projects) - 1
 	model.lastDirectory = workspace.Path
 	model.screen = pencodeWorkspace
 	model.resetHighlight()
 	model.syncActiveProjectFields()
-	model.restoreProjectState(project)
+	if !loose {
+		model.restoreProjectState(project)
+	}
 	return
 }
 
@@ -1759,6 +1779,9 @@ func (model *workspaceModel) revealProjectActiveFile(project *pencodeProject) {
 
 // Queue navigation without changing status or allocating row IDs before layout.
 func (model *workspaceModel) queueProjectFileReveal(project *pencodeProject) {
+	if project.Loose {
+		return
+	}
 	project.tree.restore = false
 	file := project.Files[project.ActivePath]
 	if file == nil {

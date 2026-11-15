@@ -22,13 +22,42 @@ const SampleInterval = 5 * time.Second
 
 type options struct {
 	sampleInterval  time.Duration
+	cpuInterval     time.Duration
+	cpuDuration     time.Duration
 	profileInterval time.Duration
 	metricsInterval time.Duration
 	profiles        int
 	metricsFiles    int
 }
 
-var defaults = options{SampleInterval, time.Minute, time.Hour, 60, 24}
+var defaults = options{
+	sampleInterval: SampleInterval, cpuInterval: 5 * time.Minute, cpuDuration: 5 * time.Second,
+	profileInterval: 5 * time.Minute, metricsInterval: time.Hour, profiles: 60, metricsFiles: 24,
+}
+
+func configuredOptions() (options, error) {
+	value := defaults
+	for _, setting := range [...]struct {
+		duration *time.Duration
+		name     string
+	}{
+		{&value.cpuInterval, "PENCODE_PROFILE_CPU_INTERVAL"},
+		{&value.cpuDuration, "PENCODE_PROFILE_CPU_DURATION"},
+		{&value.profileInterval, "PENCODE_PROFILE_HEAP_INTERVAL"},
+	} {
+		if text, ok := os.LookupEnv(setting.name); ok {
+			duration, err := time.ParseDuration(text)
+			if err != nil || duration < 0 {
+				return options{}, fmt.Errorf("%s: expected a non-negative duration, got %q", setting.name, text)
+			}
+			*setting.duration = duration
+		}
+	}
+	if value.cpuDuration > 0 && (value.cpuInterval == 0 || value.cpuDuration > value.cpuInterval) {
+		return options{}, fmt.Errorf("PENCODE_PROFILE_CPU_INTERVAL must be at least PENCODE_PROFILE_CPU_DURATION")
+	}
+	return value, nil
+}
 
 type Recorder struct {
 	err       error
@@ -41,6 +70,7 @@ type Recorder struct {
 	graphics  Graphics
 	options   options
 	profile   int
+	cpuID     int
 	metricsID int
 	once      sync.Once
 	mu        sync.Mutex
@@ -84,7 +114,11 @@ func Start(role string) (*Recorder, error) {
 		}
 		directory = filepath.Join(home, ".pencode", "profiles")
 	}
-	return start(directory, role, defaults)
+	options, err := configuredOptions()
+	if err != nil {
+		return nil, err
+	}
+	return start(directory, role, options)
 }
 
 func start(directory, role string, options options) (*Recorder, error) {
@@ -111,7 +145,7 @@ func start(directory, role string, options options) (*Recorder, error) {
 	if err == nil {
 		err = r.openMetrics()
 	}
-	if err == nil {
+	if err == nil && options.cpuDuration > 0 {
 		err = r.startCPU()
 	}
 	if err != nil {
@@ -159,19 +193,41 @@ func (r *Recorder) run() {
 		return
 	}
 	samples := time.NewTicker(r.options.sampleInterval)
-	profiles := time.NewTicker(r.options.profileInterval)
 	metrics := time.NewTicker(r.options.metricsInterval)
 	defer samples.Stop()
-	defer profiles.Stop()
 	defer metrics.Stop()
+	var profiles, cpuStarts, cpuStops <-chan time.Time
+	if r.options.profileInterval > 0 {
+		ticker := time.NewTicker(r.options.profileInterval)
+		defer ticker.Stop()
+		profiles = ticker.C
+	}
+	var window *time.Timer
+	if r.options.cpuDuration > 0 {
+		ticker := time.NewTicker(r.options.cpuInterval)
+		defer ticker.Stop()
+		cpuStarts = ticker.C
+		window = time.NewTimer(r.options.cpuDuration)
+		defer window.Stop()
+		cpuStops = window.C
+	}
 	for {
 		select {
 		case <-r.stop:
 			return
 		case <-samples.C:
 			r.err = r.encoder.Encode(r.sample())
-		case <-profiles.C:
+		case <-profiles:
 			r.err = r.rotate()
+		case <-cpuStops:
+			r.err = r.finishCPU()
+		case <-cpuStarts:
+			r.err = r.finishCPU()
+			if r.err == nil {
+				r.cpuID++
+				r.err = r.startCPU()
+				window.Reset(r.options.cpuDuration)
+			}
 		case <-metrics.C:
 			r.err = r.metrics.Close()
 			if r.err == nil {
@@ -195,7 +251,7 @@ func (r *Recorder) openMetrics() error {
 }
 
 func (r *Recorder) startCPU() error {
-	file, err := os.OpenFile(r.path("cpu", r.profile, ".pprof.tmp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(r.path("cpu", r.cpuID, ".pprof.tmp"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -220,20 +276,14 @@ func (r *Recorder) finishCPU() error {
 		_ = os.Remove(file.Name())
 		return err
 	}
-	if err := os.Rename(file.Name(), r.path("cpu", r.profile, ".pprof")); err != nil {
+	if err := os.Rename(file.Name(), r.path("cpu", r.cpuID, ".pprof")); err != nil {
 		return err
 	}
-	return r.removeOld("cpu", r.profile, r.options.profiles, ".pprof")
+	return r.removeOld("cpu", r.cpuID, r.options.profiles, ".pprof")
 }
 
 func (r *Recorder) rotate() error {
-	if err := r.finishCPU(); err != nil {
-		return err
-	}
 	r.profile++
-	if err := r.startCPU(); err != nil {
-		return err
-	}
 	name := fmt.Sprintf("%06d", r.profile)
 	if err := r.snapshot(name); err != nil {
 		return err
@@ -250,6 +300,9 @@ func (r *Recorder) snapshot(name string) error {
 	sample := r.sample()
 	if err := r.encoder.Encode(sample); err != nil {
 		return err
+	}
+	if r.options.profileInterval == 0 {
+		return nil
 	}
 	if err := r.writeProfile("heap-"+name, pprof.WriteHeapProfile); err != nil {
 		return err

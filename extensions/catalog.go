@@ -21,16 +21,17 @@ import (
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/output"
 	"golang.org/x/mod/semver"
+	"golang.org/x/net/html"
 )
 
 const DefaultMarketplaceURL = "https://pencode-labs.github.io/extensions/extensions.json"
 
 const MarketplaceOutputChannelName = "Extension Marketplace"
 
-// Marketplace's zero value uses the official catalog and public GitHub API.
+// Marketplace's zero value uses the official catalog and public GitHub release pages.
 type Marketplace struct {
-	Client      *http.Client
-	Source, API string
+	Client         *http.Client
+	Source, GitHub string
 }
 
 type Listing struct {
@@ -188,36 +189,82 @@ func (m Marketplace) release(ctx context.Context, l *Listing, goos, arch string)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || parts[0] == "." || parts[0] == ".." || parts[1] == "." || parts[1] == ".." {
 		return fmt.Errorf("无效的 GitHub 仓库：%s", l.Repository)
 	}
-	api := m.API
-	if api == "" {
-		api = "https://api.github.com"
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	base := m.GitHub
+	if base == "" {
+		base = "https://github.com"
 	}
-	var release struct {
-		Tag    string `json:"tag_name"`
-		Assets []struct {
-			Name   string `json:"name"`
-			URL    string `json:"browser_download_url"`
-			Digest string `json:"digest"`
-		} `json:"assets"`
-	}
-	if err := m.readJSON(ctx, strings.TrimRight(api, "/")+"/repos/"+strings.Join(parts, "/")+"/releases/latest", &release); err != nil {
+	base = strings.TrimRight(base, "/")
+	prefix := "/" + strings.Join(parts, "/") + "/releases/"
+	response, err := m.get(ctx, base+prefix+"latest")
+	if err != nil {
 		return err
 	}
-	if !semver.IsValid(marketVersion(release.Tag)) {
-		return fmt.Errorf("无效的发布版本：%s", release.Tag)
+	response.Body.Close()
+	tag, ok := strings.CutPrefix(response.Request.URL.Path, prefix+"tag/")
+	if !ok || !semver.IsValid(marketVersion(tag)) {
+		return fmt.Errorf("无效的发布版本：%s", tag)
 	}
-	l.Version = strings.TrimPrefix(release.Tag, "v")
-	name := l.Name + "-" + release.Tag + "-" + goos + "-" + arch + ".zip"
-	for _, asset := range release.Assets {
-		if asset.Name == name {
-			if !strings.HasPrefix(asset.URL, "https://") {
-				return fmt.Errorf("无效的下载地址")
+	l.Version = strings.TrimPrefix(tag, "v")
+	name := l.Name + "-" + tag + "-" + goos + "-" + arch + ".zip"
+	response, err = m.get(ctx, base+prefix+"expanded_assets/"+url.PathEscape(tag))
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	// Tokenize the bounded fragment without allocating a DOM or an asset list.
+	reader := &io.LimitedReader{R: response.Body, N: (2 << 20) + 1}
+	tokens := html.NewTokenizer(reader)
+	tokens.SetMaxBuf(2 << 20)
+	assetPath := prefix + "download/" + url.PathEscape(tag) + "/" + url.PathEscape(name)
+	assetURL := base + assetPath
+	var address, digest string
+	for {
+		switch tokens.Next() {
+		case html.ErrorToken:
+			if reader.N == 0 || tokens.Err() == html.ErrBufferExceeded {
+				return fmt.Errorf("扩展市场元数据超过 2 MiB")
 			}
-			l.URL, l.Digest = asset.URL, asset.Digest
-			return nil
+			if err := tokens.Err(); err != io.EOF {
+				return err
+			}
+			return fmt.Errorf("此版本没有适用于 %s-%s 的安装包", goos, arch)
+		case html.StartTagToken, html.SelfClosingTagToken:
+			tagName, more := tokens.TagName()
+			switch string(tagName) {
+			case "li":
+				address, digest = "", ""
+			case "a", "clipboard-copy":
+				for more {
+					var key, value []byte
+					key, value, more = tokens.TagAttr()
+					if string(tagName) == "a" && string(key) == "href" && (string(value) == assetPath || string(value) == assetURL) {
+						address = assetURL
+					}
+					if string(tagName) == "clipboard-copy" && string(key) == "value" {
+						digest = string(value)
+					}
+				}
+			}
+		case html.EndTagToken:
+			tagName, _ := tokens.TagName()
+			if string(tagName) == "li" && address != "" {
+				if digest != "" {
+					hexDigest, ok := strings.CutPrefix(digest, "sha256:")
+					var decoded [sha256.Size]byte
+					if !ok || len(hexDigest) != hex.EncodedLen(len(decoded)) {
+						return fmt.Errorf("无效的安装包 SHA-256 校验值")
+					}
+					if _, err := hex.Decode(decoded[:], []byte(hexDigest)); err != nil {
+						return fmt.Errorf("无效的安装包 SHA-256 校验值")
+					}
+				}
+				l.URL, l.Digest = address, strings.ToLower(digest)
+				return nil
+			}
 		}
 	}
-	return fmt.Errorf("此版本没有适用于 %s-%s 的安装包", goos, arch)
 }
 
 // Install downloads and extracts a release into disposable local staging, then

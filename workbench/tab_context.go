@@ -126,8 +126,8 @@ func (m *workspaceModel) updateTabContext(world *module.Content, state *input.St
 				id = "file-tab:" + tab.surface.rootID
 			}
 		default:
-			if m.actions.ui.editor != nil || m.sourceState().visible() || tab.path != tab.project.ActivePath {
-				id = "file-tab:" + tab.path
+			if tab.project != m.activeProjectState() || m.actions.ui.editor != nil || m.sourceState().visible() || tab.path != tab.project.ActivePath {
+				id = fileTabID(tab.project, tab.path)
 			}
 		}
 		node, ok := world.HTMLNode(m.surface, id)

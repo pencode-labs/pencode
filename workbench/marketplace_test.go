@@ -294,7 +294,7 @@ func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
 		switch r.URL.Path {
 		case "/extensions.json":
 			io.WriteString(w, `{"extensions":[{"name":"test","repository":"https://github.com/pencode-labs/test"}]}`)
-		case "/repos/pencode-labs/test/releases/latest":
+		case "/pencode-labs/test/releases/latest":
 			checks.Add(1)
 			if forbidden.Load() {
 				w.Header().Set("X-RateLimit-Remaining", "0")
@@ -302,8 +302,12 @@ func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
 				io.WriteString(w, `{"message":"API rate limit exceeded"}`)
 				return
 			}
-			fmt.Fprintf(w, `{"tag_name":"v1.1.0","assets":[{"name":%q,"browser_download_url":%q}]}`, "test-v1.1.0-"+catalog.OS+"-"+catalog.Arch+".zip", server.URL+"/package.zip")
-		case "/package.zip":
+			http.Redirect(w, r, "/pencode-labs/test/releases/tag/v1.1.0", http.StatusFound)
+		case "/pencode-labs/test/releases/tag/v1.1.0":
+			io.WriteString(w, "release page")
+		case "/pencode-labs/test/releases/expanded_assets/v1.1.0":
+			fmt.Fprintf(w, `<ul><li><a href="/pencode-labs/test/releases/download/v1.1.0/test-v1.1.0-%s-%s.zip">package</a></li></ul>`, catalog.OS, catalog.Arch)
+		case "/pencode-labs/test/releases/download/v1.1.0/test-v1.1.0-" + catalog.OS + "-" + catalog.Arch + ".zip":
 			downloads.Add(1)
 			http.Error(w, "download fixture", http.StatusForbidden)
 		default:
@@ -311,7 +315,7 @@ func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	model.market.source = extensions.Marketplace{Source: server.URL + "/extensions.json", API: server.URL, Client: server.Client()}
+	model.market.source = extensions.Marketplace{Source: server.URL + "/extensions.json", GitHub: server.URL, Client: server.Client()}
 	for _, ref := range [...]string{"open-marketplace", "market-refresh"} {
 		model.handleMarketplaceEvent(&module.ContentEventContext[appProps, appState]{Ref: ref})
 		waitPencodeMarket(t, model)

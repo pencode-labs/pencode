@@ -257,6 +257,9 @@ func (model *workspaceModel) startProjectScan(project *pencodeProject, initial b
 }
 
 func (model *workspaceModel) startProjectSnapshot(project *pencodeProject, initial, refresh bool) {
+	if project.Loose {
+		return
+	}
 	project.stopScan()
 	var previous uint64
 	if refresh {

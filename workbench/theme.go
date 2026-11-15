@@ -44,6 +44,8 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"keymap-delete-icon", "icons/trash.svg", "icon.foreground"},
 	{"settings-extensions-toggle", "icons/chevron-right.svg", "icon.foreground"},
 	{"open-project-icon", "icons/folder-opened.svg", "button.foreground"},
+	{"sidebar-collapse-icon", "icons/chevron-right.svg", "icon.foreground"},
+	{"sidebar-expand-icon", "icons/chevron-right.svg", "icon.foreground"},
 	{"collapse-directories-icon", "icons/list-collapse.svg", "icon.foreground"},
 	{"reveal-active-file-icon", "icons/locate-fixed.svg", "icon.foreground"},
 	{"reload-from-disk-icon", "icons/refresh-cw.svg", "icon.foreground"},

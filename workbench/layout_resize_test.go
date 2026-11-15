@@ -111,3 +111,42 @@ func TestWorkbenchResizeIdleAllocations(t *testing.T) {
 		}
 	}
 }
+
+func TestSidebarCollapseAndExpand(t *testing.T) {
+	app, model, _, state := languageInteractionFixture(t)
+	model.sidebarWidthStyle = "flex-basis:310px;"
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	languageInteractionStep(t, app)
+	before := editorContextBounds(t, model, "editor-body")
+	click := func(ref string) {
+		t.Helper()
+		b := editorContextBounds(t, model, ref)
+		x, y := float64(b.X+b.Width/2), float64(b.Y+b.Height/2)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		languageInteractionStep(t, app)
+	}
+	click("sidebar-collapse")
+	if !model.sidebarHidden {
+		t.Fatal("collapse button did not hide sidebar")
+	}
+	for _, ref := range []string{"sidebar", "sidebar-resize"} {
+		node, _ := model.fontResources.HTMLNode(model.surface, ref)
+		if _, visible := node.Bounds(); visible {
+			t.Fatalf("%s still occupies layout", ref)
+		}
+	}
+	collapsed := editorContextBounds(t, model, "editor-body")
+	if collapsed.Width <= before.Width {
+		t.Fatal("collapsing sidebar did not give space to editor")
+	}
+	click("sidebar-expand")
+	if model.sidebarHidden || model.sidebarWidthStyle != "flex-basis:310px;" {
+		t.Fatal("expanding sidebar lost visibility or width")
+	}
+	after := editorContextBounds(t, model, "editor-body")
+	if math.Abs(float64(after.Width-before.Width)) > 1 {
+		t.Fatal("expanded layout did not restore editor width")
+	}
+}

@@ -10,18 +10,26 @@ PENCODE_PROFILE_DIR=/path/to/profiles make run
 
 # 关闭；也可设置 PENCODE_DEBUG=1 显式开启发布构建的记录
 PENCODE_DEBUG=0 make run
+
+# 仅记录每 5 秒的 metrics，不生成 CPU、heap 或 resources profile
+PENCODE_PROFILE_CPU_DURATION=0 PENCODE_PROFILE_HEAP_INTERVAL=0 make run
+
+# 自定义采样：每分钟采样 CPU 10 秒，每 10 分钟保存堆快照
+PENCODE_PROFILE_CPU_INTERVAL=1m PENCODE_PROFILE_CPU_DURATION=10s PENCODE_PROFILE_HEAP_INTERVAL=10m make run
 ```
+
+默认在启动时采样 CPU 5 秒，之后每 5 分钟再次采样 5 秒；窗口之间完全停止 CPU profiler。`PENCODE_PROFILE_CPU_INTERVAL` 控制窗口启动间隔（默认 `5m`），`PENCODE_PROFILE_CPU_DURATION` 控制窗口长度（默认 `5s`，`0` 关闭 CPU 采样）。窗口长度不能超过启动间隔。`PENCODE_PROFILE_HEAP_INTERVAL` 独立控制 heap/resources 快照间隔（默认 `5m`，`0` 关闭所有 heap/resources 快照，包括基线和最终快照）。这些设置使用 Go duration 格式，如 `10s`、`5m`；只作用于已启用的记录器。
 
 SSH 上的独立服务端使用远端环境变量及目录。外部扩展、语言服务器和终端子进程不包含在当前进程的 CPU/堆采样中。
 
 | 文件 | 内容与留存 |
 | --- | --- |
 | `session.json` | 时间、角色、PID、版本、系统及架构 |
-| `cpu-000000.pprof` | 连续 Go CPU 采样，每分钟封存一段，保留最近 60 段 |
-| `heap-000001.pprof` | 每分钟的 Go 采样堆，包含 `inuse_space` 和累计 `alloc_space`，保留最近 60 份 |
+| `cpu-000000.pprof` | 每个 CPU 采样窗口结束后封存，默认每 5 分钟采样 5 秒，保留最近 60 段 |
+| `heap-000001.pprof` | 默认每 5 分钟的 Go 采样堆，包含 `inuse_space` 和累计 `alloc_space`，保留最近 60 份 |
 | `resources-000001.pprof` | 与堆快照同一时刻的资源指标，保留最近 60 份 |
-| `heap-baseline.pprof`、`resources-baseline.pprof` | 启动时的基线，始终保留 |
-| `heap-final.pprof`、`resources-final.pprof` | 正常退出时的最终快照 |
+| `heap-baseline.pprof`、`resources-baseline.pprof` | 启用堆快照时保存启动基线，始终保留 |
+| `heap-final.pprof`、`resources-final.pprof` | 启用堆快照时保存正常退出的最终快照 |
 | `metrics-000000.jsonl` | 每 5 秒记录时间、完整 Go MemStats、goroutine 数、进程 CPU 累计纳秒数、进程／系统内存、GPU 指标；每小时轮转，保留最近 24 份 |
 
 CPU 文件在完成时才从 `.tmp` 重命名为 `.pprof`；其他 profile 也写完后再重命名。正常退出会等待最后一段 CPU 和最终快照写完；强制终止只能保证此前封存的文件可用。每次运行内部的文件数量有界，历史运行目录保留，需要自行归档或删除。目录权限为 `0700`，文件为 `0600`（Windows 使用系统权限规则）。启动记录失败时打印错误并继续运行；后台写入失败时停止采样并打印错误。
@@ -33,7 +41,7 @@ CPU 文件在完成时才从 `.tmp` 重命名为 `.pprof`；其他 profile 也�
 ```sh
 RUN=/path/to/profiles/20261114T000000Z-gui-12345-example
 
-# CPU 热点；多段可合并分析
+# CPU 热点；多段可合并分析，窗口之间未采样的时间没有调用栈
 go tool pprof -top /path/to/Pencode "$RUN"/cpu-*.pprof
 go tool pprof -http=127.0.0.1:8081 /path/to/Pencode "$RUN"/cpu-000005.pprof
 
@@ -48,6 +56,8 @@ go tool pprof -top -sample_index=gpu_instance_buffers "$RUN"/resources-final.ppr
 ```
 
 CPU 和 heap 是 Go runtime 生成的标准二进制 pprof，包含可解析的调用栈；资源快照同样使用 pprof protobuf，但只包含实测或明确注明口径的指标，没有分配调用栈。`metrics-*.jsonl` 用于查看长期趋势；相邻 `process.cpu_time_ns` 的差值除以墙钟纳秒差，就是进程消耗的 CPU 核数。
+
+Windows 的 Go CPU profile 可能把 `ReadFile`、`WaitForSingleObject` 等等待调用采样到 `runtime.cgocall`，因此样本总时间及占比不能直接作为进程 CPU 使用率。应结合 metrics 的进程 CPU 时间增量；过滤 `runtime.cgocall` 只能帮助定位剩余 Go 调用栈，也会过滤实际执行中的原生调用。
 
 ## 指标口径
 

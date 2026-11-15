@@ -778,7 +778,7 @@ func (model *workspaceModel) runShortcut(world *module.Content, action pencodeSh
 	case pencodeShortcutPrevious:
 		model.switchEditorTab(world, -1)
 	case pencodeShortcutSidebar:
-		model.sidebarHidden = !model.sidebarHidden
+		model.toggleSidebar()
 	case pencodeShortcutZoomIn:
 		model.setZoom(world, model.settings.Zoom+10)
 	case pencodeShortcutZoomOut:
@@ -802,20 +802,29 @@ func (model *workspaceModel) setZoom(world *module.Content, zoom int) {
 }
 
 func (model *workspaceModel) switchEditorTab(world *module.Content, step int) {
-	tabs, active := model.tabs, model.activePath
-	if project := model.activeProjectState(); project != nil {
-		tabs, active = project.Tabs, project.ActivePath
-	}
-	if len(tabs) < 2 {
-		return
-	}
-	for index, path := range tabs {
-		if path != active {
+	count, active := 0, -1
+	for tab := range model.editorTabs() {
+		if tab.surface != nil || tab.source != nil {
 			continue
 		}
-		next := (index + step + len(tabs)) % len(tabs)
-		model.selectTab(tabs[next])
-		setPencodeEditorValue(world, model.surface, model.activeContent())
+		if tab.project == model.activeProjectState() && tab.path == model.activePath {
+			active = count
+		}
+		count++
+	}
+	if count < 2 || active < 0 {
 		return
+	}
+	next := (active + step + count) % count
+	for tab := range model.editorTabs() {
+		if tab.surface != nil || tab.source != nil {
+			continue
+		}
+		if next == 0 {
+			model.selectProjectTab(tab.project, tab.path)
+			setPencodeEditorValue(world, model.surface, model.activeContent())
+			return
+		}
+		next--
 	}
 }

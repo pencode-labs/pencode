@@ -58,6 +58,9 @@ func (m *workspaceModel) saveProjectStates() {
 }
 
 func (m *workspaceModel) saveProjectState(p *pencodeProject) {
+	if p.Loose {
+		return
+	}
 	file := m.session.projectStateFile(p.historyKey)
 	if file == "" {
 		return

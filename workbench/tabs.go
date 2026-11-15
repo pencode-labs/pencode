@@ -428,3 +428,10 @@ func (model *workspaceModel) focusCloseDialog(world *module.Content, surface ecs
 		}
 	}
 }
+
+func fileTabID(project *pencodeProject, path string) string {
+	if project != nil && project.Loose {
+		return "file-tab:" + project.Path + ":" + path
+	}
+	return "file-tab:" + path
+}

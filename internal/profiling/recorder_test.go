@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	runtimepprof "runtime/pprof"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,10 @@ import (
 )
 
 func TestRecorderRotationAndShutdown(t *testing.T) {
-	r, err := start(t.TempDir(), "test", options{10 * time.Millisecond, 250 * time.Millisecond, 250 * time.Millisecond, 2, 2})
+	r, err := start(t.TempDir(), "test", options{
+		sampleInterval: 10 * time.Millisecond, cpuInterval: 400 * time.Millisecond, cpuDuration: 50 * time.Millisecond,
+		profileInterval: 250 * time.Millisecond, metricsInterval: 250 * time.Millisecond, profiles: 2, metricsFiles: 2,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,6 +108,83 @@ func TestRecorderRotationAndShutdown(t *testing.T) {
 	}
 	if counts["cpu"] != 2 || counts["heap"] != 4 || counts["resources"] != 4 || counts["metrics"] != 2 || rows == 0 {
 		t.Fatalf("retention/metrics: %v, rows=%d", counts, rows)
+	}
+}
+
+func TestCPUWindowStopsBetweenCaptures(t *testing.T) {
+	value := defaults
+	value.cpuDuration = 20 * time.Millisecond
+	value.cpuInterval = time.Hour
+	value.profileInterval = 0
+	r, err := start(t.TempDir(), "test", value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(r.path("cpu", 0, ".pprof")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("CPU window did not stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// A second profiler can start while the recorder remains open: the sampling
+	// goroutine has actually stopped, rather than merely rotating output files.
+	if err := runtimepprof.StartCPUProfile(io.Discard); err != nil {
+		t.Fatalf("CPU profiler still running between captures: %v", err)
+	}
+	runtimepprof.StopCPUProfile()
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMetricsOnlyRecorder(t *testing.T) {
+	value := defaults
+	value.cpuDuration, value.profileInterval = 0, 0
+	r, err := start(t.TempDir(), "test", value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	files, err := os.ReadDir(r.Directory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("metrics-only recording created profile files: %v", files)
+	}
+	for _, file := range files {
+		if file.Name() != "session.json" && file.Name() != "metrics-000000.jsonl" {
+			t.Fatalf("unexpected metrics-only file: %s", file.Name())
+		}
+	}
+}
+
+func TestConfiguredIntervals(t *testing.T) {
+	t.Setenv("PENCODE_PROFILE_CPU_DURATION", "2s")
+	t.Setenv("PENCODE_PROFILE_CPU_INTERVAL", "10s")
+	t.Setenv("PENCODE_PROFILE_HEAP_INTERVAL", "20s")
+	value, err := configuredOptions()
+	if err != nil || value.cpuDuration != 2*time.Second || value.cpuInterval != 10*time.Second || value.profileInterval != 20*time.Second {
+		t.Fatalf("configured intervals: %+v, %v", value, err)
+	}
+	for _, invalid := range []string{"-1s", "bad", "11s"} {
+		t.Setenv("PENCODE_PROFILE_CPU_DURATION", invalid)
+		if _, err := configuredOptions(); err == nil {
+			t.Fatalf("invalid duration accepted: %s", invalid)
+		}
+	}
+	t.Setenv("PENCODE_PROFILE_CPU_DURATION", "0")
+	t.Setenv("PENCODE_PROFILE_CPU_INTERVAL", "0")
+	t.Setenv("PENCODE_PROFILE_HEAP_INTERVAL", "0")
+	if value, err := configuredOptions(); err != nil || value.cpuDuration != 0 || value.profileInterval != 0 {
+		t.Fatalf("metrics-only configuration: %+v, %v", value, err)
 	}
 }
 

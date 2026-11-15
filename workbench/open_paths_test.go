@@ -85,7 +85,7 @@ func TestOpenPathsValidation(t *testing.T) {
 	}
 }
 
-func TestOpenPathOverridesRestoredActiveTab(t *testing.T) {
+func TestOpenPathDoesNotRestoreParentProject(t *testing.T) {
 	m, p := resourceTestModel(t)
 	s := newPencodeTestSession(t, p.backend)
 	m.session = s
@@ -105,7 +105,7 @@ func TestOpenPathOverridesRestoredActiveTab(t *testing.T) {
 		}
 	})
 	settleExternalPaths(t, s, m)
-	if m.activePath != "requested.txt" || len(m.tabs) != 2 || m.activeFile().Preview {
-		t.Fatalf("restoring project state replaced the requested file selection: active=%q tabs=%v status=%s", m.activePath, m.tabs, m.status)
+	if m.activePath != "requested.txt" || len(m.tabs) != 1 || m.activeFile().Preview || !m.activeProjectState().Loose {
+		t.Fatalf("opening a file restored its parent project: active=%q tabs=%v status=%s", m.activePath, m.tabs, m.status)
 	}
 }

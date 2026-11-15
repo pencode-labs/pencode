@@ -103,6 +103,13 @@ func paneSizeStyle(previous, property string, size int, suffix string) string {
 	return string(b)
 }
 
+func (m *workspaceModel) toggleSidebar() {
+	m.sidebarHidden = !m.sidebarHidden
+	if m.sidebarHidden {
+		m.resize.target = pencodeResizeNone
+	}
+}
+
 func (m *workspaceModel) renderWorkbenchResize(view *htmlui.View) {
 	sidebar, bottom := "pencode-sidebar-resize", "pencode-panel-resize"
 	switch m.resize.target {

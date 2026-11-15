@@ -214,3 +214,42 @@ func TestExternalPathsRemoteConnectionNeverSubmitsLocalIO(t *testing.T) {
 		t.Fatal("a local drop used or replaced the remote connection")
 	}
 }
+
+func TestExternalFileKeepsParentClosed(t *testing.T) {
+	s, m := externalTestSession(t)
+	root := t.TempDir()
+	resourceTestWrite(t, &pencodeProject{Path: root}, "file.txt", "text")
+	s.OpenPaths(filepath.Join(root, "file.txt"))
+	settleExternalPaths(t, s, m)
+	p, f := m.activeProjectState(), m.activeFile()
+	if !p.Loose || p.scan != nil || p.watch != nil || len(p.Entries) != 0 || m.revealProject != nil {
+		t.Fatal("file open loaded or revealed its parent directory")
+	}
+	m.updateActiveContent("unsaved")
+	s.OpenPaths(root)
+	settleExternalPaths(t, s, m)
+	if m.activeProjectState() != p || p.Loose || p.scan == nil || p.watch == nil || m.activeFile() != f || !f.Dirty || f.content() != "unsaved" {
+		t.Fatal("explicit directory open did not promote the existing editing workspace")
+	}
+}
+
+func TestExternalFilesRemainInTabStrip(t *testing.T) {
+	s, m := externalTestSession(t)
+	for range 2 {
+		root := t.TempDir()
+		resourceTestWrite(t, &pencodeProject{Path: root}, "same.txt", "text")
+		s.OpenPaths(filepath.Join(root, "same.txt"))
+	}
+	settleExternalPaths(t, s, m)
+	var tabs []pencodeEditorTab
+	for tab := range m.editorTabs() {
+		tabs = append(tabs, tab)
+	}
+	if len(tabs) != 2 || tabs[0].project == tabs[1].project || fileTabID(tabs[0].project, tabs[0].path) == fileTabID(tabs[1].project, tabs[1].path) {
+		t.Fatal("standalone files are missing from the tab strip or share an ID")
+	}
+	m.selectProjectTab(tabs[0].project, tabs[0].path)
+	if m.activeProjectState() != tabs[0].project {
+		t.Fatal("could not switch standalone files")
+	}
+}

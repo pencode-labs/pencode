@@ -49,21 +49,25 @@ func TestMarketplaceReleaseAndPlatform(t *testing.T) {
 		switch r.URL.Path {
 		case "/extensions.json":
 			io.WriteString(w, `{"extensions":[{"name":"test","repository":"https://github.com/pencode-labs/test","description":"Test"},{"name":"other","repository":"https://github.com/pencode-labs/other"}]}`)
-		case "/repos/pencode-labs/test/releases/latest":
-			fmt.Fprintf(w, `{"tag_name":"v1.10.0","assets":[{"name":"test-v1.10.0-linux-arm64.zip","browser_download_url":%q,"digest":"sha256:example"},{"name":"test-v1.10.0-linux-amd64.zip","browser_download_url":"https://example.com/wrong.zip"}]}`, server.URL+"/package.zip")
-		case "/package.zip":
+		case "/pencode-labs/test/releases/latest":
+			http.Redirect(w, r, "/pencode-labs/test/releases/tag/v1.10.0", http.StatusFound)
+		case "/pencode-labs/test/releases/tag/v1.10.0":
+			io.WriteString(w, "release page")
+		case "/pencode-labs/test/releases/expanded_assets/v1.10.0":
+			fmt.Fprintf(w, `<ul><li><a href="/pencode-labs/test/releases/download/v1.10.0/test-v1.10.0-linux-amd64.zip">other platform</a><clipboard-copy value="sha256:%s"></clipboard-copy></li><li><a href="/pencode-labs/test/releases/download/v1.10.0/test-v1.10.0-linux-arm64.zip"><span>package</span></a><clipboard-copy value="sha256:%s"></clipboard-copy></li></ul>`, strings.Repeat("b", 64), strings.Repeat("a", 64))
+		case "/pencode-labs/test/releases/download/v1.10.0/test-v1.10.0-linux-arm64.zip":
 			downloads.Add(1)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
-	m := Marketplace{Source: server.URL + "/extensions.json", API: server.URL, Client: server.Client()}
+	m := Marketplace{Source: server.URL + "/extensions.json", GitHub: server.URL, Client: server.Client()}
 	items, err := m.List(t.Context(), "linux", "arm64")
 	if err != nil || len(items) != 2 {
 		t.Fatal(items, err)
 	}
-	if items[0].Version != "1.10.0" || items[0].URL != server.URL+"/package.zip" || items[0].Problem != "" || items[1].Problem == "" {
+	if items[0].Version != "1.10.0" || items[0].URL != server.URL+"/pencode-labs/test/releases/download/v1.10.0/test-v1.10.0-linux-arm64.zip" || items[0].Digest != "sha256:"+strings.Repeat("a", 64) || items[0].Problem != "" || items[1].Problem == "" {
 		t.Fatal(items)
 	}
 	for version, want := range map[string]bool{"1.9.0": true, "v1.10.0": false, "1.11.0": false, "1.10.0-beta.1": true, "invalid": false} {
@@ -89,12 +93,55 @@ func TestMarketplaceReleaseCheckFailureIsNotDownloadFailure(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer server.Close()
-	items, err := (Marketplace{Source: server.URL + "/extensions.json", API: server.URL}).List(t.Context(), "linux", "amd64")
+	items, err := (Marketplace{Source: server.URL + "/extensions.json", GitHub: server.URL}).List(t.Context(), "linux", "amd64")
 	if err != nil || len(items) != 1 {
 		t.Fatal(items, err)
 	}
 	if !strings.Contains(items[0].Problem, "HTTP 403") || strings.Contains(items[0].Problem, "下载") || items[0].URL != "" {
 		t.Fatal(items[0])
+	}
+}
+
+func TestMarketplaceReleasePagesValidation(t *testing.T) {
+	const asset = "/pencode-labs/test/releases/download/v1.0.0/test-v1.0.0-linux-amd64.zip"
+	for _, test := range []struct {
+		name, tag, body, problem string
+	}{
+		{name: "missing redirect", problem: "无效的发布版本"},
+		{name: "invalid version", tag: "nightly", problem: "无效的发布版本"},
+		{name: "missing platform", tag: "v1.0.0", body: `<li><a href="/other.zip">other</a></li>`, problem: "linux-amd64"},
+		{name: "external asset", tag: "v1.0.0", body: `<li><a href="https://example.com` + asset + `">package</a></li>`, problem: "linux-amd64"},
+		{name: "invalid digest", tag: "v1.0.0", body: `<li><a href="` + asset + `">package</a><clipboard-copy value="sha256:invalid"></clipboard-copy></li>`, problem: "SHA-256"},
+		{name: "oversized metadata", tag: "v1.0.0", body: strings.Repeat(" ", (2<<20)+1), problem: "2 MiB"},
+		{name: "no digest", tag: "v1.0.0", body: `<li><a href="` + asset + `">package</a></li>`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/pencode-labs/test/releases/latest":
+					if test.tag != "" {
+						http.Redirect(w, r, "/pencode-labs/test/releases/tag/"+test.tag, http.StatusFound)
+					}
+				case "/pencode-labs/test/releases/tag/" + test.tag:
+					io.WriteString(w, "release page")
+				case "/pencode-labs/test/releases/expanded_assets/" + test.tag:
+					io.WriteString(w, test.body)
+				default:
+					t.Errorf("unexpected request: %s", r.URL)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			listing := Listing{Name: "test", Repository: "https://github.com/pencode-labs/test"}
+			err := (Marketplace{GitHub: server.URL}).release(t.Context(), &listing, "linux", "amd64")
+			if test.problem != "" {
+				if err == nil || !strings.Contains(err.Error(), test.problem) || listing.URL != "" {
+					t.Fatal(listing, err)
+				}
+			} else if err != nil || listing.URL != server.URL+asset || listing.Digest != "" {
+				t.Fatal(listing, err)
+			}
+		})
 	}
 }
 

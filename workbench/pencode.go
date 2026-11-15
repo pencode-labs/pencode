@@ -2377,6 +2377,7 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	}
 	model.updateTabWheel(context.World, state)
 	model.updateFilePageWheel(context.World, state)
+	model.updateImagePointer(context.World, state)
 	changed := model.updateWorkbenchResize(context.World, state)
 	if model.updateDebugPointer(context.World, state) {
 		changed = true

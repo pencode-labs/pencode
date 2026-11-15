@@ -108,7 +108,14 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 	return ecs.SystemConfig{
 		Name: "sync_pencode_editor_layout", After: []string{"sync_ui_text_input"},
 		System: func(context *ecs.SystemContext) error {
-			if s.syncLayout() {
+			changed := s.syncLayout()
+			if s.active != nil && s.active.model.syncImagePreview(s.active.model.fontResources) {
+				if err := s.active.model.fontResources.SyncHTML(); err != nil {
+					return err
+				}
+				changed = true
+			}
+			if changed {
 				// Extension scroll restoration and inline text changes run after
 				// layout. Update native controls before this frame reaches paint.
 				if err := engineui.SyncAfterLayout(context.World); err != nil {

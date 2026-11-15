@@ -34,6 +34,7 @@ type pencodeCustomDocument struct {
 	find        *pencodeRenderedFind
 	selection   *pencodeExtensionSurface
 	grid        *pencodeVirtualGrid
+	image       *pencodeImageView
 	content     string
 	message     string
 	bindings    []peb.EditorBinding
@@ -445,6 +446,9 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	definition, err := htmlui.DefineScoped(componentTemplate, theme.resolveCSS(view.CSS), htmlui.Behavior[*pencodeCustomDocument, struct{}]{
 		Render: func(context htmlui.RenderContext[*pencodeCustomDocument, struct{}], target *htmlui.View) {
 			doc := *context.Props
+			if doc.image != nil {
+				doc.image.render(target)
+			}
 			if doc.grid != nil {
 				doc.grid.component = context.Component
 				doc.grid.renderExtent(target)
@@ -462,7 +466,14 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		},
 		HandleEvent: func(context *htmlui.ComponentEventContext[*pencodeCustomDocument, struct{}]) {
 			doc := *context.Props
-			if doc.process == nil || doc.model.closing.action != pencodeCloseNone {
+			if doc.model.closing.action != pencodeCloseNone {
+				return
+			}
+			if doc.image != nil && context.Event.Kind == htmlui.EventClick {
+				doc.image.action(context.Ref)
+				return
+			}
+			if doc.process == nil {
 				return
 			}
 			event := context.Event

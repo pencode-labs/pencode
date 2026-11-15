@@ -132,9 +132,14 @@ func prepareImagePreview(data []byte, ext string) (*pencodeImageResult, error) {
 }
 
 const pencodeImageCSS = `
-.image-preview { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:48px 24px; }
-.image-preview img { max-width:100%; max-height:100%; object-fit:contain; }
-.image-info { position:absolute; bottom:12px; left:16px; right:16px; margin:0; text-align:center; color:var(--vscode-descriptionForeground); }
+.image-preview { position:absolute; inset:0 0 40px; overflow:hidden; }
+.image-preview img { position:absolute; max-width:none; max-height:none; object-fit:contain; }
+.image-toolbar { position:absolute; bottom:0; left:0; right:0; height:40px; display:flex; align-items:center; justify-content:center; gap:8px; color:var(--vscode-descriptionForeground); background:var(--vscode-editor-background); }
+.image-toolbar button { padding:4px 8px; border:0; border-radius:4px; background:transparent; color:var(--vscode-foreground); cursor:pointer; }
+.image-toolbar button:hover { background:var(--vscode-toolbar-hoverBackground); }
+.image-toolbar button:focus-visible { outline:1px solid var(--vscode-focusBorder); }
+.image-zoom { min-width:48px; text-align:center; }
+.image-info { margin:0 8px; }
 `
 
 func (model *workspaceModel) acceptImagePreview(result *fileIOResult) {
@@ -158,7 +163,11 @@ func (model *workspaceModel) acceptImagePreview(result *fileIOResult) {
 		return
 	}
 	preview := result.image
-	view := &peb.EditorView{HTML: fmt.Sprintf(`<div id="pencode-extension-image-container" class="image-preview"><img id="pencode-extension-image" src="%s" alt="%s" width="%d" height="%d"></div><p class="image-info">%d × %d</p>`, preview.source, html.EscapeString(job.file.Name), preview.width, preview.height, preview.width, preview.height), CSS: pencodeImageCSS}
+	if document.image == nil {
+		document.image = &pencodeImageView{fit: true}
+	}
+	document.image.width, document.image.height = float32(preview.width), float32(preview.height)
+	view := &peb.EditorView{HTML: fmt.Sprintf(`<div id="pencode-extension-image-container" class="image-preview"><img id="pencode-extension-image" data-ref="image" src="%s" alt="%s" width="%d" height="%d"></div><div class="image-toolbar"><span class="image-info">%d × %d</span><button id="pencode-extension-image-zoom-out" data-ref="image-zoom-out" title="%s">−</button><span id="pencode-extension-image-zoom" data-ref="image-zoom" class="image-zoom"></span><button id="pencode-extension-image-zoom-in" data-ref="image-zoom-in" title="%s">+</button><button id="pencode-extension-image-actual" data-ref="image-actual" title="%s">1:1</button><button id="pencode-extension-image-fit" data-ref="image-fit">%s</button></div>`, preview.source, html.EscapeString(job.file.Name), preview.width, preview.height, preview.width, preview.height, html.EscapeString(model.tr("缩小")), html.EscapeString(model.tr("放大")), html.EscapeString(model.tr("实际大小")), html.EscapeString(model.tr("适应窗口"))), CSS: pencodeImageCSS}
 	if err := document.setView(view); err != nil {
 		document.message = model.tr("图片预览失败：") + err.Error()
 		return

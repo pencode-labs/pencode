@@ -8,11 +8,14 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/protocol"
 	"golang.org/x/image/bmp"
@@ -229,13 +232,22 @@ func TestImagePreviewRetainedLayoutAndSwitching(t *testing.T) {
 		t.Fatal(err)
 	}
 	step := func() {
-		markPencodeRootDirtyByModel(model.fontResources, model)
-		languageInteractionStep(t, app)
-		if err := awaitFileIO(t, model); err != nil {
-			t.Fatal(err)
+		t.Helper()
+		// File notifications can replace the document during a frame. Wait for
+		// that preview too before asserting its retained layout.
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if err := awaitFileIO(t, model); err != nil {
+				t.Fatal(err)
+			}
+			markPencodeRootDirtyByModel(model.fontResources, model)
+			languageInteractionStep(t, app)
+			if doc := model.customDocuments[model.activeFile()]; doc != nil && doc.inflight {
+				continue
+			}
+			return
 		}
-		markPencodeRootDirtyByModel(model.fontResources, model)
-		languageInteractionStep(t, app)
+		t.Fatal("image preview did not finish loading")
 	}
 	step()
 	check := func() {
@@ -318,5 +330,124 @@ func TestImagePreviewCancelsPendingTextChoice(t *testing.T) {
 	}
 	if m.activeFile().editorID != pencodeImageEditor.ID || m.textEditorActive() {
 		t.Fatal("late text open replaced the selected image preview")
+	}
+}
+
+func TestImagePreviewZoomGeometry(t *testing.T) {
+	v := pencodeImageView{width: 2000, height: 1000, fit: true}
+	v.layout(1048, 548)
+	if v.scale != .5 {
+		t.Fatalf("fit scale=%v", v.scale)
+	}
+	x, y := float32(600), float32(300)
+	imageX := (x-v.viewportWidth/2-v.x)/v.scale + v.width/2
+	imageY := (y-v.viewportHeight/2-v.y)/v.scale + v.height/2
+	v.zoom(2, x, y)
+	if gotX, gotY := (x-v.viewportWidth/2-v.x)/v.scale+v.width/2, (y-v.viewportHeight/2-v.y)/v.scale+v.height/2; gotX != imageX || gotY != imageY {
+		t.Fatalf("zoom moved the pixel under the pointer: %v,%v -> %v,%v", imageX, imageY, gotX, gotY)
+	}
+	v.x, v.y = 1e6, -1e6
+	v.layout(1048, 548)
+	if v.x != (4000-1048)/2 || v.y != -(2000-548)/2 {
+		t.Fatalf("pan escaped image bounds: %+v", v)
+	}
+	v.zoom(1e9, x, y)
+	if v.scale != 32 {
+		t.Fatal("maximum zoom was not clamped")
+	}
+	v.zoom(0, x, y)
+	if v.scale != .01 || v.x != 0 || v.y != 0 {
+		t.Fatal("minimum zoom was not clamped and centered")
+	}
+	v.action("image-fit")
+	v.layout(548, 298)
+	if v.scale != .25 || !v.fit {
+		t.Fatal("fit did not follow viewport resizing")
+	}
+	v.action("image-actual")
+	v.layout(1048, 548)
+	if v.scale != 1 || v.fit || v.x != 0 || v.y != 0 {
+		t.Fatal("1:1 did not survive viewport resizing")
+	}
+}
+
+func TestImagePreviewZoomInteraction(t *testing.T) {
+	app, model, _, state := languageInteractionFixture(t)
+	p := model.activeProjectState()
+	resourceTestWrite(t, p, "picture.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="1024"/>`)
+	openProjectFileAndWait(t, model, p, "picture.svg")
+	doc := model.customDocument()
+	if err := awaitFileIO(t, model); err != nil {
+		t.Fatal(err)
+	}
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	languageInteractionStep(t, app)
+	languageInteractionStep(t, app)
+	v := doc.image
+	if v.scale <= 0 || v.scale >= 1 {
+		t.Fatalf("large image was not fitted: %+v", v)
+	}
+	for _, zoom := range []int{100, 150} {
+		model.settings.Zoom = zoom
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		languageInteractionStep(t, app)
+		editorContextClick(t, app, model, state, "pencode-extension-image-actual")
+		picture := editorContextBounds(t, model, "pencode-extension-image")
+		if v.scale != 1 || picture.Width != 2048 || picture.Height != 1024 {
+			t.Fatalf("1:1 dimensions at UI zoom %d: %+v scale=%v", zoom, picture, v.scale)
+		}
+		bounds := editorContextBounds(t, model, "pencode-extension-image-container")
+		uiScale := float64(zoom) / 100
+		x, y := float64(bounds.X+bounds.Width/2)*uiScale, float64(bounds.Y+bounds.Height/2)*uiScale
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: y})
+		state.Enqueue(input.Event{Kind: input.EventMouseWheel, WheelY: 1})
+		languageInteractionStep(t, app)
+		if math.Abs(float64(v.scale)-imageZoomStep) > .001 || state.Pointer().WheelY != 0 {
+			t.Fatalf("wheel did not zoom and consume input at UI zoom %d: %+v", zoom, v)
+		}
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x + 30*uiScale, Y: y + 20*uiScale})
+		languageInteractionStep(t, app)
+		if math.Abs(float64(v.x)-30) > .01 || math.Abs(float64(v.y)-20) > .01 {
+			t.Fatalf("drag did not pan at UI zoom %d: %+v", zoom, v)
+		}
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x + 30*uiScale, Y: y + 20*uiScale})
+		languageInteractionStep(t, app)
+		editorContextClick(t, app, model, state, "pencode-extension-image-zoom-in")
+		if math.Abs(float64(v.scale)-imageZoomStep*imageZoomStep) > .001 {
+			t.Fatal("zoom-in button did not zoom")
+		}
+		editorContextClick(t, app, model, state, "pencode-extension-image-zoom-out")
+		if math.Abs(float64(v.scale)-imageZoomStep) > .001 {
+			t.Fatal("zoom-out button did not zoom")
+		}
+		editorContextClick(t, app, model, state, "pencode-extension-image-fit")
+		if !v.fit || v.scale >= 1 || v.x != 0 || v.y != 0 {
+			t.Fatal("fit button did not reset zoom and pan")
+		}
+	}
+	before := v.scale
+	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: 0, Y: 0})
+	state.Enqueue(input.Event{Kind: input.EventMouseWheel, WheelY: 1})
+	languageInteractionStep(t, app)
+	if v.scale != before {
+		t.Fatal("wheel outside the preview changed its scale")
+	}
+	model.settingsOpen = true
+	bounds := editorContextBounds(t, model, "pencode-extension-image-container")
+	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(bounds.X+bounds.Width/2) * 1.5, Y: float64(bounds.Y+bounds.Height/2) * 1.5})
+	state.Enqueue(input.Event{Kind: input.EventMouseWheel, WheelY: 1})
+	languageInteractionStep(t, app)
+	if v.scale != before {
+		t.Fatal("wheel over settings changed the image scale")
+	}
+	model.settingsOpen = false
+	local := &input.State{}
+	if n := testing.AllocsPerRun(100, func() {
+		model.updateImagePointer(model.fontResources, local)
+		model.syncImagePreview(model.fontResources)
+	}); n != 0 {
+		t.Fatalf("idle image zoom allocated %g times", n)
 	}
 }

@@ -25,7 +25,7 @@ static void sendFiles(NSUInteger first, NSUInteger count) {
     [event setParamDescriptor:files forKeyword:keyDirectObject];
     AppleEvent reply = {typeNull, NULL};
     OSErr error = [[NSAppleEventManager sharedAppleEventManager]
-        dispatchRawAppleEvent:event.aeDesc withRawReply:&reply handlerRefCon:0];
+        dispatchRawAppleEvent:event.aeDesc withRawReply:&reply handlerRefCon:&reply];
     assert(error == noErr);
     AEDisposeDesc(&reply);
 }

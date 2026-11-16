@@ -31,15 +31,15 @@ extern void pencode_open_document(const char *path);
 
 void pencode_configure_document_events(void) {
     @autoreleasepool {
-        // AppKit reinstalls its document handler during launch. Handle initial
-        // events now and restore delivery after launch without owning its delegate.
+        // AppKit installs its document handler during launch. Register after
+        // that setup and before initial events without owning its delegate.
         [NSApplication sharedApplication];
         static PencodeDocumentEvents *handler;
         if (handler == nil) {
             handler = [[PencodeDocumentEvents alloc] init];
             [[NSNotificationCenter defaultCenter] addObserver:handler
                 selector:@selector(configure:)
-                name:NSApplicationDidFinishLaunchingNotification object:NSApp];
+                name:NSApplicationWillFinishLaunchingNotification object:NSApp];
         }
         [handler configure:nil];
     }

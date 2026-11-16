@@ -89,6 +89,7 @@ var pencodeShortcutDefinitions = [...]pencodeShortcutDefinition{
 }
 
 type pencodeSettings struct {
+	Pprof       *bool                                   `json:"pprof,omitempty"`
 	Bindings    map[string]pencodeKeybinding            `json:"bindings"`
 	Keymaps     map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
 	Extensions  map[string]peb.SettingValues            `json:"extensions,omitempty"`
@@ -183,6 +184,7 @@ func parsePencodeSettings(data []byte) pencodeSettings {
 		settings.Language = saved.Language
 	}
 	settings.Extensions = saved.Extensions
+	settings.Pprof = saved.Pprof
 	settings.IconTheme = saved.IconTheme
 	if saved.Keymap != "" {
 		settings.Keymap = saved.Keymap
@@ -434,6 +436,10 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		}
 	}
 	switch context.Ref {
+	case "pprof-enabled":
+		model.settings.Pprof = new(context.Event.Checked)
+		model.saveSettings()
+		return true
 	case "language-select":
 		return model.changeLanguage(context.Event.Value)
 	case "open-settings":

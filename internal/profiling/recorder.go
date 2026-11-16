@@ -1,4 +1,4 @@
-// Package profiling records bounded, continuous development diagnostics without
+// Package profiling records bounded, continuous diagnostics without
 // exposing a network endpoint or forcing garbage collection.
 package profiling
 
@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pencode-labs/pencode/configuration"
 	"github.com/pencode-labs/pencode/internal/version"
 )
 
@@ -91,17 +92,47 @@ func (f *cpuFile) Write(data []byte) (int, error) {
 	return n, err
 }
 
-// Start defaults to enabled for dev versions outside onix_release builds.
-// PENCODE_DEBUG overrides that default; PENCODE_PROFILE_DIR selects the parent
+// DefaultEnabled reports the build's default when no setting overrides it.
+func DefaultEnabled() bool { return development && version.Value == "dev" }
+
+func enabled() (bool, error) {
+	if value, ok := os.LookupEnv("PENCODE_DEBUG"); ok {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return false, fmt.Errorf("PENCODE_DEBUG: %w", err)
+		}
+		return enabled, nil
+	}
+	directory, err := configuration.Directory()
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(filepath.Join(directory, "settings.json"))
+	if os.IsNotExist(err) {
+		return DefaultEnabled(), nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var settings struct {
+		Pprof *bool `json:"pprof"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return false, fmt.Errorf("profiling settings: %w", err)
+	}
+	if settings.Pprof != nil {
+		return *settings.Pprof, nil
+	}
+	return DefaultEnabled(), nil
+}
+
+// Start reads the host's pprof setting, falling back to DefaultEnabled.
+// PENCODE_DEBUG overrides the setting; PENCODE_PROFILE_DIR selects the parent
 // directory. Each process owns a unique subdirectory, including local servers.
 func Start(role string) (*Recorder, error) {
-	enabled := development && version.Value == "dev"
-	if value, ok := os.LookupEnv("PENCODE_DEBUG"); ok {
-		var err error
-		enabled, err = strconv.ParseBool(value)
-		if err != nil {
-			return nil, fmt.Errorf("PENCODE_DEBUG: %w", err)
-		}
+	enabled, err := enabled()
+	if err != nil {
+		return nil, err
 	}
 	if !enabled {
 		return nil, nil

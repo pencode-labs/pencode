@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/pprof/profile"
+	"github.com/pencode-labs/pencode/configuration"
 	"github.com/pencode-labs/pencode/internal/version"
 )
 
@@ -224,6 +225,7 @@ func TestResourceProfileAvailability(t *testing.T) {
 }
 
 func TestStartControls(t *testing.T) {
+	isolateSettings(t)
 	root := t.TempDir()
 	t.Setenv("PENCODE_PROFILE_DIR", root)
 	t.Setenv("PENCODE_DEBUG", "0")
@@ -265,6 +267,90 @@ func TestStartControls(t *testing.T) {
 		if err := r.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func isolateSettings(t *testing.T) string {
+	t.Helper()
+	for _, name := range [...]string{"HOME", "USERPROFILE", "XDG_CONFIG_HOME", "APPDATA"} {
+		t.Setenv(name, t.TempDir())
+	}
+	t.Setenv("PENCODE_DEBUG", "")
+	if err := os.Unsetenv("PENCODE_DEBUG"); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := configuration.Directory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return directory
+}
+
+func TestProfilingSettingsPrecedence(t *testing.T) {
+	directory := isolateSettings(t)
+	old := version.Value
+	t.Cleanup(func() { version.Value = old })
+	for _, value := range []string{"dev", "v1.0.0"} {
+		version.Value = value
+		for _, saved := range []string{`{}`, `{"pprof":null}`, `{"pprof":true}`, `{"pprof":false}`} {
+			if err := configuration.Save(t.Context(), directory, []byte(saved)); err != nil {
+				t.Fatal(err)
+			}
+			want := DefaultEnabled()
+			if saved == `{"pprof":true}` {
+				want = true
+			} else if saved == `{"pprof":false}` {
+				want = false
+			}
+			if got, err := enabled(); err != nil || got != want {
+				t.Fatalf("version=%s settings=%s: enabled=%t, %v", value, saved, got, err)
+			}
+			for _, override := range []string{"0", "1", "invalid"} {
+				t.Setenv("PENCODE_DEBUG", override)
+				got, err := enabled()
+				if (err != nil) != (override == "invalid") || got != (override == "1") {
+					t.Fatalf("settings=%s override=%s: enabled=%t, %v", saved, override, got, err)
+				}
+			}
+			if err := os.Unsetenv("PENCODE_DEBUG"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := configuration.Save(t.Context(), directory, []byte(`{"pprof":"invalid"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := enabled(); err == nil {
+		t.Fatal("invalid pprof setting accepted")
+	}
+}
+
+func TestReleaseStartFromSettings(t *testing.T) {
+	directory := isolateSettings(t)
+	old := version.Value
+	version.Value = "v1.0.0"
+	t.Cleanup(func() { version.Value = old })
+	t.Setenv("PENCODE_PROFILE_DIR", t.TempDir())
+	if err := configuration.Save(t.Context(), directory, []byte(`{"pprof":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Start("test")
+	if err != nil || r == nil {
+		t.Fatalf("release recorder = %v, %v", r, err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"session.json", "cpu-000000.pprof", "heap-baseline.pprof", "heap-final.pprof", "resources-final.pprof"} {
+		if _, err := os.Stat(filepath.Join(r.Directory(), name)); err != nil {
+			t.Fatalf("missing release recording %s: %v", name, err)
+		}
+	}
+	if err := configuration.Save(t.Context(), directory, []byte(`{"pprof":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := Start("test"); err != nil || r != nil {
+		t.Fatalf("disabled release recorder = %v, %v", r, err)
 	}
 }
 

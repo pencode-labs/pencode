@@ -2,6 +2,8 @@
   "id": "de",
   "label": "Deutsch",
   "messages": {
+    "pprof 模式": "pprof-Modus",
+    "记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。": "CPU-, Heap- und Ressourcenmetriken aufzeichnen. Zum Anwenden Pencode auf dem betreffenden Gerät neu starten.",
     "设置": "Einstellungen",
     "界面语言": "Anzeigesprache",
     "外观": "Darstellung",

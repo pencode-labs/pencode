@@ -2,6 +2,8 @@
   "id": "fr",
   "label": "Français",
   "messages": {
+    "pprof 模式": "Mode pprof",
+    "记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。": "Enregistrer les métriques du processeur, du tas et des ressources. Redémarrez Pencode sur l’appareil concerné pour appliquer.",
     "设置": "Paramètres",
     "界面语言": "Langue d’affichage",
     "外观": "Apparence",

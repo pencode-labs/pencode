@@ -6,8 +6,47 @@ import (
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
 	"github.com/onix-engine/onix/render"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/internal/profiling"
 )
+
+func TestProfilingSettingsControlAndPersistence(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	for _, screen := range []pencodeScreen{pencodeWorkspace, pencodeLauncher} {
+		m.screen = screen
+		if err := app.Modules().UpdateFrame(1.0 / 60); err != nil {
+			t.Fatal(err)
+		}
+		if err := app.Modules().Dispatch(); err != nil {
+			t.Fatal(err)
+		}
+		m = m.session.active.model
+		m.settingsOpen = true
+		markPencodeRootDirtyByModel(m.fontResources, m)
+		languageInteractionStep(t, app)
+		editorContextClick(t, app, m, state, "settings-about-nav")
+		editorContextBounds(t, m, "pprof-enabled")
+		control, ok := m.fontResources.HTMLControl(m.surface, "pprof-enabled")
+		if !ok {
+			t.Fatal("missing pprof control")
+		}
+		for _, checked := range []bool{true, false} {
+			app.World.WriteMessage(htmlui.Event{Entity: m.surface, Target: control, Kind: htmlui.EventChange, Checked: checked, Bubbles: true})
+			languageInteractionStep(t, app)
+			saved, _ := loadPencodeSettings()
+			if saved.Pprof == nil || *saved.Pprof != checked || m.settings.Pprof == nil || *m.settings.Pprof != checked {
+				t.Fatalf("pprof setting not saved: %v", checked)
+			}
+			node, ok := m.fontResources.HTMLNode(m.surface, "pprof-enabled")
+			if !ok {
+				t.Fatal("missing rendered pprof control")
+			}
+			if _, got := node.Attribute("checked"); got != checked {
+				t.Fatalf("pprof checkbox = %t, want %t", got, checked)
+			}
+		}
+	}
+}
 
 type pencodeProfileDriver struct {
 	render.Driver

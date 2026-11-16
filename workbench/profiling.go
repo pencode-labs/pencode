@@ -6,8 +6,22 @@ import (
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
 	"github.com/onix-engine/onix/render"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/internal/profiling"
 )
+
+func (model *workspaceModel) renderProfilingSettings(view *htmlui.View) {
+	enabled := profiling.DefaultEnabled()
+	if model.settings.Pprof != nil {
+		enabled = *model.settings.Pprof
+	}
+	view.Event("pprof-enabled", htmlui.EventChange)
+	if enabled {
+		view.Attr("pprof-enabled", "checked", "")
+	} else {
+		view.RemoveAttr("pprof-enabled", "checked")
+	}
+}
 
 // ProfilingSystem samples renderer-owned state on the application thread. It
 // never requests a frame: idle observations retain their original timestamp.

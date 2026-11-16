@@ -180,6 +180,10 @@
           </div>
         </section>
         <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
+          <div class="pencode-settings-row pencode-extension-setting">
+            <div class="pencode-setting-copy"><label for="pprof-enabled">pprof 模式</label><p id="pprof-description" class="pencode-setting-description">记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。</p></div>
+            <input id="pprof-enabled" data-ref="pprof-enabled" type="checkbox" aria-describedby="pprof-description">
+          </div>
           <div class="pencode-settings-row"><span>Pencode 版本</span><span data-ref="update-version" class="pencode-settings-value"></span></div>
           <div class="pencode-settings-row pencode-update-row">
             <p data-ref="update-status" class="pencode-setting-description" role="status" aria-live="polite"></p>

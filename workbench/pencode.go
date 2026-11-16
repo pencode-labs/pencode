@@ -758,6 +758,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("zoom-decrease", htmlui.EventClick)
 	view.Event("zoom-increase", htmlui.EventClick)
 	view.Event("reset-shortcuts", htmlui.EventClick)
+	model.renderProfilingSettings(view)
 	if model.findOpen && model.activeFile() != nil {
 		model.refreshFindMatches()
 	}

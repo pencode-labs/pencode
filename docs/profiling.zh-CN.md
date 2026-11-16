@@ -1,6 +1,8 @@
-# 开发版本持续性能记录
+# 持续性能记录与 pprof 模式
 
-开发构建（`version.Value=dev` 且未启用 `onix_release`）默认开启性能记录。桌面进程、内置本地服务端和独立服务端分别采样，在标准错误输出中打印各自目录；标准输出仍用于服务端协议。`--version`、更新辅助进程和 SSH askpass 不启动记录。
+正式版本可在 **设置 → 关于 → pprof 模式** 中开启或关闭记录，默认关闭，保存后重启 Pencode 生效。设置保存在用户资源目录的 `settings.json` 中（`"pprof": true` 或 `false`），桌面进程和内置本地服务端会在启动时分别读取。
+
+开发构建（`version.Value=dev` 且未启用 `onix_release`）默认开启性能记录，也可通过上述开关关闭。未保存开关时使用构建默认值；`PENCODE_DEBUG` 始终优先于设置。桌面进程、内置本地服务端和独立服务端分别采样，在标准错误输出中打印各自目录；标准输出仍用于服务端协议。`--version`、更新辅助进程和 SSH askpass 不启动记录。
 
 默认位置为 `~/.pencode/profiles/<UTC 时间>-<gui|server>-<PID>-<随机后缀>/`。Windows 使用用户主目录下的 `.pencode/profiles/`。每次运行创建独立目录，不覆盖上次记录。
 
@@ -20,7 +22,7 @@ PENCODE_PROFILE_CPU_INTERVAL=1m PENCODE_PROFILE_CPU_DURATION=10s PENCODE_PROFILE
 
 默认在启动时采样 CPU 5 秒，之后每 5 分钟再次采样 5 秒；窗口之间完全停止 CPU profiler。`PENCODE_PROFILE_CPU_INTERVAL` 控制窗口启动间隔（默认 `5m`），`PENCODE_PROFILE_CPU_DURATION` 控制窗口长度（默认 `5s`，`0` 关闭 CPU 采样）。窗口长度不能超过启动间隔。`PENCODE_PROFILE_HEAP_INTERVAL` 独立控制 heap/resources 快照间隔（默认 `5m`，`0` 关闭所有 heap/resources 快照，包括基线和最终快照）。这些设置使用 Go duration 格式，如 `10s`、`5m`；只作用于已启用的记录器。
 
-SSH 上的独立服务端使用远端环境变量及目录。外部扩展、语言服务器和终端子进程不包含在当前进程的 CPU/堆采样中。
+设置与当前工作区所在设备保持一致：在远程工作区更改开关会保存到远端配置，仅在远端服务端重启后生效，不改变本地桌面进程的记录。SSH 上的独立服务端使用远端设置、环境变量及目录。外部扩展、语言服务器和终端子进程不包含在当前进程的 CPU/堆采样中。
 
 | 文件 | 内容与留存 |
 | --- | --- |

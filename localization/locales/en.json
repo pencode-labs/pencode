@@ -2,6 +2,8 @@
   "id": "en",
   "label": "English",
   "messages": {
+    "pprof 模式": "pprof mode",
+    "记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。": "Record CPU, heap, and resource metrics. Restart Pencode on the corresponding device to apply.",
     "上一个匹配": "Previous match",
     "上一个标签": "Previous tab",
     "上一段": "Previous segment",

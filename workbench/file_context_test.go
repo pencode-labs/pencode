@@ -198,10 +198,11 @@ func TestFileContextTargetsScrolledRowsAndInactiveProjects(t *testing.T) {
 	model.fileContext = pencodeFileContext{}
 	other := &pencodeProject{Path: t.TempDir(), Name: "other", Files: make(map[string]*openFile)}
 	model.projects = append(model.projects, other)
+	model.activateProject(other)
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	languageInteractionStep(t, app)
-	fileContextRightClick(t, app, model, state, treeRowID(other.Path)+"-summary")
-	if model.fileContext.project != other || model.fileContext.path != "" || model.activeProjectState() != project {
+	fileContextRightClick(t, app, model, state, "sidebar-actions")
+	if model.fileContext.project != other || model.fileContext.path != "" || model.activeProjectState() != other {
 		t.Fatal("right click switched the active project or lost the target root")
 	}
 }
@@ -243,7 +244,7 @@ func TestFileContextKeyboardActions(t *testing.T) {
 				shift, alt bool
 			}{
 				{name: "new-file", key: input.KeyN, primary: true, dialog: "new-file"},
-				{name: "new-folder", key: input.KeyN, primary: true, shift: true, dialog: "new-folder"},
+				{name: "new-folder", key: input.KeyN, primary: true, alt: true, dialog: "new-folder"},
 				{name: "find", key: input.KeyF, primary: true, shift: true},
 				{name: "cut", key: input.KeyX, primary: true, copied: filepath.Join(project.Path, "main.go")},
 				{name: "copy", key: input.KeyC, primary: true, copied: filepath.Join(project.Path, "main.go")},
@@ -322,7 +323,7 @@ func TestFileContextKeyboardPasteAndDisabledItems(t *testing.T) {
 		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: modifier})
 		languageInteractionStep(t, app)
 	}
-	root := treeRowID(project.Path) + "-summary"
+	root := "sidebar-actions"
 	fileContextRightClick(t, app, model, state, root)
 	press(input.KeyV)
 	if !model.fileContext.open || model.fileIO != nil && len(model.fileIO.pending) != 0 {

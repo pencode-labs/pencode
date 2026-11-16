@@ -42,7 +42,7 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 			for size := pencodeMinUIFontSize; size <= pencodeMaxUIFontSize; size++ {
 				t.Run(strconv.Itoa(size), func(t *testing.T) {
 					document, err := dom.Parse(`<html style="font-size:` + strconv.Itoa(size) + `px"><body><div class="pencode-root">
-<button id="project" class="pencode-project-toggle"><img class="pencode-project-arrow"><span id="project-name" class="pencode-project-name">Pencode 项目</span></button>
+<button id="project" class="pencode-project-tab-select"><span id="project-name">Pencode 项目</span></button>
 <div id="tabs" class="pencode-tabs"><div class="pencode-tab active"><button class="pencode-tab-select"><img class="pencode-tab-icon"><span id="tab-name" class="pencode-tab-name">app_ecs.go</span></button><button class="pencode-tab-close"></button></div></div>
 <button class="pencode-lsp-result pencode-lsp-reference-location"><span id="reference-label" class="pencode-lsp-result-label"><span>func (b *Bundle) </span><mark id="reference-match">ValidateSceneFeatures</mark><span>(id SceneID)</span></span></button>
 </div></body></html>`)

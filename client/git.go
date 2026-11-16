@@ -40,6 +40,19 @@ func (c *Client) Git(ctx context.Context, root string, args ...string) ([]byte, 
 	return data, d.Done()
 }
 
+func (c *Client) GitRebasing(ctx context.Context, root string) (bool, error) {
+	e := service(protocol.GitRebasing, root)
+	d, err := c.execute(ctx, &e)
+	if err != nil {
+		return false, err
+	}
+	value := d.U32()
+	if value > 1 {
+		return false, protocol.ErrProtocol
+	}
+	return value != 0, d.Done()
+}
+
 // CheckGitIgnore uses Git's index and exclusion rules, including negation and
 // global excludes. Paths are sent on stdin to avoid platform argv size limits.
 func (c *Client) CheckGitIgnore(ctx context.Context, root string, paths []string, dst []bool) ([]bool, error) {

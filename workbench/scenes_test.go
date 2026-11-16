@@ -70,6 +70,8 @@ func testRetainedWorkspace(t *testing.T, preload bool) {
 	}
 	runtime, manager := app.Modules(), app.Modules().Manager()
 	launcher := session.active
+	launcher.model.app.GetViewport = func() (int, int) { return 1440, 900 }
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	launcher.model.selectTheme("light-plus")
 	if len(session.views) != 1 {
 		t.Fatal("launcher installed an unused workspace view")

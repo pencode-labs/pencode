@@ -2,6 +2,13 @@
   "id": "es",
   "label": "Español",
   "messages": {
+    "打开本地项目": "Abrir proyecto local",
+    "打开远程项目": "Abrir proyecto remoto",
+    "远程主机": "Hosts remotos",
+    "新建窗口": "Nueva ventana",
+    "新建窗口失败：": "Error al crear la ventana: ",
+    "保存窗口状态失败：": "Error al guardar el estado de la ventana: ",
+    "移除窗口状态失败：": "Error al eliminar el estado de la ventana: ",
     "pprof 模式": "Modo pprof",
     "记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。": "Registrar métricas de CPU, memoria heap y recursos. Reinicia Pencode en el dispositivo correspondiente para aplicar.",
     "设置": "Ajustes",

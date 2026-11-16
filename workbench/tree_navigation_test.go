@@ -20,7 +20,6 @@ func TestPencodeFileNavigationQueuesTreeReveal(t *testing.T) {
 			resourceTestWrite(t, project, "other.go", "package other\n")
 			openProjectFileAndWait(t, model, project, target)
 			openProjectFileAndWait(t, model, project, "other.go")
-			project.Collapsed = true
 			clear(project.ExpandedDirs)
 			model.revealProject, model.revealPath = nil, ""
 			want := target
@@ -43,8 +42,8 @@ func TestPencodeFileNavigationQueuesTreeReveal(t *testing.T) {
 				model.syncActiveProjectFields()
 				want = "renamed/nested/target.go"
 			}
-			if project.Collapsed || model.revealProject != project || model.revealPath != want {
-				t.Fatalf("navigation did not reveal %s: collapsed=%v pending=%s", want, project.Collapsed, model.revealPath)
+			if model.revealProject != project || model.revealPath != want {
+				t.Fatalf("navigation did not reveal %s: pending=%s", want, model.revealPath)
 			}
 			for parent := filepath.ToSlash(filepath.Dir(want)); parent != "."; parent = filepath.ToSlash(filepath.Dir(parent)) {
 				if !project.ExpandedDirs[parent] {
@@ -89,11 +88,6 @@ func TestPencodeTreeRevealWaitsForScanAndSidebar(t *testing.T) {
 	if model.revealProject != project || model.revealPath != "target.go" {
 		t.Fatal("pending navigation was lost before the tree could be displayed")
 	}
-	project.Collapsed = true
-	model.centerRevealedTreeRow(nil)
-	if model.revealProject != nil {
-		t.Fatal("manual project collapse did not cancel the pending reveal")
-	}
 }
 
 func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
@@ -128,7 +122,6 @@ func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
 			if action == "tree" {
 				world.Mut[scene.UIScroll](area).Position[1] = -900
 			} else {
-				project.Collapsed = true
 				clear(project.ExpandedDirs)
 			}
 			switch action {

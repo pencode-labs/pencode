@@ -71,12 +71,14 @@ type sourcePanelKey struct {
 	Busy, Modal, HasMore, Multiline, Syncing bool
 	Resizing                                 bool
 	BranchMenu, RepositoryMenu               bool
+	Rebasing                                 bool
 }
 
 type sourceToolsKey struct {
 	Theme       *pencodeTheme
 	Busy        bool
 	Unavailable bool
+	Rebasing    bool
 }
 
 func sourceFirst[T any](values []T) *T {
@@ -382,6 +384,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 				next = s.Snapshot
 				next.Repository, next.Files, next.Groups = result.Snapshot.Repository, result.Snapshot.Files, result.Snapshot.Groups
 				next.Branch, next.MergeMessage = result.Snapshot.Branch, result.Snapshot.MergeMessage
+				next.Rebasing = result.Snapshot.Rebasing
 			}
 			next.Repository.Context = s.Context
 			if slices.Equal(next.Branches, s.Snapshot.Branches) {
@@ -415,6 +418,9 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 					message = m.tr("远程有新的提交，请先同步远程再推送。")
 				} else {
 					message = m.tr("合并存在冲突，请在 Merge Changes 中解决后提交。")
+					if s.Snapshot.Rebasing {
+						message = "Rebase has conflicts. Resolve and stage them in Merge Changes, then choose Continue Rebase."
+					}
 				}
 				m.setProjectStatus(project, message)
 			} else {
@@ -1057,7 +1063,7 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	if !s.visible() {
 		return false, false
 	}
-	if m.settings.Bindings[pencodeShortcutDefinitions[pencodeShortcutSave].id].matches(state, goos) {
+	if m.settings.Bindings[pencodeShortcutDefinitions[pencodeShortcutSave].id].matchesGlobal(world, state, goos) {
 		if tab := s.activeTab(); tab != nil && tab.editable() {
 			m.sourceAction("sc-save-diff")
 		} else {
@@ -1065,13 +1071,13 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 		}
 		return true, true
 	}
-	if m.settings.Bindings[pencodeShortcutDefinitions[pencodeShortcutClose].id].matches(state, goos) {
+	if m.settings.Bindings[pencodeShortcutDefinitions[pencodeShortcutClose].id].matchesGlobal(world, state, goos) {
 		m.sourceAction("sc-close-tab")
 		return true, true
 	}
 	// Route history to the merge result while comparison tabs own the editor.
 	for _, action := range []pencodeShortcutAction{pencodeShortcutUndo, pencodeShortcutRedo, pencodeShortcutFind, pencodeShortcutReplace} {
-		if !m.settings.Bindings[pencodeShortcutDefinitions[action].id].matches(state, goos) {
+		if !m.settings.Bindings[pencodeShortcutDefinitions[action].id].matchesGlobal(world, state, goos) {
 			continue
 		}
 		if tab := s.activeTab(); tab != nil && tab.SubmoduleSummary == "" && (tab.Kind == "merge" || tab.editable()) && !s.busy() && (action == pencodeShortcutUndo || action == pencodeShortcutRedo) {

@@ -1,6 +1,6 @@
-# Pencode CS v16
+# Pencode CS v17
 
-v16 增加 GitCheckIgnore，按批调用 Git 原生忽略规则判断，用于资源树置灰；GUI 与 server 必须同时更新。
+v17 增加 GitRebasing，在后端检查 Git 的 rebase 状态目录，支持远程仓库及 worktree；GUI 与 server 必须同时更新。
 
 v15 移除 IndexNext 中重复的 name 字符串，名称由完整路径的末段取得。无变化的索引刷新共享已有不可变记录；有变化时批量复制未变区间。
 
@@ -67,6 +67,7 @@ IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功�
 | SettingsSave | data:bytes（JSON object） | 空 |
 | GitCommand | args:string[] | output:bytes |
 | GitRepositories | 空 | count:u32, {root:string}[]（项目及其子目录内的仓库） |
+| GitRebasing | 空 | rebasing:u32（0 或 1） |
 | WorkspaceWatch | after:u64（首次为 0；root 为工作区目录） | version:u64, changes:u32, reset:u32, files[] |
 | FileRead | path:string, links:u32, limit:u32 | content:bytes |
 | FileSave | path:string, diskBaseline:string, result:string | 空 |

@@ -101,7 +101,7 @@ func TestFileCreationInlineValidationAndCancellation(t *testing.T) {
 func TestFileCreationVirtualTreeAndInactiveProject(t *testing.T) {
 	app, model, _, state := languageInteractionFixture(t)
 	world, active := model.fontResources, model.activeProjectState()
-	other := &pencodeProject{Path: t.TempDir(), Name: "other", Files: make(map[string]*openFile), Collapsed: true}
+	other := &pencodeProject{Path: t.TempDir(), Name: "other", Files: make(map[string]*openFile)}
 	attachPencodeProject(t, other, active.backend)
 	t.Cleanup(other.stopScan)
 	model.projects = append(model.projects, other)
@@ -116,8 +116,8 @@ func TestFileCreationVirtualTreeAndInactiveProject(t *testing.T) {
 	languageInteractionStep(t, app)
 	control, ok := world.HTMLControl(model.surface, "file-tree-name")
 	field := world.Ref[engineui.TextField](control)
-	if !ok || field == nil || !field.Focused || other.Collapsed || model.activeProjectState() != active {
-		t.Fatal("creation failed to reveal/focus the inactive project's destination")
+	if !ok || field == nil || !field.Focused || model.activeProjectState() != other {
+		t.Fatal("creation failed to activate and reveal the destination project")
 	}
 	row := editorContextBounds(t, model, "file-tree-create")
 	viewport := editorContextBounds(t, model, treeRowID(other.Path))

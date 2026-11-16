@@ -134,6 +134,7 @@ type sourceBranchMenuKey struct {
 	X, Y, Width, Height  float32
 	SubX, SubY, SubWidth float32
 	Submenu              bool
+	Integrating          bool
 }
 
 var sourceBranchActions = [...]struct{ ID, Label string }{
@@ -142,6 +143,8 @@ var sourceBranchActions = [...]struct{ ID, Label string }{
 	{"sc-branch-tag", "Create Tag…"},
 	{"sc-branch-rename", "Rename…"},
 	{"sc-branch-delete", "Delete…"},
+	{"sc-branch-merge", "Merge…"},
+	{"sc-branch-rebase", "Rebase…"},
 }
 
 func (s *pencodeSourceControl) branchActionEnabled(index int) bool {
@@ -156,6 +159,8 @@ func (s *pencodeSourceControl) branchActionEnabled(index int) bool {
 		return true
 	case "sc-branch-rename":
 		return !branch.Remote
+	case "sc-branch-merge", "sc-branch-rebase":
+		return !s.Snapshot.Rebasing && s.Snapshot.MergeMessage == "" && (branch.Remote || branch.Name != s.Snapshot.Branch)
 	}
 	return false
 }
@@ -242,7 +247,7 @@ func (m *workspaceModel) positionSourceBranchSubmenu(world *module.Content) bool
 		s.BranchSubmenu = false
 		return true
 	}
-	width := min(float32(200), max(0, area.Width-24))
+	width := min(float32(420), max(0, area.Width-24))
 	x := bounds.X + bounds.Width - area.X
 	if x+width > area.Width-12 {
 		x = bounds.X - area.X - width
@@ -305,6 +310,7 @@ func (m *workspaceModel) renderSourceBranches(overlay *sourceVNodeView) {
 		Theme: m.workbenchTheme, Branches: sourceFirst(s.Snapshot.Branches), Count: len(s.Snapshot.Branches), Index: s.BranchIndex, Current: s.Snapshot.Branch,
 		X: s.MenuX, Y: s.MenuY, Width: s.BranchWidth, Height: s.BranchHeight,
 		Submenu: s.BranchSubmenu, SubIndex: s.BranchSubIndex, SubX: s.BranchSubX, SubY: s.BranchSubY, SubWidth: s.BranchSubWidth,
+		Integrating: s.Snapshot.Rebasing || s.Snapshot.MergeMessage != "",
 	}
 	b := &s.branchView
 	if b.used == 0 || s.branchKey != key {
@@ -354,15 +360,22 @@ func (m *workspaceModel) renderSourceBranches(overlay *sourceVNodeView) {
 			branch := s.Snapshot.Branches[s.BranchIndex]
 			b.open("div", "branch-actions", "id", "sc-branch-submenu", "class", "pencode-editor-context sc-branch-submenu", "role", "menu", "aria-label", branch.Name+" actions", "aria-labelledby", "sc-branch:"+branch.Ref, "style", fmt.Sprintf("left:%gpx;top:%gpx;width:%gpx", s.BranchSubX, s.BranchSubY, s.BranchSubWidth))
 			for i, action := range sourceBranchActions {
+				label := action.Label
+				switch action.ID {
+				case "sc-branch-merge":
+					label = "Merge “" + branch.Name + "” into “" + s.Snapshot.Branch + "”…"
+				case "sc-branch-rebase":
+					label = "Rebase “" + s.Snapshot.Branch + "” onto “" + branch.Name + "”…"
+				}
 				class, tabindex := "", "-1"
 				if i == s.BranchSubIndex {
 					class, tabindex = "active", "0"
 				}
-				b.open("button", action.ID, "id", action.ID, "type", "button", "role", "menuitem", "class", class, "tabindex", tabindex)
+				b.open("button", action.ID, "id", action.ID, "type", "button", "role", "menuitem", "class", class, "tabindex", tabindex, "title", label)
 				if !s.branchActionEnabled(i) {
 					b.attr("disabled", "")
 				}
-				b.content(action.Label)
+				b.text("span", "label", label, "class", "sc-branch-name")
 				b.close()
 			}
 			b.close()

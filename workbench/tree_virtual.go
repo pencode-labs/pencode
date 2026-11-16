@@ -144,7 +144,7 @@ func (model *workspaceModel) syncTreeScroll(world *module.Content) {
 	}
 	for entity, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {
 		props := access.Get().Props
-		if props.Model != model || props.Project == nil || props.Project.Collapsed {
+		if props.Model != model || props.Project == nil {
 			continue
 		}
 		project := props.Project

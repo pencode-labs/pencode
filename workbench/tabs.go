@@ -53,6 +53,28 @@ func (model *workspaceModel) syncTabScroll(world *module.Content) {
 	model.revealTab(world, viewportNode, id, scroll)
 }
 
+func (model *workspaceModel) syncProjectTabScroll(world *module.Content) {
+	node, ok := world.HTMLNode(model.surface, "project-tabs")
+	if !ok {
+		return
+	}
+	area, ok := node.ScrollContainer()
+	if !ok {
+		model.projectTabScroll = pencodeTabScroll{}
+		return
+	}
+	scroll := world.Mut[scene.UIScroll](area)
+	if scroll == nil {
+		return
+	}
+	next := pencodeTabScroll{area: area, project: model.activeProjectState(), viewportWidth: scroll.ViewportSize.X(), contentWidth: scroll.ContentSize.X()}
+	if model.projectTabScroll == next {
+		return
+	}
+	model.projectTabScroll = next
+	model.revealTab(world, node, "active-project-tab", scroll)
+}
+
 func (model *workspaceModel) revealTab(world *module.Content, viewportNode htmlui.Node, id string, scroll *scene.UIScroll) {
 	tabNode, tabOK := world.HTMLNode(model.surface, id)
 	if !tabOK {
@@ -90,7 +112,9 @@ func (model *workspaceModel) updateTabWheel(world *module.Content, state *input.
 		return
 	}
 	var area ecs.Entity
-	if model.pointerInsideRefs(world, x, y, []string{"tabs"}) {
+	if model.pointerInsideRefs(world, x, y, []string{"project-tabs"}) {
+		area = model.projectTabScroll.area
+	} else if model.pointerInsideRefs(world, x, y, []string{"tabs"}) {
 		area = model.tabScroll.area
 	} else if model.bottom.active == pencodePanelTerminal && model.pointerInsideRefs(world, x, y, []string{"terminal-tabs"}) {
 		area = model.terminalView.tabScroll.area
@@ -243,6 +267,9 @@ func (model *workspaceModel) collectCloseTargets(project *pencodeProject) {
 
 func (model *workspaceModel) requestWindowClose() bool {
 	ready := model.beginClose(pencodeCloseWindow, nil, "")
+	if ready {
+		model.session.forgetWindow(model)
+	}
 	if ready && model.session != nil && model.session.updates != nil && model.session.updates.requested {
 		model.session.updates.approved = true
 	}
@@ -304,6 +331,9 @@ func (model *workspaceModel) finishClose() {
 	request := &model.closing
 	action, project, relative := request.action, request.project, request.path
 	editorTabs := request.editorTabs
+	if action == pencodeCloseWindow {
+		model.session.forgetWindow(model)
+	}
 	if action == pencodeCloseWindow && model.session != nil && model.session.updates != nil && model.session.updates.requested {
 		model.session.updates.approved = true
 	}

@@ -5,11 +5,80 @@ import (
 	"testing"
 
 	"github.com/onix-engine/onix/input"
+	"github.com/onix-engine/onix/module"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
+
+func TestCommitMessageOwnsPlainTextShortcutKeys(t *testing.T) {
+	r := sourceTestRepository(t)
+	sourceTestWrite(t, r, "main.go", "package demo\n")
+	t.Setenv("ONIX_PENCODE_PROFILE_PROJECT", r.Root)
+	t.Setenv("ONIX_PENCODE_PROFILE_FILE", "main.go")
+	app, m, _, state := languageInteractionFixture(t)
+	editorContextClick(t, app, m, state, "status-source-control")
+	sourceWait(t, app, m)
+	editorContextClick(t, app, m, state, "sc-message")
+	// A bare global binding (including one previously misrecorded) must not
+	// steal ordinary typing from the focused commit input.
+	m.settings.Bindings["folder-replace"] = pencodeBindingChord("H")
+	typed := keymapState(m.settings.Bindings["folder-replace"], runtime.GOOS)
+	if allocations := testing.AllocsPerRun(100, func() {
+		if m.commandMatches("folder-replace", typed, runtime.GOOS) {
+			t.Fatal("global shortcut stole input text")
+		}
+	}); allocations != 0 {
+		t.Fatalf("focused shortcut dispatch allocated %g times", allocations)
+	}
+	for _, key := range []input.KeyCode{input.KeyC, input.KeyH} {
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: key})
+		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: string(rune(key) + 'a' - 'A')})
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: key})
+	}
+	languageInteractionStep(t, app)
+	if m.sourceState().CommitMessage != "ch" || m.folderSearch.open {
+		t.Fatalf("typing opened folder search: message=%q open=%v", m.sourceState().CommitMessage, m.folderSearch.open)
+	}
+	// Modified global shortcuts remain available from that same input.
+	m.settings.Bindings["folder-replace"] = pencodeBindingChord("Primary+Shift+H")
+	if !m.handleShortcutKeys(m.fontResources, keymapState(m.settings.Bindings["folder-replace"], runtime.GOOS), runtime.GOOS) || !m.folderSearch.open {
+		t.Fatal("modified folder shortcut stopped working inside input")
+	}
+}
+
+func TestShortcutConsumptionExpiresBeforeOverlayReturn(t *testing.T) {
+	_, m, _, state := languageInteractionFixture(t)
+	m.languageUI.keysHandled, m.terminalView.context.keysHandled = true, true
+	m.inputContext.restore = true
+	state.PressKey(input.KeyRight)
+	if err := updatePencodeShortcuts(&module.ContentSystemContext{World: m.fontResources}, m); err != nil {
+		t.Fatal(err)
+	}
+	if m.editorKeyHandled(state) || m.terminalView.context.keysHandled {
+		t.Fatal("an overlay retained the previous frame's key consumption")
+	}
+}
+
+func TestEditorRemappedClipboardSuppressesReleasedChord(t *testing.T) {
+	m := &workspaceModel{settings: defaultPencodeSettings()}
+	for _, key := range []input.KeyCode{input.KeyA, input.KeyC, input.KeyV, input.KeyX} {
+		state := keymapState(pencodeKeybinding{Key: key, Primary: true}, runtime.GOOS)
+		state.ReleaseKey(input.KeyLeftControl)
+		state.ReleaseKey(input.KeyLeftSuper)
+		state.ReleaseKey(key)
+		if !m.editorKeyHandled(state) {
+			t.Fatal("released native clipboard chord bypassed remapping", key)
+		}
+		state.EndFrame()
+		state.PressKey(key)
+		state.PressKey(input.KeyLeftControl)
+		if m.editorKeyHandled(state) {
+			t.Fatal("later modifier swallowed an earlier typed letter", key)
+		}
+	}
+}
 
 func TestCodexComposerEditingShortcuts(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)

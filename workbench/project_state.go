@@ -10,10 +10,11 @@ import (
 	"slices"
 
 	"github.com/onix-engine/onix/scene"
+	"github.com/pencode-labs/pencode/internal/windowstate"
 )
 
 // Session metadata contains no document contents or running process state.
-// It is read on project open and written on close, never on the frame path.
+// It is read on project open and checkpointed for window recovery.
 type pencodeProjectState struct {
 	ExpandedDirs            map[string]bool   `json:"expandedDirs,omitempty"`
 	ActivePath              string            `json:"activePath,omitempty"`
@@ -27,7 +28,6 @@ type pencodeProjectState struct {
 	TreePosition            float32           `json:"treePosition,omitempty"`
 	Panel                   pencodePanel      `json:"panel"`
 	SidebarHidden           bool              `json:"sidebarHidden,omitempty"`
-	Collapsed               bool              `json:"collapsed,omitempty"`
 	AllDirectoriesCollapsed bool              `json:"allDirectoriesCollapsed,omitempty"`
 }
 
@@ -65,6 +65,13 @@ func (m *workspaceModel) saveProjectState(p *pencodeProject) {
 	if file == "" {
 		return
 	}
+	state := m.captureProjectState(p)
+	if err := writeProjectState(file, &state); err != nil {
+		m.logOutput("pencode", m.tr("保存项目状态失败：")+err.Error())
+	}
+}
+
+func (m *workspaceModel) captureProjectState(p *pencodeProject) pencodeProjectState {
 	maps.DeleteFunc(p.ExpandedDirs, func(_ string, expanded bool) bool { return !expanded })
 	if m.fontResources != nil {
 		m.editor.saveView(m.fontResources, m)
@@ -76,7 +83,7 @@ func (m *workspaceModel) saveProjectState(p *pencodeProject) {
 	}
 	state := pencodeProjectState{
 		ExpandedDirs: p.ExpandedDirs, ActivePath: p.ActivePath, Repository: p.sourceControl.Snapshot.Repository.Root,
-		TreePosition: p.tree.position, Collapsed: p.Collapsed, AllDirectoriesCollapsed: p.AllDirectoriesCollapsed,
+		TreePosition: p.tree.position, AllDirectoriesCollapsed: p.AllDirectoriesCollapsed,
 		SidebarHidden: m.sidebarHidden, SidebarWidth: m.sidebarWidthStyle, PanelHeight: m.bottom.heightStyle,
 		SourceChangesWidth: m.sourceChangesWidthStyle, Panel: m.bottom.active, OutputFilter: m.bottom.filter,
 	}
@@ -104,34 +111,11 @@ func (m *workspaceModel) saveProjectState(p *pencodeProject) {
 		}
 		state.Tabs = append(state.Tabs, tab)
 	}
-	if err := writeProjectState(file, &state); err != nil {
-		m.logOutput("pencode", m.tr("保存项目状态失败：")+err.Error())
-	}
+	return state
 }
 
 func writeProjectState(name string, state *pencodeProjectState) error {
-	data, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	directory := filepath.Dir(name)
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return err
-	}
-	file, err := os.CreateTemp(directory, ".project-state-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file.Name())
-	_, err = file.Write(data)
-	closeErr := file.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return os.Rename(file.Name(), name)
+	return windowstate.Write(name, state)
 }
 
 func (m *workspaceModel) restoreProjectState(p *pencodeProject) {
@@ -151,8 +135,12 @@ func (m *workspaceModel) restoreProjectState(p *pencodeProject) {
 		m.logOutput("pencode", m.tr("读取项目状态失败：")+err.Error())
 		return
 	}
+	m.applyProjectState(p, state)
+}
+
+func (m *workspaceModel) applyProjectState(p *pencodeProject, state *pencodeProjectState) {
 	maps.DeleteFunc(state.ExpandedDirs, func(_ string, expanded bool) bool { return !expanded })
-	p.ExpandedDirs, p.Collapsed, p.AllDirectoriesCollapsed = state.ExpandedDirs, state.Collapsed, state.AllDirectoriesCollapsed
+	p.ExpandedDirs, p.AllDirectoriesCollapsed = state.ExpandedDirs, state.AllDirectoriesCollapsed
 	p.tree.position, p.tree.restore = min(0, state.TreePosition), true
 	p.tree.revision++
 	p.sourceControl.Snapshot.Repository = sourceRepository{Root: state.Repository, Backend: m.backend}

@@ -47,8 +47,9 @@ type sourceSnapshot struct {
 	Branches     []sourceBranch
 	Files        []sourceFile
 	sourceHistoryPage
-	Sync    sourceSyncStatus
-	HasHead bool
+	Sync     sourceSyncStatus
+	HasHead  bool
+	Rebasing bool
 }
 type sourceDiffKind uint8
 
@@ -184,7 +185,8 @@ func (r sourceRepository) statusSnapshot() (sourceSnapshot, error) {
 		}
 		s.MergeMessage = "Merge from " + name
 	}
-	return s, nil
+	s.Rebasing, err = r.Backend.GitRebasing(r.baseContext(), r.Root)
+	return s, err
 }
 
 func (r sourceRepository) snapshot(limit int) (sourceSnapshot, error) {
@@ -221,7 +223,7 @@ func (r sourceRepository) snapshot(limit int) (sourceSnapshot, error) {
 type sourceSyncStatus struct{ Ahead, Behind int }
 
 func (s sourceSnapshot) syncPending() bool {
-	return s.MergeMessage == "" && len(s.Files) == 0 && (s.Sync.Ahead != 0 || s.Sync.Behind != 0)
+	return !s.Rebasing && s.MergeMessage == "" && len(s.Files) == 0 && (s.Sync.Ahead != 0 || s.Sync.Behind != 0)
 }
 
 func (r sourceRepository) syncStatus() (sourceSyncStatus, error) {
@@ -846,7 +848,7 @@ func (result sourceResult) expectedGitError() bool {
 		return true
 	}
 	switch result.Message {
-	case "Changes synchronized", "Git pull completed", "Git merge completed":
+	case "Changes synchronized", "Git pull completed", "Git merge completed", "Git rebase completed", "Git rebase-continue completed":
 		return result.Snapshot != nil && len(result.Snapshot.Groups[0]) != 0
 	}
 	return false

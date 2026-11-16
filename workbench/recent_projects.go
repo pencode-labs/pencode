@@ -130,6 +130,9 @@ func (m *workspaceModel) rememberRecentProject(workspace protocol.Workspace) {
 	if m.session == nil || m.session.recentProjects == nil {
 		return
 	}
+	if saved := m.session.windowProject(workspace.Path); saved != nil && saved.Loose {
+		return
+	}
 	entry := pencodeRecentProject{Path: workspace.Path, Name: workspace.Name}
 	if c := m.session.connection; c != nil {
 		entry.Profile = c.workspaceProfile
@@ -226,23 +229,30 @@ func (m *workspaceModel) openRecentProject(entry pencodeRecentProject) {
 		return
 	}
 	if c != nil && c.workspaceProfile.Remote() {
-		c.open = true
-		m.beginConnection(connection.Profile{}, false)
-		if c.busy {
+		if m.beginLocalConnection() {
 			c.recentProject = entry.Path
-			if link := c.links[c.workspaceProfile.Endpoint()]; link != nil {
-				link.lostHandled = true
-			}
-			if local := m.session.localBackend; local != nil && local != m.backend {
-				_ = local.Close()
-				m.session.closeSettingsWriter(local)
-			}
 		}
 		return
 	}
 	if err := m.loadProject(entry.Path); err != nil {
 		m.status = err.Error()
 	}
+}
+
+func (m *workspaceModel) beginLocalConnection() bool {
+	c := m.session.connection
+	c.open = true
+	m.beginConnection(connection.Profile{}, false)
+	if c.busy {
+		if link := c.links[c.workspaceProfile.Endpoint()]; link != nil {
+			link.lostHandled = true
+		}
+		if local := m.session.localBackend; local != nil && local != m.backend {
+			_ = local.Close()
+			m.session.closeSettingsWriter(local)
+		}
+	}
+	return c.busy
 }
 
 func (m *workspaceModel) openRecentRemoteProject(profile connection.Profile, directory string) {

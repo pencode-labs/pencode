@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pencode-labs/pencode/protocol"
@@ -61,10 +63,12 @@ func (s *services) gitCheckIgnore(ctx context.Context, root string, d *protocol.
 	if count == 0 || count > protocol.IndexPageSize {
 		return protocol.ErrProtocol
 	}
-	var input []byte
+	// Git consumes stdin before returning, so the reply storage can hold paths
+	// until it is reused for the much smaller ignore flags.
+	input := e.Buffer[:0]
 	for range count {
-		name := d.String()
-		if name == "" || strings.IndexByte(name, 0) >= 0 {
+		name := d.Bytes()
+		if len(name) == 0 || bytes.IndexByte(name, 0) >= 0 {
 			return protocol.ErrProtocol
 		}
 		input = append(input, name...)
@@ -73,6 +77,7 @@ func (s *services) gitCheckIgnore(ctx context.Context, root string, d *protocol.
 	if err := d.Done(); err != nil {
 		return err
 	}
+	e.Buffer = input[:0]
 	data, err := commandInput(ctx, root, []string{"check-ignore", "--stdin", "-z", "--verbose", "--non-matching"}, input)
 	if err != nil {
 		return err
@@ -103,6 +108,32 @@ func (s *services) gitCheckIgnore(ctx context.Context, root string, d *protocol.
 }
 
 type limitedOutput struct{ data []byte }
+
+var commandCopyBuffers = sync.Pool{New: func() any { return new([protocol.ChunkSize]byte) }}
+
+// ReadFrom lets os.File.WriteTo reuse copy scratch instead of allocating a
+// fresh buffer for each stdout/stderr pipe. Output always owns its bytes.
+func (b *limitedOutput) ReadFrom(r io.Reader) (int64, error) {
+	buffer := commandCopyBuffers.Get().(*[protocol.ChunkSize]byte)
+	defer commandCopyBuffers.Put(buffer)
+	var total int64
+	for {
+		n, err := r.Read(buffer[:])
+		if n > 0 {
+			written, writeErr := b.Write(buffer[:n])
+			total += int64(written)
+			if writeErr != nil {
+				return total, writeErr
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return total, err
+		}
+	}
+}
 
 func (b *limitedOutput) Write(p []byte) (int, error) {
 	if len(b.data)+len(p) > protocol.MaxMessage-1024 {

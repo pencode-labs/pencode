@@ -41,7 +41,14 @@ func TestCodexAsyncQuestionOffersNativeChoices(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
 	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
 	t.Setenv("PENCODE_CODEX_ASYNC_QUESTION", "1")
-	testCodexStatusBarWorkspace(t, "")
+	for _, state := range []string{"completed", "running"} {
+		t.Run(state, func(t *testing.T) {
+			if state == "running" {
+				t.Setenv("PENCODE_CODEX_ASYNC_STEER", "1")
+			}
+			testCodexStatusBarWorkspace(t, "")
+		})
+	}
 }
 
 func TestCodexPastedImageThumbnailPreviewAndRemove(t *testing.T) {
@@ -283,7 +290,7 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "你 ask 工具问我一个问题"}, "")
 		editorContextClick(t, app, model, state, waitControl(surface, "send"))
 		wait(func() bool {
-			return !surface.ui.Busy && strings.Contains(surface.view.HTML, `class="codex-question-card"`)
+			return surface.ui.Busy == (os.Getenv("PENCODE_CODEX_ASYNC_STEER") == "1") && strings.Contains(surface.view.HTML, `class="codex-question-card"`)
 		})
 		ref := ""
 		for _, binding := range surface.view.Events {

@@ -133,7 +133,7 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 			return err
 		}
 		return browseDirectory(ctx, directory, e)
-	case protocol.GitCommand, protocol.GitRepositories, protocol.GitCheckIgnore, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen, protocol.TextSearch, protocol.WorkspaceWatch:
+	case protocol.GitCommand, protocol.GitRepositories, protocol.GitCheckIgnore, protocol.GitRebasing, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen, protocol.TextSearch, protocol.WorkspaceWatch:
 		if root == "" {
 			return protocol.ErrProtocol
 		}
@@ -157,6 +157,11 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 		return s.gitRepositories(ctx, root, &d, e)
 	case protocol.GitCheckIgnore:
 		return s.gitCheckIgnore(ctx, root, &d, e)
+	case protocol.GitRebasing:
+		if err := d.Done(); err != nil {
+			return err
+		}
+		return gitRebasing(ctx, root, e)
 	case protocol.FileRead, protocol.FileSave:
 		return s.file(op, root, &d, e)
 	case protocol.DiffPatch:

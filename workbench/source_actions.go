@@ -178,6 +178,8 @@ func (a *workspaceModel) sourceAction(id string) {
 			s.Prompt, s.PromptHash, s.PromptValue = "rename-branch", branch.Ref, branch.Name
 		case "sc-branch-delete":
 			s.Prompt, s.PromptHash = "delete-branch", branch.Ref
+		case "sc-branch-merge", "sc-branch-rebase":
+			s.Prompt, s.PromptHash = strings.TrimPrefix(action.ID, "sc-branch-"), branch.Ref
 		}
 		a.sourceChanged()
 		return
@@ -334,6 +336,11 @@ func (a *workspaceModel) sourceAction(id string) {
 			return r.stage(files)
 		})
 	case id == "sc-create-commit":
+		if s.Snapshot.Rebasing {
+			s.Prompt = "rebase-continue"
+			a.confirmSourceOperation()
+			break
+		}
 		if s.Snapshot.syncPending() {
 			if a.sourceHasDrafts() || s.unsaved() {
 				s.Notice = a.tr("请先保存编辑内容，再同步远程。")
@@ -575,6 +582,10 @@ func (a *workspaceModel) confirmSourceOperation() {
 		args = []string{"tag", "--", value, hash}
 	case "merge":
 		args = []string{"merge", "--no-edit", hash}
+	case "rebase":
+		args = []string{"rebase", "--no-autostash", hash}
+	case "rebase-continue":
+		args = []string{"-c", "core.editor=true", "rebase", "--continue"}
 	case "cherry-pick":
 		args = []string{"cherry-pick", hash}
 	case "revert":
@@ -589,6 +600,9 @@ func (a *workspaceModel) confirmSourceOperation() {
 		args = []string{"push"}
 	case "abort":
 		args = []string{"merge", "--abort"}
+		if s.Snapshot.Rebasing {
+			args = []string{"rebase", "--abort"}
+		}
 	default:
 		return
 	}
@@ -656,6 +670,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		Repositories:    sourceFirst(s.Repositories), RepositoryCount: len(s.Repositories), Repository: s.Snapshot.Repository.Root,
 		Branch: s.Snapshot.Branch, BranchMenu: s.BranchMenuOpen, RepositoryMenu: s.RepositoryMenuOpen,
 		ChangesWidthStyle: a.sourceChangesWidthStyle, Resizing: a.resize.target == pencodeResizeSourceChanges,
+		Rebasing: s.Snapshot.Rebasing,
 	}
 	if b.used != 0 && s.panelKey == key {
 		return
@@ -715,10 +730,13 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	}
 	b.close()
 	b.open("button", "commit", "id", "sc-create-commit", "type", "button", "class", "sc-commit-action")
-	if s.busy() || len(s.Snapshot.Files) == 0 && s.Snapshot.MergeMessage == "" && !s.Snapshot.syncPending() {
+	if s.busy() || len(s.Snapshot.Files) == 0 && s.Snapshot.MergeMessage == "" && !s.Snapshot.Rebasing && !s.Snapshot.syncPending() {
 		b.attr("disabled", "")
 	}
 	icon, label, iconClass := "git-commit", "Commit", "sc-icon"
+	if s.Snapshot.Rebasing {
+		label = "Continue Rebase"
+	}
 	if s.Snapshot.syncPending() {
 		icon, label = "refresh-cw", "Sync Changes"
 		b.attr("aria-label", fmt.Sprintf("Sync Changes, %d incoming, %d outgoing", s.Snapshot.Sync.Behind, s.Snapshot.Sync.Ahead))
@@ -945,7 +963,7 @@ func (a *workspaceModel) sourceFileTreeRow(b *sourceVNodeView, kind string, row 
 
 func (a *workspaceModel) renderSourceToolbar(b *sourceVNodeView) {
 	s := a.sourceState()
-	key := sourceToolsKey{Theme: a.workbenchTheme, Busy: s.busy(), Unavailable: s.RepositoryError != ""}
+	key := sourceToolsKey{Theme: a.workbenchTheme, Busy: s.busy(), Unavailable: s.RepositoryError != "", Rebasing: s.Snapshot.Rebasing}
 	if b.used != 0 && s.toolsKey == key {
 		return
 	}
@@ -959,6 +977,9 @@ func (a *workspaceModel) renderSourceToolbar(b *sourceVNodeView) {
 		{"sc-op:fetch", "Fetch", "git-fetch"}, {"sc-op:pull", "Pull", "repo-pull"}, {"sc-op:push", "Push", "repo-push"},
 		{"sc-op:abort", "Abort Merge", "git-merge-abort"},
 	} {
+		if item.ID == "sc-op:abort" && key.Rebasing {
+			item.Label = "Abort Rebase"
+		}
 		a.sourceIconButton(b, item.ID, item.Label, item.Icon, s.busy() || key.Unavailable && item.ID != "sc-refresh", "")
 	}
 }

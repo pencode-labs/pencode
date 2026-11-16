@@ -87,6 +87,7 @@ type pencodeConnection struct {
 	open, formOpen      bool
 	passwordFocus       bool
 	restoring           bool
+	pickProject         bool
 }
 
 func (c *pencodeConnection) setMessage(message string, failed bool) {
@@ -217,6 +218,7 @@ func (model *workspaceModel) beginConnection(profile connection.Profile, retry b
 		return
 	}
 	c := s.connection
+	c.pickProject = false
 	if profile.Remote() {
 		if err := profile.Validate(); err != nil {
 			c.setMessage(err.Error(), true)
@@ -352,6 +354,9 @@ func (model *workspaceModel) pollConnection() bool {
 	if c.launch {
 		c.launch = false
 		model.beginConnection(c.form, false)
+		if c.busy {
+			c.recentProject = c.form.Directory
+		}
 		return true
 	}
 	changed := model.pollProjectPicker()
@@ -386,6 +391,7 @@ func (model *workspaceModel) pollConnection() bool {
 		c.cancel, c.done, c.busy, c.restoring = nil, nil, false, false
 		model.clearConnectionPassword()
 		if result.err != nil {
+			c.pickProject = false
 			c.recentProject = ""
 			c.setMessage(model.tr("连接失败：")+result.err.Error(), true)
 			c.open = true
@@ -410,6 +416,10 @@ func (model *workspaceModel) pollConnection() bool {
 			} else if err := model.loadProject(directory); err != nil {
 				model.status = err.Error()
 			}
+		}
+		if c.pickProject {
+			c.pickProject = false
+			model.openRemoteProject(result.profile)
 		}
 		return true
 	default:
@@ -808,6 +818,7 @@ func (model *workspaceModel) connectionEvent(ref, value string) bool {
 			c.picker.open = false
 		}
 	case "connection-close":
+		c.pickProject = false
 		c.picker.stop()
 		c.picker.open = false
 		c.open, c.formOpen, c.menu = false, false, -1

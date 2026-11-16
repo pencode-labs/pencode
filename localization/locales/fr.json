@@ -2,6 +2,13 @@
   "id": "fr",
   "label": "Français",
   "messages": {
+    "打开本地项目": "Ouvrir un projet local",
+    "打开远程项目": "Ouvrir un projet distant",
+    "远程主机": "Hôtes distants",
+    "新建窗口": "Nouvelle fenêtre",
+    "新建窗口失败：": "Impossible de créer la fenêtre : ",
+    "保存窗口状态失败：": "Impossible d’enregistrer l’état de la fenêtre : ",
+    "移除窗口状态失败：": "Impossible de supprimer l’état de la fenêtre : ",
     "pprof 模式": "Mode pprof",
     "记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。": "Enregistrer les métriques du processeur, du tas et des ressources. Redémarrez Pencode sur l’appareil concerné pour appliquer.",
     "设置": "Paramètres",

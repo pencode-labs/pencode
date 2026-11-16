@@ -261,6 +261,20 @@ func (binding pencodeKeybinding) matches(state *input.State, goos string) bool {
 	return control == wantControl && super == wantSuper && shift == binding.Shift && alt == binding.Alt
 }
 
+// Global commands must leave printable, unmodified keys to the focused input.
+// Navigation inside a menu or dialog uses matches directly and owns its keys.
+func (binding pencodeKeybinding) matchesGlobal(world *module.Content, state *input.State, goos string) bool {
+	return binding.matches(state, goos) && !binding.textInputOwnsKey(world)
+}
+
+func (binding pencodeKeybinding) textInputOwnsKey(world *module.Content) bool {
+	if world != nil && binding.Key >= input.KeySpace && binding.Key <= input.KeyGraveAccent && !binding.Primary && !binding.Control && !binding.Super && !binding.Alt {
+		_, ok := world.Get[engineui.TextField](world.FocusedControl())
+		return ok
+	}
+	return false
+}
+
 func (binding pencodeKeybinding) label(goos string) string {
 	var label strings.Builder
 	if binding.Primary {
@@ -332,11 +346,12 @@ func pencodeCapturedBinding(state *input.State, goos string) (pencodeKeybinding,
 		if !state.KeyPressed(key) {
 			continue
 		}
-		control := state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl)
-		super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
+		modifiers := state.KeyModifiers(key)
+		control := modifiers&input.ModifierControl != 0
+		super := modifiers&input.ModifierSuper != 0
 		binding := pencodeKeybinding{
-			Key: key, Shift: state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift),
-			Alt: state.KeyHeld(input.KeyLeftAlt) || state.KeyHeld(input.KeyRightAlt),
+			Key: key, Shift: modifiers&input.ModifierShift != 0,
+			Alt: modifiers&input.ModifierAlt != 0,
 		}
 		if goos == "darwin" && super {
 			binding.Primary = true
@@ -544,6 +559,66 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 	if state == nil || state.Composing() {
 		return false
 	}
+	// Recording and overlays own the keyboard before background command routing.
+	model.ensureSettings()
+	if model.projectMenu.open {
+		return model.projectMenuKeys(state)
+	}
+	if model.capturingShortcut {
+		if state.KeyPressed(input.KeyEscape) {
+			model.capturingShortcut = false
+			return true
+		}
+		if state.KeyPressed(input.KeyBackspace) {
+			model.settings.Bindings[model.captureAction] = pencodeKeybinding{}
+			model.capturingShortcut = false
+			model.refreshSettingsLabels()
+			model.saveSettings()
+			return true
+		}
+		binding, ok := pencodeCapturedBinding(state, goos)
+		if !ok {
+			return false
+		}
+		if !validPencodeKeybinding(binding) {
+			return true
+		}
+		if conflict := model.shortcutConflict(model.captureAction, binding, goos); conflict != "" {
+			model.settingsFeedback = model.tr("快捷键已用于") + conflict
+			return true
+		}
+		model.settings.Bindings[model.captureAction] = binding
+		model.capturingShortcut = false
+		model.refreshSettingsLabels()
+		model.saveSettings()
+		return true
+	}
+	if model.settingsOpen {
+		if model.uiKey(state, input.KeyEscape) || model.commandMatches("settings", state, goos) {
+			model.settingsOpen = false
+			return true
+		}
+		return false
+	}
+	if model.quickOpen {
+		if model.uiKey(state, input.KeyEscape) {
+			model.closeQuickOpen(world)
+			return true
+		}
+		if model.uiKey(state, input.KeyEnter) {
+			model.openQuickMatch(world, model.quickIndex)
+			return true
+		}
+		if model.uiKey(state, input.KeyDown) {
+			model.advanceQuickMatch(1)
+			return true
+		}
+		if model.uiKey(state, input.KeyUp) {
+			model.advanceQuickMatch(-1)
+			return true
+		}
+		return false
+	}
 	// Native input controls own their history. Never apply their undo chord
 	// to an open file or source-control editor behind the focused input.
 	if world != nil {
@@ -600,8 +675,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		}
 		return false
 	}
-	model.ensureSettings()
-	if !model.capturingShortcut && model.debugShortcut(world, state) {
+	if model.debugShortcut(world, state) {
 		return true
 	}
 	if handled, changed := model.portsShortcut(world, state); handled {
@@ -619,57 +693,6 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			return true
 		}
 		return false
-	}
-	if model.capturingShortcut {
-		if state.KeyPressed(input.KeyEscape) {
-			model.capturingShortcut = false
-			return true
-		}
-		if state.KeyPressed(input.KeyBackspace) {
-			model.settings.Bindings[model.captureAction] = pencodeKeybinding{}
-			model.capturingShortcut = false
-			model.refreshSettingsLabels()
-			model.saveSettings()
-			return true
-		}
-		binding, ok := pencodeCapturedBinding(state, goos)
-		if !ok {
-			return false
-		}
-		if !validPencodeKeybinding(binding) {
-			return true
-		}
-		if conflict := model.shortcutConflict(model.captureAction, binding, goos); conflict != "" {
-			model.settingsFeedback = model.tr("快捷键已用于") + conflict
-			return true
-		}
-		model.settings.Bindings[model.captureAction] = binding
-		model.capturingShortcut = false
-		model.refreshSettingsLabels()
-		model.saveSettings()
-		return true
-	}
-	if model.settingsOpen && model.uiKey(state, input.KeyEscape) {
-		model.settingsOpen = false
-		return true
-	}
-	if model.quickOpen {
-		if model.uiKey(state, input.KeyEscape) {
-			model.closeQuickOpen(world)
-			return true
-		}
-		if model.uiKey(state, input.KeyEnter) {
-			model.openQuickMatch(world, model.quickIndex)
-			return true
-		}
-		if model.uiKey(state, input.KeyDown) {
-			model.advanceQuickMatch(1)
-			return true
-		}
-		if model.uiKey(state, input.KeyUp) {
-			model.advanceQuickMatch(-1)
-			return true
-		}
 	}
 	if model.languageUI.contextOpen && model.handleLanguageKeys(world, state) {
 		return true
@@ -709,8 +732,8 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			return true
 		}
 	}
-	if model.commandMatches("folder-find", state, goos) || model.commandMatches("folder-replace", state, goos) {
-		model.openFolderSearch(model.activeProjectState(), "", model.commandMatches("folder-replace", state, goos))
+	if model.settings.Bindings["folder-find"].matchesGlobal(world, state, goos) || model.settings.Bindings["folder-replace"].matchesGlobal(world, state, goos) {
+		model.openFolderSearch(model.activeProjectState(), "", model.settings.Bindings["folder-replace"].matchesGlobal(world, state, goos))
 		return true
 	}
 	if model.fileTreePasteShortcut(world, state, goos) || model.editorNavigationShortcut(world, state, goos) || model.editorClipboardShortcut(world, state, goos) {
@@ -730,7 +753,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		}
 	}
 	for action, definition := range pencodeShortcutDefinitions {
-		if model.settings.Bindings[definition.id].matches(state, goos) {
+		if model.settings.Bindings[definition.id].matchesGlobal(world, state, goos) {
 			model.runShortcut(world, pencodeShortcutAction(action))
 			return true
 		}

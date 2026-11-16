@@ -74,6 +74,8 @@ func newPencodeTestLauncher(b testing.TB) (*onix.App, *Session) {
 	if _, err := app.LoadModules[module.FullContent](plan, registry, module.Options{Source: source}); err != nil {
 		b.Fatal(err)
 	}
+	session.active.model.app.GetViewport = func() (int, int) { return 1440, 900 }
+	app.World.InsertResource(scene.ViewportSize{Width: 1440, Height: 900, ScaleFactor: 1})
 	return app, session
 }
 

@@ -260,6 +260,7 @@ func (model *workspaceModel) focusQuickControls(world *module.Content, surface e
 				field.Caret, field.Anchor = caret, caret
 			}
 			model.revealEditorCaret(world, caret)
+			model.editor.navigationPaint.mark(model.activeFile(), caret, caret)
 			model.quickTargetLine = 0
 		}
 	}

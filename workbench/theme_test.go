@@ -136,8 +136,8 @@ func TestPencodeWorkbenchThemeColors(t *testing.T) {
 						t.Fatal("completion scrollbar did not follow the workbench theme")
 					}
 					pairs = append(pairs, struct{ ref, key string }{"tabs", "editorGroupHeader.tabsBackground"}, struct{ ref, key string }{"find-bar", "editorWidget.background"})
-					if projects := computed["projects"]; projects == nil || projects.BackgroundColor.Color.A != 0 {
-						t.Fatal("project list should have a transparent background")
+					if projects := computed["project-tree"]; projects == nil || projects.BackgroundColor.Color.A != 0 {
+						t.Fatal("file explorer should have a transparent background")
 					}
 				}
 				for _, pair := range pairs {
@@ -187,7 +187,7 @@ func TestPencodeCustomWorkbenchThemeAndLightDefaults(t *testing.T) {
 	}
 	fixture := `<div data-ref="root" class="pencode-root">
   <header data-ref="titlebar" class="pencode-titlebar"></header>
-  <nav data-ref="projects" class="pencode-project-list"></nav>
+  <nav data-ref="projects" class="pencode-explorer"></nav>
   <div data-ref="tab" class="pencode-tab active"><button data-ref="tab-label" class="pencode-tab-select">main.go</button></div>
   <footer data-ref="status" class="pencode-statusbar">Ready</footer>
   <section data-ref="find" class="pencode-find"><input data-ref="query"></section>

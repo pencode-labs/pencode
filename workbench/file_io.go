@@ -571,6 +571,7 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 		}
 		h.index = n.navigationIndex
 		f.editorView = n.view
+		m.editor.navigationPaint.mark(f, n.view.caret, n.view.caret)
 		m.quickFocusEditor, m.quickTargetLine = false, 0
 		m.editor.needsFocus = true
 		if m.languages != nil {

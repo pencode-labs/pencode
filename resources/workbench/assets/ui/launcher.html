@@ -7,10 +7,10 @@
       <input id="quick-open-query" data-ref="quick-open-query" type="text" role="combobox" aria-label="搜索项目文件" aria-autocomplete="list" aria-controls="quick-open-panel" aria-expanded="false" placeholder="搜索文件（文件名:行号）" autocomplete="off" spellcheck="false">
       <kbd data-ref="quick-search-shortcut" class="pencode-titlebar-search-shortcut" aria-hidden="true"></kbd>
     </div>
-    <button data-ref="change-project" class="pencode-icon-button pencode-titlebar-project" type="button" title="切换项目"
-      aria-label="切换项目" hidden>
-      <img data-ref="change-project-icon" src="icons/folder-opened.svg" alt="">
-    </button>
+    <div id="project-switcher" data-ref="project-switcher" class="pencode-project-switcher">
+      <div id="project-tabs" data-ref="project-tabs" class="pencode-project-tabs" role="tablist" aria-label="打开的项目"></div>
+      <button id="add-project" data-ref="add-project" class="pencode-icon-button" type="button" title="打开项目" aria-label="打开项目" aria-haspopup="menu" aria-controls="project-menu" aria-expanded="false"><img data-ref="add-project-icon" src="icons/add.svg" alt=""></button>
+    </div>
     <button id="connection-open" data-ref="connection-open" class="pencode-icon-button pencode-titlebar-connection" type="button" title="远程管理" aria-label="远程管理" aria-controls="connection-panel" aria-expanded="false"><img data-ref="connection-open-icon" src="icons/remote.svg" alt=""></button>
     <button id="marketplace-button" data-ref="open-marketplace" class="pencode-icon-button pencode-titlebar-marketplace" type="button" title="扩展市场" aria-label="扩展市场" aria-controls="marketplace-panel" aria-expanded="false">
       <img data-ref="open-marketplace-icon" src="icons/extensions.svg" alt="">
@@ -33,6 +33,15 @@
     </div>
   </header>
 
+
+  <nav id="project-menu" data-ref="project-menu" class="pencode-project-menu" role="menu" aria-label="打开项目" hidden>
+    <button id="project-menu-local" data-ref="project-menu-local" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-local-icon" src="icons/folder-opened.svg" alt=""><span>打开本地项目</span></button>
+    <button id="project-menu-remote" data-ref="project-menu-remote" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-remote-icon" src="icons/remote.svg" alt=""><span>打开远程项目</span></button>
+    <section data-ref="project-menu-hosts" class="pencode-project-menu-hosts" role="group" aria-label="远程主机" hidden>
+      <div class="pencode-project-menu-label" aria-hidden="true">远程主机</div>
+      <div data-ref="project-menu-host-list"></div>
+    </section>
+  </nav>
 
   <section id="connection-panel" data-ref="connection-panel" class="pencode-connection" role="dialog" aria-labelledby="connection-title" hidden>
     <header class="pencode-connection-header"><h2 id="connection-title">连接</h2><button id="connection-close" data-ref="connection-close" class="pencode-icon-button" type="button" title="关闭远程管理" aria-label="关闭远程管理"><img data-ref="connection-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></header>
@@ -183,9 +192,9 @@
           </div>
         </section>
         <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
-          <div class="pencode-settings-row pencode-extension-setting">
+          <div class="pencode-settings-row pencode-setting-toggle-row">
             <div class="pencode-setting-copy"><label for="pprof-enabled">pprof 模式</label><p id="pprof-description" class="pencode-setting-description">记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。</p></div>
-            <input id="pprof-enabled" data-ref="pprof-enabled" type="checkbox" aria-describedby="pprof-description">
+            <span class="pencode-setting-switch"><input id="pprof-enabled" data-ref="pprof-enabled" type="checkbox" role="switch" aria-describedby="pprof-description"><span data-ref="pprof-thumb" class="pencode-setting-switch-thumb" aria-hidden="true"></span></span>
           </div>
           <div class="pencode-settings-row"><span>Pencode 版本</span><span data-ref="update-version" class="pencode-settings-value"></span></div>
           <div class="pencode-settings-row pencode-update-row">

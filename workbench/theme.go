@@ -30,10 +30,10 @@ type pencodeTheme struct {
 type pencodeIconKey struct{ source, foreground string }
 
 var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
+	{"add-project-icon", "icons/add.svg", "icon.foreground"},
 	{"connection-open-icon", "icons/remote.svg", "icon.foreground"},
 	{"open-marketplace-icon", "icons/extensions.svg", "icon.foreground"},
 	{"close-marketplace-icon", "icons/close.svg", "icon.foreground"},
-	{"change-project-icon", "icons/folder-opened.svg", "icon.foreground"},
 	{"open-settings-icon", "icons/settings.svg", "icon.foreground"},
 	{"window-minimize-icon", "icons/minimize.svg", "icon.foreground"},
 	{"window-maximize-icon", "icons/maximize.svg", "icon.foreground"},

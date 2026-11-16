@@ -56,6 +56,56 @@ func TestKeymapMatchesModifiersAtKeyPress(t *testing.T) {
 	}
 }
 
+func TestShortcutCaptureUsesModifiersAtKeyPress(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin"} {
+		want := pencodeBindingChord("Primary+Shift+Alt+H")
+		state := keymapState(want, goos)
+		for _, key := range []input.KeyCode{input.KeyH, input.KeyLeftControl, input.KeyLeftSuper, input.KeyLeftShift, input.KeyLeftAlt} {
+			state.ReleaseKey(key)
+		}
+		if got, ok := pencodeCapturedBinding(state, goos); !ok || got != want {
+			t.Fatalf("%s: quick capture = %+v, want %+v", goos, got, want)
+		}
+		state.EndFrame()
+		state.PressKey(input.KeyH)
+		state.PressKey(input.KeyLeftControl)
+		state.PressKey(input.KeyLeftShift)
+		if got, ok := pencodeCapturedBinding(state, goos); !ok || got != (pencodeKeybinding{Key: input.KeyH}) {
+			t.Fatalf("%s: capture used modifiers pressed after H: %+v", goos, got)
+		}
+	}
+}
+
+func TestShortcutOverlaysBlockBackgroundCommands(t *testing.T) {
+	for _, overlay := range []string{"settings", "quick-open"} {
+		for _, command := range []string{"folder-find", "folder-replace", "sidebar", "close"} {
+			t.Run(overlay+"/"+command, func(t *testing.T) {
+				m := &workspaceModel{settings: defaultPencodeSettings()}
+				m.settingsOpen, m.quickOpen = overlay == "settings", overlay == "quick-open"
+				if m.handleShortcutKeys(nil, keymapState(m.settings.Bindings[command], runtime.GOOS), runtime.GOOS) || m.folderSearch.open {
+					t.Fatal("overlay dispatched a background command")
+				}
+			})
+		}
+	}
+}
+
+func TestShortcutCapturePrecedesNativeInputHistory(t *testing.T) {
+	app, m, _, _ := languageInteractionFixture(t)
+	m.findOpen = true
+	markPencodeRootDirtyByModel(m.fontResources, m)
+	languageInteractionStep(t, app)
+	control, ok := m.fontResources.HTMLControl(m.surface, "find-query")
+	if !ok || !m.fontResources.Focus(control) {
+		t.Fatal("cannot focus native input")
+	}
+	m.settingsOpen, m.capturingShortcut, m.captureAction = true, true, "undo"
+	state := keymapState(m.settings.Bindings["undo"], runtime.GOOS)
+	if !m.handleShortcutKeys(m.fontResources, state, runtime.GOOS) || m.capturingShortcut {
+		t.Fatal("native history stole shortcut recording")
+	}
+}
+
 func TestKeymapProfilesPersistIndependentOverrides(t *testing.T) {
 	m := &workspaceModel{settings: defaultPencodeSettings()}
 	event := func(ref, value string) {

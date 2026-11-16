@@ -57,7 +57,7 @@ func (model *workspaceModel) handleActionShortcuts(world *module.Content, state 
 		if override, ok := model.settings.Bindings[a.ID]; ok {
 			binding = override
 		}
-		if binding.matches(state, goos) {
+		if binding.matches(state, goos) && (pencodeActionScope(*a) != "global" || !binding.textInputOwnsKey(world)) {
 			model.runAction(world, a.ID)
 			return true
 		}

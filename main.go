@@ -5,12 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
-	"github.com/onix-engine/onix"
-	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/project"
-	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/internal/desktopopen"
 	"github.com/pencode-labs/pencode/internal/environment"
@@ -21,7 +17,6 @@ import (
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
 	"github.com/pencode-labs/pencode/transport"
-	"github.com/pencode-labs/pencode/workbench"
 )
 
 func main() {
@@ -63,6 +58,10 @@ func main() {
 	var initial connection.Profile
 	var port uint
 	var serverDirectory string
+	var restoreWindow string
+	var newWindow bool
+	flag.BoolVar(&newWindow, "new-window", false, "Open a new window")
+	flag.StringVar(&restoreWindow, "restore-window", "", "Restore a saved window")
 	flag.StringVar(&initial.SSH.Host, "ssh", "", "SSH Host alias or user@host")
 	flag.UintVar(&port, "ssh-port", 0, "SSH port; zero uses SSH config")
 	flag.StringVar(&initial.SSH.IdentityFile, "ssh-identity", "", "SSH identity file")
@@ -86,66 +85,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	registry, err := OnixRegistry()
-	if err != nil {
-		panic(err)
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		panic(err)
 	}
-	conn, err := transport.Start(executable, "--pencode-server")
+	application := &pencodeApplication{plan: plan, source: source, executable: executable, serverDirectory: serverDirectory, recorder: recorder}
+	defer application.native.Close()
+	// Finder events are delivered to the active window of this application.
+	desktopopen.Configure(application.openPath)
+	_, err = application.open(pencodeWindowRequest{restoreID: restoreWindow, restore: !newWindow && flag.NArg() == 0 && !initial.Remote(), profile: initial, paths: flag.Args()})
 	if err != nil {
 		panic(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	backend, err := client.New(ctx, conn)
-	cancel()
-	if err != nil {
-		panic(err)
-	}
-	session := workbench.NewSession(backend)
-	session.OpenPaths(flag.Args()...)
-	// Install before AppKit finishes launching so Finder's initial open event
-	// is queued even before the workbench has entered its first scene.
-	desktopopen.Configure(func(path string) { session.OpenPaths(path) })
-	defer func() {
-		session.Close()
-		if err := session.FinishUpdate(); err != nil {
-			fmt.Fprintln(os.Stderr, "启动更新失败：", err)
-		}
-	}()
-	dialer := connection.DefaultDialer(executable, session.Output.Channel(remote.OutputChannelName))
-	if serverDirectory != "" {
-		dialer.SSH.ServerDirectory = serverDirectory
-	}
-	session.ConfigureConnection(dialer.Dial, initial)
-	if err := session.Register(&registry); err != nil {
-		panic(err)
-	}
-	app := onix.NewApp()
-	app.AddInputHandler(input.PhaseGlobal, session.HandleFileDrop)
-	app.SetRenderMode(onix.RenderOnDemand)
-	app.SetIdleEnabled(true)
-	if err := OnixInstallSystems(app); err != nil {
-		panic(err)
-	}
-	if err := app.AddSystems(onix.StagePostUpdate, session.ScrollSystem(), session.LayoutSystem()); err != nil {
-		panic(err)
-	}
-	if recorder != nil {
-		if err := app.AddSystems(onix.StageRender, session.ProfilingSystem(recorder)); err != nil {
-			panic(err)
-		}
-	}
-
-	if err := OnixOpenWindow(app, plan.Spec, source); err != nil {
-		panic(err)
-	}
-	if _, err := app.LoadModules[OnixContentProfile](plan, registry, OnixModuleOptions(source)); err != nil {
-		panic(err)
-	}
-	if err := app.Run(); err != nil {
+	application.native.BetweenFrames = application.openPending
+	if err := application.native.Run(); err != nil {
 		panic(err)
 	}
 }

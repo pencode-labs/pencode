@@ -24,6 +24,7 @@ type pencodeEditor struct {
 	numberBuffer                        []byte
 	linkSpans                           []scene.TextSpan2D
 	compositionSpans                    []scene.TextSpan2D
+	navigationPaint                     pencodeNavigationPaint
 	debugPaint                          pencodeDebugPaint
 	layoutKey                           pencodeGutterLayoutKey
 	brackets                            pencodeBracketIndex
@@ -433,6 +434,7 @@ func (editor *pencodeEditor) dispose(world *module.Content) {
 	editor.debugPaint.dispose(world)
 	editor.diagnostics.dispose(world)
 	editor.findPaint.dispose(world)
+	world.Despawn(editor.navigationPaint.background)
 	world.Despawn(editor.numbers)
 	world.Despawn(editor.gutter)
 	world.Despawn(editor.guide)

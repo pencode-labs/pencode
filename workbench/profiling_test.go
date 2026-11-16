@@ -6,7 +6,6 @@ import (
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
 	"github.com/onix-engine/onix/render"
-	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/internal/profiling"
 )
 
@@ -22,17 +21,16 @@ func TestProfilingSettingsControlAndPersistence(t *testing.T) {
 		}
 		m = m.session.active.model
 		m.settingsOpen = true
+		m.settings.Pprof = new(false)
 		markPencodeRootDirtyByModel(m.fontResources, m)
 		languageInteractionStep(t, app)
 		editorContextClick(t, app, m, state, "settings-about-nav")
 		editorContextBounds(t, m, "pprof-enabled")
-		control, ok := m.fontResources.HTMLControl(m.surface, "pprof-enabled")
-		if !ok {
+		if _, ok := m.fontResources.HTMLControl(m.surface, "pprof-enabled"); !ok {
 			t.Fatal("missing pprof control")
 		}
 		for _, checked := range []bool{true, false} {
-			app.World.WriteMessage(htmlui.Event{Entity: m.surface, Target: control, Kind: htmlui.EventChange, Checked: checked, Bubbles: true})
-			languageInteractionStep(t, app)
+			editorContextClick(t, app, m, state, "pprof-enabled")
 			saved, _ := loadPencodeSettings()
 			if saved.Pprof == nil || *saved.Pprof != checked || m.settings.Pprof == nil || *m.settings.Pprof != checked {
 				t.Fatalf("pprof setting not saved: %v", checked)

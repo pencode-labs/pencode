@@ -216,13 +216,6 @@ textarea:focus {
     color: var(--vscode-descriptionForeground);
 }
 
-.pencode-titlebar-project {
-    position: absolute;
-    top: 6px;
-    left: calc(50% - 14px);
-    z-index: 1;
-}
-
 .pencode-titlebar-settings {
     position: absolute;
     top: 6px;
@@ -274,7 +267,6 @@ textarea:focus {
 .pencode-primary-action img,
 .pencode-recent-open img,
 .pencode-icon-button img,
-.pencode-project-arrow,
 .pencode-tree-icon,
 .pencode-find-action img {
     width: 16px;
@@ -460,11 +452,8 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 2px;
+    justify-content: flex-end;
     margin: 6px 8px 0;
-}
-
-.pencode-sidebar-open-project {
-    margin-right: auto;
 }
 
 .pencode-icon-button {
@@ -483,7 +472,7 @@ textarea:focus {
     background: var(--vscode-toolbar-hoverBackground);
 }
 
-.pencode-project-list {
+.pencode-explorer {
     flex: 1;
     min-height: 0;
     display: flex;
@@ -493,85 +482,11 @@ textarea:focus {
 }
 
 .pencode-project {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-}
-
-.pencode-project.expanded {
-    flex: 1 1 auto;
-}
-
-.pencode-project-summary {
-    flex: 0 0 30px;
-    min-height: 30px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin: 0 8px;
-    padding: 0 5px 0 4px;
-    border-radius: 8px;
-    background: transparent;
-}
-
-.pencode-project .pencode-project-summary:hover {
-    background: var(--vscode-toolbar-hoverBackground);
-}
-
-.pencode-project-toggle {
-    flex: 1;
-    min-width: 0;
-    height: 28px;
-    min-height: 28px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 0 5px 0 1px;
-    border: 0;
-    border-radius: 8px;
-    color: var(--vscode-sideBar-foreground);
-    font-size: calc(13rem / 14);
-    font-weight: 700;
-    text-align: left;
-}
-
-.pencode-project-arrow {
-    flex: 0 0 16px;
-}
-
-.pencode-project.expanded .pencode-project-arrow {
-    transform: rotate(90deg);
-}
-
-.pencode-project-name {
-    min-width: 0;
-    overflow-x: clip;
-    overflow-y: visible;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.pencode-project-close {
-    width: 20px;
-    height: 20px;
-    min-height: 20px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 20px;
-    padding: 0;
-    border-radius: 8px;
-}
-
-.pencode-project-summary:hover .pencode-project-close,
-.pencode-project-close:focus-visible {
-    display: flex;
-}
-
-.pencode-project-close:hover {
-    background: var(--vscode-toolbar-hoverBackground);
 }
 
 .pencode-tree {
@@ -584,9 +499,7 @@ textarea:focus {
     scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
 }
 
-.pencode-project:not(.expanded) .pencode-tree {
-    padding: 0;
-}
+
 
 .pencode-tree-height {
     position: relative;
@@ -606,7 +519,7 @@ textarea:focus {
     min-height: 30px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     padding-top: 5px;
     padding-right: 9px;
     padding-bottom: 5px;
@@ -641,7 +554,7 @@ textarea:focus {
 }
 
 .pencode-tree-row.drop-target,
-.pencode-project-summary.drop-target {
+.pencode-project.drop-target {
     background: var(--vscode-list-hoverBackground);
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: -1px;
@@ -730,7 +643,7 @@ textarea:focus {
 .pencode-tree-create {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     height: 30px;
     min-height: 30px;
     padding-right: 9px;
@@ -1202,6 +1115,10 @@ textarea:focus {
 
 .pencode-editor:focus {
     outline: none;
+}
+
+.pencode-editor-link {
+    cursor: pointer;
 }
 
 .pencode-lsp-hover,
@@ -1757,6 +1674,82 @@ textarea:focus {
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
+}
+
+.pencode-settings-row.pencode-setting-toggle-row {
+    align-items: flex-start;
+    flex-wrap: nowrap;
+    gap: 20px;
+    padding: 16px 0;
+}
+
+.pencode-setting-toggle-row label {
+    display: block;
+    line-height: 22px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.pencode-setting-toggle-row .pencode-setting-description {
+    margin-top: 6px;
+    font-size: calc(12rem / 14);
+    line-height: 1.6;
+    white-space: normal;
+}
+
+.pencode-setting-switch {
+    position: relative;
+    display: block;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 22px;
+}
+
+.pencode-setting-switch input {
+    appearance: none;
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--vscode-settings-dropdownBorder);
+    border-radius: 11px;
+    background: var(--vscode-button-secondaryBackground);
+    cursor: pointer;
+}
+
+.pencode-setting-switch input:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pencode-setting-switch input:checked {
+    border-color: var(--vscode-button-background);
+    background: var(--vscode-button-background);
+}
+
+.pencode-setting-switch input:checked:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+
+.pencode-setting-switch input:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+.pencode-setting-switch-thumb {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background: var(--vscode-button-secondaryForeground);
+    pointer-events: none;
+}
+
+.pencode-setting-switch-thumb.active {
+    transform: translateX(14px);
+    background: var(--vscode-button-foreground);
 }
 
 .pencode-settings-row.pencode-update-row {
@@ -2824,7 +2817,7 @@ textarea:focus {
 .sc-branch-menu .sc-branch-item { width: 100%; height: 28px; }
 .sc-branch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sc-repository-ref { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); }
-.sc-branch-submenu { z-index: 43; width: 200px; padding: 5px; }
+.sc-branch-submenu { z-index: 43; width: 420px; padding: 5px; }
 .sc-branch-submenu button { height: 28px; }
 
 .pencode-terminal-tools {
@@ -2987,6 +2980,18 @@ textarea:focus {
 .pencode-connection-form-actions { justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .pencode-connection-form-actions button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 .pencode-connection-form-actions button.primary:hover { background: var(--vscode-button-hoverBackground); }
+
+.pencode-project-menu { position: absolute; z-index: 46; width: 280px; max-width: calc(100% - 16px); padding: 4px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; border: 1px solid var(--vscode-widget-border); border-radius: 8px; background: var(--vscode-editorWidget-background); color: var(--vscode-editorWidget-foreground); box-shadow: 0 8px 24px var(--vscode-widget-shadow); }
+.pencode-project-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 7px 10px; color: var(--vscode-editorWidget-foreground); text-align: left; }
+.pencode-project-menu-item:hover, .pencode-project-menu-item.active { background: var(--vscode-list-hoverBackground); }
+.pencode-project-menu-item:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.pencode-project-menu-item:disabled { opacity: .5; cursor: default; }
+.pencode-project-menu-item img { flex-shrink: 0; width: 16px; height: 16px; }
+.pencode-project-menu-hosts { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--vscode-widget-border); }
+.pencode-project-menu-label { padding: 6px 10px; font-size: calc(11rem / 14); color: var(--vscode-descriptionForeground); }
+.pencode-project-menu-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pencode-project-menu-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pencode-project-menu-address { color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); }
 
 .pencode-project-path { display: flex; align-items: center; gap: 8px; }
 .pencode-project-overlay .pencode-project-picker { inset: auto; width: 620px; max-width: 100%; max-height: 100%; min-width: 0; margin: 0; }
@@ -3232,4 +3237,101 @@ textarea:focus {
 
 .pencode-sidebar-collapse-icon {
     transform: rotate(180deg);
+}
+
+.pencode-project-switcher {
+    position: absolute;
+    top: 6px;
+    left: 2px;
+    width: calc(50% - 194px);
+    height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 2;
+}
+
+.pencode-titlebar.native-controls .pencode-project-switcher {
+    left: 100px;
+    width: calc(50% - 292px);
+}
+
+.pencode-project-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: calc(100% - 32px);
+    height: 28px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.pencode-project-switcher > .pencode-icon-button {
+    flex: 0 0 28px;
+}
+
+.pencode-project-tab {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: 100%;
+    height: 26px;
+    padding: 0 4px 0 8px;
+    border-radius: 8px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.pencode-project-tab:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.pencode-project-tab.active {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-titleBar-activeForeground);
+}
+
+.pencode-project-tab-select {
+    max-width: 140px;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    height: 26px;
+    padding: 0 4px 0 0;
+    color: inherit;
+    font-size: calc(13rem / 14);
+}
+
+.pencode-project-tab-select span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pencode-project-tab-close {
+    display: flex;
+    visibility: hidden;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    min-height: 18px;
+    padding: 0;
+    border-radius: 5px;
+}
+
+.pencode-project-tab:hover .pencode-project-tab-close {
+    visibility: visible;
+}
+
+.pencode-project-tab-close:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+@media (max-width: 800px) {
+    .pencode-project-switcher { width: 206px; }
+    .pencode-titlebar.native-controls .pencode-project-switcher { width: 108px; }
 }

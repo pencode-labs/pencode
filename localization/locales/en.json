@@ -2,6 +2,13 @@
   "id": "en",
   "label": "English",
   "messages": {
+    "打开本地项目": "Open Local Project",
+    "打开远程项目": "Open Remote Project",
+    "远程主机": "Remote Hosts",
+    "新建窗口": "New Window",
+    "新建窗口失败：": "Failed to create window: ",
+    "保存窗口状态失败：": "Failed to save window state: ",
+    "移除窗口状态失败：": "Failed to remove window state: ",
     "pprof 模式": "pprof mode",
     "记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。": "Record CPU, heap, and resource metrics. Restart Pencode on the corresponding device to apply.",
     "上一个匹配": "Previous match",

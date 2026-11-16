@@ -125,7 +125,7 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 		if drag.target != target || drag.directory != directory {
 			drag.target, drag.directory, drag.depth = target, directory, depth
 			drag.expandAt = time.Time{}
-			if target != nil && (target.Collapsed || directory != "" && !model.isProjectDirectoryExpanded(target, directory, depth)) {
+			if target != nil && directory != "" && !model.isProjectDirectoryExpanded(target, directory, depth) {
 				drag.expandAt = time.Now().Add(650 * time.Millisecond)
 				if model.app != nil && model.app.WakeAt != nil {
 					model.app.WakeAt(drag.expandAt)
@@ -145,9 +145,7 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 		return true
 	}
 	if drag.target != nil && !drag.expandAt.IsZero() && !time.Now().Before(drag.expandAt) {
-		if drag.target.Collapsed {
-			drag.target.Collapsed = false
-		} else if !model.isProjectDirectoryExpanded(drag.target, drag.directory, drag.depth) {
+		if !model.isProjectDirectoryExpanded(drag.target, drag.directory, drag.depth) {
 			model.toggleProjectDirectory(drag.target, drag.directory, drag.depth)
 		}
 		drag.expandAt = time.Time{}

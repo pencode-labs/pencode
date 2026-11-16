@@ -155,6 +155,9 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 		previousContent = previousFile.snapshot()
 	}
 	fileIOChanged := m.model.pollFileIO()
+	if m.session.pollWindowRestore(m.model) {
+		markPencodeRootDirtyByModel(c.Content(), m.model)
+	}
 	externalChanged := m.session.pollExternalPaths(m.model)
 	if fileIOChanged || externalChanged {
 		if previousFile != m.model.activeFile() || previousContent != m.model.activeSnapshot() {

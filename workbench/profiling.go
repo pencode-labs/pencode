@@ -18,8 +18,10 @@ func (model *workspaceModel) renderProfilingSettings(view *htmlui.View) {
 	view.Event("pprof-enabled", htmlui.EventChange)
 	if enabled {
 		view.Attr("pprof-enabled", "checked", "")
+		view.Attr("pprof-thumb", "class", "pencode-setting-switch-thumb active")
 	} else {
 		view.RemoveAttr("pprof-enabled", "checked")
+		view.Attr("pprof-thumb", "class", "pencode-setting-switch-thumb")
 	}
 }
 

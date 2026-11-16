@@ -46,14 +46,12 @@ func (m *workspaceModel) editorKeyHandled(state *input.State) bool {
 	if state.Composing() {
 		return false
 	}
-	if state.KeyHeld(input.KeyLeftControl) || state.KeyHeld(input.KeyRightControl) || state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper) {
-		for _, key := range [...]input.KeyCode{input.KeyA, input.KeyC, input.KeyV, input.KeyX} {
-			if state.KeyPressed(key) {
-				return true
-			}
+	for _, key := range [...]input.KeyCode{input.KeyA, input.KeyC, input.KeyV, input.KeyX} {
+		if state.KeyPressed(key) && state.KeyModifiers(key)&(input.ModifierControl|input.ModifierSuper) != 0 {
+			return true
 		}
 	}
-	if state.KeyPressed(input.KeyTab) && !state.KeyHeld(input.KeyLeftControl) && !state.KeyHeld(input.KeyRightControl) && !state.KeyHeld(input.KeyLeftSuper) && !state.KeyHeld(input.KeyRightSuper) && !state.KeyHeld(input.KeyLeftAlt) && !state.KeyHeld(input.KeyRightAlt) {
+	if state.KeyPressed(input.KeyTab) && state.KeyModifiers(input.KeyTab)&(input.ModifierControl|input.ModifierSuper|input.ModifierAlt) == 0 {
 		return !m.commandMatches("editor-indent", state, runtime.GOOS) && !m.commandMatches("editor-outdent", state, runtime.GOOS)
 	}
 	return false

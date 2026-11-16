@@ -3,7 +3,6 @@ package workbench
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -40,15 +39,19 @@ func (s *Session) pollExternalPaths(m *workspaceModel) bool {
 	if len(s.externalPaths) == 0 {
 		return false
 	}
-	// Remote workspaces share one backend and extension host. Open local drops
-	// in a local window without replacing that connection or its unsaved files.
-	if c := s.connection; c != nil && (c.workspaceProfile.Remote() || c.busy || c.launch) {
-		if err := openLocalWindow(s.externalPaths); err != nil {
-			m.setActiveStatus(m.tr("打开本地窗口失败：") + err.Error())
+	if c := s.connection; c != nil {
+		if c.busy || c.launch {
+			return false
 		}
-		clear(s.externalPaths)
-		s.externalPaths = nil
-		return true
+		if c.workspaceProfile.Remote() {
+			if len(m.projects) == 0 && m.beginLocalConnection() {
+				return true
+			}
+			m.setActiveStatus(m.tr("请先关闭当前项目，再打开其他设备的项目"))
+			clear(s.externalPaths)
+			s.externalPaths = nil
+			return true
+		}
 	}
 	name, err := filepath.Abs(s.externalPaths[0])
 	s.externalPaths[0] = ""
@@ -91,28 +94,6 @@ func (s *Session) pollExternalPaths(m *workspaceModel) bool {
 func localPathWithin(root, name string) bool {
 	relative, err := filepath.Rel(root, name)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
-func openLocalWindow(paths []string) error {
-	executable, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	args := make([]string, 1, len(paths)+1)
-	args[0] = "--"
-	for _, name := range paths {
-		absolute, err := filepath.Abs(name)
-		if err != nil {
-			return err
-		}
-		args = append(args, absolute)
-	}
-	command := exec.Command(executable, args...)
-	if err := command.Start(); err != nil {
-		return err
-	}
-	go func() { _ = command.Wait() }()
-	return nil
 }
 
 func executeExternalOpen(j *fileIOJob) (r fileIOResult) {

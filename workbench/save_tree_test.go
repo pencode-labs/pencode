@@ -77,7 +77,7 @@ func TestSavePreservesExplorer(t *testing.T) {
 		if p.scan != nil || p.treePending || p.index != index || p.tree.revision != revision {
 			t.Fatal("saving rebuilt the explorer snapshot")
 		}
-		if m.revealProject != nil || p.Collapsed || p.ExpandedDirs["folder"] {
+		if m.revealProject != nil || p.ExpandedDirs["folder"] {
 			t.Fatal("saving changed explorer navigation or folding")
 		}
 		if got := m.fontResources.Ref[scene.UIScroll](p.tree.area).Position.Y(); got != -300 {

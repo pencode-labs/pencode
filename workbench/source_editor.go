@@ -236,6 +236,13 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 		b.text("h2", "title", "Confirm Git Operation", "id", "sc-prompt-title")
 		message := "Execute " + s.Prompt + "?"
 		switch s.Prompt {
+		case "merge", "rebase":
+			if branch, ok := s.branch(s.PromptHash); ok {
+				message = "Merge branch “" + branch.Name + "” into current branch “" + s.Snapshot.Branch + "”?"
+				if s.Prompt == "rebase" {
+					message = "Rebase current branch “" + s.Snapshot.Branch + "” onto “" + branch.Name + "”? This rewrites the current branch's commits."
+				}
+			}
 		case "branch":
 			if branch, ok := s.branch(s.PromptHash); ok {
 				message = a.tr("基于分支 “") + branch.Name + a.tr("” 创建并切换到新分支：")
@@ -275,6 +282,9 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 			message = a.tr("将当前分支移动到该提交并取消暂存，保留工作区文件？")
 		case "abort":
 			message = a.tr("取消当前合并？合并期间的解决结果将被丢弃。")
+			if s.Snapshot.Rebasing {
+				message = "Abort the current rebase? Resolutions made during the rebase will be discarded."
+			}
 		case "checkout":
 			message = a.tr("以 detached HEAD 模式检出此提交？")
 		case "push":

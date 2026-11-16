@@ -118,7 +118,6 @@ type pencodeProject struct {
 	sourceControl           pencodeSourceControl
 	index                   uint64
 	debugBreakpointRevision uint64
-	Collapsed               bool
 	AllDirectoriesCollapsed bool
 	treePending             bool
 	Loose                   bool
@@ -206,6 +205,7 @@ type workspaceModel struct {
 	projectPath                         string
 	quickQuery                          string
 	editorHeader                        pencodeEditorHeader
+	projectMenu                         pencodeProjectMenu
 	fileClipboard                       pencodeFileClipboard
 	navigation                          pencodeNavigationHistory
 	highlightRebaseScratch              []sceneapi.TextSpan2D
@@ -225,6 +225,7 @@ type workspaceModel struct {
 	debugTemplateRows                   []pencodeDebugRow
 	tabs                                []string
 	codeFontOptions                     []htmlui.VNode
+	projectTabScroll                    pencodeTabScroll
 	tabScroll                           pencodeTabScroll
 	tooltip                             pencodeTooltip
 	tabContext                          pencodeTabContext
@@ -341,22 +342,23 @@ type tabProps struct {
 }
 
 type projectProps struct {
-	Model             *workspaceModel
-	Theme             *pencodeTheme
-	Icons             *pencodeFileIcons
-	Project           *pencodeProject
-	TreeID, SummaryID string
-	ProblemRevision   uint64
+	Model           *workspaceModel
+	Theme           *pencodeTheme
+	Icons           *pencodeFileIcons
+	Project         *pencodeProject
+	TreeID          string
+	ProblemRevision uint64
 }
 
 type pencodeDefinitions struct {
-	action  *htmlui.Definition[pencodeActionProps, struct{}]
-	root    *htmlui.Definition[appProps, appState]
-	tree    *htmlui.Definition[treeProps, struct{}]
-	project *htmlui.Definition[projectProps, struct{}]
-	tab     *htmlui.Definition[tabProps, struct{}]
-	market  *htmlui.Definition[pencodeMarketProps, struct{}]
-	connect *htmlui.Definition[pencodeConnectionProps, pencodeConnectionState]
+	action     *htmlui.Definition[pencodeActionProps, struct{}]
+	root       *htmlui.Definition[appProps, appState]
+	tree       *htmlui.Definition[treeProps, struct{}]
+	project    *htmlui.Definition[projectProps, struct{}]
+	projectTab *htmlui.Definition[pencodeProjectTabProps, struct{}]
+	tab        *htmlui.Definition[tabProps, struct{}]
+	market     *htmlui.Definition[pencodeMarketProps, struct{}]
+	connect    *htmlui.Definition[pencodeConnectionProps, pencodeConnectionState]
 }
 
 func spawnPencodeSurface(world *module.Content, font, boldFont *text.Font, fontSize int) ecs.Entity {
@@ -422,7 +424,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				props := context.Props
 				props.RowID = props.Model.projectTreeRowID(props.Project, props.Path)
 				view.Attr("row", "id", props.RowID)
-				view.Attr("row", "style", fmt.Sprintf("padding-left:%dpx", 12+props.Depth*16))
+				view.Attr("row", "style", fmt.Sprintf("padding-left:%dpx", 4+props.Depth*16))
 				view.Attr("row", "class", treeRowClass(props))
 				if props.IsDir {
 					view.Attr("row", "aria-expanded", boolAttribute(props.Model.isProjectDirectoryExpanded(props.Project, props.Path, props.Depth)))
@@ -461,7 +463,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.project, err = content.Define[projectProps, struct{}](
-		htmlui.NewTemplate(`<section data-ref="project" class="pencode-project"><div data-ref="summary" class="pencode-project-summary"><button data-ref="toggle" class="pencode-project-toggle" type="button"><img data-ref="arrow" class="pencode-project-arrow" src="icons/chevron-right.svg" alt=""><span data-ref="name" class="pencode-project-name"></span></button><button data-ref="close" class="pencode-project-close" type="button" title="关闭项目" aria-label="关闭项目"><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div><nav data-ref="tree" class="pencode-tree" aria-label="项目目录"><div data-ref="tree-height" class="pencode-tree-height"><div data-ref="tree-window" class="pencode-tree-window"></div></div></nav></section>`),
+		htmlui.NewTemplate(`<section data-ref="project" class="pencode-project"><nav data-ref="tree" class="pencode-tree" aria-label="项目目录"><div data-ref="tree-height" class="pencode-tree-height"><div data-ref="tree-window" class="pencode-tree-window"></div></div></nav></section>`),
 		"",
 		module.ContentBehavior[projectProps, struct{}]{
 			Render: func(context module.ContentRenderContext[projectProps, struct{}], view *htmlui.View) {
@@ -469,49 +471,30 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if props == nil || props.Model == nil || props.Project == nil {
 					return
 				}
-				view.Attr("close", "title", props.Model.tr("关闭项目"))
-				view.Attr("close", "aria-label", props.Model.tr("关闭项目"))
 				view.Attr("tree", "aria-label", props.Model.tr("项目目录"))
 				className := "pencode-project"
-				if props.Model.activeProjectState() == props.Project {
-					className += " active"
-				}
-				if !props.Project.Collapsed {
-					className += " expanded"
+				if props.Model.fileDrag.isTarget(props.Project, "") {
+					className += " drop-target"
 				}
 				view.Attr("project", "class", className)
-				summaryClass := "pencode-project-summary"
-				if props.Model.fileDrag.isTarget(props.Project, "") {
-					summaryClass += " drop-target"
-				}
-				view.Attr("summary", "class", summaryClass)
 				props.TreeID = treeRowID(props.Project.Path)
-				props.SummaryID = props.TreeID + "-summary"
-				view.Attr("summary", "id", props.SummaryID)
-				view.Attr("arrow", "src", props.Model.themedIcon("icons/chevron-right.svg", "icon.foreground"))
-				view.Attr("close-icon", "src", props.Model.themedIcon("icons/close.svg", "icon.foreground"))
 				view.Attr("tree", "id", props.TreeID)
 				view.Attr("tree", "aria-busy", boolAttribute(props.Project.scan != nil))
-				view.Attr("toggle", "aria-expanded", boolAttribute(!props.Project.Collapsed))
-				view.Attr("close", "id", props.TreeID+"-close")
-				view.Attr("close", "aria-label", "关闭项目 "+props.Project.Name)
-				view.Text("name", props.Project.Name)
-				if props.Project.Collapsed {
-					view.Attr("tree", "hidden", "")
-				} else {
-					view.RemoveAttr("tree", "hidden")
-				}
-				view.Event("toggle", htmlui.EventClick)
-				view.Event("close", htmlui.EventClick)
-				if props.Project.Collapsed {
-					view.Components("tree-window", nil)
-					return
-				}
 				renderPencodeTree(context, view, definitions.tree, creationDefinition)
 			},
-			HandleEvent: handleProjectEvent,
+			Unmount: func(c *module.ContentComponentContext[projectProps, struct{}]) {
+				tree := &c.Props.Project.tree
+				if scroll := c.World.Ref[sceneapi.UIScroll](tree.area); scroll != nil && !tree.restore {
+					tree.position = scroll.Position.Y()
+				}
+				tree.area, tree.restore = 0, true
+			},
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
+	definitions.projectTab, err = newProjectTabDefinition(content)
 	if err != nil {
 		return nil, err
 	}
@@ -630,6 +613,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	projectHostDefinition, err := newProjectHostDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	recentDefinition, err := newRecentProjectDefinition(content)
 	if err != nil {
 		return nil, err
@@ -650,6 +637,9 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					renderPencodeTranslations(context.Props.Model, view, translations)
 				}
 				renderPencodeRoot(context, view, definitions.project, definitions.tab, definitions.market, definitions.connect, definitions.action)
+				if context.Props != nil && context.Props.Model != nil {
+					context.Props.Model.renderProjectTabs(view, definitions.projectTab)
+				}
 				if context.Props != nil && context.Props.Model != nil && context.Props.Screen == pencodeLauncher {
 					context.Props.Model.renderRecentProjects(view, recentDefinition)
 				}
@@ -663,6 +653,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderProjectPicker(view, directoryDefinition)
+					context.Props.Model.renderProjectMenu(view, projectHostDefinition)
 				}
 				if context.Props != nil && context.Props.Model != nil && context.Props.Screen == pencodeWorkspace {
 					context.Props.Model.renderBottomPanel(view, problemDefinition)
@@ -729,8 +720,8 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("window-minimize", htmlui.EventClick)
 	view.Event("window-maximize", htmlui.EventClick)
 	view.Event("window-close", htmlui.EventClick)
+	view.Event("add-project", htmlui.EventClick)
 	view.Event("open-project", htmlui.EventClick)
-	view.Event("change-project", htmlui.EventClick)
 	view.Event("sidebar-collapse", htmlui.EventClick)
 	view.Event("sidebar-expand", htmlui.EventClick)
 	view.Event("collapse-directories", htmlui.EventClick)
@@ -803,6 +794,11 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Event(ref, htmlui.EventClick)
 	}
 	view.Attr("editor", "style", model.editorStyle)
+	if model.languageUI.hover.link {
+		view.Attr("editor", "class", "pencode-editor pencode-editor-link")
+	} else {
+		view.Attr("editor", "class", "pencode-editor")
+	}
 	view.Keyed("theme-select", model.themeOptions)
 	view.Keyed("icon-theme-select", model.iconThemeOptions)
 	view.Text("extensions-feedback", model.extensionFeedback)
@@ -924,10 +920,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Text("line-info", model.lineInfo)
 	view.Text("caret-info", model.editor.caretInfo)
 
-	if context.Props.Screen == pencodeWorkspace {
-		view.RemoveAttr("change-project", "hidden")
-	} else {
-		view.Attr("change-project", "hidden", "")
+	if context.Props.Screen != pencodeWorkspace {
 		return
 	}
 	if !model.textEditorActive() {
@@ -950,11 +943,8 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Attr("editor-empty", "hidden", "")
 	}
 
-	for _, project := range model.projects {
-		if project == nil || project.Loose {
-			continue
-		}
-		view.AppendComponentChild("projects",
+	if project := model.activeProjectState(); project != nil && !project.Loose {
+		view.AppendComponentChild("project-tree",
 			componentKey(project.Path),
 			projectDefinition,
 			projectProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, ProblemRevision: model.bottom.problemRevision},
@@ -962,10 +952,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		)
 	}
 
-	for _, project := range model.projects {
-		if project != model.activeProjectState() && !project.Loose {
-			continue
-		}
+	if project := model.activeProjectState(); project != nil {
 		for _, filePath := range project.Tabs {
 			file := project.Files[filePath]
 			if file == nil {
@@ -1064,6 +1051,10 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		markPencodeRootDirty(context, model)
 		return
 	}
+	if model.projectMenuEvent(context.Ref) {
+		markPencodeRootDirty(context, model)
+		return
+	}
 	if model.handleSourceEvent(context.Event) {
 		markPencodeRootDirty(context, model)
 		return
@@ -1140,7 +1131,10 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		markPencodeRootDirty(context, model)
 	case "window-minimize", "window-maximize":
 		handlePencodeWindowControl(model.app, context.Ref)
-	case "open-project", "change-project":
+	case "add-project":
+		model.toggleProjectMenu(context.World)
+		markPencodeRootDirty(context, model)
+	case "open-project":
 		model.chooseProject()
 		if component, ok := context.World.Get[htmlui.Component[appProps, appState]](context.Component); ok {
 			setPencodeEditorValue(context.World, component.Page, model.activeContent())
@@ -1179,32 +1173,6 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 			}
 		}
 	}
-}
-
-func handleProjectEvent(context *module.ContentEventContext[projectProps, struct{}]) {
-	if context == nil || context.Props == nil || context.Props.Model == nil || context.Props.Project == nil {
-		return
-	}
-	model := context.Props.Model
-	if model.closing.action != pencodeCloseNone || model.fileDrag.suppressClick {
-		return
-	}
-	model.lastFileClick = 0
-	project := context.Props.Project
-	switch context.Ref {
-	case "toggle":
-		model.toggleProject(project)
-	case "close":
-		model.closeProject(project)
-	default:
-		return
-	}
-	page := ecs.Entity(0)
-	if component, ok := context.World.Get[htmlui.Component[projectProps, struct{}]](context.Component); ok {
-		page = component.Page
-	}
-	setPencodeEditorValue(context.World, page, model.activeContent())
-	markPencodeRootDirtyByModel(context.World, model)
 }
 
 func handleTreeEvent(context *module.ContentEventContext[treeProps, struct{}]) {
@@ -1379,18 +1347,37 @@ func (model *workspaceModel) chooseProject() {
 		model.openRemoteProject(model.session.connection.workspaceProfile)
 		return
 	}
+	model.chooseLocalProject()
+}
+
+func (model *workspaceModel) chooseLocalProject() {
+	if model != nil && model.session != nil && model.session.connection != nil && model.session.connection.busy {
+		model.setActiveStatus(model.tr("正在连接，请稍后打开项目"))
+		return
+	}
 	if model == nil || model.app == nil || model.app.Context == nil {
 		if model != nil {
 			model.status = model.tr("文件对话框不可用")
 		}
 		return
 	}
-	directory, err := model.app.OpenFolder(window.FileDialogOptions{Title: model.tr("打开项目目录"), DefaultPath: model.lastDirectory})
+	remoteWorkspace := model.session != nil && model.session.connection != nil && model.session.connection.workspaceProfile.Remote()
+	defaultPath := model.lastDirectory
+	if remoteWorkspace {
+		defaultPath = ""
+	}
+	directory, err := model.app.OpenFolder(window.FileDialogOptions{Title: model.tr("打开项目目录"), DefaultPath: defaultPath})
 	if err != nil {
 		model.setActiveStatus(fmt.Sprintf(model.tr("打开项目失败：%v"), err))
 		return
 	}
 	if directory == "" {
+		return
+	}
+	if remoteWorkspace {
+		if err := model.session.OpenWindow([]string{directory}); err != nil {
+			model.setActiveStatus(model.tr("打开本地窗口失败：") + err.Error())
+		}
 		return
 	}
 	if err := model.loadProject(directory); err != nil {
@@ -1417,6 +1404,10 @@ func (model *workspaceModel) loadProject(directory string) error {
 }
 
 func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace protocol.Workspace, loose bool) {
+	saved := model.session.windowProject(workspace.Path)
+	if saved != nil {
+		loose = saved.Loose
+	}
 	if index := model.projectIndex(workspace.Path); index >= 0 {
 		project := model.projects[index]
 		if project.Loose && !loose {
@@ -1448,7 +1439,9 @@ func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace p
 	model.screen = pencodeWorkspace
 	model.resetHighlight()
 	model.syncActiveProjectFields()
-	if !loose {
+	if saved != nil {
+		model.applyProjectState(project, &saved.State)
+	} else if !loose {
 		model.restoreProjectState(project)
 	}
 	return
@@ -1488,6 +1481,10 @@ func (model *workspaceModel) syncActiveProjectFields() {
 		model.allDirectoriesCollapsed = false
 		model.syncExtensionProject(previous)
 		return
+	}
+	if previous != project.Path {
+		// Inactive projects only load Git status; activation also needs history.
+		project.sourceControl.RefreshPending = true
 	}
 	if !project.tree.restore && (model.projectPath != project.Path || model.activePath != project.ActivePath) &&
 		(model.revealProject != project || model.revealPath != project.ActivePath) {
@@ -1585,15 +1582,6 @@ func (model *workspaceModel) activateProject(project *pencodeProject) {
 	}
 	model.screen = pencodeWorkspace
 	model.syncActiveProjectFields()
-}
-
-func (model *workspaceModel) toggleProject(project *pencodeProject) {
-	if model == nil || project == nil {
-		return
-	}
-	collapsed := !project.Collapsed
-	model.activateProject(project)
-	project.Collapsed = collapsed
 }
 
 func (model *workspaceModel) closeProject(project *pencodeProject) {
@@ -1789,7 +1777,6 @@ func (model *workspaceModel) queueProjectFileReveal(project *pencodeProject) {
 		model.revealProject, model.revealPath = nil, ""
 		return
 	}
-	project.Collapsed = false
 	relative := path.Dir(file.Path)
 	if relative != "." {
 		if project.ExpandedDirs == nil {
@@ -1818,7 +1805,7 @@ func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 		return
 	}
 	project, relative := model.revealProject, model.revealPath
-	if project != model.activeProjectState() || project.ActivePath != relative || project.Files[relative] == nil || project.Collapsed {
+	if project != model.activeProjectState() || project.ActivePath != relative || project.Files[relative] == nil {
 		model.revealProject, model.revealPath = nil, ""
 		return
 	}
@@ -2281,6 +2268,7 @@ var (
 	pencodeQuickOpenRefs   = [...]string{"file-search", "quick-open-panel"}
 	pencodeMarketplaceRefs = [...]string{"marketplace-button", "marketplace-panel"}
 	pencodeConnectionRefs  = [...]string{"connection-open", "connection-panel", "connection-menu"}
+	pencodeProjectMenuRefs = [...]string{"add-project", "project-menu"}
 	pencodeSettingsRefs    = [...]string{"settings-button", "settings-panel"}
 	pencodeSettingsSelects = [...]string{"theme-select", "icon-theme-select", "code-font-select", "ui-font-select"}
 )
@@ -2306,7 +2294,7 @@ func (model *workspaceModel) dismissPopupsOutside(world *module.Content, state *
 	if connectionOpen && model.session.connection.picker.open {
 		return false
 	}
-	if !model.quickOpen && !model.settingsOpen && !connectionOpen && (model.market == nil || !model.market.open) {
+	if !model.projectMenu.open && !model.quickOpen && !model.settingsOpen && !connectionOpen && (model.market == nil || !model.market.open) {
 		return false
 	}
 	if !state.PointerPressed() && !state.MousePressed(input.MouseRight) && !state.MousePressed(input.MouseMiddle) {
@@ -2320,6 +2308,12 @@ func (model *workspaceModel) dismissPopupsOutside(world *module.Content, state *
 	pointer := state.Pointer()
 	x, y := pointer.X/zoom, pointer.Y/zoom
 	switch {
+	case model.projectMenu.open:
+		if model.pointerInsideRefs(world, x, y, pencodeProjectMenuRefs[:]) {
+			return false
+		}
+		model.projectMenu.open, model.projectMenu.focus = false, false
+		return true
 	case model.quickOpen:
 		if model.pointerInsideRefs(world, x, y, pencodeQuickOpenRefs[:]) {
 			return false
@@ -2368,6 +2362,9 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	if context == nil || context.World == nil || model == nil {
 		return nil
 	}
+	// Consumption belongs to this frame, including paths that return for overlays.
+	model.languageUI.keysHandled = false
+	model.terminalView.context.keysHandled = false
 	model.syncZoom(context.World)
 	state, ok := context.World.Resource[*input.State]()
 	if !ok {
@@ -2631,7 +2628,7 @@ func configurePencodeWindow(app *module.Host, model *workspaceModel) {
 			width = float64(viewportWidth)
 		}
 		zoom := float64(model.settings.Zoom) / 100
-		if model.pointerInsideRefs(model.fontResources, float32(x/zoom), float32(y/zoom), []string{"actions-titlebar", "connection-open"}) {
+		if model.pointerInsideRefs(model.fontResources, float32(x/zoom), float32(y/zoom), []string{"project-tabs", "add-project", "actions-titlebar", "connection-open"}) {
 			return false
 		}
 		return pencodeWindowDragRegion(width, zoom, x, y)

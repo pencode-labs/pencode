@@ -1141,6 +1141,10 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 			world.Focus(model.editor.control)
 			field.Caret, field.Anchor = caret, anchor
 		}
+		if area := world.Mut[engineui.Textarea](model.editor.control); area != nil {
+			// Returning from a menu must retain the view chosen by its action.
+			area.RestoreScroll(area.ScrollX, area.ScrollY)
+		}
 		model.languageUI.contextFocus = false
 	}
 	if model.languages == nil || world == nil {
@@ -1160,6 +1164,7 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 			field.Caret, field.Anchor = caret, anchor
 		}
 		model.revealEditorCaret(world, caret)
+		model.editor.navigationPaint.mark(p.navigate, caret, caret)
 		p.navigate = nil
 	}
 }

@@ -141,7 +141,7 @@ type pencodeSelectionSnapshot struct {
 
 func (m *workspaceModel) selectionSnapshot() pencodeSelectionSnapshot {
 	p := m.activeProjectState()
-	valid := p != nil && !p.Collapsed && m.textEditorActive() && m.activeFile() != nil && !m.activeFile().editorSplit && m.actions.ui.editor == nil && !m.findOpen && !m.quickOpen && !m.settingsOpen && !m.languageUI.hover.open && !m.languageUI.contextOpen && !m.fileContext.open && m.fileContext.dialog == "" && !m.tabContext.open
+	valid := p != nil && m.textEditorActive() && m.activeFile() != nil && !m.activeFile().editorSplit && m.actions.ui.editor == nil && !m.findOpen && !m.quickOpen && !m.settingsOpen && !m.languageUI.hover.open && !m.languageUI.contextOpen && !m.fileContext.open && m.fileContext.dialog == "" && !m.tabContext.open
 	if !valid {
 		return pencodeSelectionSnapshot{}
 	}

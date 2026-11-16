@@ -42,7 +42,7 @@ func (c *pencodeFileContext) inline() bool {
 
 func (model *workspaceModel) renderFileCreation(view *htmlui.View) {
 	c := &model.fileContext
-	view.Attr("create", "style", fmt.Sprintf("padding-left:%dpx", 36+c.depth*16))
+	view.Attr("create", "style", fmt.Sprintf("padding-left:%dpx", 24+c.depth*16))
 	icon := treeIcon(&treeProps{Model: model, Name: c.name, IsDir: c.dialog == "new-folder"})
 	view.Attr("create-icon", "src", model.themedIcon(icon, "icon.foreground"))
 	view.Attr("create-name", "value", c.name)
@@ -250,7 +250,7 @@ func (model *workspaceModel) fileTreeTarget(world *module.Content, x, y float32)
 	}
 	for _, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {
 		props := access.Get().Props
-		if props.Model == model && model.pointerInsideRefs(world, x, y, []string{props.TreeID, props.SummaryID}) {
+		if props.Model == model && model.pointerInsideRefs(world, x, y, []string{props.TreeID, "sidebar-actions"}) {
 			return props.Project, "", true, 0
 		}
 	}
@@ -385,7 +385,7 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 				c.path = ""
 			}
 			c.depth = 0
-			project.Collapsed = false
+			model.activateProject(project)
 			if project.ExpandedDirs == nil {
 				project.ExpandedDirs = make(map[string]bool)
 			}
@@ -479,7 +479,7 @@ func (model *workspaceModel) fileTreePasteShortcut(world *module.Content, state 
 		if props.Model != model {
 			continue
 		}
-		if control, ok := world.HTMLControl(model.surface, props.SummaryID); ok && control == focused {
+		if control, ok := world.HTMLControl(model.surface, "sidebar-actions"); ok && control == focused {
 			model.fileContext = pencodeFileContext{project: props.Project, directory: true,
 				open: true, externalFiles: clipboard.HasFiles()}
 			model.handleFileContextEvent(world, "file-context-paste", "")

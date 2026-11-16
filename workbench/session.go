@@ -12,6 +12,7 @@ import (
 	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/output"
 )
@@ -32,6 +33,8 @@ type Session struct {
 	recentProjects  *pencodeRecentProjects
 	fonts           map[string]pencodeFont
 	settingsWriters map[*client.Client]*pencodeSettingsWriter
+	window          *pencodeWindow
+	openWindow      func([]string, connection.Profile) error
 	externalPaths   []string
 	stateDirectory  string
 	// Actions accepts native registrations before or after the session starts.
@@ -56,7 +59,14 @@ func newSession(backend *client.Client, cacheDirectory, configDirectory string) 
 }
 
 func (s *Session) Close() {
+	if s.window != nil {
+		defer s.window.store.Release()
+	}
 	if s.active != nil {
+		if s.window != nil {
+			s.window.due = time.Now()
+			s.checkpointWindow(s.active.model)
+		}
 		s.active.model.saveProjectStates()
 	}
 	s.closeSettingsWriters()
@@ -137,11 +147,14 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 		return
 	}
 	model := s.active.model
+	defer s.checkpointWindow(model)
 	defer s.active.icons.trimImages()
 	model.focusQuickControls(model.fontResources, model.surface)
+	model.focusProjectMenu(model.fontResources)
 	model.focusConnectionPassword(model.fontResources)
 	defer model.syncInputContext(model.fontResources)
 	defer model.syncTooltip(model.fontResources, time.Now())
+	model.syncProjectTabScroll(model.fontResources)
 	if s.active.screen != pencodeWorkspace {
 		return
 	}
@@ -175,6 +188,8 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 	model.focusPanelEditor(model.fontResources)
 	model.editor.syncCaretStatus(model.fontResources, model.surface, model)
 	model.editor.syncGutter(model.fontResources, model.surface, model)
+	model.editor.syncWidthGuide(model.fontResources, model.settings.EditorWidth, model.workbenchTheme.guide)
+	model.editor.navigationPaint.sync(model.fontResources, model)
 	model.editor.debugPaint.sync(model.fontResources, model)
 	model.editor.diagnostics.sync(model.fontResources, model)
 	model.editor.findPaint.sync(model.fontResources, model)

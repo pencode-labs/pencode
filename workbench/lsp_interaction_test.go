@@ -200,6 +200,9 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			scale := float64(zoom) / 100
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(px) * scale, Y: float64(py) * scale})
 			languageInteractionStep(t, app)
+			if got := state.Cursor(); got != input.CursorText {
+				t.Fatalf("plain symbol hover cursor = %s, want text", got)
+			}
 			model.languageUI.hover.due = time.Now().Add(-time.Millisecond)
 			languageInteractionStep(t, app)
 			job := languageInteractionJob(t, provider, "textDocument/hover")
@@ -229,6 +232,12 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			if !model.languageUI.hover.link {
 				t.Fatal("control hover did not underline a symbol with a definition provider")
 			}
+			for range 2 {
+				if got := state.Cursor(); got != input.CursorPointer {
+					t.Fatalf("zoom %d %s: control hover cursor = %s, want pointer", zoom, name, got)
+				}
+				languageInteractionStep(t, app)
+			}
 			rendered, _ = world.Get[scene.Text2D](model.editor.text)
 			for offset := range value {
 				want := pencodeTestColour(originalSpans, offset)
@@ -244,6 +253,13 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			if allocations := testing.AllocsPerRun(100, func() { model.editor.syncHighlight(valueText, field, model) }); allocations != 0 {
 				t.Fatalf("cached Ctrl hover highlighting allocated %g times", allocations)
 			}
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
+			languageInteractionStep(t, app)
+			if got := state.Cursor(); got != input.CursorText {
+				t.Fatalf("releasing control left cursor = %s, want text", got)
+			}
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
+			languageInteractionStep(t, app)
 			// Releasing Ctrl also restores colors while the pointer is in the tooltip.
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(hoverRect.X+hoverRect.Width/2) * scale, Y: float64(hoverRect.Y+hoverRect.Height/2) * scale})
 			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
@@ -255,6 +271,16 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(px) * scale, Y: float64(py) * scale})
 			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
 			languageInteractionStep(t, app)
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(bodyRect.X+8) * scale, Y: float64(py) * scale})
+			languageInteractionStep(t, app)
+			if got := state.Cursor(); got != input.CursorDefault || model.languageUI.hover.link {
+				t.Fatalf("leaving the editor left cursor = %s, link = %v", got, model.languageUI.hover.link)
+			}
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(px) * scale, Y: float64(py) * scale})
+			languageInteractionStep(t, app)
+			if got := state.Cursor(); got != input.CursorPointer {
+				t.Fatalf("returning to the symbol left cursor = %s, want pointer", got)
+			}
 			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: float64(px) * scale, Y: float64(py) * scale})
 			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: float64(px) * scale, Y: float64(py) * scale})
 			languageInteractionStep(t, app)

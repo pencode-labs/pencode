@@ -70,7 +70,7 @@ var pencodeExtraShortcuts = []pencodeCommandBinding{
 	{"terminal-scroll-down", "终端向下翻页", "terminal", "Shift+PageDown"},
 	{"file-context-open", "打开文件", "files", "Enter"},
 	{"file-context-new-file", "新建文件", "files", "Primary+N"},
-	{"file-context-new-folder", "新建文件夹", "files", "Primary+Shift+N"},
+	{"file-context-new-folder", "新建文件夹", "files", "Primary+Alt+N"},
 	{"file-context-find", "在此文件夹中查找", "files", "Primary+Shift+F"},
 	{"file-context-reveal", "在系统文件管理器中显示", "files", "Shift+Alt+R"},
 	{"file-context-cut", "剪切文件", "files", "Primary+X"},
@@ -128,7 +128,11 @@ func resolvePencodeBindings(saved map[string]pencodeKeybinding) map[string]penco
 
 func (m *workspaceModel) commandMatches(id string, state *input.State, goos string) bool {
 	m.ensureSettings()
-	return m.settings.Bindings[id].matches(state, goos)
+	binding := m.settings.Bindings[id]
+	if !binding.matches(state, goos) {
+		return false
+	}
+	return pencodeShortcutScope(id) != "global" || !binding.textInputOwnsKey(m.fontResources)
 }
 
 func pencodeShortcutScope(id string) string {

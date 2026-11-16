@@ -271,5 +271,12 @@ func (model *workspaceModel) runEditorContextEdit(world *module.Content, ref str
 	value, caret, _ = state.ApplyTextEditsInRange(value, start, end, field.MaxRunes, true, []input.TextEdit{edit})
 	model.updateActiveContent(value)
 	model.setEditorValueAndCaret(world, value, caret)
-	model.revealEditorCaret(world, caret)
+	if ref == "editor-context-paste" {
+		if area := world.Mut[engineui.Textarea](model.editor.control); area != nil {
+			// Pasting preserves the viewport even when the new caret is outside it.
+			area.RestoreScroll(area.ScrollX, area.ScrollY)
+		}
+	} else {
+		model.revealEditorCaret(world, caret)
+	}
 }

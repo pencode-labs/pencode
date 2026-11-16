@@ -390,6 +390,7 @@ func (m *workspaceModel) focusFolderSearch(world *module.Content) {
 			field.Anchor, field.Caret = s.navigateStart, s.navigateEnd
 		}
 		m.revealEditorCaret(world, s.navigateEnd)
+		m.editor.navigationPaint.mark(s.navigate, s.navigateStart, s.navigateEnd)
 		s.navigate = nil
 	}
 	if !s.open || !s.needsFocus {

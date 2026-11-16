@@ -283,7 +283,13 @@ func (model *workspaceModel) projectPickerEvent(ref, value string) {
 		backend := c.links[p.profile.Endpoint()].backend
 		if model.session.backend != backend {
 			if len(model.projects) != 0 {
-				p.message, p.failed = model.tr("请先关闭当前项目，再打开其他设备的项目"), true
+				profile := p.profile
+				profile.Directory = p.path
+				if err := model.session.openWindowWithProfile(nil, profile); err != nil {
+					p.message, p.failed = model.tr("新建窗口失败：")+err.Error(), true
+					return
+				}
+				p.open, c.open = false, false
 				return
 			}
 			if p.configuration == nil || p.configurationBackend != backend {

@@ -109,15 +109,12 @@ func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 			waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
 			languageInteractionStep(t, app)
 			fileDragStart(t, app, model, state, model.projectTreeRowID(project, "target/src"))
-			fileDragOver(t, app, model, state, treeRowID(project.Path)+"-summary")
+			fileDragOver(t, app, model, state, "sidebar-actions")
 			checkFileDragPreview(t, model, "src")
 			fileDragRelease(t, app, state)
 			waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
 			if content, err := os.ReadFile(filepath.Join(project.Path, "src/nested/note.txt")); err != nil || string(content) != "note" {
 				t.Fatalf("folder did not return to root: %q, %v", content, err)
-			}
-			if project.Collapsed {
-				t.Fatal("drop on project header also triggered its collapse button")
 			}
 		})
 	}

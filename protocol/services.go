@@ -48,6 +48,7 @@ const (
 	DebugTerminalOpen
 	WorkspaceWatch
 	GitCheckIgnore
+	GitRebasing
 )
 
 type WorkspaceChange uint32

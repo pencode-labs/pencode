@@ -28,7 +28,7 @@ func TestProjectStateRoundTrip(t *testing.T) {
 	p.Files[p.ActivePath].editorView = pencodeEditorView{caret: 7, anchor: 2, scrollX: 12, scrollY: 420}
 	p.Files["second.go"].editorID, p.Files["second.go"].editorSplit = "preview", true
 	p.Files["second.go"].Preview, p.PreviewPath = true, "second.go"
-	p.ExpandedDirs, p.Collapsed = map[string]bool{"src": false}, true
+	p.ExpandedDirs = map[string]bool{"src": false}
 	p.tree.position = -1230
 	p.sourceControl.Snapshot.Repository.Root = p.Path + "/nested"
 	m.sidebarHidden, m.sidebarWidthStyle, m.sourceChangesWidthStyle = true, "flex-basis:300px;", "width:260px;"
@@ -36,7 +36,7 @@ func TestProjectStateRoundTrip(t *testing.T) {
 	m.bottom.source, m.bottom.filter = m.outputStore().Channel("server"), "error"
 	m.syncActiveProjectFields()
 	// Store the user's collapsed tree after selection has already been synced.
-	p.ExpandedDirs["src"], p.Collapsed = false, true
+	p.ExpandedDirs["src"] = false
 	m.saveProjectStates()
 	if err := os.Remove(filepath.Join(p.Path, "gone.go")); err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestProjectStateRoundTrip(t *testing.T) {
 	if restored.Files["second.go"].editorID != "preview" || !restored.Files["second.go"].editorSplit || restored.PreviewPath != "second.go" || !restored.Files["second.go"].Preview {
 		t.Fatal("custom editor selection was lost")
 	}
-	if !restored.Collapsed || !maps.Equal(restored.ExpandedDirs, p.ExpandedDirs) || restored.tree.position != -1230 || !restored.tree.restore || next.revealProject != nil {
+	if !maps.Equal(restored.ExpandedDirs, p.ExpandedDirs) || restored.tree.position != -1230 || !restored.tree.restore || next.revealProject != nil {
 		t.Fatal("restoration expanded or recentered the saved tree")
 	}
 	if next.bottom.active != m.bottom.active || next.bottom.heightStyle != m.bottom.heightStyle || next.sidebarHidden != m.sidebarHidden || next.sidebarWidthStyle != m.sidebarWidthStyle || next.sourceChangesWidthStyle != m.sourceChangesWidthStyle || next.bottom.source.Name != "server" || next.bottom.filter != "error" {

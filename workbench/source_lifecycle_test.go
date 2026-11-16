@@ -16,6 +16,79 @@ import (
 	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
+func TestSourceControlProjectActivationRefreshesHistory(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		name := "loaded-status"
+		if pending {
+			name = "pending-status"
+		}
+		t.Run(name, func(t *testing.T) {
+			r := sourceTestRepository(t)
+			sourceTestGit(t, r, "commit", "--allow-empty", "-m", "project history")
+			current := &pencodeProject{Path: filepath.Join(r.Root, "other"), backend: r.Backend}
+			next := &pencodeProject{Path: r.Root, backend: r.Backend}
+			m := &workspaceModel{projects: []*pencodeProject{current, next}, backend: r.Backend, projectPath: current.Path}
+			current.sourceControl.RefreshStarted = true
+			m.bottom.active = pencodePanelSourceControl
+			s := &next.sourceControl
+			t.Cleanup(s.stop)
+			s.Snapshot.Repository = r
+			m.refreshProjectSourceControl(next)
+			select {
+			case result := <-s.Done:
+				if !result.StatusOnly || result.Snapshot == nil || len(result.Snapshot.Commits) != 0 {
+					t.Fatal("inactive project did not load status without history")
+				}
+				s.Done <- result
+			case <-time.After(5 * time.Second):
+				t.Fatal("background status did not finish")
+			}
+			if !pending {
+				m.pollSourceResult(s, next)
+			}
+			sourceTestGit(t, r, "switch", "-c", "activated")
+			sourceTestWrite(t, r, "changed.txt", "new content")
+			s.CommitMessage = "keep draft"
+			m.activateProject(next)
+			m.updateSourceControl(nil, nil)
+			if s.Done == nil {
+				t.Fatal("activating a project did not refresh its Git panel")
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for s.Done != nil || s.RefreshPending {
+				m.updateSourceControl(nil, nil)
+				if time.Now().After(deadline) {
+					t.Fatal("activation refresh did not finish")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			if s.Notice != "" || s.Snapshot.Branch != "activated" || len(s.Snapshot.Commits) != 1 || len(s.Snapshot.Files) != 1 {
+				t.Fatalf("activated project retained stale Git state: %+v, notice=%q", s.Snapshot, s.Notice)
+			}
+			if s.CommitMessage != "keep draft" {
+				t.Fatal("activation refresh lost the commit draft")
+			}
+			m.renderSourceControl(&s.panelView)
+			found := false
+			for _, group := range s.panelView.groups[:s.panelView.used] {
+				found = found || group.node.Text == "project history"
+				if strings.HasPrefix(group.node.Text, "No commits yet") {
+					t.Fatal("activated project rendered an empty history")
+				}
+			}
+			if !found {
+				t.Fatal("activated project did not render its commit history")
+			}
+			if allocations := testing.AllocsPerRun(100, func() {
+				m.syncActiveProjectFields()
+				m.updateSourceControl(nil, nil)
+			}); allocations != 0 || s.Done != nil || s.RefreshPending {
+				t.Fatalf("unchanged project started another refresh or allocated %g times", allocations)
+			}
+		})
+	}
+}
+
 func TestSourceControlCloseChecksOnlyUnsavedEditsAndWrites(t *testing.T) {
 	for _, name := range []string{"clean", "refresh", "query", "write", "completed-write", "sync", "completed-sync", "clean-diff", "dirty-diff", "clean-merge", "dirty-merge"} {
 		t.Run(name, func(t *testing.T) {

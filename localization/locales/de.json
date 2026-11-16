@@ -2,6 +2,13 @@
   "id": "de",
   "label": "Deutsch",
   "messages": {
+    "打开本地项目": "Lokales Projekt öffnen",
+    "打开远程项目": "Remote-Projekt öffnen",
+    "远程主机": "Remote-Hosts",
+    "新建窗口": "Neues Fenster",
+    "新建窗口失败：": "Fenster konnte nicht erstellt werden: ",
+    "保存窗口状态失败：": "Fensterstatus konnte nicht gespeichert werden: ",
+    "移除窗口状态失败：": "Fensterstatus konnte nicht entfernt werden: ",
     "pprof 模式": "pprof-Modus",
     "记录 CPU、堆和资源指标，重启对应设备上的 Pencode 后生效。": "CPU-, Heap- und Ressourcenmetriken aufzeichnen. Zum Anwenden Pencode auf dem betreffenden Gerät neu starten.",
     "设置": "Einstellungen",

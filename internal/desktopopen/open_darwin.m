@@ -15,17 +15,16 @@ extern void pencode_open_document(const char *path);
 }
 
 - (void)openDocuments:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)reply {
+    NSWindow *target = NSApp.keyWindow ?: NSApp.mainWindow;
     NSAppleEventDescriptor *files = [event paramDescriptorForKeyword:keyDirectObject];
     for (NSInteger i = 1; i <= files.numberOfItems; i++) {
         NSURL *url = [files descriptorAtIndex:i].fileURLValue;
         if (url.isFileURL) pencode_open_document(url.path.fileSystemRepresentation);
     }
     [NSApp unhide:nil];
-    for (NSWindow *window in NSApp.windows) {
-        if (window.isMiniaturized) [window deminiaturize:nil];
-        [window makeKeyAndOrderFront:nil];
-        break;
-    }
+    if (target == nil) target = NSApp.windows.firstObject;
+    if (target.isMiniaturized) [target deminiaturize:nil];
+    [target makeKeyAndOrderFront:nil];
 }
 @end
 

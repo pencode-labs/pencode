@@ -41,7 +41,7 @@ func Begin(directory, replace string) (*Upload, error) {
 	if err != nil {
 		return nil, err
 	}
-	root, err := os.OpenRoot(stage)
+	root, err := OpenPackage(stage)
 	if err != nil {
 		os.RemoveAll(stage)
 		return nil, err
@@ -121,7 +121,8 @@ func (u *Upload) Prepare(ctx context.Context) (Registration, error) {
 	return Register(ctx, u.Directory, manifest.ID, false)
 }
 
-func (u *Upload) Publish(directory, id string) (string, error) {
+// Publish calls beforeReplace after validation, just before moving the old package.
+func (u *Upload) Publish(directory, id string, beforeReplace func()) (string, error) {
 	if !u.sealed || !ValidID(id) {
 		return "", fmt.Errorf("extension is not prepared")
 	}
@@ -143,6 +144,9 @@ func (u *Upload) Publish(directory, id string) (string, error) {
 		}
 		if err := os.Remove(backup); err != nil {
 			return "", err
+		}
+		if beforeReplace != nil {
+			beforeReplace()
 		}
 		if err := os.Rename(target, backup); err != nil {
 			return "", err

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,14 +13,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"golang.org/x/mod/semver"
+	"golang.org/x/net/html"
 )
 
 const VersionFile = "pencode-version"
-const api = "https://api.github.com/repos/pencode-labs/pencode"
+const releasesPath = "/pencode-labs/pencode/releases"
 
 type httpStatus int
 
@@ -35,11 +36,13 @@ type Release struct {
 }
 
 type Client struct {
-	HTTP *http.Client
-	API  string
+	HTTP   *http.Client
+	GitHub string
 }
 
-func NewClient() Client { return Client{HTTP: &http.Client{Timeout: 15 * time.Minute}, API: api} }
+func NewClient() Client {
+	return Client{HTTP: &http.Client{Timeout: 15 * time.Minute}, GitHub: "https://github.com"}
+}
 
 func Installation(executable string) (root, version string, err error) {
 	executable, err = filepath.EvalSymlinks(executable)
@@ -67,10 +70,6 @@ func (c Client) get(ctx context.Context, address string) (*http.Response, error)
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "pencode-updater")
-	if strings.HasPrefix(address, c.API+"/") {
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, err
@@ -82,79 +81,152 @@ func (c Client) get(ctx context.Context, address string) (*http.Response, error)
 	return resp, nil
 }
 
-// Check resolves tags to published releases with matching desktop assets.
+// Check finds the newest eligible version with a published installer and checksums.
 func (c Client) Check(ctx context.Context, current string) (Release, error) {
+	current = version(current)
+	stable := semver.IsValid(current) && semver.Prerelease(current) == ""
 	var best Release
+	bestVersion := current
 	for page := 1; ; page++ {
-		resp, err := c.get(ctx, fmt.Sprintf("%s/tags?per_page=100&page=%d", c.API, page))
+		tags, more, err := c.releaseTags(ctx, page)
 		if err != nil {
-			return best, err
-		}
-		var tags []struct {
-			Name string `json:"name"`
-		}
-		err = json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&tags)
-		resp.Body.Close()
-		if err != nil {
-			return best, err
+			return Release{}, err
 		}
 		for _, tag := range tags {
-			if !validVersion(tag.Name) || (semver.Prerelease(version(tag.Name)) != "" && validVersion(current) && semver.Prerelease(version(current)) == "") || (validVersion(current) && compareVersion(tag.Name, current) <= 0) || (best.Tag != "" && compareVersion(tag.Name, best.Tag) <= 0) {
+			candidate := version(tag)
+			if stable && semver.Prerelease(candidate) != "" || semver.Compare(candidate, bestVersion) <= 0 {
 				continue
 			}
-			r, err := c.release(ctx, tag.Name)
+			r, err := c.release(ctx, tag)
 			if err != nil {
 				return Release{}, err
 			}
 			if r.URL != "" {
 				best = r
+				bestVersion = candidate
 			}
 		}
-		if len(tags) < 100 {
+		if !more {
 			return best, nil
 		}
 	}
 }
 
-func version(v string) string        { return "v" + strings.TrimPrefix(v, "v") }
-func validVersion(v string) bool     { return semver.IsValid(version(v)) }
-func compareVersion(a, b string) int { return semver.Compare(version(a), version(b)) }
-func (c Client) release(ctx context.Context, tag string) (Release, error) {
-	resp, err := c.get(ctx, c.API+"/releases/tags/"+url.PathEscape(tag))
+func version(v string) string {
+	if strings.HasPrefix(v, "v") {
+		return v
+	}
+	return "v" + v
+}
+
+func (c Client) scanReleaseHTML(ctx context.Context, address string, visit func(*html.Tokenizer) bool) error {
+	resp, err := c.get(ctx, address)
 	if err != nil {
-		// Tags may be visible before the release pipeline publishes assets.
-		if err == httpStatus(http.StatusNotFound) {
-			return Release{}, nil
-		}
-		return Release{}, err
+		return err
 	}
 	defer resp.Body.Close()
-	var release struct {
-		Assets []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-		} `json:"assets"`
-		Draft      bool `json:"draft"`
-		Prerelease bool `json:"prerelease"`
+	const limit = 4 << 20
+	reader := &io.LimitedReader{R: resp.Body, N: limit + 1}
+	tokens := html.NewTokenizer(reader)
+	for {
+		switch tokens.Next() {
+		case html.StartTagToken, html.SelfClosingTagToken:
+			if visit(tokens) {
+				return nil
+			}
+		case html.ErrorToken:
+			if reader.N == 0 {
+				return errors.New("GitHub 发布页面超过 4 MiB")
+			}
+			if err := tokens.Err(); err != io.EOF {
+				return err
+			}
+			return nil
+		}
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&release); err != nil {
-		return Release{}, err
+}
+
+func (c Client) releaseTags(ctx context.Context, page int) (tags []string, next bool, err error) {
+	address := c.GitHub + releasesPath
+	if page > 1 {
+		address += "?page=" + strconv.Itoa(page)
 	}
-	if release.Draft {
+	nextPath := releasesPath + "?page=" + strconv.Itoa(page+1)
+	err = c.scanReleaseHTML(ctx, address, func(tokens *html.Tokenizer) bool {
+		name, more := tokens.TagName()
+		switch string(name) {
+		case "include-fragment":
+			for more {
+				var key, value []byte
+				key, value, more = tokens.TagAttr()
+				if string(key) == "src" {
+					path := strings.TrimPrefix(string(value), c.GitHub)
+					if escaped, ok := strings.CutPrefix(path, releasesPath+"/expanded_assets/"); ok {
+						if tag, err := url.PathUnescape(escaped); err == nil && semver.IsValid(version(tag)) {
+							tags = append(tags, tag)
+						}
+					}
+					break
+				}
+			}
+		case "a":
+			var nextLink, nextPage bool
+			for more {
+				var key, value []byte
+				key, value, more = tokens.TagAttr()
+				switch string(key) {
+				case "rel":
+					nextLink = string(value) == "next"
+				case "href":
+					nextPage = strings.TrimPrefix(string(value), c.GitHub) == nextPath
+				}
+			}
+			next = next || nextLink && nextPage
+		}
+		return false
+	})
+	return tags, next, err
+}
+
+func (c Client) release(ctx context.Context, tag string) (Release, error) {
+	r := Release{Tag: tag, Name: "pencode-" + tag + "-" + runtime.GOOS + "-" + runtime.GOARCH + installerExtension(runtime.GOOS)}
+	escapedTag := url.PathEscape(tag)
+	prefix := releasesPath + "/download/" + tag + "/"
+	download := c.GitHub + releasesPath + "/download/" + escapedTag + "/"
+	installer, checksums := prefix+r.Name, prefix+"SHA256SUMS"
+	err := c.scanReleaseHTML(ctx, c.GitHub+releasesPath+"/expanded_assets/"+escapedTag, func(tokens *html.Tokenizer) bool {
+		name, more := tokens.TagName()
+		if string(name) != "a" {
+			return false
+		}
+		for more {
+			var key, value []byte
+			key, value, more = tokens.TagAttr()
+			if string(key) != "href" {
+				continue
+			}
+			path, err := url.PathUnescape(strings.TrimPrefix(string(value), c.GitHub))
+			if err == nil {
+				switch path {
+				case installer:
+					r.URL = download + url.PathEscape(r.Name)
+				case checksums:
+					r.Checksums = download + "SHA256SUMS"
+				}
+			}
+			break
+		}
+		return r.URL != "" && r.Checksums != ""
+	})
+	// A release can disappear between reading the list and fetching its assets.
+	if err == httpStatus(http.StatusNotFound) {
 		return Release{}, nil
 	}
-	ext := installerExtension(runtime.GOOS)
-	r := Release{Tag: tag, Name: "pencode-" + tag + "-" + runtime.GOOS + "-" + runtime.GOARCH + ext}
-	for _, asset := range release.Assets {
-		if asset.Name == r.Name {
-			r.URL = asset.URL
-		}
-		if asset.Name == "SHA256SUMS" {
-			r.Checksums = asset.URL
-		}
+	if err != nil {
+		return Release{}, err
 	}
-	if r.Checksums == "" {
-		r.URL = ""
+	if r.URL == "" || r.Checksums == "" {
+		return Release{}, nil
 	}
 	return r, nil
 }

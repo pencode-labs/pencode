@@ -39,6 +39,17 @@ func Directory() (string, error) {
 	return filepath.Join(home, ".pencode", "extensions"), nil
 }
 
+// OpenPackage holds a package directory open while allowing it to be renamed.
+// On Windows, opening it relative to the parent shares delete access.
+func OpenPackage(directory string) (*os.Root, error) {
+	parent, err := os.OpenRoot(filepath.Dir(directory))
+	if err != nil {
+		return nil, err
+	}
+	defer parent.Close()
+	return parent.OpenRoot(filepath.Base(directory))
+}
+
 func ValidID(id string) bool {
 	if len(id) == 0 || len(id) > 128 || id == "." || id == ".." {
 		return false

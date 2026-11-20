@@ -33,7 +33,7 @@ func (s *Session) initUpdates() {
 	if s.updates != nil {
 		return
 	}
-	u := &pencodeUpdates{version: "dev", message: "从 GitHub tag 检查版本更新"}
+	u := &pencodeUpdates{version: "dev", message: "从 GitHub 发布页检查版本更新"}
 	u.executable, _ = os.Executable()
 	var err error
 	u.root, u.version, err = updater.Installation(u.executable)
@@ -71,7 +71,7 @@ func (m *workspaceModel) handleUpdateEvent(ref string) bool {
 	m.settingsFeedback = ""
 	check := u.release.URL == ""
 	u.busy = true
-	u.message = m.tr("正在检查 GitHub tag…")
+	u.message = m.tr("正在检查 GitHub 发布页…")
 	if !check {
 		u.message = m.tr("正在下载并校验更新包…")
 	}

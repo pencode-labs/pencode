@@ -56,13 +56,10 @@ func (s *extensionService) close() {
 
 func (s *extensionService) remove(id uint64, entry *extensionEntry) {
 	delete(s.entries, id)
-	if entry.runtime != nil {
-		entry.runtime.Close()
-		entry.runtime = nil
-	}
 	if entry.cancel != nil {
 		entry.cancel()
 	}
+	s.stopProcesses(id, entry)
 	s.resourceBytes -= entry.resourceSize
 	if entry.root != nil {
 		entry.root.Close()
@@ -70,7 +67,13 @@ func (s *extensionService) remove(id uint64, entry *extensionEntry) {
 	if entry.upload != nil {
 		entry.upload.Close()
 	}
-	// Revoke every runtime of this package before resources can be replaced.
+}
+
+func (s *extensionService) stopProcesses(id uint64, entry *extensionEntry) {
+	if entry.runtime != nil {
+		entry.runtime.Close()
+		entry.runtime = nil
+	}
 	s.owner.mu.Lock()
 	var closing []*serviceStream
 	for key, stream := range s.owner.streams {
@@ -123,7 +126,7 @@ func (s *extensionService) register(ctx context.Context, directory, id string, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	root, err := os.OpenRoot(directory)
+	root, err := extensionhost.OpenPackage(directory)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +293,7 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 			return err
 		}
 		entry.registration = r
-		entry.root, err = os.OpenRoot(r.Info.Path)
+		entry.root, err = extensionhost.OpenPackage(r.Info.Path)
 		entry.resourceData = make(map[string][]byte)
 		if err != nil {
 			return err
@@ -359,7 +362,14 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		}
 		if !entry.committed {
 			if entry.upload != nil {
-				target, err := entry.upload.Publish(s.directory, entry.registration.Info.ID)
+				name := entry.registration.Info.ID
+				target, err := entry.upload.Publish(s.directory, name, func() {
+					for oldID, old := range s.entries {
+						if old.committed && old.registration.Info.ID == name {
+							s.stopProcesses(oldID, old)
+						}
+					}
+				})
 				if err != nil {
 					return err
 				}

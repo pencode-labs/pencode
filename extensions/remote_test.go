@@ -206,10 +206,11 @@ func TestRemoteExtensionRelativeLanguageProcessAfterPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 	changeFixtureManifest(t, source, func(m *Manifest) {
-		if err := os.Rename(filepath.Join(source, m.Entry), filepath.Join(source, "bin", "helper")); err != nil {
+		entry := "bin/helper" + filepath.Ext(m.Entry)
+		if err := os.Rename(filepath.Join(source, m.Entry), filepath.Join(source, entry)); err != nil {
 			t.Fatal(err)
 		}
-		m.Entry = "bin/helper"
+		m.Entry = entry
 		m.Args = append(m.Args[:len(m.Args)-1], "peb-relative-language", "peb-action-helper")
 	})
 	backend := extensionBackend(t, t.TempDir())
@@ -321,6 +322,16 @@ func TestRemoteExtensionUpdateValidatesBeforeReplacing(t *testing.T) {
 	}
 	defer oldBundle.Close()
 	old := oldBundle.Actions.remote
+	session := oldBundle.Actions.Start(nil, nil)
+	defer session.Close()
+	select {
+	case result := <-session.Results:
+		if result.Err != nil || result.Change.Action.Text != "Ready" {
+			t.Fatal(result)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("old extension did not activate")
+	}
 	changeFixtureManifest(t, source, func(m *Manifest) {
 		m.Version = "1.1.0"
 		m.Args = append(m.Args[:len(m.Args)-1], "peb-bad-icon", "peb-action-helper")
@@ -338,6 +349,11 @@ func TestRemoteExtensionUpdateValidatesBeforeReplacing(t *testing.T) {
 	if _, err := old.ReadResource(t.Context(), "resources/extension.json", 64<<10); err != nil {
 		t.Fatal("failed update revoked old registration", err)
 	}
+	select {
+	case <-session.Done:
+		t.Fatal("invalid update stopped the running extension")
+	default:
+	}
 	changeFixtureManifest(t, source, func(m *Manifest) { m.Args = []string{"-test.run=^TestActionHelperProcess$", "--", "peb-action-helper"} })
 	item, bundle, err := install(t.Context(), backend, source, "test")
 	if err != nil {
@@ -347,11 +363,26 @@ func TestRemoteExtensionUpdateValidatesBeforeReplacing(t *testing.T) {
 	if item.Version != "1.1.0" || bundle.Actions.remote.Handle == old.Handle {
 		t.Fatal("update did not register new version", item)
 	}
+	select {
+	case <-session.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("update did not stop the old extension")
+	}
 	if _, err := old.ReadResource(t.Context(), "resources/extension.json", 64<<10); err == nil {
 		t.Fatal("update retained old registration")
 	}
 	if _, err := bundle.Actions.remote.ReadResource(t.Context(), "resources/extension.json", 64<<10); err != nil {
 		t.Fatal("updated resource unavailable", err)
+	}
+	updated := bundle.Actions.Start(nil, nil)
+	defer updated.Close()
+	select {
+	case result := <-updated.Results:
+		if result.Err != nil || result.Change.Action.Text != "Ready" {
+			t.Fatal(result)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("updated extension did not activate")
 	}
 	entries, err := os.ReadDir(target)
 	if err != nil || len(entries) != 1 || entries[0].Name() != "test" {

@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"golang.org/x/mod/semver"
 )
 
 func TestInstallationFindsVersion(t *testing.T) {
@@ -54,45 +56,77 @@ func TestInstallationFindsVersion(t *testing.T) {
 
 func TestVersionOrder(t *testing.T) {
 	for _, v := range []string{"v1.2.3", "1.2.3", "v2026.11.6", "v1.2.3-rc.1"} {
-		if !validVersion(v) {
+		if !semver.IsValid(version(v)) {
 			t.Fatal(v)
 		}
 	}
 	for _, v := range []string{"dev", "v1.x.0", "v1..0"} {
-		if validVersion(v) {
+		if semver.IsValid(version(v)) {
 			t.Fatal(v)
 		}
 	}
-	if compareVersion("v1.10.0", "v1.9.9") <= 0 || compareVersion("v1.0.0", "1.0.0") != 0 {
-		t.Fatal("incorrect version order")
+	if version("v1.0.0") != version("1.0.0") {
+		t.Fatal("version prefix was not normalized")
 	}
 }
 
-func TestCheckTagsAndPlatformAssets(t *testing.T) {
+func TestCheckPublicReleases(t *testing.T) {
 	ext := installerExtension(runtime.GOOS)
-	name := "pencode-v1.10.0-" + runtime.GOOS + "-" + runtime.GOARCH + ext
+	installer := func(tag string) string {
+		return "pencode-" + tag + "-" + runtime.GOOS + "-" + runtime.GOARCH + ext
+	}
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := "http://" + r.Host
+		fragment := releasesPath + "/expanded_assets/"
+		if r.Header.Get("X-GitHub-Api-Version") != "" || strings.Contains(r.Header.Get("Accept"), "github+json") {
+			t.Errorf("unexpected API headers on %s", r.URL)
+		}
 		switch r.URL.Path {
-		case "/tags":
-			io.WriteString(w, `[{"name":"v1.9.0"},{"name":"v1.11.0-rc.1"},{"name":"v1.10.0"},{"name":"v2.0.0"}]`)
-		case "/releases/tags/v1.10.0":
-			fmt.Fprintf(w, `{"assets":[{"name":%q,"browser_download_url":"https://example.test/package"},{"name":"SHA256SUMS","browser_download_url":"https://example.test/sums"}]}`, name)
-		case "/releases/tags/v2.0.0":
+		case releasesPath:
+			switch r.URL.RawQuery {
+			case "":
+				for _, tag := range []string{"v1.9.0", "v1.11.0-rc.1", "v2.0.0", "v2.1.0", "v2.2.0"} {
+					fmt.Fprintf(w, `<include-fragment src=%q></include-fragment>`, origin+fragment+tag)
+				}
+				fmt.Fprintf(w, `<a rel="next" href=%q>Next</a>`, releasesPath+"?page=2")
+			case "page=2":
+				fmt.Fprintf(w, `<include-fragment src=%q></include-fragment>`, fragment+"v1.10.0")
+			default:
+				t.Errorf("unexpected page %s", r.URL)
+				http.NotFound(w, r)
+			}
+		case fragment + "v1.10.0", fragment + "v1.11.0-rc.1":
+			tag := strings.TrimPrefix(r.URL.Path, fragment)
+			path := releasesPath + "/download/" + tag + "/"
+			fmt.Fprintf(w, `<a href=%q>Installer</a><a href=%q>Checksums</a>`, path+installer(tag), origin+path+"SHA256SUMS")
+		case fragment + "v2.0.0":
 			http.NotFound(w, r)
+		case fragment + "v2.1.0":
+			fmt.Fprintf(w, `<a href=%q>Installer without checksums</a>`, releasesPath+"/download/v2.1.0/"+installer("v2.1.0"))
+		case fragment + "v2.2.0":
+			path := releasesPath + "/download/v2.2.0/"
+			fmt.Fprintf(w, `<a href=%q>Installer on another host</a><a href=%q>Checksums</a>`, "https://example.test"+path+installer("v2.2.0"), path+"SHA256SUMS")
 		default:
 			t.Errorf("unexpected request %s", r.URL)
 			http.Error(w, "unexpected", 500)
 		}
 	}))
 	defer s.Close()
-	c := Client{HTTP: s.Client(), API: s.URL}
-	r, err := c.Check(context.Background(), "v1.9.1")
-	if err != nil || r.Tag != "v1.10.0" || r.Name != name {
-		t.Fatalf("%+v %v", r, err)
-	}
-	r, err = c.Check(context.Background(), "v2.0.0")
-	if err != nil || r.Tag != "" {
-		t.Fatalf("downgrade offered: %+v %v", r, err)
+	c := Client{HTTP: s.Client(), GitHub: s.URL}
+	for current, tag := range map[string]string{
+		"1.9.1":        "v1.10.0",
+		"v1.10.0-rc.1": "v1.11.0-rc.1",
+		"v2.0.0":       "",
+	} {
+		want := Release{}
+		if tag != "" {
+			name := installer(tag)
+			path := s.URL + releasesPath + "/download/" + tag + "/"
+			want = Release{Tag: tag, Name: name, URL: path + name, Checksums: path + "SHA256SUMS"}
+		}
+		if got, err := c.Check(context.Background(), current); err != nil || got != want {
+			t.Errorf("Check(%q) = %+v, %v; want %+v", current, got, err, want)
+		}
 	}
 }
 

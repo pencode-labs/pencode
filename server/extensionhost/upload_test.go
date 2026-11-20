@@ -28,7 +28,7 @@ func TestUpdatePublishRestoresPreviousPackageOnRenameFailure(t *testing.T) {
 	if err := os.RemoveAll(upload.Directory); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := upload.Publish(directory, "test"); err == nil {
+	if _, err := upload.Publish(directory, "test", nil); err == nil {
 		t.Fatal("publish unexpectedly succeeded")
 	}
 	data, err := os.ReadFile(filepath.Join(target, "resources/extension.json"))

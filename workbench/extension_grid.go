@@ -10,9 +10,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/onix-engine/onix/ecs"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
+	uinode "github.com/onix-engine/onix/scene/node"
 	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
@@ -94,7 +94,7 @@ func (a *pencodeGridAxis) window(position, viewport float64, overscan int) (int,
 }
 
 type pencodeVirtualGrid struct {
-	node                          *dom.Node
+	node                          *uinode.Node
 	remote                        *pencodeGridSource
 	ref, id, content              string
 	styles                        []string
@@ -102,7 +102,7 @@ type pencodeVirtualGrid struct {
 	nodes                         []htmlui.VNode
 	records                       []htmlui.VNode
 	attributes                    [][6]htmlui.VNodeAttribute
-	metadata                      []*dom.Node
+	metadata                      []*uinode.Node
 	chunks                        []pencodeRenderedFindChunk
 	rows, columns                 pencodeGridAxis
 	component, area               ecs.Entity
@@ -114,7 +114,7 @@ type pencodeVirtualGrid struct {
 	viewportWidth, viewportHeight float64
 }
 
-func parsePencodeGrid(node *dom.Node, source string) (*pencodeVirtualGrid, error) {
+func parsePencodeGrid(node *uinode.Node, source string) (*pencodeVirtualGrid, error) {
 	var data pencodeGridData
 	if err := json.Unmarshal([]byte(source), &data); err != nil {
 		return nil, fmt.Errorf("invalid grid: %w", err)
@@ -219,7 +219,7 @@ func (g *pencodeVirtualGrid) render(target *htmlui.View) {
 		for len(g.records) < g.cacheRows*g.cacheColumns {
 			g.records = append(g.records, htmlui.VNode{})
 			g.attributes = append(g.attributes, [6]htmlui.VNodeAttribute{})
-			g.metadata = append(g.metadata, &dom.Node{Type: dom.ElementNode, Data: "div", Parent: g.node})
+			g.metadata = append(g.metadata, &uinode.Node{Type: uinode.ElementNode, Data: "div", Parent: g.node})
 		}
 		clear(g.records)
 	}

@@ -148,7 +148,7 @@ func (m *workspaceModel) updateTabContext(world *module.Content, state *input.St
 		*c = pencodeTabContext{project: tab.project, path: tab.path, surface: tab.surface, source: tab.source, x: cx, y: cy, open: true}
 		m.fileContext.open, m.terminalView.context.open = false, false
 		s := m.sourceState()
-		s.MenuOpen, s.BranchMenuOpen, s.RepositoryMenuOpen = false, false, false
+		s.MenuOpen, s.BranchMenuOpen = false, false
 		m.dismissLanguageContext()
 		m.lastFileClick = 0
 		return true

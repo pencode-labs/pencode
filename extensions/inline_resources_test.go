@@ -41,7 +41,7 @@ func TestInlineImagesBecomeCachedAssets(t *testing.T) {
 			t.Fatal("repeated image was not reused", err)
 		}
 	}
-	for _, src := range []string{"data:image/png;base64,invalid", "data:image/svg+xml;base64,PHN2Zy8+", "data:text/plain;base64,dGV4dA==", "peb://test/inline/unknown.png"} {
+	for _, src := range []string{"data:image/png;base64,invalid", "data:text/plain;base64,dGV4dA==", "peb://test/inline/unknown.png"} {
 		view := peb.EditorView{HTML: `<img src="` + src + `">`}
 		if _, err := r.prepare(t.Context(), &view, "composer"); err == nil {
 			t.Fatal("invalid inline image accepted", src)

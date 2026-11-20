@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/scene"
+	uinode "github.com/onix-engine/onix/scene/node"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -253,7 +253,7 @@ func TestOfficeVirtualGridScrollSearchAndCopy(t *testing.T) {
 
 func TestOfficeVirtualGridSparseExtentAndValidation(t *testing.T) {
 	parse := func(payload string) (*pencodeVirtualGrid, error) {
-		node := dom.NewElement("div", dom.Attribute{Name: "data-ref", Value: "grid"}, dom.Attribute{Name: "id", Value: "pencode-extension-grid"})
+		node := uinode.NewElement("div", uinode.Attribute{Name: "data-ref", Value: "grid"}, uinode.Attribute{Name: "id", Value: "pencode-extension-grid"})
 		return parsePencodeGrid(node, payload)
 	}
 	payload := `{"rows":1048576,"columns":16384,"rowHeight":21,"columnWidth":64,"styles":[""],"cells":[[1048576,16384,"last",0]]}`
@@ -281,7 +281,7 @@ func TestOfficeVirtualGridSparseExtentAndValidation(t *testing.T) {
 }
 
 func TestOfficeVirtualGridCopyUsedColumns(t *testing.T) {
-	node := dom.NewElement("div", dom.Attribute{Name: "data-ref", Value: "grid"}, dom.Attribute{Name: "id", Value: "pencode-extension-grid"})
+	node := uinode.NewElement("div", uinode.Attribute{Name: "data-ref", Value: "grid"}, uinode.Attribute{Name: "id", Value: "pencode-extension-grid"})
 	grid, err := parsePencodeGrid(node, `{"rows":100,"columns":26,"rowHeight":21,"columnWidth":64,"styles":[""],"cells":[[3,3,"left",0],[4,2,"🙂 value",0],[4,4,"right",0]]}`)
 	if err != nil {
 		t.Fatal(err)

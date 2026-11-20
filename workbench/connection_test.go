@@ -12,6 +12,7 @@ import (
 
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/ui"
+	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/remote"
@@ -362,6 +363,8 @@ func TestWebSocketConnectionDialog(t *testing.T) {
 			if !s.connection.webSocket {
 				t.Fatal("connection type selector did not select WebSocket")
 			}
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
 			languageInteractionStep(t, app)
 			for _, field := range []struct{ ref, value string }{
 				{"connection-name", "直连开发机"}, {"connection-address", "ws://localhost:8080/ws"}, {"connection-token", "saved-secret"},
@@ -399,7 +402,7 @@ func TestWebSocketConnectionDialog(t *testing.T) {
 			languageInteractionStep(t, app)
 			languageInteractionStep(t, app)
 			entity, ok = model.fontResources.HTMLControl(model.surface, "connection-type")
-			selector, mounted := model.fontResources.Get[ui.Selector](entity)
+			selector, mounted := model.fontResources.Get[htmlui.Control](entity)
 			if !ok || !mounted || selector.Selected != 1 {
 				t.Fatalf("editing WebSocket profile selected the wrong transport: selected=%d ok=%v mounted=%v form=%v mode=%v", selector.Selected, ok, mounted, s.connection.formOpen, s.connection.webSocket)
 			}

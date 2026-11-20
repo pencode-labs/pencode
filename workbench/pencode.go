@@ -105,6 +105,7 @@ type pencodeProject struct {
 	ExpandedDirs            map[string]bool
 	treeGit                 pencodeTreeGit
 	Name                    string
+	tabIconStyle            string
 	PreviewPath             string
 	historyKey              string
 	ActivePath              string
@@ -121,6 +122,7 @@ type pencodeProject struct {
 	AllDirectoriesCollapsed bool
 	treePending             bool
 	Loose                   bool
+	sidebarCollapsed        bool
 }
 
 type workspaceModel struct {
@@ -292,7 +294,6 @@ type workspaceModel struct {
 	refresh                             pencodeRefresh
 	settingsExtensionsExpanded          bool
 	findSelection                       bool
-	sidebarHidden                       bool
 	capturingShortcut                   bool
 	fullRefresh                         bool
 }
@@ -324,6 +325,13 @@ type treeProps struct {
 	GitStatus treeGitStatus
 }
 
+// Keyed rows retain their last rendered bindings across tree updates.
+type treeRowState struct {
+	rowID, name, class, nameClass, arrow, icon  string
+	depth                                       int
+	directory, selected, expanded, multiProject bool
+}
+
 type tabProps struct {
 	Model     *workspaceModel
 	Surface   *pencodeExtensionSurface
@@ -353,7 +361,7 @@ type projectProps struct {
 type pencodeDefinitions struct {
 	action     *htmlui.Definition[pencodeActionProps, struct{}]
 	root       *htmlui.Definition[appProps, appState]
-	tree       *htmlui.Definition[treeProps, struct{}]
+	tree       *htmlui.Definition[treeProps, treeRowState]
 	project    *htmlui.Definition[projectProps, struct{}]
 	projectTab *htmlui.Definition[pencodeProjectTabProps, struct{}]
 	tab        *htmlui.Definition[tabProps, struct{}]
@@ -417,30 +425,46 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions := &pencodeDefinitions{}
-	definitions.tree, err = content.Define[treeProps, struct{}](
-		htmlui.NewTemplate(`<button data-ref="row" class="pencode-tree-row" type="button"><img data-ref="arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt=""><img data-ref="icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tree-name"></span></button>`), "",
-		module.ContentBehavior[treeProps, struct{}]{
-			Render: func(context module.ContentRenderContext[treeProps, struct{}], view *htmlui.View) {
+	definitions.tree, err = content.Define[treeProps, treeRowState](
+		htmlui.NewTemplate(`<button data-ref="row" class="pencode-tree-row" type="button" role="treeitem"><img data-ref="arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt=""><img data-ref="icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tree-name"></span></button>`), "",
+		module.ContentBehavior[treeProps, treeRowState]{
+			Render: func(context module.ContentRenderContext[treeProps, treeRowState], view *htmlui.View) {
 				props := context.Props
-				props.RowID = props.Model.projectTreeRowID(props.Project, props.Path)
-				view.Attr("row", "id", props.RowID)
-				view.Attr("row", "style", fmt.Sprintf("padding-left:%dpx", 4+props.Depth*16))
-				view.Attr("row", "class", treeRowClass(props))
+				row := treeRowState{
+					rowID: context.State.rowID, name: props.Name, class: treeRowClass(props), nameClass: props.GitStatus.nameClass(),
+					icon:  props.Model.themedIcon(treeIcon(props), treeIconForeground(props)),
+					depth: props.Depth, directory: props.IsDir, selected: props.Project.tree.selection.contains(props.Path),
+					multiProject: len(props.Model.projects) > 1,
+				}
+				if row.rowID == "" || row.multiProject != context.State.multiProject {
+					row.rowID = props.Model.projectTreeRowID(props.Project, props.Path)
+				}
+				props.RowID = row.rowID
 				if props.IsDir {
-					view.Attr("row", "aria-expanded", boolAttribute(props.Model.isProjectDirectoryExpanded(props.Project, props.Path, props.Depth)))
-					view.Attr("arrow", "src", props.Model.themedIcon("icons/chevron-right.svg", "icon.foreground"))
-				} else {
-					view.RemoveAttr("row", "aria-expanded")
+					row.expanded = props.Model.isProjectDirectoryExpanded(props.Project, props.Path, props.Depth)
+					row.arrow = props.Model.themedIcon("icons/chevron-right.svg", "icon.foreground")
 				}
-				view.Attr("icon", "src", props.Model.themedIcon(treeIcon(props), treeIconForeground(props)))
-				view.Text("name", props.Name)
-				nameClass := props.GitStatus.nameClass()
 				if props.Ignored {
-					nameClass = "pencode-tree-name pencode-ignored-name"
+					row.nameClass = "pencode-tree-name pencode-ignored-name"
 				} else if props.HasErrors {
-					nameClass = "pencode-tree-name pencode-error-name"
+					row.nameClass = "pencode-tree-name pencode-error-name"
 				}
-				view.Attr("name", "class", nameClass)
+				if row == *context.State {
+					view.PatchBindings()
+					return
+				}
+				*context.State = row
+				view.Attr("row", "id", row.rowID)
+				view.Attr("row", "style", fmt.Sprintf("padding-left:%dpx", 4+row.depth*16))
+				view.Attr("row", "class", row.class)
+				view.Attr("row", "aria-selected", boolAttribute(row.selected))
+				if row.directory {
+					view.Attr("row", "aria-expanded", boolAttribute(row.expanded))
+					view.Attr("arrow", "src", row.arrow)
+				}
+				view.Attr("icon", "src", row.icon)
+				view.Text("name", row.name)
+				view.Attr("name", "class", row.nameClass)
 				view.Event("row", htmlui.EventClick)
 			},
 			HandleEvent: handleTreeEvent,
@@ -449,12 +473,12 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
-	creationDefinition, err := content.Define[treeProps, struct{}](
-		htmlui.NewTemplate(`<div id="file-tree-create" data-ref="create" class="pencode-tree-create"><img data-ref="create-icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><div class="pencode-tree-input"><input id="file-tree-name" data-ref="create-name" type="text" class="pencode-tree-name-input" autocomplete="off" aria-describedby="file-tree-error"><div id="file-tree-error" data-ref="create-error" class="pencode-tree-create-error" role="alert" hidden></div></div></div>`),
+	editDefinition, err := content.Define[treeProps, treeRowState](
+		htmlui.NewTemplate(`<div id="file-tree-create" data-ref="edit-row" class="pencode-tree-create"><img data-ref="edit-arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt="" hidden><img data-ref="edit-icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><div class="pencode-tree-input"><input id="file-tree-name" data-ref="edit-name" type="text" class="pencode-tree-name-input" autocomplete="off" spellcheck="false" aria-describedby="file-tree-error"><div id="file-tree-error" data-ref="edit-error" class="pencode-tree-create-error" role="alert" hidden></div></div></div>`),
 		"",
-		module.ContentBehavior[treeProps, struct{}]{
-			Render: func(context module.ContentRenderContext[treeProps, struct{}], view *htmlui.View) {
-				context.Props.Model.renderFileCreation(view)
+		module.ContentBehavior[treeProps, treeRowState]{
+			Render: func(context module.ContentRenderContext[treeProps, treeRowState], view *htmlui.View) {
+				context.Props.Model.renderFileName(view, *context.Props)
 			},
 			HandleEvent: handleTreeEvent,
 		},
@@ -463,7 +487,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.project, err = content.Define[projectProps, struct{}](
-		htmlui.NewTemplate(`<section data-ref="project" class="pencode-project"><nav data-ref="tree" class="pencode-tree" aria-label="项目目录"><div data-ref="tree-height" class="pencode-tree-height"><div data-ref="tree-window" class="pencode-tree-window"></div></div></nav></section>`),
+		htmlui.NewTemplate(`<section data-ref="project" class="pencode-project"><nav data-ref="tree" class="pencode-tree" role="tree" aria-multiselectable="true" aria-label="项目目录"><div data-ref="tree-height" class="pencode-tree-height"><div data-ref="tree-window" class="pencode-tree-window"></div></div></nav></section>`),
 		"",
 		module.ContentBehavior[projectProps, struct{}]{
 			Render: func(context module.ContentRenderContext[projectProps, struct{}], view *htmlui.View) {
@@ -479,8 +503,8 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				view.Attr("project", "class", className)
 				props.TreeID = treeRowID(props.Project.Path)
 				view.Attr("tree", "id", props.TreeID)
-				view.Attr("tree", "aria-busy", boolAttribute(props.Project.scan != nil))
-				renderPencodeTree(context, view, definitions.tree, creationDefinition)
+				view.Attr("tree", "aria-busy", boolAttribute(props.Project.scan != nil && !props.Project.tree.moved))
+				renderPencodeTree(context, view, definitions.tree, editDefinition)
 			},
 			Unmount: func(c *module.ContentComponentContext[projectProps, struct{}]) {
 				tree := &c.Props.Project.tree
@@ -617,6 +641,10 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	projectMenuRecentDefinition, err := newProjectMenuRecentDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	recentDefinition, err := newRecentProjectDefinition(content)
 	if err != nil {
 		return nil, err
@@ -653,7 +681,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderProjectPicker(view, directoryDefinition)
-					context.Props.Model.renderProjectMenu(view, projectHostDefinition)
+					context.Props.Model.renderProjectMenu(view, projectHostDefinition, projectMenuRecentDefinition)
 				}
 				if context.Props != nil && context.Props.Model != nil && context.Props.Screen == pencodeWorkspace {
 					context.Props.Model.renderBottomPanel(view, problemDefinition)
@@ -687,6 +715,9 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		view.Attr("titlebar", "class", "pencode-titlebar native-controls")
 		view.Attr("window-controls", "hidden", "")
+		if zoom := model.settings.Zoom; zoom < pencodeDefaultZoom {
+			view.Attr("project-switcher", "style", nativeProjectSwitcherStyles[zoom-pencodeMinZoom])
+		}
 	}
 	for _, icon := range pencodeThemeIcons {
 		view.Attr(icon.ref, "src", model.themedIcon(icon.source, icon.foreground))
@@ -898,13 +929,12 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Attr("settings-panel", "hidden", "")
 		view.Attr("open-settings", "aria-expanded", "false")
 	}
-	setPanelVisible(view, "sidebar-collapsed", model.sidebarHidden)
-	if model.sidebarHidden {
-		view.Attr("sidebar", "hidden", "")
-		view.Attr("sidebar-resize", "hidden", "")
-	} else {
-		view.RemoveAttr("sidebar", "hidden")
-		view.RemoveAttr("sidebar-resize", "hidden")
+	project := model.activeProjectState()
+	sidebarHidden := model.sidebarHidden()
+	setPanelVisible(view, "sidebar-collapsed", project != nil && !project.Loose && project.sidebarCollapsed)
+	setPanelVisible(view, "sidebar", !sidebarHidden)
+	setPanelVisible(view, "sidebar-resize", !sidebarHidden)
+	if !sidebarHidden {
 		if model.sidebarWidthStyle == "" {
 			view.RemoveAttr("sidebar", "style")
 		} else {
@@ -943,7 +973,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Attr("editor-empty", "hidden", "")
 	}
 
-	if project := model.activeProjectState(); project != nil && !project.Loose {
+	if project != nil && !project.Loose {
 		view.AppendComponentChild("project-tree",
 			componentKey(project.Path),
 			projectDefinition,
@@ -952,7 +982,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		)
 	}
 
-	if project := model.activeProjectState(); project != nil {
+	if project != nil {
 		for _, filePath := range project.Tabs {
 			file := project.Files[filePath]
 			if file == nil {
@@ -1053,6 +1083,12 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 	}
 	if model.projectMenuEvent(context.Ref) {
 		markPencodeRootDirty(context, model)
+		return
+	}
+	if context.Ref == projectMenuRecent {
+		if model.openProjectMenuRecent(context.World, false) {
+			markPencodeRootDirty(context, model)
+		}
 		return
 	}
 	if model.handleSourceEvent(context.Event) {
@@ -1175,14 +1211,14 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 	}
 }
 
-func handleTreeEvent(context *module.ContentEventContext[treeProps, struct{}]) {
+func handleTreeEvent(context *module.ContentEventContext[treeProps, treeRowState]) {
 	if context == nil || context.Props == nil || context.Props.Model == nil || context.Props.Project == nil {
 		return
 	}
 	props := context.Props
 	model := props.Model
 	if props.Editing {
-		if context.Ref == "create-name" && context.Event.Kind == htmlui.EventInput && model.fileContext.inline() && model.fileContext.project == props.Project {
+		if context.Ref == "edit-name" && context.Event.Kind == htmlui.EventInput && model.fileContext.inline() && model.fileContext.project == props.Project && !model.fileContext.pending {
 			model.fileContext.name, model.fileContext.err = context.Event.Value, ""
 			markPencodeRootDirtyByModel(context.World, model)
 		}
@@ -1196,6 +1232,40 @@ func handleTreeEvent(context *module.ContentEventContext[treeProps, struct{}]) {
 	}
 	project := props.Project
 	model.activateProject(project)
+	if state, ok := context.World.Resource[*input.State](); ok {
+		toggle, extend := treeSelectionModifiers(state)
+		if toggle || extend {
+			if extend {
+				project.selectTreeRange(model, props.Path, toggle)
+			} else {
+				project.tree.selection.toggle(props.Path)
+			}
+			model.lastFileClick = 0
+			markPencodeRootDirtyByModel(context.World, model)
+			return
+		}
+	}
+	selection := &project.tree.selection
+	previous, multiple := selection.anchor, len(selection.paths) > 1
+	if selection.set(props.Path) {
+		if multiple {
+			markPencodeRootDirtyByModel(context.World, model)
+		} else {
+			context.UpdateState(func(*treeRowState) {})
+			if previous != "" {
+				for entity, access := range context.World.Query[htmlui.Component[treeProps, treeRowState]]() {
+					row := access.Ref().Props
+					if row.Project == project && row.Path == previous && !row.Editing {
+						context.World.UpdateState[treeProps, treeRowState](entity, func(*treeRowState) {})
+						break
+					}
+				}
+			}
+			if model.app != nil {
+				model.app.RequestRender()
+			}
+		}
+	}
 	if props.IsDir {
 		model.lastFileClick = 0
 		model.toggleProjectDirectory(project, props.Path, props.Depth)
@@ -1213,7 +1283,7 @@ func handleTreeEvent(context *module.ContentEventContext[treeProps, struct{}]) {
 	// The clicked row is already visible; keep the tree under the pointer.
 	model.revealProject, model.revealPath = nil, ""
 	page := ecs.Entity(0)
-	if component, ok := context.World.Get[htmlui.Component[treeProps, struct{}]](context.Component); ok {
+	if component, ok := context.World.Get[htmlui.Component[treeProps, treeRowState]](context.Component); ok {
 		page = component.Page
 	}
 	setPencodeEditorValue(context.World, page, model.activeContent())
@@ -1424,6 +1494,7 @@ func (model *workspaceModel) acceptWorkspace(backend *client.Client, workspace p
 	project := &pencodeProject{
 		backend: backend, workspace: workspace, Loose: loose,
 		Path: workspace.Path, Name: workspace.Name, Files: make(map[string]*openFile),
+		tabIconStyle: projectTabIconStyle(workspace.Path, model.projects),
 	}
 	project.historyKey = workspace.Path
 	if model.session != nil && model.session.connection != nil {
@@ -1627,6 +1698,10 @@ func (model *workspaceModel) discardProject(project *pencodeProject) {
 	project.PreviewPath = ""
 	project.Entries = nil
 	project.ExpandedDirs = nil
+	project.tree.selection.set("")
+	if model.fileClipboard.project == project {
+		model.fileClipboard = pencodeFileClipboard{}
+	}
 	model.releaseProjectWorkspace(project)
 	copy(model.projects[index:], model.projects[index+1:])
 	model.projects[len(model.projects)-1] = nil
@@ -1809,7 +1884,7 @@ func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 		model.revealProject, model.revealPath = nil, ""
 		return
 	}
-	if model.sidebarHidden || project.scan != nil && !project.scan.staged {
+	if project.sidebarCollapsed || project.scan != nil && !project.scan.staged {
 		return
 	}
 	viewportID := treeRowID(project.Path)
@@ -1991,6 +2066,9 @@ func (model *workspaceModel) selectProjectTab(project *pencodeProject, relative 
 	if model == nil || project == nil || project.Files[relative] == nil {
 		return
 	}
+	if current := model.actions.ui.editor; current != nil {
+		current.saveScrollPositions()
+	}
 	before := model.selectionSnapshot()
 	defer func() { model.refreshFileSelection(before) }()
 	model.actions.ui.editor = nil
@@ -2017,6 +2095,9 @@ func (model *workspaceModel) selectTab(relative string) {
 	}
 	if model.files[relative] == nil {
 		return
+	}
+	if current := model.actions.ui.editor; current != nil {
+		current.saveScrollPositions()
 	}
 	model.actions.ui.editor = nil
 	model.cancelFileOpens()
@@ -2268,7 +2349,7 @@ var (
 	pencodeQuickOpenRefs   = [...]string{"file-search", "quick-open-panel"}
 	pencodeMarketplaceRefs = [...]string{"marketplace-button", "marketplace-panel"}
 	pencodeConnectionRefs  = [...]string{"connection-open", "connection-panel", "connection-menu"}
-	pencodeProjectMenuRefs = [...]string{"add-project", "project-menu"}
+	pencodeProjectMenuRefs = [...]string{"add-project", "project-menu", projectMenuRecentList}
 	pencodeSettingsRefs    = [...]string{"settings-button", "settings-panel"}
 	pencodeSettingsSelects = [...]string{"theme-select", "icon-theme-select", "code-font-select", "ui-font-select"}
 )
@@ -2417,6 +2498,9 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	if model.dismissPopupsOutside(context.World, state) {
 		changed = true
 	}
+	if model.hoverProjectMenu(context.World, state) {
+		changed = true
+	}
 	if model.updateFileDrag(context.World, state) {
 		changed = true
 	}
@@ -2527,28 +2611,29 @@ func treeRowClass(props *treeProps) string {
 	if props == nil {
 		return "pencode-tree-row"
 	}
+	class := "pencode-tree-row"
+	if props.IsDir {
+		class = "pencode-tree-row directory"
+	}
 	if props.Model != nil && props.Model.fileDrag.active {
 		drag := &props.Model.fileDrag
-		if drag.source == props.Project && drag.path == props.Path {
-			return "pencode-tree-row drag-source"
+		if drag.source == props.Project && (drag.path == props.Path || drag.multiple && props.Project.tree.selection.contains(props.Path)) {
+			class += " drag-source"
 		}
 		if props.IsDir && drag.isTarget(props.Project, props.Path) {
 			return "pencode-tree-row directory drop-target"
 		}
 	}
-	if props.Model != nil && props.Model.fileContext.open && props.Model.fileContext.project == props.Project && props.Model.fileContext.path == props.Path {
-		if props.IsDir {
-			return "pencode-tree-row directory context-selected"
-		}
-		return "pencode-tree-row context-selected"
+	if props.Project != nil && props.Project.tree.selection.contains(props.Path) {
+		return class + " selected"
 	}
-	if props.IsDir {
-		return "pencode-tree-row directory"
+	if props.Model != nil && props.Model.fileContext.open && props.Model.fileContext.project == props.Project && props.Model.fileContext.path == props.Path {
+		return class + " context-selected"
 	}
 	if treeRowActive(props) {
-		return "pencode-tree-row active"
+		return class + " active"
 	}
-	return "pencode-tree-row"
+	return class
 }
 
 func treeRowActive(props *treeProps) bool {
@@ -2558,11 +2643,11 @@ func treeRowActive(props *treeProps) bool {
 	if props.Project == nil {
 		return props.Path == props.Model.activePath
 	}
-	return props.Project == props.Model.activeProjectState() && props.Path == props.Project.ActivePath
+	return len(props.Project.tree.selection.paths) < 2 && props.Project == props.Model.activeProjectState() && props.Path == props.Project.ActivePath
 }
 
 func treeIconForeground(props *treeProps) string {
-	if treeRowActive(props) {
+	if treeRowActive(props) || props != nil && props.Project != nil && props.Project.tree.selection.contains(props.Path) {
 		return "list.activeSelectionForeground"
 	}
 	return "icon.foreground"

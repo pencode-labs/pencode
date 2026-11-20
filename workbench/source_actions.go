@@ -39,19 +39,31 @@ func (a *workspaceModel) sourceClick(id string, now time.Time) {
 	a.sourceAction(id)
 }
 
-func (a *workspaceModel) sourceMutation(message string, operation func(sourceRepository) error) {
-	s := a.sourceState()
-	r := s.Snapshot.Repository
+func (a *workspaceModel) sourceMutation(r sourceRepository, message string, operation func() error) {
+	a.writeSourceRepository(r, func() sourceResult {
+		return sourceResult{Err: operation(), Message: message}
+	})
+}
+
+func (a *workspaceModel) writeSourceRepository(r sourceRepository, operation func() sourceResult) {
 	if r.Root == "" {
 		return
 	}
+	s := a.sourceState()
+	active := r.Root == s.Snapshot.Repository.Root
+	if !active {
+		s.RefreshPending = true
+	}
 	a.sourceJob(sourceWrite, func() sourceResult {
-		err := operation(r)
-		snapshot, refreshErr := r.snapshot(sourceHistoryPageSize)
-		if err == nil {
-			err = refreshErr
+		result := operation()
+		if active {
+			snapshot, err := r.snapshot(sourceHistoryPageSize)
+			result.Snapshot = &snapshot
+			if result.Err == nil {
+				result.Err = err
+			}
 		}
-		return sourceResult{Snapshot: &snapshot, Err: err, Message: message}
+		return result
 	})
 }
 
@@ -65,7 +77,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	}
 	if id == "sc-prompt-cancel" {
 		s.TabClose = nil
-		s.Prompt = ""
+		s.Prompt, s.promptPicker = "", nil
 		s.FocusedModal, s.FocusedTab = "", ""
 		a.sourceChanged()
 		return
@@ -121,6 +133,18 @@ func (a *workspaceModel) sourceAction(id string) {
 		a.sourceChanged()
 		return
 	}
+	if id == "sc-repositories-toggle" && a.bottom.active == pencodePanelSourceControl {
+		s.RepositoriesCollapsed = !s.RepositoriesCollapsed
+		s.BranchMenuOpen, s.BranchSubmenu, s.BranchFocus = false, false, false
+		a.sourceChanged()
+		return
+	}
+	if root, ok := strings.CutPrefix(id, "sc-repository:"); ok {
+		if a.bottom.active == pencodePanelSourceControl && slices.Contains(s.Repositories, root) {
+			a.switchSourceRepository(root, false)
+		}
+		return
+	}
 	// Periodic reads must not swallow clicks or block foreground operations.
 	// Their private context and mailbox can be discarded without cancelling writes.
 	s.cancelRefresh()
@@ -132,28 +156,32 @@ func (a *workspaceModel) sourceAction(id string) {
 		}
 		return
 	}
-	if id == "sc-repositories" {
-		a.toggleSourceRepositories()
-		a.sourceChanged()
-		return
-	}
-	if root, ok := strings.CutPrefix(id, "sc-repository:"); ok {
-		if s.RepositoryMenuOpen && slices.Contains(s.Repositories, root) {
-			s.RepositoryMenuOpen, s.RepositoryFocus = false, true
-			a.switchSourceRepository(root, false)
+	if root, ok := strings.CutPrefix(id, sourceRepositoryBranchPrefix); ok {
+		if a.bottom.active == pencodePanelSourceControl && !s.RepositoriesCollapsed && root != s.Snapshot.Repository.Root && s.backgroundSyncs[root] == nil && slices.Contains(s.Repositories, root) {
+			a.toggleSourceBranches(id)
+			a.sourceChanged()
 		}
-		a.sourceChanged()
 		return
 	}
-	s.RepositoryMenuOpen = false
-	if strings.HasPrefix(id, "sc-branch:") {
-		ref := strings.TrimPrefix(id, "sc-branch:")
-		for i, branch := range s.Snapshot.Branches {
-			if branch.Ref == ref {
+	if ref, ok := strings.CutPrefix(id, "sc-branch:"); ok {
+		if !s.BranchMenuOpen {
+			return
+		}
+		picker := s.branchMenu()
+		for i, branch := range picker.Branches {
+			if branch.Ref != ref {
+				continue
+			}
+			if s.branchPicker != nil {
+				s.BranchMenuOpen, s.BranchSubmenu, s.BranchFocus = false, false, true
+				if branch.Remote || branch.Name != picker.Current {
+					a.switchSourceBranch(picker, branch)
+				}
+			} else {
 				s.BranchIndex, s.BranchSubmenu, s.BranchSubIndex = i, true, -1
 				a.positionSourceBranchSubmenu(a.fontResources)
-				break
 			}
+			break
 		}
 		a.sourceChanged()
 		return
@@ -162,14 +190,15 @@ func (a *workspaceModel) sourceAction(id string) {
 		if action.ID != id {
 			continue
 		}
-		if !s.BranchMenuOpen || !s.BranchSubmenu || !s.branchActionEnabled(i) {
+		picker := s.branchMenu()
+		if !s.BranchMenuOpen || !s.BranchSubmenu || !picker.actionEnabled(i, s.BranchIndex) {
 			return
 		}
-		branch := s.Snapshot.Branches[s.BranchIndex]
+		branch := picker.Branches[s.BranchIndex]
 		s.BranchMenuOpen, s.BranchSubmenu, s.BranchFocus = false, false, true
 		switch action.ID {
 		case "sc-branch-checkout":
-			a.switchSourceBranch(branch.Ref)
+			a.switchSourceBranch(picker, branch)
 		case "sc-branch-create":
 			s.Prompt, s.PromptHash, s.PromptValue = "branch", branch.Ref, ""
 		case "sc-branch-tag":
@@ -181,6 +210,9 @@ func (a *workspaceModel) sourceAction(id string) {
 		case "sc-branch-merge", "sc-branch-rebase":
 			s.Prompt, s.PromptHash = strings.TrimPrefix(action.ID, "sc-branch-"), branch.Ref
 		}
+		if s.Prompt != "" {
+			s.promptPicker = s.branchPicker
+		}
 		a.sourceChanged()
 		return
 	}
@@ -191,7 +223,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	r := s.Snapshot.Repository
 	switch {
 	case id == "sc-branches":
-		a.toggleSourceBranches()
+		a.toggleSourceBranches(id)
 	case id == "sc-refresh":
 		s.RepositoriesLoaded = false
 		a.refreshSourceControl()
@@ -329,7 +361,7 @@ func (a *workspaceModel) sourceAction(id string) {
 			files = append(files, f)
 		}
 		head := s.Snapshot.HasHead
-		a.sourceMutation("Index updated", func(r sourceRepository) error {
+		a.sourceMutation(r, "Index updated", func() error {
 			if unstage {
 				return r.unstage(files, head)
 			}
@@ -368,7 +400,7 @@ func (a *workspaceModel) sourceAction(id string) {
 			break
 		}
 		message := s.CommitMessage
-		a.sourceMutation("Commit created", func(r sourceRepository) error { return r.commit(message) })
+		a.sourceMutation(r, "Commit created", func() error { return r.commit(message) })
 	case id == "sc-close-tab" || strings.HasPrefix(id, "sc-close-tab:"):
 		key := s.Active
 		if id != "sc-close-tab" {
@@ -449,7 +481,7 @@ func (a *workspaceModel) sourceAction(id string) {
 				}
 			}
 		} else if op == "fetch" {
-			a.sourceMutation("Fetch completed", func(r sourceRepository) error { _, err := r.command("fetch", "--all", "--prune"); return err })
+			a.sourceMutation(r, "Fetch completed", func() error { _, err := r.command("fetch", "--all", "--prune"); return err })
 		} else {
 			s.Prompt, s.PromptHash, s.PromptValue = op, s.MenuHash, ""
 		}
@@ -523,7 +555,10 @@ func (a *workspaceModel) confirmSourceOperation() {
 	if (op == "branch" || op == "tag" || op == "rename-branch") && value == "" {
 		return
 	}
-	s.Prompt = ""
+	picker := s.promptBranches()
+	r := s.Snapshot.Repository
+	r.Root = picker.Root
+	s.Prompt, s.promptPicker = "", nil
 	s.FocusedModal, s.FocusedTab = "", ""
 	if op == "discard-tabs" {
 		tabs := s.TabClose
@@ -559,16 +594,16 @@ func (a *workspaceModel) confirmSourceOperation() {
 		return
 	}
 	if op == "delete-branch" || op == "rename-branch" {
-		if branch, ok := s.branch(hash); ok {
+		if branch, ok := picker.branch(hash); ok {
 			if op == "rename-branch" {
-				a.sourceMutation("Branch renamed", func(r sourceRepository) error { return r.renameBranch(branch, value) })
+				a.sourceMutation(r, "Branch renamed", func() error { return r.renameBranch(branch, value) })
 			} else {
-				a.sourceMutation("Branch deleted", func(r sourceRepository) error { return r.deleteBranch(branch) })
+				a.sourceMutation(r, "Branch deleted", func() error { return r.deleteBranch(branch) })
 			}
 		}
 		return
 	}
-	if a.sourceHasDrafts() || s.unsaved() {
+	if a.sourceHasDraftsIn(r.Root) {
 		s.Notice = a.tr("请先保存编辑器中的项目修改，再执行 Git 工作区操作。")
 		return
 	}
@@ -606,19 +641,14 @@ func (a *workspaceModel) confirmSourceOperation() {
 	default:
 		return
 	}
-	r := s.Snapshot.Repository
-	a.sourceJob(sourceWrite, func() sourceResult {
+	a.writeSourceRepository(r, func() sourceResult {
 		var err error
 		if op == "push" {
 			err = r.push()
 		} else {
 			_, err = r.command(args...)
 		}
-		snapshot, refreshErr := r.snapshot(sourceHistoryPageSize)
-		if err == nil {
-			err = refreshErr
-		}
-		return sourceResult{Snapshot: &snapshot, Err: err, Message: "Git " + op + " completed", Reload: op != "push" && op != "tag" && op != "reset-soft"}
+		return sourceResult{Err: err, Message: "Git " + op + " completed", Reload: op != "push" && op != "tag" && op != "reset-soft"}
 	})
 }
 
@@ -651,7 +681,8 @@ func (a *workspaceModel) discardSourceChanges(op, key string) {
 	if len(files) == 0 {
 		return
 	}
-	a.sourceMutation("Changes discarded", func(r sourceRepository) error { return r.discardChanges(files) })
+	r := s.Snapshot.Repository
+	a.sourceMutation(r, "Changes discarded", func() error { return r.discardChanges(files) })
 }
 
 func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
@@ -665,10 +696,9 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		First: s.GraphFirst, Visible: s.GraphVisible, Changes: s.changeRanges(), TreeRevision: s.TreeRevision,
 		Sync:    s.Snapshot.Sync,
 		Message: s.CommitMessage, MergeMessage: s.Snapshot.MergeMessage, Multiline: s.MessageMultiline, Selected: s.SelectedHash, Busy: s.busy(), Modal: s.modal(), HasMore: s.Snapshot.HasMore,
-		Syncing:         s.Done != nil && s.JobKind == sourceSync,
-		RepositoryError: s.RepositoryError,
-		Repositories:    sourceFirst(s.Repositories), RepositoryCount: len(s.Repositories), Repository: s.Snapshot.Repository.Root,
-		Branch: s.Snapshot.Branch, BranchMenu: s.BranchMenuOpen, RepositoryMenu: s.RepositoryMenuOpen,
+		Syncing:           s.Done != nil && s.JobKind == sourceSync,
+		RepositoryError:   s.RepositoryError,
+		Repositories:      a.sourceRepositoryKey(),
 		ChangesWidthStyle: a.sourceChangesWidthStyle, Resizing: a.resize.target == pencodeResizeSourceChanges,
 		Rebasing: s.Snapshot.Rebasing,
 	}
@@ -688,29 +718,12 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		b.attr("disabled", "")
 	}
 	b.open("div", "body", "id", "sc-body", "class", "sc-body")
+	a.renderSourceRepositories(b, key.Repositories)
+	b.open("div", "main", "id", "sc-main", "class", "sc-main")
 	b.open("aside", "changes", "id", "sc-changes", "class", "sc-changes", "aria-label", "Repository changes")
 	if key.ChangesWidthStyle != "" {
 		b.attr("style", key.ChangesWidthStyle)
 	}
-	b.open("div", "repository-heading", "class", "sc-repository-heading")
-	if len(s.Repositories) > 1 {
-		b.open("button", "repository", "id", "sc-repositories", "type", "button", "class", "sc-branch-button", "title", "Switch Repository: "+s.Snapshot.Repository.Root, "aria-label", "Switch Repository: "+s.Snapshot.Repository.Root, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.RepositoryMenuOpen), "aria-controls", "sc-repository-menu")
-		if s.busy() {
-			b.attr("disabled", "")
-		}
-		a.sourceIcon(b, "icon", "repo", "")
-		b.text("span", "name", sourceRepositoryLabel(a.projectPath, s.Snapshot.Repository.Root), "class", "sc-repository-name")
-		a.sourceIcon(b, "arrow", "chevron-down", "")
-		b.close()
-	}
-	b.open("button", "branch", "id", "sc-branches", "type", "button", "class", "sc-branch-button", "title", "Switch Branch: "+s.Snapshot.Branch, "aria-label", "Switch Branch: "+s.Snapshot.Branch, "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(s.BranchMenuOpen), "aria-controls", "sc-branch-menu")
-	if s.busy() || s.RepositoryError != "" {
-		b.attr("disabled", "")
-	}
-	a.sourceIcon(b, "icon", "git-branch", "")
-	b.text("span", "name", s.Snapshot.Branch, "class", "sc-branch")
-	b.close()
-	b.close()
 	messageTag, messageClass := "input", "sc-message"
 	if s.MessageMultiline {
 		messageTag, messageClass = "textarea", "sc-message sc-message-multiline"
@@ -818,6 +831,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	if s.Snapshot.HasMore {
 		sourceButton(b, "sc-more", "Load more commits", s.busy())
 	}
+	b.close()
 	b.close()
 	b.close()
 	b.close()

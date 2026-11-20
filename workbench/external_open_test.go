@@ -193,6 +193,13 @@ func TestExternalPathsLauncherDropEntersWorkspace(t *testing.T) {
 			if !slices.Equal(m.activeProjectState().Tabs, []string{"first.txt", "second.txt"}) {
 				t.Fatal("scene switch lost a dropped file")
 			}
+			languageInteractionStep(t, app)
+			for _, ref := range []string{"sidebar", "sidebar-resize", "sidebar-collapsed"} {
+				node, _ := m.fontResources.HTMLNode(m.surface, ref)
+				if _, visible := node.Bounds(); visible {
+					t.Fatalf("%s still occupies layout in a standalone file workspace", ref)
+				}
+			}
 			return
 		}
 		if time.Now().After(deadline) {
@@ -222,13 +229,13 @@ func TestExternalFileKeepsParentClosed(t *testing.T) {
 	s.OpenPaths(filepath.Join(root, "file.txt"))
 	settleExternalPaths(t, s, m)
 	p, f := m.activeProjectState(), m.activeFile()
-	if !p.Loose || p.scan != nil || p.watch != nil || len(p.Entries) != 0 || m.revealProject != nil {
+	if !p.Loose || !m.sidebarHidden() || p.scan != nil || p.watch != nil || len(p.Entries) != 0 || m.revealProject != nil {
 		t.Fatal("file open loaded or revealed its parent directory")
 	}
 	m.updateActiveContent("unsaved")
 	s.OpenPaths(root)
 	settleExternalPaths(t, s, m)
-	if m.activeProjectState() != p || p.Loose || p.scan == nil || p.watch == nil || m.activeFile() != f || !f.Dirty || f.content() != "unsaved" {
+	if m.activeProjectState() != p || p.Loose || m.sidebarHidden() || p.scan == nil || p.watch == nil || m.activeFile() != f || !f.Dirty || f.content() != "unsaved" {
 		t.Fatal("explicit directory open did not promote the existing editing workspace")
 	}
 }

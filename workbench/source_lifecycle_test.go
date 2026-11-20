@@ -90,7 +90,7 @@ func TestSourceControlProjectActivationRefreshesHistory(t *testing.T) {
 }
 
 func TestSourceControlCloseChecksOnlyUnsavedEditsAndWrites(t *testing.T) {
-	for _, name := range []string{"clean", "refresh", "query", "write", "completed-write", "sync", "completed-sync", "clean-diff", "dirty-diff", "clean-merge", "dirty-merge"} {
+	for _, name := range []string{"clean", "refresh", "query", "write", "completed-write", "sync", "completed-sync", "background-sync", "completed-background-sync", "clean-diff", "dirty-diff", "clean-merge", "dirty-merge"} {
 		t.Run(name, func(t *testing.T) {
 			project := &pencodeProject{Path: "/project"}
 			m := &workspaceModel{projects: []*pencodeProject{project}, activeProjectIndex: 0, projectPath: project.Path}
@@ -113,6 +113,13 @@ func TestSourceControlCloseChecksOnlyUnsavedEditsAndWrites(t *testing.T) {
 				}
 				if strings.HasPrefix(name, "completed-") {
 					s.Done <- sourceResult{}
+				}
+			case "background-sync", "completed-background-sync":
+				done := make(chan sourceResult, 1)
+				s.backgroundSyncs = map[string]chan sourceResult{"/project/child": done}
+				wantBlocked = name == "background-sync"
+				if !wantBlocked {
+					done <- sourceResult{Message: "Changes synchronized"}
 				}
 			case "clean-diff", "dirty-diff", "clean-merge", "dirty-merge":
 				kind := "changes"
@@ -346,5 +353,5 @@ func TestSourceControlPublishesBackgroundResultWithoutInput(t *testing.T) {
 			return
 		}
 	}
-	t.Fatalf("Git completion did not publish the new branch label without user input: branch=%q pending=%v revision=%d panel=%q", s.Snapshot.Branch, s.Done != nil, s.RenderRevision, s.panelKey.Branch)
+	t.Fatalf("Git completion did not publish the new branch label without user input: branch=%q pending=%v revision=%d panel=%q", s.Snapshot.Branch, s.Done != nil, s.RenderRevision, s.panelKey.Repositories.Branch)
 }

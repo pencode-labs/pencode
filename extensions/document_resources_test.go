@@ -2,6 +2,7 @@ package extensions
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,47 @@ import (
 
 	"github.com/pencode-labs/pencode/peb"
 )
+
+func TestMenuIconsUseCachedImagesAndKeepCommandsOnFailure(t *testing.T) {
+	backend, _ := actionFixture(t)
+	remote, err := backend.LoadExtension(t.Context(), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const svg = `<svg viewBox="0 0 16 16"><path d="M2 2h12v12z"/></svg>`
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		fmt.Fprint(w, svg)
+	}))
+	defer server.Close()
+	inline := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(svg))
+	markup := `<button data-ref="run"><img src="` + inline + `"><img src="` + server.URL + `/icon">Run</button>`
+	r := viewResources{remote: remote, cache: make(map[string]viewResource)}
+	view := peb.EditorView{HTML: markup}
+	assets, err := r.prepare(t.Context(), &view, "menu")
+	if err != nil || len(assets) != 2 || requests != 1 {
+		t.Fatal(err, assets, requests)
+	}
+	for uri, data := range assets {
+		if string(data) != svg || !strings.HasSuffix(uri, ".svg") || !strings.Contains(view.HTML, uri) {
+			t.Fatal(uri, view.HTML)
+		}
+	}
+	server.Close()
+	for _, source := range []string{view.HTML, markup} {
+		view.HTML = source
+		if assets, err := r.prepare(t.Context(), &view, "menu"); err != nil || len(assets) != 2 {
+			t.Fatal("cached menu", err, view.HTML)
+		}
+	}
+	for _, src := range []string{server.URL + "/missing", "data:image/svg+xml;base64,YmFk"} {
+		view.HTML = `<button><img src="` + src + `">Run</button>`
+		if assets, err := r.prepare(t.Context(), &view, "menu"); err != nil || len(assets) != 0 || strings.Contains(view.HTML, "src=") || !strings.Contains(view.HTML, "Run</button>") {
+			t.Fatal("broken icon hid its command", err, view.HTML)
+		}
+	}
+}
 
 func TestDocumentImagesUseWorkspaceAndNetworkCache(t *testing.T) {
 	backend, _ := actionFixture(t)
@@ -99,5 +141,31 @@ func TestBrokenDocumentImagePreservesPreview(t *testing.T) {
 		if err != nil || len(assets) != 0 || strings.Contains(view.HTML, "src=") || !strings.Contains(view.HTML, "Still visible") || !strings.Contains(view.HTML, `alt="Missing"`) {
 			t.Fatalf("%q broke preview: %s, %v", source, view.HTML, err)
 		}
+	}
+}
+
+func TestRepeatedViewRetriesMissingDocumentImage(t *testing.T) {
+	backend, _ := actionFixture(t)
+	remote, err := backend.LoadExtension(t.Context(), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws, err := backend.OpenWorkspace(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := viewResources{remote: remote, cache: make(map[string]viewResource), root: ws.Path, document: filepath.ToSlash(filepath.Join(ws.Path, "readme.md"))}
+	const source = `<img src="./new.svg">`
+	view := peb.EditorView{HTML: source}
+	if assets, err := r.prepare(t.Context(), &view, ""); err != nil || len(assets) != 0 {
+		t.Fatal(assets, err)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Path, "new.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"/>`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	view.HTML = source
+	assets, err := r.prepare(t.Context(), &view, "")
+	if err != nil || len(assets) != 1 {
+		t.Fatal(assets, err)
 	}
 }

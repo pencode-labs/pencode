@@ -29,6 +29,7 @@ const (
 type sourceResult struct {
 	Err               error
 	TreeFiles         map[string][]sourceFile
+	BranchPicker      *sourceBranchPicker
 	Snapshot          *sourceSnapshot
 	Tab               *sourceTab
 	Page              *sourceHistoryPage
@@ -57,20 +58,17 @@ type sourcePanelKey struct {
 	Icons                                    *pencodeFileIcons
 	Files, CommitFiles                       *sourceFile
 	Commits                                  *sourceCommit
-	Repositories                             *string
-	Branch, Repository                       string
 	RepositoryError                          string
 	ChangesWidthStyle                        string
 	Message, Selected, MergeMessage          string
+	Repositories                             sourceRepositoryListKey
 	Changes                                  [3]sourceRowRange
 	Sync                                     sourceSyncStatus
-	RepositoryCount                          int
 	First, Visible                           int
 	TreeRevision                             uint64
 	FileCount, CommitCount, CommitFileCount  int
 	Busy, Modal, HasMore, Multiline, Syncing bool
 	Resizing                                 bool
-	BranchMenu, RepositoryMenu               bool
 	Rebasing                                 bool
 }
 
@@ -98,11 +96,15 @@ type pencodeSourceControl struct {
 	diffPaneTab                             *sourceTab
 	Owner                                   *workspaceModel
 	RepositoryViews                         map[string]sourceRepositoryView
+	backgroundSyncs                         map[string]chan sourceResult
 	Handlers                                map[string]sourceClickBinding
 	Cancel                                  context.CancelFunc
 	RefreshCancel                           context.CancelFunc
 	Done                                    chan sourceResult
+	branchPicker, promptPicker              *sourceBranchPicker
+	BranchTrigger                           string
 	RepositoryError                         string
+	RepositoriesWidthStyle                  string
 	lastClick                               string
 	OpenID, OpenKey                         string
 	MenuHash                                string
@@ -127,13 +129,14 @@ type pencodeSourceControl struct {
 	overview                                sourceOverview
 	changeTrees                             [3]sourceTreeCache
 	commitTree                              sourceTreeCache
-	repositoryKey                           sourceRepositoryMenuKey
+	repositoryKey                           sourceRepositoryListKey
 	Snapshot                                sourceSnapshot
 	inlinePaint                             [2]sourceInlinePaint
 	branchKey                               sourceBranchMenuKey
 	panelKey                                sourcePanelKey
 	diffEditors                             [2]pencodeEditor
 	mergeEditor                             pencodeEditor
+	syncRevision                            uint64
 	TreeRevision                            uint64
 	RenderRevision, BoundRevision           uint64
 	GraphFirst, GraphVisible                int
@@ -144,14 +147,11 @@ type pencodeSourceControl struct {
 	Selection                               uint64
 	gutterRevision                          uint64
 	MessageAnchor, MessageCaret             int
-	RepositoryIndex                         int
 	ExpandedCommit                          int
 	GraphScrollY                            float32
 	BranchHeight, BranchWidth               float32
 	MenuX, MenuY                            float32
 	BranchSubX, BranchSubY, BranchSubWidth  float32
-	RepositoryX, RepositoryY                float32
-	RepositoryWidth, RepositoryHeight       float32
 	gutterY                                 float32
 	changesPosition, changesHeight          float32
 	OpenPinned                              bool
@@ -162,8 +162,8 @@ type pencodeSourceControl struct {
 	RestoreScroll                           bool
 	MenuOpen                                bool
 	BranchSubmenu                           bool
-	RepositoryMenuOpen, RepositoryFocus     bool
 	RepositoriesLoaded                      bool
+	RepositoriesCollapsed                   bool
 	BranchFocus                             bool
 	BranchMenuOpen                          bool
 	PendingPinned                           bool
@@ -178,7 +178,10 @@ func (s *pencodeSourceControl) activeTab() *sourceTab {
 	return nil
 }
 func (s *pencodeSourceControl) unsaved() bool {
-	for _, tab := range s.Tabs {
+	return sourceTabsUnsaved(s.Tabs)
+}
+func sourceTabsUnsaved(tabs []*sourceTab) bool {
+	for _, tab := range tabs {
 		if tab.Result != tab.Saved {
 			return true
 		}
@@ -190,10 +193,8 @@ func (s *pencodeSourceControl) unsavedRepositories() bool {
 		return true
 	}
 	for _, view := range s.RepositoryViews {
-		for _, tab := range view.Tabs {
-			if tab.Result != tab.Saved {
-				return true
-			}
+		if sourceTabsUnsaved(view.Tabs) {
+			return true
 		}
 	}
 	return false
@@ -220,9 +221,13 @@ func (s *pencodeSourceControl) stop() {
 	}
 	s.Context = nil
 	s.Done = nil
+	clear(s.backgroundSyncs)
+	s.syncRevision++
 	s.PendingOpen, s.PendingPinned = "", false
 	s.RepositoriesLoaded = false
 	s.RefreshPending, s.RefreshStarted = false, false
+	s.BranchMenuOpen, s.BranchSubmenu, s.BranchFocus = false, false, false
+	s.BranchTrigger, s.branchPicker = "", nil
 }
 func (m *workspaceModel) sourceState() *pencodeSourceControl {
 	if p := m.activeProjectState(); p != nil {
@@ -236,15 +241,30 @@ func (m *workspaceModel) sourceChanged() {
 	}
 }
 func (m *workspaceModel) sourceHasDrafts() bool {
+	return m.sourceHasDraftsIn(m.sourceState().Snapshot.Repository.Root)
+}
+
+func (m *workspaceModel) sourceHasDraftsIn(root string) bool {
 	// Repository roots can enclose more than one open project.
-	root := m.sourceState().Snapshot.Repository.Root
 	for _, p := range m.projects {
 		for _, f := range p.Files {
 			if f.Dirty && sourceRepositoryForPath([]string{root}, filepath.ToSlash(filepath.Join(p.Path, filepath.FromSlash(f.Path)))) != "" {
 				return true
 			}
 		}
-		if sourceRepositoryForPath([]string{root}, filepath.ToSlash(p.Path)) != "" && p.sourceControl.unsavedRepositories() {
+		if p.sourceControl.unsavedIn(root) {
+			return true
+		}
+	}
+	return m.sourceControl.unsavedIn(root)
+}
+
+func (s *pencodeSourceControl) unsavedIn(root string) bool {
+	if sourceRepositoryForPath([]string{root}, s.Snapshot.Repository.Root) != "" && s.unsaved() {
+		return true
+	}
+	for repository, view := range s.RepositoryViews {
+		if sourceRepositoryForPath([]string{root}, repository) != "" && sourceTabsUnsaved(view.Tabs) {
 			return true
 		}
 	}
@@ -336,9 +356,57 @@ func (m *workspaceModel) refreshProjectSourceControl(owner *pencodeProject) {
 		return sourceResult{TreeFiles: r.treeGitFiles(roots), Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err}
 	})
 }
+
+// A detached sync can update its own cached view and project files while the
+// selected repository continues to use its foreground job slot.
+func (m *workspaceModel) pollBackgroundSyncs(s *pencodeSourceControl, project *pencodeProject) bool {
+	changed := false
+	for root, done := range s.backgroundSyncs {
+		select {
+		case result := <-done:
+			delete(s.backgroundSyncs, root)
+			s.syncRevision++
+			if result.Snapshot != nil {
+				view := s.RepositoryViews[root]
+				view.Snapshot = *result.Snapshot
+				if view.Message == "" {
+					view.Message = view.Snapshot.MergeMessage
+				}
+				s.RepositoryViews[root] = view
+			}
+			message := result.Message
+			if result.Err != nil {
+				message, _ = m.sourceErrorMessage(result)
+			}
+			m.setProjectStatus(project, root+": "+message)
+			if result.Reload && project != nil {
+				m.reloadSourceFiles(project)
+			}
+			s.RefreshPending = true
+			changed = true
+		default:
+		}
+	}
+	return changed
+}
+
+func (m *workspaceModel) sourceErrorMessage(result sourceResult) (string, bool) {
+	if !result.expectedGitError() {
+		return result.Err.Error(), false
+	}
+	if sourcePushRejected(result.Err) {
+		return m.tr("远程有新的提交，请先同步远程再推送。"), true
+	}
+	if result.Snapshot.Rebasing {
+		return "Rebase has conflicts. Resolve and stage them in Merge Changes, then choose Continue Rebase.", true
+	}
+	return m.tr("合并存在冲突，请在 Merge Changes 中解决后提交。"), true
+}
+
 func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *pencodeProject) bool {
+	changed := m.pollBackgroundSyncs(s, project)
 	if s.Done == nil {
-		return false
+		return changed
 	}
 	select {
 	case result := <-s.Done:
@@ -347,6 +415,16 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 		s.PendingOpen, s.PendingPinned = "", false
 		s.Done = nil
 		s.cancelRefresh()
+		if result.BranchPicker != nil {
+			if s.BranchMenuOpen {
+				s.BranchMenuOpen = result.Err == nil
+				s.branchPicker = result.BranchPicker
+				s.selectCurrentBranch()
+				s.BranchFocus = true
+			} else {
+				result.Err = nil
+			}
+		}
 		if result.Repositories != nil {
 			if !slices.Equal(result.Repositories, s.Repositories) {
 				s.Repositories = result.Repositories
@@ -412,19 +490,11 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			s.Snapshot.Graph, s.Snapshot.HasMore = result.Page.Graph, result.Page.HasMore
 		}
 		if result.Err != nil && !result.StatusOnly {
-			if result.expectedGitError() {
-				message := result.Err.Error()
-				if sourcePushRejected(result.Err) {
-					message = m.tr("远程有新的提交，请先同步远程再推送。")
-				} else {
-					message = m.tr("合并存在冲突，请在 Merge Changes 中解决后提交。")
-					if s.Snapshot.Rebasing {
-						message = "Rebase has conflicts. Resolve and stage them in Merge Changes, then choose Continue Rebase."
-					}
-				}
+			message, expected := m.sourceErrorMessage(result)
+			if expected {
 				m.setProjectStatus(project, message)
 			} else {
-				s.Notice = result.Err.Error()
+				s.Notice = message
 			}
 		}
 		if result.Hash != "" && result.Hash == s.SelectedHash && result.Err == nil {
@@ -522,7 +592,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 		}
 		return true
 	default:
-		return false
+		return changed
 	}
 }
 
@@ -549,11 +619,11 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 	if m.followSourceRepository() {
 		changed = true
 	}
-	if (s.MenuOpen || s.BranchMenuOpen || s.RepositoryMenuOpen) && m.bottom.active != pencodePanelSourceControl {
-		s.MenuOpen, s.BranchMenuOpen, s.RepositoryMenuOpen = false, false, false
+	if (s.MenuOpen || s.BranchMenuOpen) && m.bottom.active != pencodePanelSourceControl {
+		s.MenuOpen, s.BranchMenuOpen = false, false
 		changed = true
 	}
-	if m.projectPath != "" && (s.RefreshPending || !s.RefreshStarted) && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen && !s.RepositoryMenuOpen {
+	if m.projectPath != "" && (s.RefreshPending || !s.RefreshStarted) && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen {
 		m.refreshSourceControl()
 		changed = true
 	}
@@ -570,12 +640,7 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 	if s.BranchMenuOpen {
 		x, y, width, height := s.MenuX, s.MenuY, s.BranchWidth, s.BranchHeight
 		m.positionSourceBranches(world)
-		changed = changed || x != s.MenuX || y != s.MenuY || width != s.BranchWidth || height != s.BranchHeight
-	}
-	if s.RepositoryMenuOpen {
-		x, y, width, height := s.RepositoryX, s.RepositoryY, s.RepositoryWidth, s.RepositoryHeight
-		m.positionSourceRepositories(world)
-		changed = changed || x != s.RepositoryX || y != s.RepositoryY || width != s.RepositoryWidth || height != s.RepositoryHeight
+		changed = changed || !s.BranchMenuOpen || x != s.MenuX || y != s.MenuY || width != s.BranchWidth || height != s.BranchHeight
 	}
 	if m.bottom.active == pencodePanelSourceControl && m.syncSourceGraph(world) {
 		changed = true
@@ -587,13 +652,12 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 	pointer := state.Pointer()
 	zoom := max(float32(m.settings.Zoom)/100, .01)
 	x, y := pointer.X/zoom, pointer.Y/zoom
-	if s.RepositoryMenuOpen && (state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight)) && !m.pointerInsideRefs(world, x, y, []string{"sc-repository-menu", "sc-repositories"}) {
-		s.RepositoryMenuOpen = false
-		changed = true
-	}
-	if s.BranchMenuOpen && (state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight)) && !m.pointerInsideRefs(world, x, y, []string{"sc-branch-menu", "sc-branch-submenu", "sc-branches"}) {
-		s.BranchMenuOpen = false
-		changed = true
+	if s.BranchMenuOpen && (state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight)) {
+		anchor, ok := m.sourceBranchAnchor(world)
+		if !(ok && languageRectContains(anchor, x, y)) && !m.pointerInsideRefs(world, x, y, []string{"sc-branch-menu", "sc-branch-submenu"}) {
+			s.BranchMenuOpen = false
+			changed = true
+		}
 	}
 	if s.MenuOpen && (state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight)) && !m.pointerInsideRefs(world, x, y, []string{"sc-context-menu"}) {
 		s.MenuOpen = false
@@ -622,7 +686,7 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 			root, _ := world.HTMLNode(m.surface, "pencode-root")
 			area, _ := root.Bounds()
 			s.MenuPath, s.MenuHash, s.MenuOpen = row.Path, "", true
-			s.BranchMenuOpen, s.RepositoryMenuOpen = false, false
+			s.BranchMenuOpen = false
 			s.MenuX, s.MenuY = max(0, min(x-area.X, area.Width-270)), max(0, min(y-area.Y, area.Height-80))
 			changed = true
 			break
@@ -646,7 +710,6 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 					area, _ := root.Bounds()
 					s.MenuPath = ""
 					s.MenuHash, s.MenuOpen, s.BranchMenuOpen = c.Hash, true, false
-					s.RepositoryMenuOpen = false
 					s.MenuX, s.MenuY = max(0, min(x-area.X, area.Width-270)), max(0, min(y-area.Y, area.Height-300))
 					changed = true
 					break
@@ -819,9 +882,6 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	if s.BranchMenuOpen && m.bottom.active == pencodePanelSourceControl {
 		m.renderSourceBranches(b)
 	}
-	if s.RepositoryMenuOpen && m.bottom.active == pencodePanelSourceControl {
-		m.renderSourceRepositories(b)
-	}
 	if s.modal() {
 		m.renderSourcePrompt(b)
 		view.Attr("content", "disabled", "")
@@ -945,8 +1005,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 		}
 	}
 	m.focusSourceBranches(world)
-	m.focusSourceRepositories(world)
-	if s.BranchMenuOpen || s.RepositoryMenuOpen {
+	if s.BranchMenuOpen {
 		return
 	}
 	if !s.visible() && !s.modal() {
@@ -1032,7 +1091,7 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	if s.modal() {
 		if m.uiKey(state, input.KeyEscape) {
 			s.TabClose = nil
-			s.Prompt, s.Notice = "", ""
+			s.Prompt, s.Notice, s.promptPicker = "", "", nil
 			s.FocusedModal, s.FocusedTab = "", ""
 			return true, true
 		}
@@ -1040,9 +1099,6 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	}
 	if s.BranchMenuOpen {
 		return true, m.sourceBranchShortcut(state)
-	}
-	if s.RepositoryMenuOpen {
-		return true, m.sourceRepositoryShortcut(state)
 	}
 	if m.uiKey(state, input.KeyEscape) && s.MenuOpen {
 		s.MenuOpen = false
@@ -1102,7 +1158,7 @@ func (m *workspaceModel) sourceCloseBlocked(project *pencodeProject) bool {
 		if m.pollSourceResult(s, p) {
 			m.sourceChanged()
 		}
-		if s.unsavedRepositories() || s.Done != nil && (s.JobKind == sourceWrite || s.JobKind == sourceSync) {
+		if s.unsavedRepositories() || len(s.backgroundSyncs) != 0 || s.Done != nil && (s.JobKind == sourceWrite || s.JobKind == sourceSync) {
 			m.activateProject(p)
 			if s.unsavedRepositories() {
 				s.Notice = m.tr("差异或合并编辑标签中有未保存的修改，请保存或关闭这些标签后再关闭项目或窗口。")

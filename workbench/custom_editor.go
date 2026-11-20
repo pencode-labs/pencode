@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/html/parse"
+	uinode "github.com/onix-engine/onix/scene/node"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/actions"
 	"github.com/pencode-labs/pencode/extensions"
@@ -372,19 +373,19 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 		return nil
 	}
 	var links map[string]string
-	var searchable *dom.Node
+	var searchable *uinode.Node
 	var grid *pencodeVirtualGrid
 	var gridErr error
 	var selectables []pencodeExtensionSelectable
 	var focus []pencodeExtensionFocus
-	tree, err := dom.Parse(view.HTML)
+	tree, err := parse.Parse(view.HTML)
 	if err != nil {
 		return err
 	}
 	prefix := fmt.Sprintf("pencode-extension-editor/%p/", document)
 	textView := strings.Contains(view.HTML, "data-pencode-searchable") || strings.Contains(view.HTML, "data-pencode-selectable") || strings.Contains(view.HTML, "data-pencode-grid")
 	index := 0
-	if err := validateExtensionTree(view, tree, nil, func(node *dom.Node, hidden bool) {
+	if err := validateExtensionTree(view, tree, nil, func(node *uinode.Node, hidden bool) {
 		prepareExtensionViewNode(node, prefix, &index, textView)
 		if source, ok := node.Attr("data-pencode-grid"); ok && !hidden && gridErr == nil {
 			if grid != nil {
@@ -766,16 +767,16 @@ func (model *workspaceModel) closeCustomEditors() {
 
 // Validate retained region trees in their original parent context, including
 // inherited visibility and uniqueness across both template and region nodes.
-func validateExtensionTree(view *peb.EditorView, root *dom.Node, regions map[string]*dom.Node, visit func(*dom.Node, bool)) error {
+func validateExtensionTree(view *peb.EditorView, root *uinode.Node, regions map[string]*uinode.Node, visit func(*uinode.Node, bool)) error {
 	scratch := pencodeExtensionScratches.Get().(*pencodeExtensionScratch)
 	defer scratch.release()
 	return scratch.validate(view, root, regions, visit)
 }
 
-func (s *pencodeExtensionScratch) validate(view *peb.EditorView, root *dom.Node, regions map[string]*dom.Node, visit func(*dom.Node, bool)) error {
+func (s *pencodeExtensionScratch) validate(view *peb.EditorView, root *uinode.Node, regions map[string]*uinode.Node, visit func(*uinode.Node, bool)) error {
 	refs, ids := s.refs, s.ids
-	var validate func(*dom.Node, bool) error
-	validate = func(node *dom.Node, hidden bool) error {
+	var validate func(*uinode.Node, bool) error
+	validate = func(node *uinode.Node, hidden bool) error {
 		_, nodeHidden := node.Attr("hidden")
 		hidden = hidden || nodeHidden
 		// Validate generated identifiers too when the visitor annotates nodes.

@@ -58,7 +58,7 @@ func TestProjectResourcesRenameDirectoryPreservesBuffersAndHistory(t *testing.T)
 	if err := fileDialogAndWait(t, model); err == nil || project.Files["lib/nested/main.go"] != file {
 		t.Fatal("conflicting rename overwrote a resource or changed its buffer")
 	}
-	model.fileContext = pencodeFileContext{project: project, path: "lib", directory: true, dialog: "delete"}
+	model.fileContext = pencodeFileContext{project: project, path: "lib", paths: []string{"lib"}, directory: true, dialog: "delete"}
 	if err := fileDialogAndWait(t, model); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestProjectResourcesCopyMoveAndCrossProjectBuffers(t *testing.T) {
 	openProjectFile(project, "src/nested/a.txt")
 	model.syncActiveProjectFields()
 	model.updateActiveContent("unsaved text")
-	model.fileClipboard = pencodeFileClipboard{project: project, path: "src"}
+	model.fileClipboard = pencodeFileClipboard{project: project, paths: []string{"src"}}
 	if err := pasteResourceAndWait(t, model, project, "src/nested"); err == nil {
 		t.Fatal("copied a directory into its own descendant")
 	}
@@ -84,14 +84,14 @@ func TestProjectResourcesCopyMoveAndCrossProjectBuffers(t *testing.T) {
 	if content, err := os.ReadFile(filepath.Join(project.Path, "src 副本 1/nested/a.txt")); err != nil || string(content) != "disk text" {
 		t.Fatalf("directory copy: %q %v", content, err)
 	}
-	model.fileClipboard = pencodeFileClipboard{project: project, path: "src/nested/a.txt"}
+	model.fileClipboard = pencodeFileClipboard{project: project, paths: []string{"src/nested/a.txt"}}
 	if err := pasteResourceAndWait(t, model, project, "src/nested"); err != nil {
 		t.Fatal(err)
 	}
 	if content, err := os.ReadFile(filepath.Join(project.Path, "src/nested/a 副本 1.txt")); err != nil || string(content) != "disk text" {
 		t.Fatalf("file copy: %q %v", content, err)
 	}
-	model.fileClipboard = pencodeFileClipboard{project: project, path: "src", cut: true}
+	model.fileClipboard = pencodeFileClipboard{project: project, paths: []string{"src"}, cut: true}
 	if err := pasteResourceAndWait(t, model, project, "target"); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestProjectResourcesCopyMoveAndCrossProjectBuffers(t *testing.T) {
 	attachPencodeProject(t, other, project.backend)
 	t.Cleanup(other.stopScan)
 	model.projects = append(model.projects, other)
-	model.fileClipboard = pencodeFileClipboard{project: project, path: "target/src/nested/a.txt", cut: true}
+	model.fileClipboard = pencodeFileClipboard{project: project, paths: []string{"target/src/nested/a.txt"}, cut: true}
 	if err := pasteResourceAndWait(t, model, other, ""); err != nil {
 		t.Fatal(err)
 	}

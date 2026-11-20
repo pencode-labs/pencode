@@ -30,3 +30,7 @@
 	path = extensions/office-viewer
 	url = git@github.com:pencode-labs/office-viewer.git
 	branch = main
+[submodule "extensions/quick-commands"]
+	path = extensions/quick-commands
+	url = git@github.com:pencode-labs/quick-commands.git
+	branch = main

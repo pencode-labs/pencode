@@ -9,15 +9,15 @@ import (
 
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
+	uinode "github.com/onix-engine/onix/scene/node"
 	"github.com/onix-engine/onix/text/piecetree"
 	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 type pencodeRenderedFind struct {
-	tree    *dom.Node
+	tree    *uinode.Node
 	grid    *pencodeVirtualGrid
 	content piecetree.Snapshot
 	chunks  []pencodeRenderedFindChunk
@@ -27,15 +27,15 @@ type pencodeRenderedFind struct {
 }
 
 type pencodeRenderedFindChunk struct {
-	node       *dom.Node
+	node       *uinode.Node
 	start, end int
 }
 
 // Retain IDs for text containers, their potential scroll ancestors and
 // controls. Empty leaves such as spreadsheet padding cells need no lookup.
 // Annotate the parsed tree during validation instead of rewriting the HTML.
-func prepareExtensionViewNode(node *dom.Node, prefix string, index *int, textView bool) {
-	if node.Type != dom.ElementNode {
+func prepareExtensionViewNode(node *uinode.Node, prefix string, index *int, textView bool) {
+	if node.Type != uinode.ElementNode {
 		return
 	}
 	_, searchable := node.Attr("data-pencode-searchable")
@@ -56,13 +56,13 @@ func prepareExtensionViewNode(node *dom.Node, prefix string, index *int, textVie
 	}
 }
 
-func (f *pencodeRenderedFind) setTree(tree *dom.Node) {
+func (f *pencodeRenderedFind) setTree(tree *uinode.Node) {
 	f.tree, f.grid, f.dirty, f.reveal = tree, nil, true, true
 	clear(f.chunks)
 	f.chunks = f.chunks[:0]
 	surface := pencodeExtensionSurface{tree: tree}
 	ref, _ := tree.Attr("data-ref")
-	value := surface.selectableTextRanges(ref, func(node *dom.Node, start, end int) {
+	value := surface.selectableTextRanges(ref, func(node *uinode.Node, start, end int) {
 		parent := node.Parent
 		for parent != tree && parent.Parent != nil {
 			switch parent.Data {
@@ -103,7 +103,7 @@ func (f *pencodeRenderedFind) focus(world *module.Content) {
 
 // Bounds are available even outside the paint window. Project them through
 // the native scroll containers and workspace zoom to match live text runs.
-func renderedChunkBounds(world *module.Content, m *workspaceModel, node *dom.Node) (htmlui.Rect, bool) {
+func renderedChunkBounds(world *module.Content, m *workspaceModel, node *uinode.Node) (htmlui.Rect, bool) {
 	id, _ := node.Attr("id")
 	retained, ok := world.HTMLNode(m.surface, id)
 	if !ok {

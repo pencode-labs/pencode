@@ -49,16 +49,17 @@ func TestWindowRecoveryIncludesProjectsLooseFilesTabsAndLayout(t *testing.T) {
 	s, m := externalTestSession(t)
 	directory := t.TempDir()
 	configureTestWindow(t, s, directory, "", false)
-	root, loose := t.TempDir(), t.TempDir()
+	root, otherRoot, loose := t.TempDir(), t.TempDir(), t.TempDir()
 	for _, name := range []string{"first.txt", "second.txt", "deleted.txt"} {
 		resourceTestWrite(t, &pencodeProject{Path: root}, name, name)
 	}
 	resourceTestWrite(t, &pencodeProject{Path: loose}, "loose.txt", "loose")
-	s.OpenPaths(root, filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt"), filepath.Join(root, "deleted.txt"), filepath.Join(loose, "loose.txt"))
+	s.OpenPaths(root, filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt"), filepath.Join(root, "deleted.txt"), otherRoot, filepath.Join(loose, "loose.txt"))
 	settleExternalPaths(t, s, m)
 	m.selectProjectTab(m.projects[0], "first.txt")
 	m.activeFile().editorView = pencodeEditorView{caret: 4, anchor: 1, scrollY: 80}
-	m.sidebarHidden, m.sidebarWidthStyle = true, "flex-basis:300px;"
+	m.toggleSidebar()
+	m.sidebarWidthStyle = "flex-basis:300px;"
 	m.bottom.heightStyle = "height:250px;max-height:75%;"
 	m.viewportWidth, m.viewportHeight = 1200, 800
 	flushTestWindow(s, m)
@@ -84,20 +85,20 @@ func TestWindowRecoveryIncludesProjectsLooseFilesTabsAndLayout(t *testing.T) {
 		t.Fatalf("window size=%d,%d", width, height)
 	}
 	restoreTestWindow(t, next, model)
-	if len(model.projects) != 2 || model.activeProjectIndex != 0 || model.projects[0].Loose || !model.projects[1].Loose {
+	if len(model.projects) != 3 || model.activeProjectIndex != 0 || model.projects[0].Loose || model.projects[1].Loose || !model.projects[2].Loose {
 		t.Fatal("project order, loose file workspace, or selected project changed")
 	}
 	p := model.projects[0]
 	if !slices.Equal(p.Tabs, []string{"first.txt", "second.txt"}) || p.ActivePath != "first.txt" || p.Files["first.txt"].editorView != m.projects[0].Files["first.txt"].editorView {
 		t.Fatalf("lost tabs/selection: tabs=%v active=%s", p.Tabs, p.ActivePath)
 	}
-	if next.recentProjects.count != 1 || next.recentProjects.entries[0].Path != root {
+	if next.recentProjects.count != 2 || next.recentProjects.entries[0].Path != otherRoot || next.recentProjects.entries[1].Path != root {
 		t.Fatal("loose file parent was remembered as a project")
 	}
-	if !model.sidebarHidden || model.sidebarWidthStyle != m.sidebarWidthStyle || model.bottom.heightStyle != m.bottom.heightStyle {
+	if !model.sidebarHidden() || model.projects[1].sidebarCollapsed || model.sidebarWidthStyle != m.sidebarWidthStyle || model.bottom.heightStyle != m.bottom.heightStyle {
 		t.Fatal("window layout was not restored")
 	}
-	if model.projects[1].watch != nil || model.projects[1].scan != nil {
+	if model.projects[2].watch != nil || model.projects[2].scan != nil {
 		t.Fatal("restored loose workspace started a project scan")
 	}
 }

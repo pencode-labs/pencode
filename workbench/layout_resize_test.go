@@ -70,7 +70,7 @@ func TestWorkbenchResize(t *testing.T) {
 			if next := editorContextBounds(t, model, "bottom-panel"); math.Abs(float64(next.Height-after.Height)+30) > 1 {
 				t.Fatalf("coalesced panel drag: %v -> %v", after, next)
 			}
-			model.sidebarHidden = true
+			model.toggleSidebar()
 			model.bottom.active = pencodePanelClosed
 			markPencodeRootDirtyByModel(world, model)
 			languageInteractionStep(t, app)
@@ -114,6 +114,7 @@ func TestWorkbenchResizeIdleAllocations(t *testing.T) {
 
 func TestSidebarCollapseAndExpand(t *testing.T) {
 	app, model, _, state := languageInteractionFixture(t)
+	first := model.activeProjectState()
 	model.sidebarWidthStyle = "flex-basis:310px;"
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	languageInteractionStep(t, app)
@@ -128,7 +129,7 @@ func TestSidebarCollapseAndExpand(t *testing.T) {
 		languageInteractionStep(t, app)
 	}
 	click("sidebar-collapse")
-	if !model.sidebarHidden {
+	if !model.sidebarHidden() {
 		t.Fatal("collapse button did not hide sidebar")
 	}
 	for _, ref := range []string{"sidebar", "sidebar-resize"} {
@@ -141,8 +142,20 @@ func TestSidebarCollapseAndExpand(t *testing.T) {
 	if collapsed.Width <= before.Width {
 		t.Fatal("collapsing sidebar did not give space to editor")
 	}
+	if err := loadProjectAndWait(t, model, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	languageInteractionStep(t, app)
+	if model.sidebarHidden() {
+		t.Fatal("new project inherited the previous project's collapsed sidebar")
+	}
+	editorContextBounds(t, model, "sidebar")
+	model.activateProject(first)
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	languageInteractionStep(t, app)
 	click("sidebar-expand")
-	if model.sidebarHidden || model.sidebarWidthStyle != "flex-basis:310px;" {
+	if model.sidebarHidden() || model.sidebarWidthStyle != "flex-basis:310px;" {
 		t.Fatal("expanding sidebar lost visibility or width")
 	}
 	after := editorContextBounds(t, model, "editor-body")

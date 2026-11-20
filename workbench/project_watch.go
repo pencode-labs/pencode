@@ -146,7 +146,7 @@ func (m *workspaceModel) pollProjectWatches() bool {
 			if count != 0 || reset {
 				m.distributeFileChanges(project, files[:count], reset)
 			}
-			if !reset && count != 0 && changes&protocol.WorkspaceTreeChanged != 0 && changes&(protocol.WorkspaceIgnoreChanged|protocol.WorkspaceRepositoriesChanged) == 0 && !project.watchTreeChanged(files[:count]) {
+			if !project.tree.moved && !reset && count != 0 && changes&protocol.WorkspaceTreeChanged != 0 && changes&(protocol.WorkspaceIgnoreChanged|protocol.WorkspaceRepositoriesChanged) == 0 && !project.watchTreeChanged(files[:count]) {
 				changes &^= protocol.WorkspaceTreeChanged
 			}
 			project.treePending = project.treePending || changes&protocol.WorkspaceTreeChanged != 0
@@ -171,10 +171,10 @@ func (m *workspaceModel) pollProjectWatches() bool {
 		}
 		m.reloadExternalFiles(project)
 		// Never restart a scan in flight. Keep one follow-up snapshot instead.
-		if project.treePending && project.scan == nil && !m.quickOpen {
+		if project.treePending && project.scan == nil && (!m.quickOpen || project.tree.moved) {
 			project.treePending = false
 			m.startProjectSnapshot(project, false, true)
-			changed = true
+			changed = changed || !project.tree.moved
 		}
 	}
 	return changed

@@ -62,21 +62,55 @@ func TestFileContextNativeRenameCreateDeleteAndRefresh(t *testing.T) {
 	if clipboard != "main.go" {
 		t.Fatalf("copied relative path = %q", clipboard)
 	}
-	fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "main.go"))
+	rowID := model.projectTreeRowID(project, "main.go")
+	originalRow := editorContextBounds(t, model, rowID)
+	key := func(code input.KeyCode) {
+		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: code})
+		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: code})
+		languageInteractionStep(t, app)
+	}
+	world := model.fontResources
+	for _, finish := range []input.KeyCode{input.KeyEnter, input.KeyEscape} {
+		row, ok := world.HTMLControl(model.surface, rowID)
+		if !ok || !world.Focus(row) {
+			t.Fatal("could not focus the tree row")
+		}
+		key(input.KeyF2)
+		languageInteractionStep(t, app)
+		if model.fileContext.dialog != "rename" {
+			t.Fatal("F2 did not start inline rename")
+		}
+		if finish == input.KeyEscape {
+			state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "cancelled"})
+			languageInteractionStep(t, app)
+		}
+		key(finish)
+		if model.fileContext.dialog != "" || model.fileIO != nil && len(model.fileIO.pending) != 0 {
+			t.Fatalf("%v did not dismiss the rename without submitting", finish)
+		}
+	}
+	fileContextRightClick(t, app, model, state, rowID)
 	editorContextClick(t, app, model, state, "file-context-rename")
-	if model.fileContext.dialog != "rename" {
-		t.Fatal("rename did not show the name dialog")
-	}
-	if editor := model.fontResources.Ref[htmlui.Control](model.editor.control); editor == nil || !editor.Disabled {
-		t.Fatal("name dialog did not disable background editor controls")
-	}
 	languageInteractionStep(t, app)
-	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "renamed.go"})
+	if model.fileContext.dialog != "rename" || model.fileContext.name != "main.go" {
+		t.Fatalf("rename did not prefill the inline input: %+v", model.fileContext)
+	}
+	if row := editorContextBounds(t, model, "file-tree-rename"); row != originalRow {
+		t.Fatalf("rename moved the tree row: before=%+v during=%+v", originalRow, row)
+	}
+	control, _ := world.HTMLControl(model.surface, "file-tree-name")
+	if field := world.Ref[engineui.TextField](control); field == nil || !field.Focused || field.Anchor != 0 || field.Caret != 4 {
+		t.Fatalf("rename did not focus and select the basename: %+v", field)
+	}
+	if editor := world.Ref[htmlui.Control](model.editor.control); editor == nil || editor.Disabled {
+		t.Fatal("inline rename disabled the editor")
+	}
+	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "renamed"})
 	languageInteractionStep(t, app)
 	if model.fileContext.name != "renamed.go" {
 		t.Fatalf("rename input did not accept typing: %+v", model.fileContext)
 	}
-	editorContextClick(t, app, model, state, "file-dialog-submit")
+	key(input.KeyEnter)
 	if err := awaitFileIO(t, model); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +315,7 @@ func TestFileContextKeyboardActions(t *testing.T) {
 					}
 					switch test.name {
 					case "cut", "copy":
-						if model.fileClipboard.project != project || model.fileClipboard.path != "main.go" || model.fileClipboard.cut != (test.name == "cut") {
+						if model.fileClipboard.project != project || !slices.Equal(model.fileClipboard.paths, []string{"main.go"}) || model.fileClipboard.cut != (test.name == "cut") {
 							t.Fatalf("wrong file clipboard: %+v", model.fileClipboard)
 						}
 					case "find":
@@ -336,7 +370,7 @@ func TestFileContextKeyboardPasteAndDisabledItems(t *testing.T) {
 	fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "main.go"))
 	content := model.activeContent()
 	press(input.KeyC)
-	if model.fileContext.open || model.fileClipboard.path != "main.go" || model.activeContent() != content {
+	if model.fileContext.open || !slices.Equal(model.fileClipboard.paths, []string{"main.go"}) || model.activeContent() != content {
 		t.Fatal("copy shortcut failed or edited the active buffer")
 	}
 	fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "target"))

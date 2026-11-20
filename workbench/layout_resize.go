@@ -15,6 +15,7 @@ const (
 	pencodeResizeSidebar
 	pencodeResizeBottom
 	pencodeResizeSourceChanges
+	pencodeResizeSourceRepositories
 )
 
 type pencodeWorkbenchResize struct {
@@ -30,6 +31,9 @@ func (m *workspaceModel) updateWorkbenchResize(world *module.Content, state *inp
 		return previous != r.target
 	}
 	p := state.Pointer()
+	sidebarHidden := m.sidebarHidden()
+	source := m.sourceState()
+	sourceVisible := m.bottom.active == pencodePanelSourceControl && source.RepositoryError == ""
 	zoom := max(float32(m.settings.Zoom)/100, .01)
 	x, y := p.X/zoom, p.Y/zoom
 	if p.Pressed {
@@ -37,12 +41,14 @@ func (m *workspaceModel) updateWorkbenchResize(world *module.Content, state *inp
 		px, py := p.PressX/zoom, p.PressY/zoom
 		ref := ""
 		switch {
-		case !m.sidebarHidden && m.pointerInsideRefs(world, px, py, []string{"sidebar-resize"}):
+		case !sidebarHidden && m.pointerInsideRefs(world, px, py, []string{"sidebar-resize"}):
 			r.target, r.origin, ref = pencodeResizeSidebar, px, "sidebar"
 		case m.bottom.active != pencodePanelClosed && m.pointerInsideRefs(world, px, py, []string{"panel-resize"}):
 			r.target, r.origin, ref = pencodeResizeBottom, py, "bottom-panel"
-		case m.bottom.active == pencodePanelSourceControl && m.pointerInsideRefs(world, px, py, []string{"sc-changes-resize"}):
+		case sourceVisible && m.pointerInsideRefs(world, px, py, []string{"sc-changes-resize"}):
 			r.target, r.origin, ref = pencodeResizeSourceChanges, px, "sc-changes"
+		case sourceVisible && !source.RepositoriesCollapsed && m.pointerInsideRefs(world, px, py, []string{"sc-repositories-resize"}):
+			r.target, r.origin, ref = pencodeResizeSourceRepositories, px, "sc-repositories"
 		}
 		if r.target != pencodeResizeNone {
 			node, _ := world.HTMLNode(m.surface, ref)
@@ -53,7 +59,11 @@ func (m *workspaceModel) updateWorkbenchResize(world *module.Content, state *inp
 			}
 		}
 	}
-	if r.target == pencodeResizeSidebar && m.sidebarHidden || r.target == pencodeResizeBottom && m.bottom.active == pencodePanelClosed || r.target == pencodeResizeSourceChanges && (m.bottom.active != pencodePanelSourceControl || m.sourceState().RepositoryError != "") || !p.Down && !p.Released {
+	if !p.Down && !p.Released ||
+		r.target == pencodeResizeSidebar && sidebarHidden ||
+		r.target == pencodeResizeBottom && m.bottom.active == pencodePanelClosed ||
+		r.target == pencodeResizeSourceChanges && !sourceVisible ||
+		r.target == pencodeResizeSourceRepositories && (!sourceVisible || source.RepositoriesCollapsed) {
 		r.target = pencodeResizeNone
 	}
 	changed := previous != r.target
@@ -76,13 +86,21 @@ func (m *workspaceModel) updateWorkbenchResize(world *module.Content, state *inp
 		changed = changed || style != m.bottom.heightStyle
 		m.bottom.heightStyle = style
 	case pencodeResizeSourceChanges:
-		node, _ := world.HTMLNode(m.surface, "sc-body")
+		node, _ := world.HTMLNode(m.surface, "sc-main")
 		body, _ := node.Bounds()
 		limit := max(190, body.Width-206)
 		width := int(min(max(190, r.size+x-r.origin), limit))
-		style := paneSizeStyle(m.sourceChangesWidthStyle, "width:", width, "px;max-width:calc(100% - 206px);")
+		style := paneSizeStyle(m.sourceChangesWidthStyle, "width:", width, "px;")
 		changed = changed || style != m.sourceChangesWidthStyle
 		m.sourceChangesWidthStyle = style
+	case pencodeResizeSourceRepositories:
+		node, _ := world.HTMLNode(m.surface, "sc-body")
+		body, _ := node.Bounds()
+		limit := max(120, min(420, body.Width-402))
+		width := int(min(max(120, r.size+x-r.origin), limit))
+		style := paneSizeStyle(source.RepositoriesWidthStyle, "width:", width, "px;")
+		changed = changed || style != source.RepositoriesWidthStyle
+		source.RepositoriesWidthStyle = style
 	}
 	if p.Released {
 		r.target = pencodeResizeNone
@@ -103,9 +121,18 @@ func paneSizeStyle(previous, property string, size int, suffix string) string {
 	return string(b)
 }
 
+func (m *workspaceModel) sidebarHidden() bool {
+	project := m.activeProjectState()
+	return project != nil && (project.Loose || project.sidebarCollapsed)
+}
+
 func (m *workspaceModel) toggleSidebar() {
-	m.sidebarHidden = !m.sidebarHidden
-	if m.sidebarHidden {
+	project := m.activeProjectState()
+	if project == nil || project.Loose {
+		return
+	}
+	project.sidebarCollapsed = !project.sidebarCollapsed
+	if project.sidebarCollapsed {
 		m.resize.target = pencodeResizeNone
 	}
 }

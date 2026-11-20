@@ -10,9 +10,10 @@ import (
 
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
+	uinode "github.com/onix-engine/onix/scene/node"
 	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -22,7 +23,7 @@ func TestMarkdownPreviewCodeWhitespaceLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := dom.Parse("<article class=\"markdown-preview\"><pre><code><span class=\"tok-keyword\">a</span>  <span>b</span>\n    <span>c</span>\n\n\t<span>d</span></code></pre><p><code><span>e</span>  <span>f</span></code></p></article>")
+	root, err := parse.Parse("<article class=\"markdown-preview\"><pre><code><span class=\"tok-keyword\">a</span>  <span>b</span>\n    <span>c</span>\n\n\t<span>d</span></code></pre><p><code><span>e</span>  <span>f</span></code></p></article>")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +118,7 @@ func TestMarkdownPreviewStylesFollowWorkbenchTheme(t *testing.T) {
 			if strings.Contains(document.definition.CSS, "var(") {
 				t.Fatal("unresolved preview theme colors", document.definition.CSS)
 			}
-			root, err := dom.Parse(view.HTML)
+			root, err := parse.Parse(view.HTML)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -126,9 +127,9 @@ func TestMarkdownPreviewStylesFollowWorkbenchTheme(t *testing.T) {
 			if scope == "" {
 				t.Fatal("preview stylesheet is not scoped")
 			}
-			var addScope func(*dom.Node)
-			addScope = func(node *dom.Node) {
-				if node.Type == dom.ElementNode {
+			var addScope func(*uinode.Node)
+			addScope = func(node *uinode.Node) {
+				if node.Type == uinode.ElementNode {
 					node.SetAttr("class", node.AttrValue("class")+" "+scope)
 				}
 				for _, child := range node.Children {

@@ -8,14 +8,14 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/onix-engine/onix/html/dom"
+	uinode "github.com/onix-engine/onix/scene/node"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
 )
 
 func deferredGrid(t *testing.T) *pencodeCustomDocument {
 	t.Helper()
-	node := dom.NewElement("div", dom.Attribute{Name: "data-ref", Value: "grid"}, dom.Attribute{Name: "id", Value: "deferred-grid"})
+	node := uinode.NewElement("div", uinode.Attribute{Name: "data-ref", Value: "grid"}, uinode.Attribute{Name: "id", Value: "deferred-grid"})
 	g, err := parsePencodeGrid(node, `{"source":"sheet-one","rows":10000,"columns":200,"rowHeight":21,"columnWidth":64,"styles":[""],"cells":[]}`)
 	if err != nil {
 		t.Fatal(err)

@@ -86,7 +86,7 @@ func TestProjectMenuInteraction(t *testing.T) {
 			click("add-project")
 			editorContextBounds(t, m, "project-menu-host:"+profile.Address())
 			press(input.KeyUp)
-			if m.projectMenu.index != 2 {
+			if m.projectMenu.index != len(projectMenuRefs) {
 				t.Fatal("up did not wrap to saved host")
 			}
 			press(input.KeyEnter)
@@ -103,6 +103,59 @@ func TestProjectMenuInteraction(t *testing.T) {
 			}
 			if allocations := testing.AllocsPerRun(100, func() { m.focusProjectMenu(m.fontResources) }); allocations != 0 {
 				t.Fatalf("idle project menu allocated %g times", allocations)
+			}
+			history := &pencodeRecentProjects{}
+			s.recentProjects = history
+			click("add-project")
+			trigger := editorContextBounds(t, m, projectMenuRecent)
+			scale := float64(m.settings.Zoom) / 100
+			move := func(x, y float32) {
+				state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(x) * scale, Y: float64(y) * scale})
+				languageInteractionStep(t, app)
+			}
+			move(trigger.X+trigger.Width/2, trigger.Y+trigger.Height/2)
+			editorContextBounds(t, m, "project-menu-recent-empty")
+			press(input.KeyEscape)
+			if !m.projectMenu.open || m.projectMenu.recentStyle != "" {
+				t.Fatal("Escape did not return to the project menu")
+			}
+			localEntry := pencodeRecentProject{Path: t.TempDir()}
+			remoteEntry := pencodeRecentProject{Path: profile.Directory, Profile: profile}
+			for _, entry := range []pencodeRecentProject{localEntry, remoteEntry} {
+				entry.prepare()
+				if err := history.remember(entry); err != nil {
+					t.Fatal(err)
+				}
+			}
+			press(input.KeyRight)
+			press(input.KeyDown)
+			recent, ok := m.fontResources.HTMLControl(m.surface, projectMenuRecentRefs[1])
+			if !ok || m.fontResources.FocusedControl() != recent {
+				t.Fatal("keyboard navigation did not focus the second recent project")
+			}
+			press(input.KeyLeft)
+			move(trigger.X+trigger.Width/2+1, trigger.Y+trigger.Height/2)
+			submenu := editorContextBounds(t, m, projectMenuRecentList)
+			menu = editorContextBounds(t, m, "project-menu")
+			if math.Abs(float64(submenu.X-menu.X-menu.Width)) > 1 && math.Abs(float64(submenu.X+submenu.Width-menu.X)) > 1 {
+				t.Fatalf("submenu does not touch the parent menu: parent=%+v submenu=%+v", menu, submenu)
+			}
+			edge := menu.X + menu.Width - 1
+			if submenu.X < menu.X {
+				edge = menu.X + 1
+			}
+			move(edge, trigger.Y+trigger.Height/2)
+			if m.projectMenu.recentStyle == "" {
+				t.Fatal("crossing the menu padding closed the recent submenu")
+			}
+			row := editorContextBounds(t, m, projectMenuRecentRefs[1])
+			move(row.X+row.Width/2, row.Y+row.Height/2)
+			click(projectMenuRecentRefs[1])
+			if err := awaitFileIO(t, m); err != nil {
+				t.Fatal(err)
+			}
+			if m.projectMenu.open || m.projectPath != localEntry.Path {
+				t.Fatalf("selecting recent project did not open %q: %q", localEntry.Path, m.projectPath)
 			}
 		})
 	}

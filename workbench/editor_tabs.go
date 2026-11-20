@@ -59,6 +59,9 @@ func (m *workspaceModel) selectEditorTabNeighbor(closed pencodeEditorTab) {
 	if next == (pencodeEditorTab{}) {
 		next = previous
 	}
+	if current := m.actions.ui.editor; current != nil {
+		current.saveScrollPositions()
+	}
 	m.actions.ui.editor = nil
 	switch {
 	case next.surface != nil:

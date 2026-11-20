@@ -62,15 +62,27 @@ func (c *Client) CheckGitIgnore(ctx context.Context, root string, paths []string
 	if len(paths) > protocol.IndexPageSize {
 		return nil, protocol.ErrProtocol
 	}
-	e := service(protocol.GitCheckIgnore, root)
-	e.U32(uint32(len(paths)))
+	// Size the complete page before acquiring its transport buffer.
+	size := 12 + len(root) + 4*len(paths)
 	for _, name := range paths {
-		e.String(name)
+		if len(name) > protocol.MaxMessage-size {
+			return nil, protocol.ErrProtocol
+		}
+		size += len(name)
 	}
-	d, err := c.execute(ctx, &e)
+	reply, err := c.requestEncoded(ctx, protocol.Service, size, func(dst []byte) {
+		e := protocol.Encoder{Buffer: dst[:0]}
+		e.U32(uint32(protocol.GitCheckIgnore))
+		e.String(root)
+		e.U32(uint32(len(paths)))
+		for _, name := range paths {
+			e.String(name)
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
+	d := protocol.Decoder{Buffer: reply}
 	if d.U32() != uint32(len(paths)) {
 		return nil, protocol.ErrProtocol
 	}

@@ -124,3 +124,22 @@ func BenchmarkGitCheckIgnore(b *testing.B) {
 		run()
 	}
 }
+
+func TestGitIgnoreOutputChunkBoundaries(t *testing.T) {
+	data := []byte(".gitignore\x001\x00*.log\x00a.log\x00.gitignore\x002\x00!keep.log\x00keep.log\x00\x00\x00\x00main.go\x00")
+	for split := 0; split <= len(data); split++ {
+		var flags [3]bool
+		out := gitIgnoreOutput{matches: flags[:]}
+		for _, chunk := range [][]byte{data[:split], data[split:]} {
+			if n, err := out.Write(chunk); err != nil || n != len(chunk) {
+				t.Fatal(split, n, err)
+			}
+		}
+		if flags != [3]bool{true, false, false} || out.field != 12 || out.partial {
+			t.Fatalf("split %d: flags %v field %d", split, flags, out.field)
+		}
+		if _, err := out.Write([]byte{0}); !errors.Is(err, protocol.ErrProtocol) {
+			t.Fatal("unexpected trailing field", err)
+		}
+	}
+}

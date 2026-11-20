@@ -9,7 +9,7 @@ import (
 
 	"github.com/onix-engine/onix/graphics"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 	"github.com/onix-engine/onix/scene"
 	"github.com/onix-engine/onix/syntax"
@@ -19,7 +19,7 @@ import (
 
 func pencodeComputedTheme(t *testing.T, theme pencodeTheme, page string) map[string]*style.ComputedStyle {
 	t.Helper()
-	document, err := dom.Parse(page)
+	document, err := parse.Parse(page)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestPencodeWorkbenchThemeSyncReusesCache(t *testing.T) {
 		t.Fatalf("theme switch: caret=%d anchor=%d style=%v caretColor=%+v selectionColor=%+v", field.Caret, field.Anchor, ok, nativeStyle.Value.Caret.Background.Fill, nativeStyle.Value.Selection.Background.Fill)
 	}
 	var treeIconFound bool
-	for _, access := range content.Query[htmlui.Component[treeProps, struct{}]]() {
+	for _, access := range content.Query[htmlui.Component[treeProps, treeRowState]]() {
 		component := access.Ref()
 		if component.Props.Theme != model.workbenchTheme {
 			t.Fatal("directory row retained the previous theme")

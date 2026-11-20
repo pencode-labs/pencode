@@ -2,6 +2,8 @@ package workbench
 
 import (
 	"fmt"
+	"path"
+	"slices"
 
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/module"
@@ -18,6 +20,7 @@ const pencodeTreeOverscan = 8
 type pencodeTreeView struct {
 	source            *treeEntry
 	directory         string
+	selection         pencodeTreeSelection
 	rows              []int32
 	revision, built   uint64
 	indexed           int
@@ -26,12 +29,77 @@ type pencodeTreeView struct {
 	area              ecs.Entity
 	position          float32
 	restore           bool
-	editing           bool
+	creating          bool
+	moved             bool // The explorer has applied moves ahead of the search index.
 }
 
 func (tree *pencodeTreeView) entriesChanged() {
 	tree.source = nil
 	tree.revision++
+}
+
+// Move a contiguous preorder subtree, keeping directories before files among
+// its new siblings. Only the moved paths need new strings.
+func (source *pencodeProject) moveTreeEntries(target *pencodeProject, old, next string) bool {
+	find := func(entries []treeEntry, name string) int {
+		return slices.IndexFunc(entries, func(entry treeEntry) bool { return entry.Path == name })
+	}
+	first := find(source.Entries, old)
+	if first < 0 {
+		return false
+	}
+	end := first + 1
+	for end < len(source.Entries) && source.Entries[end].Depth > source.Entries[first].Depth {
+		end++
+	}
+	insert, depth := 0, 0
+	if parent := path.Dir(next); parent != "." {
+		i := find(target.Entries, parent)
+		if i < 0 || !target.Entries[i].IsDir {
+			return false
+		}
+		insert, depth = i+1, int(target.Entries[i].Depth)+1
+	}
+	name := path.Base(next)
+	for insert < len(target.Entries) {
+		entry := target.Entries[insert]
+		if int(entry.Depth) < depth {
+			break
+		}
+		if int(entry.Depth) == depth {
+			if entry.Path == next {
+				return false
+			}
+			if compareTreeNames(name, source.Entries[first].IsDir, entry.Name(), entry.IsDir) < 0 {
+				break
+			}
+		}
+		insert++
+	}
+	offset := depth - int(source.Entries[first].Depth)
+	moved := source.Entries[first:end]
+	for _, entry := range moved {
+		if int(entry.Depth)+offset > protocol.IndexDepthLimit {
+			return false
+		}
+	}
+	// The common single-file case needs no temporary slice allocation.
+	var item [1]treeEntry
+	moved = append(item[:0], moved...)
+	for i := range moved {
+		moved[i].Path = next + moved[i].Path[len(old):]
+		moved[i].Depth = uint16(int(moved[i].Depth) + offset)
+	}
+	if source == target && insert >= end {
+		insert -= len(moved)
+	}
+	source.Entries = slices.Delete(source.Entries, first, end)
+	target.Entries = slices.Insert(target.Entries, insert, moved...)
+	source.tree.entriesChanged()
+	if target != source {
+		target.tree.entriesChanged()
+	}
+	return true
 }
 
 // Directory boundaries depend only on entries, so folding reuses this index.
@@ -62,19 +130,19 @@ func (tree *pencodeTreeView) index(entries []treeEntry) {
 func (project *pencodeProject) visibleTreeRows(model *workspaceModel) []int32 {
 	tree := &project.tree
 	c := &model.fileContext
-	editing := c.project == project && c.inline()
-	if tree.rows != nil && tree.source == sourceFirst(project.Entries) && tree.built == tree.revision && tree.entries == len(project.Entries) && tree.expanded == len(project.ExpandedDirs) && tree.editing == editing && (!editing || tree.directory == c.path) {
+	creating := c.project == project && c.creating()
+	if tree.rows != nil && tree.source == sourceFirst(project.Entries) && tree.built == tree.revision && tree.entries == len(project.Entries) && tree.expanded == len(project.ExpandedDirs) && tree.creating == creating && (!creating || tree.directory == c.path) {
 		return tree.rows
 	}
 	tree.index(project.Entries)
 	tree.rows = tree.rows[:0]
-	if editing && c.path == "" {
+	if creating && c.path == "" {
 		tree.rows = append(tree.rows, -1)
 	}
 	for i := 0; i < len(project.Entries); {
 		entry := project.Entries[i]
 		tree.rows = append(tree.rows, int32(i))
-		if editing && entry.IsDir && entry.Path == c.path {
+		if creating && entry.IsDir && entry.Path == c.path {
 			tree.rows = append(tree.rows, -1)
 		}
 		if entry.IsDir && !project.ExpandedDirs[entry.Path] {
@@ -84,7 +152,7 @@ func (project *pencodeProject) visibleTreeRows(model *workspaceModel) []int32 {
 		}
 	}
 	tree.built, tree.entries, tree.expanded = tree.revision, len(project.Entries), len(project.ExpandedDirs)
-	tree.editing, tree.directory = editing, c.path
+	tree.creating, tree.directory = creating, c.path
 	return tree.rows
 }
 
@@ -98,13 +166,21 @@ func (project *pencodeProject) treeRange(world *module.Content, model *workspace
 		position = min(0, max(project.tree.position, -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)))
 	}
 	c := &model.fileContext
-	editing := c.project == project && c.inline()
-	if (model.revealProject == project || editing && c.needsFocus) && (project.scan == nil || project.scan.staged) {
+	editing := c.project == project && c.inline() && c.needsFocus
+	if (model.revealProject == project || editing) && (project.scan == nil || project.scan.staged) {
+		target := model.revealPath
+		if editing {
+			target = c.path
+		}
+		creating := editing && c.creating()
 		for i, index := range rows {
-			if editing && index != -1 || !editing && (index < 0 || project.Entries[index].Path != model.revealPath) {
+			if creating && index >= 0 || !creating && (index < 0 || project.Entries[index].Path != target) {
 				continue
 			}
-			position = min(0, max(height/2-float32(5+i*pencodeTreeRowHeight+pencodeTreeRowHeight/2), -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)))
+			top := float32(5 + i*pencodeTreeRowHeight)
+			if !editing || creating || top+position < 5 || top+position+pencodeTreeRowHeight > height-13 {
+				position = min(0, max(height/2-top-pencodeTreeRowHeight/2, -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)))
+			}
 			if scroll := world.Mut[scene.UIScroll](project.tree.area); scroll != nil {
 				scroll.Position[1] = position
 			}
@@ -116,7 +192,7 @@ func (project *pencodeProject) treeRange(world *module.Content, model *workspace
 	return min(first, end), end
 }
 
-func renderPencodeTree(context module.ContentRenderContext[projectProps, struct{}], view *htmlui.View, definition, creationDefinition *htmlui.Definition[treeProps, struct{}]) {
+func renderPencodeTree(context module.ContentRenderContext[projectProps, struct{}], view *htmlui.View, definition, editDefinition *htmlui.Definition[treeProps, treeRowState]) {
 	props := context.Props
 	project, model := props.Project, props.Model
 	rows := project.visibleTreeRows(model)
@@ -125,21 +201,28 @@ func renderPencodeTree(context module.ContentRenderContext[projectProps, struct{
 	view.Attr("tree-height", "style", fmt.Sprintf("height:%dpx", len(rows)*pencodeTreeRowHeight))
 	view.Attr("tree-window", "style", fmt.Sprintf("top:%dpx", first*pencodeTreeRowHeight))
 	view.Components("tree-window", nil)
+	c := &model.fileContext
+	renaming := c.project == project && c.dialog == "rename"
 	for _, index := range rows[first:end] {
 		if index < 0 {
-			view.AppendComponentChild("tree-window", componentKey("\x00create"), creationDefinition,
-				treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Depth: model.fileContext.depth, Editing: true}, struct{}{})
+			view.AppendComponentChild("tree-window", componentKey("\x00create"), editDefinition,
+				treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Depth: c.depth, Editing: true}, treeRowState{})
 			continue
 		}
 		entry := project.Entries[index]
+		if renaming && entry.Path == c.path {
+			view.AppendComponentChild("tree-window", componentKey("\x00rename"), editDefinition,
+				treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name(), Depth: int(entry.Depth), IsDir: entry.IsDir, Editing: true}, treeRowState{})
+			continue
+		}
 		view.AppendComponentChild("tree-window", componentKey(entry.Path), definition,
-			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name(), Depth: int(entry.Depth), IsDir: entry.IsDir, Openable: entry.Openable, Ignored: entry.Ignored, GitStatus: project.treeGit.names[entry.Path], HasErrors: !entry.IsDir && model.fileHasErrors(project, entry.Path)}, struct{}{})
+			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name(), Depth: int(entry.Depth), IsDir: entry.IsDir, Openable: entry.Openable, Ignored: entry.Ignored, GitStatus: project.treeGit.names[entry.Path], HasErrors: !entry.IsDir && model.fileHasErrors(project, entry.Path)}, treeRowState{})
 	}
 }
 
 // Runs after scrolling and before component reconciliation, including scrollbar drags.
 func (model *workspaceModel) syncTreeScroll(world *module.Content) {
-	if world == nil || model.sidebarHidden {
+	if world == nil || model.sidebarHidden() {
 		return
 	}
 	for entity, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {

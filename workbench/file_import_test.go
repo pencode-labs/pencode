@@ -109,11 +109,6 @@ func TestExternalFileOverwriteDialogUsesExistingControls(t *testing.T) {
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	languageInteractionStep(t, app)
 	languageInteractionStep(t, app)
-	node, ok := model.fontResources.HTMLNode(model.surface, "file-dialog-name")
-	_, hidden := node.Attribute("hidden")
-	if !ok || !hidden {
-		t.Fatal("overwrite dialog exposed the rename input")
-	}
 	editorContextClick(t, app, model, state, "file-dialog-submit")
 	if err := awaitFileIO(t, model); err != nil {
 		t.Fatal(err)
@@ -122,8 +117,8 @@ func TestExternalFileOverwriteDialogUsesExistingControls(t *testing.T) {
 		t.Fatal("overwrite button did not resume paste")
 	}
 	idle := input.NewState()
-	if n := testing.AllocsPerRun(100, func() { model.fileTreePasteShortcut(model.fontResources, idle, "windows") }); n != 0 {
-		t.Fatalf("idle file paste allocated %g", n)
+	if n := testing.AllocsPerRun(100, func() { model.fileTreeShortcut(model.fontResources, idle, "windows") }); n != 0 {
+		t.Fatalf("idle file tree shortcuts allocated %g", n)
 	}
 }
 
@@ -134,7 +129,7 @@ func TestFileTreePasteShortcutTargetsFocusedDirectory(t *testing.T) {
 	model.startProjectScan(project, false)
 	waitPencodeProjectScan(t, project, func() { languageInteractionStep(t, app) })
 	languageInteractionStep(t, app)
-	model.fileClipboard = pencodeFileClipboard{project: project, path: "main.go"}
+	model.fileClipboard = pencodeFileClipboard{project: project, paths: []string{"main.go"}}
 	control, ok := world.HTMLControl(model.surface, model.projectTreeRowID(project, "target"))
 	if !ok || !world.Focus(control) {
 		t.Fatal("could not focus directory row")

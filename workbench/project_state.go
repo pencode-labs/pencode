@@ -16,19 +16,21 @@ import (
 // Session metadata contains no document contents or running process state.
 // It is read on project open and checkpointed for window recovery.
 type pencodeProjectState struct {
-	ExpandedDirs            map[string]bool   `json:"expandedDirs,omitempty"`
-	ActivePath              string            `json:"activePath,omitempty"`
-	Repository              string            `json:"repository,omitempty"`
-	SidebarWidth            string            `json:"sidebarWidth,omitempty"`
-	PanelHeight             string            `json:"panelHeight,omitempty"`
-	SourceChangesWidth      string            `json:"sourceChangesWidth,omitempty"`
-	OutputSource            string            `json:"outputSource,omitempty"`
-	OutputFilter            string            `json:"outputFilter,omitempty"`
-	Tabs                    []pencodeTabState `json:"tabs,omitempty"`
-	TreePosition            float32           `json:"treePosition,omitempty"`
-	Panel                   pencodePanel      `json:"panel"`
-	SidebarHidden           bool              `json:"sidebarHidden,omitempty"`
-	AllDirectoriesCollapsed bool              `json:"allDirectoriesCollapsed,omitempty"`
+	ExpandedDirs                map[string]bool   `json:"expandedDirs,omitempty"`
+	ActivePath                  string            `json:"activePath,omitempty"`
+	Repository                  string            `json:"repository,omitempty"`
+	SidebarWidth                string            `json:"sidebarWidth,omitempty"`
+	PanelHeight                 string            `json:"panelHeight,omitempty"`
+	SourceChangesWidth          string            `json:"sourceChangesWidth,omitempty"`
+	SourceRepositoriesWidth     string            `json:"sourceRepositoriesWidth,omitempty"`
+	OutputSource                string            `json:"outputSource,omitempty"`
+	OutputFilter                string            `json:"outputFilter,omitempty"`
+	Tabs                        []pencodeTabState `json:"tabs,omitempty"`
+	TreePosition                float32           `json:"treePosition,omitempty"`
+	Panel                       pencodePanel      `json:"panel"`
+	SidebarHidden               bool              `json:"sidebarHidden,omitempty"`
+	SourceRepositoriesCollapsed bool              `json:"sourceRepositoriesCollapsed,omitempty"`
+	AllDirectoriesCollapsed     bool              `json:"allDirectoriesCollapsed,omitempty"`
 }
 
 type pencodeTabState struct {
@@ -84,8 +86,9 @@ func (m *workspaceModel) captureProjectState(p *pencodeProject) pencodeProjectSt
 	state := pencodeProjectState{
 		ExpandedDirs: p.ExpandedDirs, ActivePath: p.ActivePath, Repository: p.sourceControl.Snapshot.Repository.Root,
 		TreePosition: p.tree.position, AllDirectoriesCollapsed: p.AllDirectoriesCollapsed,
-		SidebarHidden: m.sidebarHidden, SidebarWidth: m.sidebarWidthStyle, PanelHeight: m.bottom.heightStyle,
+		SidebarHidden: p.sidebarCollapsed, SidebarWidth: m.sidebarWidthStyle, PanelHeight: m.bottom.heightStyle,
 		SourceChangesWidth: m.sourceChangesWidthStyle, Panel: m.bottom.active, OutputFilter: m.bottom.filter,
+		SourceRepositoriesWidth: p.sourceControl.RepositoriesWidthStyle, SourceRepositoriesCollapsed: p.sourceControl.RepositoriesCollapsed,
 	}
 	if m.bottom.source != nil {
 		state.OutputSource = m.bottom.source.Name
@@ -145,7 +148,10 @@ func (m *workspaceModel) applyProjectState(p *pencodeProject, state *pencodeProj
 	p.tree.revision++
 	p.sourceControl.Snapshot.Repository = sourceRepository{Root: state.Repository, Backend: m.backend}
 	p.sourceControl.FollowPath = state.ActivePath
-	m.sidebarHidden, m.sidebarWidthStyle = state.SidebarHidden, state.SidebarWidth
+	p.sourceControl.RepositoriesWidthStyle = state.SourceRepositoriesWidth
+	p.sourceControl.RepositoriesCollapsed = state.SourceRepositoriesCollapsed
+	p.sidebarCollapsed = !p.Loose && state.SidebarHidden
+	m.sidebarWidthStyle = state.SidebarWidth
 	m.bottom.heightStyle, m.sourceChangesWidthStyle = state.PanelHeight, state.SourceChangesWidth
 	if state.Panel <= pencodePanelDebug && state.Panel != pencodePanelExtension {
 		m.bottom.active = state.Panel

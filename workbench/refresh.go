@@ -43,10 +43,10 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 		m.renderFilePage(view)
 		if regions&pencodeRefreshSelection != 0 {
 			m.renderEditorHeader(view, m.activeFile())
-			for entity, access := range c.World.Query[htmlui.Component[treeProps, struct{}]]() {
+			for entity, access := range c.World.Query[htmlui.Component[treeProps, treeRowState]]() {
 				props := access.Ref().Props
 				if props.Model == m && props.Project == m.activeProjectState() && (props.Path == previous || props.Path == m.activePath) {
-					c.World.UpdateState[treeProps, struct{}](entity, func(*struct{}) {})
+					c.World.UpdateState[treeProps, treeRowState](entity, func(*treeRowState) {})
 				}
 			}
 		}
@@ -74,15 +74,15 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 	}
 	if regions&pencodeRefreshGit != 0 {
 		m.renderSourceStatus(view)
-		for entity, access := range c.World.Query[htmlui.Component[treeProps, struct{}]]() {
+		for entity, access := range c.World.Query[htmlui.Component[treeProps, treeRowState]]() {
 			props := access.Ref().Props
 			if props.Model != m || props.Project == nil {
 				continue
 			}
 			if status := props.Project.treeGit.names[props.Path]; props.GitStatus != status {
 				props.GitStatus = status
-				c.World.Mut[htmlui.Component[treeProps, struct{}]](entity).Props = props
-				c.World.UpdateState[treeProps, struct{}](entity, func(*struct{}) {})
+				c.World.Mut[htmlui.Component[treeProps, treeRowState]](entity).Props = props
+				c.World.UpdateState[treeProps, treeRowState](entity, func(*treeRowState) {})
 			}
 		}
 	}

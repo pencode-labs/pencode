@@ -9,8 +9,8 @@ import (
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 	"github.com/onix-engine/onix/scene"
 	"github.com/onix-engine/onix/text"
@@ -28,7 +28,7 @@ func TestOfficeViewerSavedColumnLayout(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = face.Close() })
 	for _, viewport := range []float64{480, 1174, 1920} {
-		root, err := dom.Parse(`<section class="office-viewer"><header class="office-toolbar"><nav class="sheet-tabs"><button id="selected" aria-pressed="true">Sheet1</button></nav></header><article class="office-content workbook"><table class="sheet" style="width:1100px"><thead><tr><th style="width:48px"></th><th style="width:64px">A</th><th id="header" style="width:736px">B</th><th id="next-header" style="width:252px">C</th></tr></thead><tbody><tr style="height:21px"><th>1</th><td>id</td><td id="cell" style="text-align:center">` + strings.Repeat("[color=#338516]{actorName}[/color]", 5) + `</td><td id="next-cell"></td></tr><tr style="height:21px"><th>2</th><td>next</td><td id="wrapped" style="white-space:pre-wrap;overflow-wrap:break-word">` + strings.Repeat("wrapped text ", 40) + `</td><td></td></tr></tbody></table></article></section>`)
+		root, err := parse.Parse(`<section class="office-viewer"><header class="office-toolbar"><nav class="sheet-tabs"><button id="selected" aria-pressed="true">Sheet1</button></nav></header><article class="office-content workbook"><table class="sheet" style="width:1100px"><thead><tr><th style="width:48px"></th><th style="width:64px">A</th><th id="header" style="width:736px">B</th><th id="next-header" style="width:252px">C</th></tr></thead><tbody><tr style="height:21px"><th>1</th><td>id</td><td id="cell" style="text-align:center">` + strings.Repeat("[color=#338516]{actorName}[/color]", 5) + `</td><td id="next-cell"></td></tr><tr style="height:21px"><th>2</th><td>next</td><td id="wrapped" style="white-space:pre-wrap;overflow-wrap:break-word">` + strings.Repeat("wrapped text ", 40) + `</td><td></td></tr></tbody></table></article></section>`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,8 +74,10 @@ func TestOfficeViewerSavedColumnLayout(t *testing.T) {
 		if next.Style.OverflowX != style.Keyword("visible") || next.Style.OverflowY != style.Keyword("visible") || cell.Style.OverflowX != style.Keyword("hidden") {
 			t.Fatal("empty cells retained clipping or populated cells lost it")
 		}
-		if got := boxes["selected"].Style.BorderRadius.TopLeft; got.Horizontal != style.LengthPx(0) || got.Vertical != style.LengthPx(0) {
-			t.Fatalf("sheet highlight radius = %v, want 0px", got)
+		radius := style.Radius{Horizontal: style.LengthPx(3), Vertical: style.LengthPx(3)}
+		want := style.Corners{TopLeft: radius, TopRight: radius, BottomRight: radius, BottomLeft: radius}
+		if got := boxes["selected"].Style.BorderRadius; got != want {
+			t.Fatalf("sheet highlight radii = %v, want 3px on all corners", got)
 		}
 	}
 }

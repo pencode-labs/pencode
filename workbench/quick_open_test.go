@@ -258,9 +258,9 @@ func TestTitlebarSearchFocusesFiltersAndOpensFile(t *testing.T) {
 	if _, err := app.Step(); err != nil {
 		t.Fatal(err)
 	}
-	queryControl, _ := model.fontResources.Get[htmlui.Control](control)
-	if model.quickQuery != "" || queryControl.Value != "" {
-		t.Fatalf("successful navigation did not clear search: query=%q input=%q", model.quickQuery, queryControl.Value)
+	query := htmlui.ControlValue(app.World, control)
+	if model.quickQuery != "" || query != "" {
+		t.Fatalf("successful navigation did not clear search: query=%q input=%q", model.quickQuery, query)
 	}
 	state = input.NewState()
 	state.PressKey(input.KeyLeftSuper)

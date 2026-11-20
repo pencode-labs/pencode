@@ -17,12 +17,17 @@ import (
 )
 
 func command(ctx context.Context, root string, args []string) ([]byte, error) {
-	return commandInput(ctx, root, args, nil)
+	var out limitedOutput
+	err := runGit(ctx, root, args, nil, &out)
+	if err != nil {
+		return nil, err
+	}
+	return out.data, nil
 }
 
-func commandInput(ctx context.Context, root string, args []string, input []byte) ([]byte, error) {
+func runGit(ctx context.Context, root string, args []string, input []byte, output io.Writer) error {
 	if len(args) == 0 {
-		return nil, protocol.ErrProtocol
+		return protocol.ErrProtocol
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -38,11 +43,11 @@ func commandInput(ctx context.Context, root string, args []string, input []byte)
 	hideServiceWindow(cmd)
 	cmd.WaitDelay = 200 * time.Millisecond
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
-	var output, stderr limitedOutput
-	cmd.Stdout, cmd.Stderr = &output, &stderr
+	var stderr limitedOutput
+	cmd.Stdout, cmd.Stderr = output, &stderr
 	err := cmd.Run()
 	if ctx.Err() != nil {
-		return nil, fmt.Errorf("Git operation interrupted: %w", ctx.Err())
+		return fmt.Errorf("Git operation interrupted: %w", ctx.Err())
 	}
 	var exit *exec.ExitError
 	if input != nil && args[0] == "check-ignore" && errors.As(err, &exit) && exit.ExitCode() == 1 {
@@ -53,9 +58,9 @@ func commandInput(ctx context.Context, root string, args []string, input []byte)
 		if message == "" {
 			message = err.Error()
 		}
-		return nil, fmt.Errorf("git %s: %s", args[0], message)
+		return fmt.Errorf("git %s: %s", args[0], message)
 	}
-	return output.data, nil
+	return nil
 }
 
 func (s *services) gitCheckIgnore(ctx context.Context, root string, d *protocol.Decoder, e *protocol.Encoder) error {
@@ -77,34 +82,61 @@ func (s *services) gitCheckIgnore(ctx context.Context, root string, d *protocol.
 	if err := d.Done(); err != nil {
 		return err
 	}
-	e.Buffer = input[:0]
-	data, err := commandInput(ctx, root, []string{"check-ignore", "--stdin", "-z", "--verbose", "--non-matching"}, input)
-	if err != nil {
+	var matches [protocol.IndexPageSize]bool
+	output := gitIgnoreOutput{matches: matches[:count]}
+	if err := runGit(ctx, root, []string{"check-ignore", "--stdin", "-z", "--verbose", "--non-matching"}, input, &output); err != nil {
 		return err
 	}
+	if output.field != int(count)*4 || output.partial || output.bytes > protocol.MaxMessage-1024 {
+		return protocol.ErrProtocol
+	}
+	e.Buffer = input[:0]
 	e.U32(count)
-	for range count {
-		var pattern []byte
-		for field := range 4 {
-			value, rest, found := bytes.Cut(data, []byte{0})
-			if !found {
-				return protocol.ErrProtocol
-			}
-			if field == 2 {
-				pattern = value
-			}
-			data = rest
-		}
-		if len(pattern) != 0 && pattern[0] != '!' {
+	for _, ignored := range output.matches {
+		if ignored {
 			e.U32(1)
 		} else {
 			e.U32(0)
 		}
 	}
-	if len(data) != 0 {
-		return protocol.ErrProtocol
-	}
 	return nil
+}
+
+// Git writes four NUL-terminated fields per path. Only the first byte of the
+// third field (the pattern) is needed, even when a field spans pipe reads.
+type gitIgnoreOutput struct {
+	matches      []bool
+	field, bytes int
+	partial      bool
+}
+
+func (out *gitIgnoreOutput) Write(data []byte) (int, error) {
+	n := len(data)
+	out.bytes += n
+	if out.bytes > protocol.MaxMessage-1024 {
+		return 0, errors.New("process output exceeds budget")
+	}
+	for len(data) != 0 {
+		if out.field >= len(out.matches)*4 {
+			out.partial = true
+			return n - len(data), protocol.ErrProtocol
+		}
+		if !out.partial && out.field%4 == 2 {
+			out.matches[out.field/4] = data[0] != 0 && data[0] != '!'
+		}
+		end := bytes.IndexByte(data, 0)
+		out.partial = end < 0
+		if out.partial {
+			break
+		}
+		out.field++
+		data = data[end+1:]
+	}
+	return n, nil
+}
+
+func (out *gitIgnoreOutput) ReadFrom(r io.Reader) (int64, error) {
+	return readCommandOutput(out, r)
 }
 
 type limitedOutput struct{ data []byte }
@@ -114,13 +146,17 @@ var commandCopyBuffers = sync.Pool{New: func() any { return new([protocol.ChunkS
 // ReadFrom lets os.File.WriteTo reuse copy scratch instead of allocating a
 // fresh buffer for each stdout/stderr pipe. Output always owns its bytes.
 func (b *limitedOutput) ReadFrom(r io.Reader) (int64, error) {
+	return readCommandOutput(b, r)
+}
+
+func readCommandOutput[W io.Writer](out W, r io.Reader) (int64, error) {
 	buffer := commandCopyBuffers.Get().(*[protocol.ChunkSize]byte)
 	defer commandCopyBuffers.Put(buffer)
 	var total int64
 	for {
 		n, err := r.Read(buffer[:])
 		if n > 0 {
-			written, writeErr := b.Write(buffer[:n])
+			written, writeErr := out.Write(buffer[:n])
 			total += int64(written)
 			if writeErr != nil {
 				return total, writeErr

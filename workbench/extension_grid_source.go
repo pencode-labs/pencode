@@ -7,8 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/input"
+	uinode "github.com/onix-engine/onix/scene/node"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -68,13 +69,13 @@ func (d *pencodeCustomDocument) sendGridRequest() {
 }
 
 func (d *pencodeCustomDocument) acceptGridChunk(view *peb.EditorView) error {
-	tree, err := dom.Parse(view.HTML)
+	tree, err := parse.Parse(view.HTML)
 	if err != nil {
 		return err
 	}
 	var raw string
-	var visit func(*dom.Node)
-	visit = func(node *dom.Node) {
+	var visit func(*uinode.Node)
+	visit = func(node *uinode.Node) {
 		if value, ok := node.Attr("data-pencode-grid-chunk"); ok {
 			raw = value
 		}

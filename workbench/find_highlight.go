@@ -36,13 +36,15 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 		file:   m.activeFile(), revision: m.findRevision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight, ink: text.InkOffsetY, stack: stack, color: colors[0],
 	}
-	if key == paint.key && paint.index == m.findIndex && paint.theme == m.workbenchTheme {
+	parent, _ := world.Get[scene.Parent](paint.root)
+	if key == paint.key && paint.index == m.findIndex && paint.theme == m.workbenchTheme && parent.Entity == m.editor.control {
 		return
 	}
 	if text.LineHeight <= 0 {
 		return
 	}
 	if !world.IsAlive(paint.root) {
+		paint.dispose(world)
 		bundle := ecs.NewBundle(7)
 		bundle.Put(scene.UITransformFromXY(0, 0))
 		bundle.Put(scene.UIGlobalTransform{})
@@ -52,8 +54,12 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 		bundle.Put(scene.ClipRect2D{})
 		bundle.Put(scene.Size2D{})
 		paint.root = world.Spawn(bundle)
+	} else if parent.Entity != m.editor.control {
+		// HTML can remount the textarea while the find bar remains open.
+		if err := world.Insert(paint.root, scene.Parent{Entity: m.editor.control}); err != nil {
+			return
+		}
 	}
-	world.SetIfChanged(paint.root, scene.Parent{Entity: m.editor.control})
 	world.SetIfChanged(paint.root, scene.Visibility{Visible: true})
 	world.SetIfChanged(paint.root, scene.ClipRect2D{Width: size.Width, Height: size.Height})
 	world.SetIfChanged(paint.root, size)

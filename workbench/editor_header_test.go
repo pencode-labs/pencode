@@ -49,6 +49,13 @@ func TestPencodeEditorOpenWithToolbarVisibility(t *testing.T) {
 		if _, err := app.Step(); err != nil {
 			t.Fatal(err)
 		}
+		panel := editorContextBounds(t, model, "editor-panel")
+		tabs := editorContextBounds(t, model, "tabs")
+		body := editorContextBounds(t, model, "editor-body")
+		if tabs.X != body.X || tabs.Width != body.Width ||
+			tabs.Y != panel.Y+1 || body.Y+body.Height != panel.Y+panel.Height-1 {
+			t.Fatalf("tabs and body do not share the editor panel's edges: panel=%+v tabs=%+v body=%+v", panel, tabs, body)
+		}
 		var headerBounds htmlui.Rect
 		for _, item := range []struct {
 			id      string
@@ -70,12 +77,21 @@ func TestPencodeEditorOpenWithToolbarVisibility(t *testing.T) {
 						t.Fatalf("split button outside header: %+v", bounds)
 					}
 				} else {
-					body := editorContextBounds(t, model, "editor-body")
 					if bounds.Y < body.Y || bounds.X+bounds.Width > body.X+body.Width || bounds.Y+bounds.Height > body.Y+body.Height {
 						t.Fatalf("toolbar outside code area: %+v", bounds)
 					}
 				}
 			}
+		}
+		contentTop := tabs.Y + tabs.Height
+		if wantHeader {
+			if headerBounds.Y != contentTop || headerBounds.X != tabs.X || headerBounds.Width != tabs.Width {
+				t.Fatalf("breadcrumbs do not meet the tab strip: tabs=%+v header=%+v", tabs, headerBounds)
+			}
+			contentTop += headerBounds.Height
+		}
+		if body.Y != contentTop {
+			t.Fatalf("gap above editor body: got y=%g, want %g", body.Y, contentTop)
 		}
 	}
 	step(true, false)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
+	engineui "github.com/onix-engine/onix/ui"
 
 	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/peb"
@@ -76,6 +77,9 @@ func (m *workspaceModel) toggleDebugTemplateMenu(world *module.Content) {
 	u.templateIndex = 0
 	if world == nil {
 		return
+	}
+	if entity, ok := world.HTMLControl(m.surface, "debug-add"); ok && !world.Has[engineui.TextFieldKeyHandler](entity) {
+		_ = world.Insert(entity, engineui.TextFieldKeyHandler{Handle: m.menuActivationHandled})
 	}
 	root, rootOK := world.HTMLNode(m.surface, "pencode-root")
 	anchor, anchorOK := world.HTMLNode(m.surface, "debug-add")

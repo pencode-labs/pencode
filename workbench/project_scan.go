@@ -140,8 +140,18 @@ func markTreeGitIgnored(ctx context.Context, backend *client.Client, root string
 	var names, owners, paths [pencodeTreeBatchSize]string
 	var indices [pencodeTreeBatchSize]int
 	var ignored [pencodeTreeBatchSize]bool
+	workspaceRepo := len(repositories) == 1 && repositories[0] == root
+	root = strings.TrimRight(root, "/")
 	for i, entry := range entries {
-		names[i] = strings.TrimRight(root, "/") + "/" + entry.Path
+		if workspaceRepo {
+			owners[i], names[i] = repositories[0], entry.Path
+			// A leading colon is pathspec syntax when Git receives a relative name.
+			if strings.HasPrefix(entry.Path, ":") {
+				names[i] = "./" + entry.Path
+			}
+			continue
+		}
+		names[i] = root + "/" + entry.Path
 		owners[i] = sourceRepositoryForPath(repositories, names[i])
 	}
 	for _, repository := range repositories {
@@ -252,6 +262,28 @@ func (project *pencodeProject) stopScan() {
 	}
 }
 
+// Watch notifications also confirm moves already applied by the explorer.
+// Preserve the visible rows and their cached directory boundaries when the
+// snapshot only updates Git decorations.
+func (project *pencodeProject) reconcileTreeSnapshot(entries []treeEntry) bool {
+	sameRows := project.tree.moved && slices.EqualFunc(project.Entries, entries, func(a, b treeEntry) bool {
+		return a.Path == b.Path && a.IsDir == b.IsDir && a.Depth == b.Depth
+	})
+	if !sameRows {
+		project.Entries = entries
+		project.tree.entriesChanged()
+		return true
+	}
+	changed := false
+	for i := range entries {
+		if project.Entries[i].Ignored != entries[i].Ignored {
+			project.Entries[i].Ignored = entries[i].Ignored
+			changed = true
+		}
+	}
+	return changed
+}
+
 func (model *workspaceModel) startProjectScan(project *pencodeProject, initial bool) {
 	model.startProjectSnapshot(project, initial, false)
 }
@@ -333,15 +365,16 @@ func (model *workspaceModel) pollProjectScans() bool {
 					model.quickCount = -1
 				}
 				if batch.done {
-					changed = true
+					changed = changed || !project.tree.moved
 					if batch.err == nil && !project.treePending {
 						project.treeRepositories = scan.repositories
 					}
 					if scan.staged && batch.err == nil {
-						project.Entries, project.index = scan.entries, batch.index
-						project.tree.entriesChanged()
+						changed = project.reconcileTreeSnapshot(scan.entries) || changed
+						project.index = batch.index
 						if project == model.activeProjectState() {
 							model.quickRevision++
+							changed = changed || model.quickOpen
 						}
 						if scan.previous != 0 {
 							backend, previous := project.backend, scan.previous
@@ -354,7 +387,13 @@ func (model *workspaceModel) pollProjectScans() bool {
 					}
 					if batch.err != nil {
 						project.Status = batch.err.Error()
-					} else if project.Status == pencodeTreeLoading || project.Status == pencodeTreeReloading {
+						changed = true
+					} else {
+						project.tree.moved = false
+						project.tree.selection.prune(project.Entries)
+					}
+					if batch.err == nil && (project.Status == pencodeTreeLoading || project.Status == pencodeTreeReloading) {
+						changed = true
 						project.Status = ""
 						if !scan.initial {
 							project.Status = model.tr("已从磁盘重新加载")

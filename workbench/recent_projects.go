@@ -24,6 +24,13 @@ func (p pencodeRecentProject) same(other pencodeRecentProject) bool {
 	return p.Path == other.Path && p.Profile.SameHost(other.Profile)
 }
 
+func (p *pencodeRecentProject) icon() string {
+	if p.Profile.Remote() {
+		return "icons/remote.svg"
+	}
+	return "icons/folder-opened.svg"
+}
+
 func (p *pencodeRecentProject) prepare() {
 	if !p.Profile.Remote() {
 		p.Profile = connection.Profile{}
@@ -160,11 +167,7 @@ func newRecentProjectDefinition(content *module.Content) (*htmlui.Definition[pen
 				view.Attr("open", "title", entry.description)
 				view.Attr("remove", "aria-label", entry.removeLabel)
 				view.Attr("remove", "title", m.tr("从最近打开中移除"))
-				icon := "icons/folder-opened.svg"
-				if entry.Profile.Remote() {
-					icon = "icons/remote.svg"
-				}
-				view.Attr("icon", "src", m.themedIcon(icon, "icon.foreground"))
+				view.Attr("icon", "src", m.themedIcon(entry.icon(), "icon.foreground"))
 				view.Attr("remove-icon", "src", m.themedIcon("icons/close.svg", "icon.foreground"))
 				view.Event("open", htmlui.EventClick)
 				view.Event("remove", htmlui.EventClick)

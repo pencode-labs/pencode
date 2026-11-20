@@ -118,6 +118,8 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 	return ecs.SystemConfig{
 		Name: "sync_pencode_editor_layout", After: []string{"sync_ui_text_input"},
 		System: func(context *ecs.SystemContext) error {
+			state, _ := context.World.GetResource[*input.State]()
+			previousRevision := state.TextInputConfig().Revision
 			changed := s.syncLayout()
 			if s.active != nil && s.active.model.syncImagePreview(s.active.model.fontResources) {
 				if err := s.active.model.fontResources.SyncHTML(); err != nil {
@@ -133,9 +135,22 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 				}
 			}
 			if s.active != nil {
-				s.active.model.syncInputContextSelection(s.active.model.fontResources)
-				state, _ := context.World.GetResource[*input.State]()
-				s.active.model.syncTerminalIME(s.active.model.fontResources, state)
+				model := s.active.model
+				world := model.fontResources
+				// A focus change after the regular IME pass resets the candidate
+				// rectangle. Publish the final caret before the window reads it.
+				if config := state.TextInputConfig(); config.Active && (changed || config.Revision != previousRevision) {
+					if changed {
+						if err := scene.SyncUIGlobalTransformSystem("").System(context); err != nil {
+							return err
+						}
+					}
+					if err := engineui.SyncTextInputSystem("").System(context); err != nil {
+						return err
+					}
+				}
+				model.syncInputContextSelection(world)
+				model.syncTerminalIME(world, state)
 			}
 			return nil
 		},

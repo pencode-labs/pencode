@@ -19,14 +19,14 @@ func TestSourceChangesResize(t *testing.T) {
 				languageInteractionStep(t, app)
 			}
 			scale := float64(zoom) / 100
-			drag := func(dx float64, coalesced bool) {
+			drag := func(ref string, target pencodeResizeTarget, dx float64, coalesced bool) {
 				t.Helper()
-				b := editorContextBounds(t, m, "sc-changes-resize")
+				b := editorContextBounds(t, m, ref)
 				x, y := float64(b.X+b.Width/2)*scale, float64(b.Y+b.Height/2)*scale
 				state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
 				if !coalesced {
 					languageInteractionStep(t, app)
-					if m.resize.target != pencodeResizeSourceChanges {
+					if m.resize.target != target {
 						t.Fatal("separator did not start resizing")
 					}
 				}
@@ -43,26 +43,26 @@ func TestSourceChangesResize(t *testing.T) {
 				}
 			}
 			before := editorContextBounds(t, m, "sc-changes")
-			body := editorContextBounds(t, m, "sc-body")
+			body := editorContextBounds(t, m, "sc-main")
 			history := editorContextBounds(t, m, "sc-history")
 			handle := editorContextBounds(t, m, "sc-changes-resize")
-			if math.Abs(float64(before.Width-min(max(body.Width*.4, 190), 480))) > 1 {
+			if math.Abs(float64(before.Width-min(max(body.Width*.65, 190), body.Width-206))) > 1 {
 				t.Fatalf("unexpected default changes width: changes=%+v body=%+v", before, body)
 			}
 			if handle.Width != 6 || handle.X < before.X+before.Width-1 || handle.X+handle.Width > history.X+1 || handle.Height != body.Height {
 				t.Fatalf("separator is outside the boundary: changes=%+v handle=%+v history=%+v", before, handle, history)
 			}
-			drag(40, false)
+			drag("sc-changes-resize", pencodeResizeSourceChanges, -40, false)
 			after := editorContextBounds(t, m, "sc-changes")
 			nextHistory := editorContextBounds(t, m, "sc-history")
-			if math.Abs(float64(after.Width-before.Width)-40) > 1 || math.Abs(float64(history.Width-nextHistory.Width)-40) > 1 {
+			if math.Abs(float64(after.Width-before.Width)+40) > 1 || math.Abs(float64(history.Width-nextHistory.Width)+40) > 1 {
 				t.Fatalf("drag did not resize both panes: changes %v -> %v, history %v -> %v", before, after, history, nextHistory)
 			}
-			drag(-20, true)
-			if next := editorContextBounds(t, m, "sc-changes"); math.Abs(float64(next.Width-after.Width)+20) > 1 {
+			drag("sc-changes-resize", pencodeResizeSourceChanges, 20, true)
+			if next := editorContextBounds(t, m, "sc-changes"); math.Abs(float64(next.Width-after.Width)-20) > 1 {
 				t.Fatalf("coalesced drag lost the press origin: %v -> %v", after, next)
 			}
-			drag(10000, false)
+			drag("sc-changes-resize", pencodeResizeSourceChanges, 10000, false)
 			after = editorContextBounds(t, m, "sc-changes")
 			nextHistory = editorContextBounds(t, m, "sc-history")
 			if math.Abs(float64(after.Width-(body.Width-206))) > 1 || nextHistory.Width < 200 {
@@ -73,7 +73,7 @@ func TestSourceChangesResize(t *testing.T) {
 				for range 2 {
 					languageInteractionStep(t, app)
 				}
-				narrowBody := editorContextBounds(t, m, "sc-body")
+				narrowBody := editorContextBounds(t, m, "sc-main")
 				narrowChanges := editorContextBounds(t, m, "sc-changes")
 				if narrowChanges.Width > narrowBody.Width-206+1 || editorContextBounds(t, m, "sc-history").Width < 200 {
 					t.Fatalf("chosen width squeezed the graph after zooming: changes=%+v body=%+v", narrowChanges, narrowBody)
@@ -83,7 +83,7 @@ func TestSourceChangesResize(t *testing.T) {
 					languageInteractionStep(t, app)
 				}
 			}
-			drag(-10000, false)
+			drag("sc-changes-resize", pencodeResizeSourceChanges, -10000, false)
 			if next := editorContextBounds(t, m, "sc-changes"); next.Width != 190 {
 				t.Fatalf("changes minimum width: %+v", next)
 			}
@@ -124,6 +124,30 @@ func TestSourceChangesResize(t *testing.T) {
 			}
 			if current, _ := world.HTMLNode(m.surface, "sc-message"); current != message {
 				t.Fatal("resizing replaced the commit input")
+			}
+			repositories := editorContextBounds(t, m, "sc-repositories")
+			drag("sc-repositories-resize", pencodeResizeSourceRepositories, 35, true)
+			resized := editorContextBounds(t, m, "sc-repositories")
+			if resized.Width < 120 || resized.Width > 420.5 {
+				t.Fatalf("repository divider did not resize the sidebar: before=%+v after=%+v", repositories, resized)
+			}
+			editorContextClick(t, app, m, state, "sc-repositories-toggle")
+			collapsed := editorContextBounds(t, m, "sc-repositories")
+			if collapsed.Width != 36 || !m.sourceState().RepositoriesCollapsed {
+				t.Fatalf("repository sidebar did not collapse: %+v", collapsed)
+			}
+			for _, ref := range []string{"sc-repositories-list", "sc-repositories-resize"} {
+				node, _ := world.HTMLNode(m.surface, ref)
+				if _, visible := node.Bounds(); visible {
+					t.Fatalf("%s remains visible after collapsing the repository sidebar", ref)
+				}
+			}
+			editorContextClick(t, app, m, state, "sc-repositories-toggle")
+			if expanded := editorContextBounds(t, m, "sc-repositories"); expanded.Width != resized.Width {
+				t.Fatalf("expanding failed to restore the selected width: resized=%+v expanded=%+v", resized, expanded)
+			}
+			if current, _ := world.HTMLNode(m.surface, "sc-message"); current != message {
+				t.Fatal("collapsing the repository sidebar replaced the commit input")
 			}
 			state.PressMouse(input.MouseLeft, 0, 0)
 			state.EndFrame()

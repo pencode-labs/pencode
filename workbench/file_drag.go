@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"fmt"
 	"path"
 	"time"
 
@@ -13,11 +14,13 @@ type pencodeFileDrag struct {
 	expandAt              time.Time
 	source, target        *pencodeProject
 	path, directory       string
+	paths                 []string
 	depth                 int
 	previewX, previewY    float32
 	x, y                  float32
 	active, suppressClick bool
 	positioned            bool
+	multiple              bool
 }
 
 func (drag *pencodeFileDrag) isTarget(project *pencodeProject, directory string) bool {
@@ -28,7 +31,11 @@ func (model *workspaceModel) renderFileDrag(view *htmlui.View) {
 	drag := &model.fileDrag
 	setPanelVisible(view, "file-drag-preview", drag.active)
 	if drag.active {
-		view.Text("file-drag-name", path.Base(drag.path))
+		name := path.Base(drag.paths[0])
+		if len(drag.paths) > 1 {
+			name = fmt.Sprintf(model.tr("已选择 %d 项"), len(drag.paths))
+		}
+		view.Text("file-drag-name", name)
 	}
 }
 
@@ -64,7 +71,7 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 	if state.PointerPressed() || model.uiKey(state, input.KeyEnter) || model.uiKey(state, input.KeySpace) {
 		drag.suppressClick = false
 	}
-	if model.folderSearch.open || model.screen != pencodeWorkspace || model.sidebarHidden || model.settingsOpen || model.quickOpen || model.fileContext.open || model.fileContext.dialog != "" || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open || model.uiKey(state, input.KeyEscape) || state.MousePressed(input.MouseRight) {
+	if model.folderSearch.open || model.screen != pencodeWorkspace || model.sidebarHidden() || model.settingsOpen || model.quickOpen || model.fileContext.open || model.fileContext.dialog != "" || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open || model.uiKey(state, input.KeyEscape) || state.MousePressed(input.MouseRight) {
 		active := drag.active
 		*drag = pencodeFileDrag{suppressClick: drag.suppressClick}
 		return active
@@ -74,6 +81,10 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 	x, y := pointer.X/zoom, pointer.Y/zoom
 	if state.PointerPressed() {
 		*drag = pencodeFileDrag{}
+		toggle, extend := treeSelectionModifiers(state)
+		if toggle || extend {
+			return false
+		}
 		// Use the press origin so a move coalesced into the same input frame
 		// cannot turn the destination into the source.
 		px, py := pointer.PressX/zoom, pointer.PressY/zoom
@@ -100,6 +111,10 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 		return false
 	}
 	changed := !drag.active
+	if changed {
+		drag.multiple = drag.source.tree.selection.multiple(drag.path)
+		drag.paths = drag.source.tree.selection.targets(drag.path, true)
+	}
 	drag.active, drag.suppressClick = true, true
 	model.lastFileClick = 0
 	if changed || x != drag.x || y != drag.y || pointer.Released || pointer.WheelY != 0 {
@@ -117,7 +132,7 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 					relative = ""
 				}
 				// The transfer also checks resolved filesystem paths at drop time.
-				if project != drag.source || !pencodeResourceContains(drag.path, relative) {
+				if project != drag.source || resourceIndex(drag.paths, relative) < 0 {
 					target, directory, depth = project, relative, rowDepth
 				}
 			}
@@ -136,7 +151,7 @@ func (model *workspaceModel) updateFileDrag(world *module.Content, state *input.
 	}
 	if pointer.Released {
 		if drag.target != nil {
-			if err := model.moveProjectResource(drag.source, drag.path, drag.target, drag.directory); err != nil {
+			if err := model.transferProjectResources(pencodeFileClipboard{project: drag.source, paths: drag.paths, cut: true}, drag.target, drag.directory, false); err != nil {
 				model.setProjectStatus(drag.target, err.Error())
 			}
 			setPencodeEditorValue(world, model.surface, model.activeContent())

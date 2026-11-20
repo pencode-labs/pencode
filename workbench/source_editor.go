@@ -234,29 +234,30 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 		b.close()
 	} else {
 		b.text("h2", "title", "Confirm Git Operation", "id", "sc-prompt-title")
+		picker := s.promptBranches()
 		message := "Execute " + s.Prompt + "?"
 		switch s.Prompt {
 		case "merge", "rebase":
-			if branch, ok := s.branch(s.PromptHash); ok {
-				message = "Merge branch “" + branch.Name + "” into current branch “" + s.Snapshot.Branch + "”?"
+			if branch, ok := picker.branch(s.PromptHash); ok {
+				message = "Merge branch “" + branch.Name + "” into current branch “" + picker.Current + "”?"
 				if s.Prompt == "rebase" {
-					message = "Rebase current branch “" + s.Snapshot.Branch + "” onto “" + branch.Name + "”? This rewrites the current branch's commits."
+					message = "Rebase current branch “" + picker.Current + "” onto “" + branch.Name + "”? This rewrites the current branch's commits."
 				}
 			}
 		case "branch":
-			if branch, ok := s.branch(s.PromptHash); ok {
+			if branch, ok := picker.branch(s.PromptHash); ok {
 				message = a.tr("基于分支 “") + branch.Name + a.tr("” 创建并切换到新分支：")
 			}
 		case "tag":
-			if branch, ok := s.branch(s.PromptHash); ok {
+			if branch, ok := picker.branch(s.PromptHash); ok {
 				message = a.tr("在分支 “") + branch.Name + a.tr("” 的最新提交上创建标签：")
 			}
 		case "rename-branch":
-			if branch, ok := s.branch(s.PromptHash); ok {
+			if branch, ok := picker.branch(s.PromptHash); ok {
 				message = a.tr("重命名本地分支 “") + branch.Name + "”："
 			}
 		case "delete-branch":
-			if branch, ok := s.branch(s.PromptHash); ok {
+			if branch, ok := picker.branch(s.PromptHash); ok {
 				message = a.tr("删除本地分支 “") + branch.Name + a.tr("”？未合并的分支会由 Git 拒绝删除。")
 				if branch.Remote {
 					message = a.tr("从远程仓库删除分支 “") + branch.Name + a.tr("”？此操作会影响其他协作者，本地分支将保留。")

@@ -84,13 +84,19 @@ func (c *Client) Err() error {
 }
 
 func (c *Client) request(ctx context.Context, kind protocol.Kind, payload []byte) ([]byte, error) {
+	return c.requestEncoded(ctx, kind, len(payload), func(dst []byte) { copy(dst, payload) })
+}
+
+// Encode directly into the upload owned by the writer, after checking the
+// queue and byte budgets. Cancellation cannot recycle it during transmission.
+func (c *Client) requestEncoded(ctx context.Context, kind protocol.Kind, size int, encode func([]byte)) ([]byte, error) {
 	if c == nil {
 		return nil, ErrClosed
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(payload) > protocol.MaxMessage {
+	if size > protocol.MaxMessage {
 		return nil, protocol.ErrProtocol
 	}
 	c.mu.Lock()
@@ -99,17 +105,17 @@ func (c *Client) request(ctx context.Context, kind protocol.Kind, payload []byte
 		c.mu.Unlock()
 		return nil, err
 	}
-	if len(c.pending) >= maxPending || c.uploadBytes+len(payload) > maxBufferedBytes {
+	if len(c.pending) >= maxPending || c.uploadBytes+size > maxBufferedBytes {
 		c.mu.Unlock()
 		return nil, ErrBusy
 	}
-	upload := buffer.Get(len(payload))
+	upload := buffer.Get(size)
 	if c.uploadBytes+cap(upload.Bytes) > maxBufferedBytes {
 		buffer.Put(upload)
 		c.mu.Unlock()
 		return nil, ErrBusy
 	}
-	copy(upload.Bytes, payload)
+	encode(upload.Bytes)
 	r := &call{kind: kind, payload: upload, done: make(chan struct{})}
 	c.next++
 	r.id = c.next

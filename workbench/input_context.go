@@ -224,7 +224,7 @@ func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 		return
 	}
 	field := world.GetMut[engineui.TextField](c.target)
-	control, _ := world.Get[htmlui.Control](c.target)
+	control, isControl := world.Get[htmlui.Control](c.target)
 	if !c.open || field == nil || control.Disabled || field.Value != c.value || !scene.IsInteractive(world, c.target) {
 		return
 	}
@@ -304,6 +304,11 @@ func (m *workspaceModel) runInputContextEdit(world *ecs.World, ref string) {
 			Anchor: caret, Focus: caret, Bubbles: true})
 	} else {
 		world.WriteMessage(engineui.InputEvent[string]{Entity: c.target, Value: value})
+		if isControl {
+			htmlui.CommitTextEdit(world, c.target)
+			htmlui.PublishEvent(world, htmlui.Event{Entity: control.Owner, Target: c.target, ID: control.ID,
+				FormID: control.FormID, Name: control.Name, Kind: htmlui.EventInput, Value: value, Bubbles: true})
+		}
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/pencode-labs/pencode/protocol"
@@ -62,6 +64,27 @@ func TestCheckGitIgnore(t *testing.T) {
 	for _, paths := range [][]string{{""}, {"bad\x00path"}, make([]string, protocol.IndexPageSize+1)} {
 		if _, err := c.CheckGitIgnore(t.Context(), w.Path, paths, nil); err == nil {
 			t.Fatal("invalid path batch accepted")
+		}
+	}
+}
+
+func BenchmarkGitIgnorePage(b *testing.B) {
+	c, w := peer(b, nil)
+	if out, err := exec.Command("git", "-C", w.Path, "init", "-q").CombinedOutput(); err != nil {
+		b.Fatal(err, string(out))
+	}
+	if err := os.WriteFile(filepath.Join(w.Path, ".gitignore"), []byte("*.log\n"), 0600); err != nil {
+		b.Fatal(err)
+	}
+	paths := make([]string, protocol.IndexPageSize)
+	for i := range paths {
+		paths[i] = filepath.Join(w.Path, strings.Repeat("directory/", 8), strconv.Itoa(i)+".log")
+	}
+	flags := make([]bool, 0, len(paths))
+	for b.Loop() {
+		got, err := c.CheckGitIgnore(b.Context(), w.Path, paths, flags)
+		if err != nil || len(got) != len(paths) || !got[len(got)-1] {
+			b.Fatal(err, got)
 		}
 	}
 }

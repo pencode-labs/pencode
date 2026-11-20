@@ -243,10 +243,16 @@ func TestPortsPanelInlineInteractions(t *testing.T) {
 	}
 	var headingVisual ecs.Entity
 	var headingY float32
-	for entity, visual := range app.World.Query2[scene.SpriteLayers2D, scene.Size2D]().All {
-		position := app.World.GetRef[scene.UIGlobalTransform](entity)
-		if len(visual.A.Ref().Layers) > 0 && visual.B.Ref().Width == heading.Width && position != nil && position.Matrix[12] == heading.X && position.Matrix[13] == heading.Y {
-			headingVisual, headingY = entity, position.Matrix[13]
+	for entity, visual := range app.World.Query2[scene.UIPaint2D, scene.UIGlobalTransform]().All {
+		position := visual.B.Ref().Matrix
+		for _, fragment := range visual.A.Ref().Fragments() {
+			x, bottom := position[12]+fragment.X, position[13]+fragment.Y+fragment.Height
+			if x == heading.X && bottom == heading.Y+heading.Height && fragment.Width == heading.Width {
+				headingVisual, headingY = entity, position[13]
+				break
+			}
+		}
+		if headingVisual != 0 {
 			break
 		}
 	}

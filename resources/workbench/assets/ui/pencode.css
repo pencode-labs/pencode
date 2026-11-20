@@ -79,8 +79,7 @@ textarea:focus {
 }
 
 .pencode-sidebar,
-.pencode-tabs,
-.pencode-editor-body,
+.pencode-editor-panel,
 .pencode-settings-nav,
 .pencode-settings-main {
     border: 1px solid var(--vscode-editorGroup-border);
@@ -534,11 +533,6 @@ textarea:focus {
     color: var(--vscode-list-hoverForeground);
 }
 
-.pencode-tree-row.active {
-    background: var(--vscode-list-activeSelectionBackground);
-    color: var(--vscode-list-activeSelectionForeground);
-}
-
 .pencode-tree-row.directory {
     color: var(--vscode-sideBar-foreground);
     font-weight: 600;
@@ -546,6 +540,12 @@ textarea:focus {
 
 .pencode-tree-row.directory:hover {
     color: var(--vscode-list-hoverForeground);
+}
+
+.pencode-tree-row.active,
+.pencode-tree-row.selected {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
 }
 
 .pencode-tree-row.drag-source {
@@ -566,8 +566,10 @@ textarea:focus {
     top: 0;
     z-index: 99;
     display: flex;
+    align-items: center;
+    height: 32px;
     max-width: 240px;
-    padding: 4px 10px;
+    padding: 0 10px;
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: 6px;
     color: var(--vscode-editorWidget-foreground);
@@ -700,15 +702,23 @@ textarea:focus {
     background: var(--vscode-editor-background);
 }
 
+.pencode-editor-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+}
+
 .pencode-tabs {
     height: 32px;
     min-height: 32px;
-    margin-bottom: 6px;
     display: flex;
     align-items: stretch;
     overflow-x: auto;
     overflow-y: hidden;
-    border-radius: 8px;
     background: var(--vscode-editorGroupHeader-tabsBackground);
     scrollbar-width: none;
     scrollbar-color: transparent transparent;
@@ -873,9 +883,7 @@ textarea:focus {
     flex: 1;
     min-height: 0;
     position: relative;
-    border-radius: 8px;
     overflow: hidden;
-    background: var(--vscode-editor-background);
 }
 
 .pencode-find {
@@ -2248,10 +2256,9 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 8px 4px;
+    padding: 0 8px;
     line-height: 24px;
     color: var(--vscode-descriptionForeground);
-    background: var(--vscode-editor-background);
     font-size: calc(12rem / 14);
 }
 .pencode-editor-path {
@@ -2501,15 +2508,6 @@ textarea:focus {
     background: var(--vscode-list-hoverBackground);
 }
 
-.pencode-file-name {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 8px;
-    background: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-}
-
 .pencode-actions {
     display: flex;
     align-items: center;
@@ -2591,7 +2589,29 @@ textarea:focus {
 .sc-toolbar button:hover, .sc-file:hover, .sc-folder:hover, .sc-commit:hover { background: var(--vscode-list-hoverBackground); }
 .sc-workspace button:disabled { opacity: .45; cursor: default; }
 .sc-body { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
-.sc-changes { display: flex; flex-direction: column; width: 40%; min-width: 190px; max-width: 480px; min-height: 0; flex: 0 0 auto; overflow: hidden; padding: 8px; border-right: 1px solid var(--vscode-editorGroup-border); background: var(--vscode-sideBar-background); }
+.sc-main { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.sc-repositories {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    width: 24%;
+    min-width: 120px;
+    max-width: min(420px, calc(100% - 402px));
+    min-height: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--vscode-editorGroup-border);
+    background: var(--vscode-sideBar-background);
+}
+.sc-repositories[data-collapsed="true"] { width: 36px; min-width: 36px; max-width: 36px; }
+.sc-repositories-header { display: flex; align-items: center; flex: 0 0 32px; padding: 0 5px; }
+.sc-repositories-header > .sc-heading { flex: 1; min-width: 0; padding: 0 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-repositories-toggle { flex: 0 0 24px; width: 24px; height: 24px; }
+.sc-repositories-toggle[aria-expanded="true"] .sc-icon { transform: rotate(180deg); }
+.sc-repositories-list { flex: 1; min-height: 0; overflow: auto; padding: 0 4px 4px; }
+.sc-repository-row { display: flex; align-items: stretch; min-height: 34px; min-width: 0; border-radius: 6px; }
+.sc-repository-row:hover { background: var(--vscode-list-hoverBackground); }
+.sc-repository-row[data-active="true"] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.sc-changes { display: flex; flex-direction: column; width: 65%; min-width: 190px; max-width: calc(100% - 206px); min-height: 0; flex: 0 0 auto; overflow: hidden; padding: 8px; border-right: 1px solid var(--vscode-editorGroup-border); background: var(--vscode-sideBar-background); }
 .sc-changes-list { flex: 1; min-height: 0; overflow: auto; padding-right: 10px; }
 .sc-message { flex: 0 0 auto; width: 100%; height: 30px; min-height: 30px; padding: 6px; border: 1px solid var(--vscode-input-border); border-radius: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
 .sc-message-multiline { line-height: 20px; resize: vertical; }
@@ -2606,7 +2626,7 @@ textarea:focus {
 }
 .sc-sync-down { transform: rotate(90deg); }
 .sc-sync-up { transform: rotate(-90deg); }
-.sc-history { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.sc-history { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; }
 .sc-heading { font-size: calc(12rem / 14); font-weight: 600; margin: 0; padding: 7px; color: var(--vscode-foreground); }
 .sc-graph { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
 .sc-commit-row { display: flex; flex-direction: column; width: 100%; min-width: 0; min-height: 32px; overflow: hidden; }
@@ -2729,7 +2749,8 @@ textarea:focus {
 .sc-prompt input { width: 100%; min-height: 28px; padding: 3px 6px; border-radius: 8px; font-family: ui; font-size: inherit; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); }
 .sc-prompt .pencode-close-actions { gap: 6px; margin-top: 12px; }
 .sc-prompt .pencode-close-actions button { padding: 4px 10px; line-height: 18px; }
-@media (max-width: 1000px) { .sc-meta { display: none; } .sc-toolbar { gap: 2px; } .sc-toolbar button { padding: 3px 4px; } }
+@container (max-width: 380px) { .sc-meta { display: none; } }
+@media (max-width: 1000px) { .sc-toolbar { gap: 2px; } .sc-toolbar button { padding: 3px 4px; } }
 
 .sc-overlay { position: absolute; inset: 0; z-index: 42; pointer-events: none; }
 .sc-overlay > * { pointer-events: auto; }
@@ -2748,11 +2769,10 @@ textarea:focus {
     min-width: 0;
 }
 .sc-branch {
-    max-width: 100px;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding-right: 6px;
 }
 .sc-panel-pane .sc-history > .sc-heading { min-height: 32px; }
 .sc-graph-height { position: relative; min-width: 100%; }
@@ -2777,30 +2797,41 @@ textarea:focus {
 .sc-file-status.sc-status-d { color: var(--vscode-gitDecoration-deletedResourceForeground); }
 .sc-file-status.sc-status-r, .sc-file-status.sc-status-c { color: var(--vscode-gitDecoration-renamedResourceForeground); }
 .sc-file-status.sc-status-u { color: var(--vscode-gitDecoration-conflictingResourceForeground); }
-.sc-changes-list, .sc-graph, .sc-code-scroll,
+.sc-repositories-list, .sc-changes-list, .sc-graph, .sc-code-scroll,
 .sc-message, .sc-result-input, .sc-conflict-actions, .sc-prompt p {
     scrollbar-width: thin;
     scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
 }
 
-.sc-repository-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; min-width: 0; margin-bottom: 6px; }
-
+.sc-repository-button,
 .sc-branch-button {
     display: flex;
     align-items: center;
     gap: 5px;
     min-width: 0;
-    height: 24px;
-    padding: 2px 6px;
+    padding: 7px 10px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 6px;
     color: inherit;
     background: transparent;
+    text-align: left;
 }
-.sc-branch-button:hover, .sc-branch-button[aria-expanded="true"] { background: var(--vscode-toolbar-hoverBackground); }
+.sc-repository-button { flex: 1 1 0; }
+.sc-branch-button { flex: 0 1 auto; max-width: 45%; padding: 0; }
+.sc-branch-button-content {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 6px;
+}
+.sc-repository-row[data-active="false"] .sc-branch-button { color: var(--vscode-descriptionForeground); }
+.sc-branch-button:hover > .sc-branch-button-content,
+.sc-branch-button[aria-expanded="true"] > .sc-branch-button-content { background: var(--vscode-toolbar-hoverBackground); }
 .sc-branch-button:disabled { opacity: .45; }
-.sc-branch-button .sc-branch { min-width: 0; padding-right: 0; }
-.sc-repository-name { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-repository-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-branch-menu {
     position: absolute;
     z-index: 42;
@@ -2816,7 +2847,6 @@ textarea:focus {
 .sc-branch-heading { height: 28px; margin: 0; padding: 5px 8px; line-height: 18px; color: var(--vscode-descriptionForeground); font-size: 12px; }
 .sc-branch-menu .sc-branch-item { width: 100%; height: 28px; }
 .sc-branch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.sc-repository-ref { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); }
 .sc-branch-submenu { z-index: 43; width: 420px; padding: 5px; }
 .sc-branch-submenu button { height: 28px; }
 
@@ -2987,6 +3017,7 @@ textarea:focus {
 .pencode-project-menu-item:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .pencode-project-menu-item:disabled { opacity: .5; cursor: default; }
 .pencode-project-menu-item img { flex-shrink: 0; width: 16px; height: 16px; }
+.pencode-project-menu-arrow { margin-left: auto; }
 .pencode-project-menu-hosts { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--vscode-widget-border); }
 .pencode-project-menu-label { padding: 6px 10px; font-size: calc(11rem / 14); color: var(--vscode-descriptionForeground); }
 .pencode-project-menu-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -2994,12 +3025,13 @@ textarea:focus {
 .pencode-project-menu-address { color: var(--vscode-descriptionForeground); font-size: calc(11rem / 14); }
 
 .pencode-project-path { display: flex; align-items: center; gap: 8px; }
-.pencode-project-overlay .pencode-project-picker { inset: auto; width: 620px; max-width: 100%; max-height: 100%; min-width: 0; margin: 0; }
+.pencode-project-overlay .pencode-project-picker { inset: auto; width: 620px; max-width: 100%; height: 536px; max-height: 100%; min-width: 0; margin: 0; }
+.pencode-project-picker > :not(.pencode-project-directories) { flex: 0 0 auto; }
 .pencode-project-picker button:disabled { opacity: .5; cursor: default; }
 .pencode-project-path input { flex: 1; min-width: 0; }
 .pencode-project-path button { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 8px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
 .pencode-project-path button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-.pencode-project-directories { min-height: 160px; max-height: 300px; overflow: auto; margin: 8px 0; border: 1px solid var(--vscode-widget-border); border-radius: 5px; background: var(--vscode-sideBar-background); }
+.pencode-project-directories { flex: 1; min-height: 0; overflow: auto; margin: 8px 0; border: 1px solid var(--vscode-widget-border); border-radius: 5px; background: var(--vscode-sideBar-background); }
 .pencode-project-directory { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 10px; color: var(--vscode-editorWidget-foreground); text-align: left; }
 .pencode-project-directory:hover { background: var(--vscode-list-hoverBackground); }
 .pencode-project-directory:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
@@ -3030,6 +3062,8 @@ textarea:focus {
     color: var(--vscode-editorWidget-foreground);
     background: var(--vscode-editorWidget-background);
     box-shadow: 0 12px 32px var(--vscode-widget-shadow);
+    scrollbar-width: thin;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
 }
 .pencode-extension-dialog,
 .pencode-extension-popup {
@@ -3252,8 +3286,9 @@ textarea:focus {
 }
 
 .pencode-titlebar.native-controls .pencode-project-switcher {
-    left: 100px;
-    width: calc(50% - 292px);
+    left: 81px;
+    right: calc(50% + 192px);
+    width: auto;
 }
 
 .pencode-project-tabs {
@@ -3279,7 +3314,7 @@ textarea:focus {
     min-width: 0;
     max-width: 100%;
     height: 26px;
-    padding: 0 4px 0 8px;
+    padding: 0 4px;
     border-radius: 8px;
     color: var(--vscode-descriptionForeground);
 }
@@ -3297,6 +3332,7 @@ textarea:focus {
     max-width: 140px;
     display: flex;
     align-items: center;
+    gap: 4px;
     min-width: 0;
     height: 26px;
     padding: 0 4px 0 0;
@@ -3304,7 +3340,22 @@ textarea:focus {
     font-size: calc(13rem / 14);
 }
 
-.pencode-project-tab-select span {
+.pencode-project-tab-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 16px;
+    height: 16px;
+    border-radius: 4px;
+    color: #fff;
+    font-size: calc(11rem / 14);
+    font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.pencode-project-tab-name {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -3333,5 +3384,7 @@ textarea:focus {
 
 @media (max-width: 800px) {
     .pencode-project-switcher { width: 206px; }
-    .pencode-titlebar.native-controls .pencode-project-switcher { width: 108px; }
+    .pencode-titlebar.native-controls .pencode-project-switcher {
+        right: calc(100% - 208px);
+    }
 }

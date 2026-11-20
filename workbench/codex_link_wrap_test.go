@@ -8,8 +8,8 @@ import (
 
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 )
 
@@ -26,7 +26,7 @@ func TestCodexLinkIconsAlignWithText(t *testing.T) {
 	for _, typography := range []string{"12px/1.2 ui", "14px/1.7 ui", "18px/2 monospace"} {
 		for _, label := range []string{"Dockerfile", "<code>Dockerfile</code>"} {
 			t.Run(typography+"/"+label, func(t *testing.T) {
-				root, err := dom.Parse(`<article class="codex-chat"><p><a class="codex-link"><img class="codex-link-icon" src="icons/code.svg">` + label + `</a> 在生产使用</p></article>`)
+				root, err := parse.Parse(`<article class="codex-chat"><p><a class="codex-link"><img class="codex-link-icon" src="icons/code.svg">` + label + `</a> 在生产使用</p></article>`)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -91,7 +91,7 @@ func TestCodexLongLinksWrapInsideUserBubble(t *testing.T) {
 	t.Cleanup(func() { _ = face.Close() })
 	const label = "https://paoyoudocs.feishu.cn/wiki/GKgGwCZwYj43miknfcrccOwAnzg?fromScene=spaceOverview"
 	for _, width := range []float64{360, 720, 1000} {
-		root, err := dom.Parse(`<article class="codex-chat"><section class="codex-message codex-user"><div class="codex-user-bubble"><p><a role="link" class="codex-link" href="` + label + `"><img class="codex-link-icon" src="icons/globe.svg" alt="">` + label + `</a><br>根据这个看看现有功能有没有，整理一份开发文档</p></div></section></article>`)
+		root, err := parse.Parse(`<article class="codex-chat"><section class="codex-message codex-user"><div class="codex-user-bubble"><p><a role="link" class="codex-link" href="` + label + `"><img class="codex-link-icon" src="icons/globe.svg" alt="">` + label + `</a><br>根据这个看看现有功能有没有，整理一份开发文档</p></div></section></article>`)
 		if err != nil {
 			t.Fatal(err)
 		}

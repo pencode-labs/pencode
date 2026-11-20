@@ -40,6 +40,10 @@ type fileMove struct {
 	document *client.Document
 	relative string
 }
+type fileResource struct {
+	path  string
+	moves []fileMove
+}
 type fileReloadResult struct {
 	err                       error
 	file                      *openFile
@@ -52,33 +56,34 @@ type fileReloadResult struct {
 // Jobs contain immutable inputs. Project/file pointers are identity tokens;
 // only the foreground may dereference them. The worker owns returned handles.
 type fileIOJob struct {
-	restore                                               *pencodeProjectState
-	err                                                   error
-	ctx                                                   context.Context
-	backend                                               *client.Client
-	language                                              *languageEditPlan
-	searchReplace                                         *folderReplacePlan
-	cancel                                                context.CancelFunc
-	project, target                                       *pencodeProject
-	navigation                                            *fileNavigation
-	file                                                  *openFile
-	imageDocument                                         *pencodeCustomDocument
-	document                                              *client.Document
-	text, baseline                                        piecetree.Snapshot
-	root, relative, destination, content                  string
-	moves                                                 []fileMove
-	reload                                                []fileReloadResult
-	imports                                               []string
-	workspace, targetWorkspace                            uint64
-	id                                                    uint64
-	offset                                                uint64
-	mode                                                  protocol.DocumentMode
-	preview, reveal, directory, cut, duplicate, clipboard bool
-	kind                                                  fileIOKind
-	finished                                              bool
-	external                                              bool
-	overwrite                                             bool
-	tail                                                  bool
+	restore                                    *pencodeProjectState
+	err                                        error
+	ctx                                        context.Context
+	backend                                    *client.Client
+	language                                   *languageEditPlan
+	searchReplace                              *folderReplacePlan
+	cancel                                     context.CancelFunc
+	project, target                            *pencodeProject
+	navigation                                 *fileNavigation
+	file                                       *openFile
+	imageDocument                              *pencodeCustomDocument
+	document                                   *client.Document
+	text, baseline                             piecetree.Snapshot
+	root, relative, destination, content       string
+	resources                                  []fileResource
+	cutClipboard                               []string
+	reload                                     []fileReloadResult
+	imports                                    []string
+	workspace, targetWorkspace                 uint64
+	id                                         uint64
+	offset                                     uint64
+	mode                                       protocol.DocumentMode
+	preview, reveal, directory, cut, duplicate bool
+	kind                                       fileIOKind
+	finished                                   bool
+	external                                   bool
+	overwrite                                  bool
+	tail                                       bool
 }
 type fileNavigation struct {
 	selection       *lsp.Range
@@ -102,6 +107,7 @@ type fileIOResult struct {
 	workspace            protocol.Workspace
 	content, destination string
 	reload               []fileReloadResult
+	completed            []string
 	page                 protocol.DocumentPage
 	importIndex          int
 	external             bool
@@ -236,17 +242,12 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		r.err = document.SaveSnapshot(j.ctx, j.text)
 	case fileCreate:
 		r.err = j.backend.Create(j.ctx, j.workspace, j.destination, j.directory)
-	case fileRemove:
-		r.err = j.backend.Remove(j.ctx, j.workspace, j.relative)
-	case fileRename:
-		r.destination = j.destination
-		r.err = j.backend.Rename(j.ctx, j.workspace, j.relative, j.destination)
-	case fileTransfer:
-		r.destination, r.err = j.backend.Transfer(j.ctx, j.workspace, j.targetWorkspace, j.relative, j.destination, j.cut, j.duplicate)
+	case fileRemove, fileRename, fileTransfer:
+		r.executeResources()
 	case fileImport:
 		for i, source := range j.imports {
 			r.importIndex = i
-			r.destination, r.err = j.backend.Import(j.ctx, j.workspace, source, j.destination, j.overwrite && i == 0)
+			_, r.err = j.backend.Import(j.ctx, j.workspace, source, j.destination, j.overwrite && i == 0)
 			if r.err != nil {
 				break
 			}
@@ -279,17 +280,43 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 			r.reload = append(r.reload, fileReloadResult{relative: tab.Path, document: document, content: content, err: err})
 		}
 	}
-	if r.err == nil && (j.kind == fileRename || j.kind == fileTransfer && j.cut) {
-		for _, move := range j.moves {
+	return
+}
+
+func (r *fileIOResult) executeResources() {
+	j := r.job
+	r.completed = make([]string, 0, len(j.resources))
+	workspace := j.workspace
+	if j.kind == fileTransfer {
+		workspace = j.targetWorkspace
+	}
+	for _, resource := range j.resources {
+		destination := ""
+		switch j.kind {
+		case fileRemove:
+			r.err = j.backend.Remove(j.ctx, j.workspace, resource.path)
+		case fileRename:
+			destination = j.destination
+			r.err = j.backend.Rename(j.ctx, j.workspace, resource.path, destination)
+		case fileTransfer:
+			destination, r.err = j.backend.Transfer(j.ctx, j.workspace, workspace, resource.path, j.destination, j.cut, j.duplicate)
+		}
+		if r.err != nil {
+			if len(j.resources) > 1 {
+				r.err = fmt.Errorf("%s: %w", resource.path, r.err)
+			}
+			return
+		}
+		r.completed = append(r.completed, destination)
+		if j.project == j.target && resource.path == destination {
+			continue
+		}
+		for _, move := range resource.moves {
 			if move.document == nil {
 				continue
 			}
-			destination := r.destination + move.relative[len(j.relative):]
-			workspace := j.workspace
-			if j.kind == fileTransfer {
-				workspace = j.targetWorkspace
-			}
-			if err := move.document.Move(j.ctx, workspace, destination); err != nil {
+			next := destination + move.relative[len(resource.path):]
+			if err := move.document.Move(j.ctx, workspace, next); err != nil {
 				if r.moveErrors == nil {
 					r.moveErrors = make(map[*client.Document]error)
 				}
@@ -297,7 +324,6 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 			}
 		}
 	}
-	return
 }
 func (m *workspaceModel) submitFileIO(j *fileIOJob) error {
 	if !m.backendConnected() {
@@ -438,7 +464,7 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 	}
 	if j.project != nil && !m.projectLive(j.project) {
 		if j.target != nil && m.projectLive(j.target) {
-			m.refreshResourceProject(j.target)
+			m.startProjectSnapshot(j.target, false, true)
 		}
 		return
 	}

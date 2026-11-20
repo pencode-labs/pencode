@@ -4,14 +4,14 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/onix-engine/onix/html/dom"
+	uinode "github.com/onix-engine/onix/scene/node"
 )
 
 // Only validation and region lookup storage is pooled; published DOM trees and
 // view strings keep their original ownership.
 type pencodeExtensionScratch struct {
 	previous map[string]*pencodeExtensionRegion
-	trees    map[string]*dom.Node
+	trees    map[string]*uinode.Node
 	refs     map[string]bool
 	ids      map[string]bool
 	regions  []pencodeExtensionRegion
@@ -20,7 +20,7 @@ type pencodeExtensionScratch struct {
 var pencodeExtensionScratches = sync.Pool{New: func() any {
 	return &pencodeExtensionScratch{
 		previous: make(map[string]*pencodeExtensionRegion),
-		trees:    make(map[string]*dom.Node),
+		trees:    make(map[string]*uinode.Node),
 		refs:     make(map[string]bool),
 		ids:      make(map[string]bool),
 	}

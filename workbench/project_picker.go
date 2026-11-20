@@ -5,7 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gl/mathgl/mgl32"
 	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/configuration"
@@ -32,8 +34,10 @@ type pencodeProjectPicker struct {
 	path, input          string
 	directory, listed    string
 	filter               string
+	visibleFilter        string
 	message              string
 	names                []string
+	showNames            bool
 	connectionOpen       bool
 	failed               bool
 	autoOpen             bool
@@ -100,7 +104,7 @@ func (model *workspaceModel) filterProjectDirectory(value string) {
 }
 
 func (p *pencodeProjectPicker) matches(name string) bool {
-	return p.directory == p.listed && strings.HasPrefix(name, p.filter)
+	return p.showNames && strings.HasPrefix(name, p.visibleFilter)
 }
 
 func (p *pencodeProjectPicker) selected() bool {
@@ -114,9 +118,11 @@ func (model *workspaceModel) readProjectDirectory() {
 	}
 	p.message, p.failed = model.tr("选择项目目录后，点击“打开此目录”"), false
 	if p.directory == "" || p.directory == p.listed {
+		p.visibleFilter, p.showNames = p.filter, p.directory != ""
 		return
 	}
 	if !model.connectionConnected(p.profile) {
+		p.showNames = false
 		p.message, p.failed = model.tr("远程服务已断开，请重新连接后选择项目"), true
 		return
 	}
@@ -157,11 +163,20 @@ func (model *workspaceModel) pollProjectPicker() bool {
 			return true
 		}
 		if result.err != nil {
-			p.autoOpen = false
+			p.autoOpen, p.showNames = false, false
 			p.message, p.failed = model.tr("读取目录失败：")+result.err.Error(), true
 			return true
 		}
+		if world := model.fontResources; world != nil && p.path != result.path {
+			list, _ := world.HTMLNode(model.surface, "connection-project-list")
+			if area, ok := list.ScrollContainer(); ok {
+				if scroll := world.Mut[scene.UIScroll](area); scroll != nil {
+					scroll.Position, scroll.Momentum = mgl32.Vec2{}, mgl32.Vec2{}
+				}
+			}
+		}
 		p.path, p.parent, p.names, p.listed = result.path, result.parent, result.names, result.directory
+		p.visibleFilter, p.showNames = p.filter, true
 		if p.filter == "" && p.input == result.directory {
 			model.setProjectPickerInput(result.path)
 		}
@@ -196,6 +211,9 @@ func newProjectDirectoryDefinition(content *module.Content) (*htmlui.Definition[
 			HandleEvent: func(c *module.ContentEventContext[pencodeProjectDirectoryProps, struct{}]) {
 				model := c.Props.Model
 				p := &model.session.connection.picker
+				if p.busy || !p.matches(c.Props.Name) {
+					return
+				}
 				model.browseProjectDirectory(strings.TrimSuffix(p.path, "/") + "/" + c.Props.Name)
 				markPencodeRootDirtyByModel(c.World, model)
 			},

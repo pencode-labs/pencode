@@ -15,8 +15,8 @@ import (
 
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/scene"
+	uinode "github.com/onix-engine/onix/scene/node"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/client"
@@ -317,7 +317,7 @@ func TestPencodeCustomViewSparseTextIDs(t *testing.T) {
 	if id, _ := cells[1].Attr("id"); id != "pencode-extension-kept" {
 		t.Fatal("authored empty-cell ID was discarded")
 	}
-	for _, node := range []*dom.Node{root, ancestor, cells[2], cells[3], root.Children[1]} {
+	for _, node := range []*uinode.Node{root, ancestor, cells[2], cells[3], root.Children[1]} {
 		if id, _ := node.Attr("id"); id == "" {
 			t.Fatalf("text, scroll ancestor, reference or control lost its ID: %s", node)
 		}

@@ -135,9 +135,9 @@ func TestInputContextExtensionOverlaysAndMultiline(t *testing.T) {
 			languageInteractionStep(t, app)
 			entity, _ := model.fontResources.HTMLControl(model.surface, "pencode-extension-context-test-input")
 			field := model.fontResources.Ref[engineui.TextField](entity)
-			control := model.fontResources.Ref[htmlui.Control](entity)
-			if field == nil || field.Text().String() != "甲中\n🙂尾" || control.Value != field.Text().String() || !field.Focused {
-				t.Fatalf("multiline paste did not synchronize native control: field=%+v control=%+v", field, control)
+			value := htmlui.ControlValue(app.World, entity)
+			if field == nil || value != "甲中\n🙂尾" || !field.Focused {
+				t.Fatalf("multiline paste did not update the focused control: field=%+v value=%q", field, value)
 			}
 			if model.actions.ui.overlay != overlay {
 				t.Fatal("text menu action dismissed its containing extension overlay")

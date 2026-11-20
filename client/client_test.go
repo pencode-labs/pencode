@@ -18,7 +18,7 @@ import (
 	"github.com/pencode-labs/pencode/server"
 )
 
-func peer(t *testing.T, wrap func(net.Conn) io.ReadWriteCloser) (*Client, protocol.Workspace) {
+func peer(t testing.TB, wrap func(net.Conn) io.ReadWriteCloser) (*Client, protocol.Workspace) {
 	t.Helper()
 	a, b := net.Pipe()
 	var conn io.ReadWriteCloser = b

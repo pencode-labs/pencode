@@ -35,12 +35,17 @@
 
 
   <nav id="project-menu" data-ref="project-menu" class="pencode-project-menu" role="menu" aria-label="打开项目" hidden>
-    <button id="project-menu-local" data-ref="project-menu-local" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-local-icon" src="icons/folder-opened.svg" alt=""><span>打开本地项目</span></button>
-    <button id="project-menu-remote" data-ref="project-menu-remote" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-remote-icon" src="icons/remote.svg" alt=""><span>打开远程项目</span></button>
+    <button id="project-menu-local" data-ref="project-menu-local" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-local-icon" src="icons/folder-opened.svg" alt=""><span>本地项目</span></button>
+    <button id="project-menu-remote" data-ref="project-menu-remote" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-remote-icon" src="icons/remote.svg" alt=""><span>远程项目</span></button>
+    <button id="project-menu-recent" data-ref="project-menu-recent" class="pencode-project-menu-item" type="button" role="menuitem" aria-haspopup="menu" aria-controls="project-menu-recent-list" aria-expanded="false"><img data-ref="project-menu-recent-icon" src="icons/folder-opened.svg" alt=""><span>最近项目</span><img data-ref="project-menu-recent-arrow" class="pencode-project-menu-arrow" src="icons/chevron-right.svg" alt=""></button>
     <section data-ref="project-menu-hosts" class="pencode-project-menu-hosts" role="group" aria-label="远程主机" hidden>
       <div class="pencode-project-menu-label" aria-hidden="true">远程主机</div>
       <div data-ref="project-menu-host-list"></div>
     </section>
+  </nav>
+  <nav id="project-menu-recent-list" data-ref="project-menu-recent-list" class="pencode-project-menu" role="menu" aria-label="最近项目" hidden>
+    <div id="project-menu-recent-empty" data-ref="project-menu-recent-empty" class="pencode-project-menu-label">暂无最近打开的项目</div>
+    <div data-ref="project-menu-recent-items"></div>
   </nav>
 
   <section id="connection-panel" data-ref="connection-panel" class="pencode-connection" role="dialog" aria-labelledby="connection-title" hidden>
@@ -268,7 +273,7 @@
       <p data-ref="connection-project-host" class="pencode-connection-feedback"></p>
       <label for="connection-project-path">远端目录</label>
       <div class="pencode-project-path"><input id="connection-project-path" data-ref="connection-project-path" type="text" autocomplete="off" spellcheck="false"><button id="connection-project-up" data-ref="connection-project-up" class="pencode-icon-button" type="button" title="上级目录" aria-label="上级目录"><img data-ref="connection-project-up-icon" src="icons/arrow-up.svg" alt=""></button></div>
-      <nav data-ref="connection-project-list" class="pencode-project-directories" aria-label="子文件夹"></nav>
+      <nav id="connection-project-list" data-ref="connection-project-list" class="pencode-project-directories" aria-label="子文件夹"></nav>
       <p data-ref="connection-project-feedback" class="pencode-connection-feedback" role="status" aria-live="polite"></p>
       <footer class="pencode-connection-form-actions"><button id="connection-project-cancel" data-ref="connection-project-cancel" type="button">取消</button><button id="connection-project-open" data-ref="connection-project-open" class="primary" type="button">打开此目录</button></footer>
     </section>

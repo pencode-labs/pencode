@@ -8,8 +8,8 @@ import (
 
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/scene"
@@ -141,6 +141,26 @@ func TestProjectTitlebarOverflowRevealsSelectionAndKeepsPlusVisible(t *testing.T
 	}
 }
 
+func TestProjectTitlebarIcon(t *testing.T) {
+	for name, want := range map[string]string{"Pencode": "P", "项目": "项", "  demo": "d", "": "?"} {
+		if got := projectTabInitial(name); got != want {
+			t.Errorf("initial of %q = %q, want %q", name, got, want)
+		}
+	}
+
+	styles := make(map[string]bool)
+	var projects []*pencodeProject
+	for i := range len(projectTabIconStyles) + 4 {
+		path := fmt.Sprintf("/workspace/%d/project", i)
+		iconStyle := projectTabIconStyle(path, projects)
+		if styles[iconStyle] {
+			t.Fatalf("color repeated for %s: %s", path, iconStyle)
+		}
+		styles[iconStyle] = true
+		projects = append(projects, &pencodeProject{Path: path, tabIconStyle: iconStyle})
+	}
+}
+
 func TestProjectTitlebarFitsNativeControlsAndSearch(t *testing.T) {
 	source, err := os.ReadFile("../resources/workbench/assets/ui/pencode.css")
 	if err != nil {
@@ -163,15 +183,23 @@ func TestProjectTitlebarFitsNativeControlsAndSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = face.Close() })
-	for _, native := range []bool{false, true} {
+	for _, zoom := range []int{0, pencodeMinZoom, 90, pencodeDefaultZoom, pencodeMaxZoom} {
 		for _, width := range []float64{640, 800, 960, 1440} {
-			t.Run(fmt.Sprintf("native=%v/width=%g", native, width), func(t *testing.T) {
+			t.Run(fmt.Sprintf("nativeZoom=%d/width=%g", zoom, width), func(t *testing.T) {
 				class := "pencode-titlebar"
-				if native {
+				inline := ""
+				if zoom != 0 {
 					class += " native-controls"
+					if zoom < pencodeDefaultZoom {
+						inline = nativeProjectSwitcherStyles[zoom-pencodeMinZoom]
+					}
 				}
-				page := `<html style="font-size:14px"><body><div class="pencode-root"><div class="pencode-content"><header class="` + class + `"><div id="switcher" class="pencode-project-switcher"><div id="tabs" class="pencode-project-tabs"><div id="active" class="pencode-project-tab active"><button id="select" class="pencode-project-tab-select"><span>A very long project name for a narrow window</span></button><button id="close" class="pencode-project-tab-close"></button></div></div><button id="add" class="pencode-icon-button"></button></div><div id="search" class="pencode-titlebar-search"></div></header></div></div></body></html>`
-				document, err := dom.Parse(page)
+				page := `<html style="font-size:14px"><body><div class="pencode-root"><div class="pencode-content"><header class="` + class + `">
+<div id="switcher" class="pencode-project-switcher" style="` + inline + `"><div id="tabs" class="pencode-project-tabs"><div id="active" class="pencode-project-tab active">
+<button id="select" class="pencode-project-tab-select"><span id="icon" class="pencode-project-tab-icon" style="` + projectTabIconStyles[0] + `"><span>项</span></span><span id="name" class="pencode-project-tab-name">A very long project name for a narrow window</span></button>
+<button id="close" class="pencode-project-tab-close"></button></div></div><button id="add" class="pencode-icon-button"></button></div>
+<div id="search" class="pencode-titlebar-search"></div></header></div></div></body></html>`
+				document, err := parse.Parse(page)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -195,12 +223,18 @@ func TestProjectTitlebarFitsNativeControlsAndSearch(t *testing.T) {
 				}
 				visit(root)
 				tabs, tab, close, add, search := boxes["tabs"].BorderBox(), boxes["active"].BorderBox(), boxes["close"].BorderBox(), boxes["add"].BorderBox(), boxes["search"].BorderBox()
-				left := 9.0
-				if native {
-					left = 107
+				if zoom != 0 && tabs.X*float64(zoom)/100 < 88 {
+					t.Fatalf("tabs overlap native controls at %d%%: tabs=%+v", zoom, tabs)
 				}
-				if tabs.X < left-.1 || tabs.Width <= 0 || add.X+add.Width > search.X-.1 || tab.Width > tabs.Width+.1 || close.X+close.Width > tabs.X+tabs.Width+.1 {
+				if zoom == pencodeDefaultZoom && tabs.X != 88 {
+					t.Fatalf("tabs start at %g, want 88 at default zoom", tabs.X)
+				}
+				if tabs.Width <= 0 || add.X+add.Width > search.X-.1 || tab.Width > tabs.Width+.1 || close.X+close.Width > tabs.X+tabs.Width+.1 {
 					t.Fatalf("titlebar overlaps or clips controls: tabs=%+v tab=%+v close=%+v add=%+v search=%+v", tabs, tab, close, add, search)
+				}
+				icon, name := boxes["icon"].BorderBox(), boxes["name"].BorderBox()
+				if icon.Width != 16 || icon.Height != 16 || icon.X+icon.Width > name.X || name.X+name.Width > close.X {
+					t.Fatalf("project icon or name overlaps: icon=%+v name=%+v close=%+v", icon, name, close)
 				}
 			})
 		}

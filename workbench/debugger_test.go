@@ -195,7 +195,7 @@ func TestDebugBreakpointsFollowDirectoryRenameAndDeletion(t *testing.T) {
 	if len(m.debug.rows) != 1 || m.debug.rows[0].label != "lib/main.go" {
 		t.Fatalf("breakpoint list did not follow rename: %+v", m.debug.rows)
 	}
-	m.fileContext = pencodeFileContext{project: p, path: "lib", directory: true, dialog: "delete"}
+	m.fileContext = pencodeFileContext{project: p, path: "lib", paths: []string{"lib"}, directory: true, dialog: "delete"}
 	if err := fileDialogAndWait(t, m); err != nil {
 		t.Fatal(err)
 	}

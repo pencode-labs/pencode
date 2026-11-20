@@ -28,17 +28,41 @@ type viewResource struct {
 	data   []byte
 	config image.Config
 }
+
+// Keep only the most recent prepared view. Published asset maps are immutable.
+type preparedView struct {
+	assets                                  map[string][]byte
+	source, markup, surface, root, document string
+}
+
 type viewResources struct {
 	remote         *client.Extension
 	cache          map[string]viewResource
 	root, document string
+	last           preparedView
 	bytes          int
 }
 
-func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfaceID string) (map[string][]byte, error) {
+func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfaceID string) (assets map[string][]byte, err error) {
 	if view == nil {
 		return nil, nil
 	}
+	source := view.HTML
+	if source == "" {
+		r.last = preparedView{}
+		return nil, nil
+	}
+	if last := &r.last; source == last.source && surfaceID == last.surface && r.root == last.root && r.document == last.document {
+		view.HTML = last.markup
+		return last.assets, nil
+	}
+	r.last = preparedView{}
+	reusable := true
+	defer func() {
+		if err == nil && reusable {
+			r.last = preparedView{source: source, markup: view.HTML, assets: assets, surface: surfaceID, root: r.root, document: r.document}
+		}
+	}()
 	const maxAssets, maxAssetBytes, maxTotalBytes, maxPixels = 64, 4 << 20, 8 << 20, 4 << 20
 	nodes, err := html.ParseFragment(strings.NewReader(view.HTML), &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div})
 	if err != nil {
@@ -47,6 +71,14 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 	paths := make([]string, 0, 8)
 	sources := make(map[string]string)
 	changed, focusCount := false, 0
+	iconBytes, iconPixels := 0, 0
+	var networkCtx context.Context
+	var cancelNetwork context.CancelFunc
+	defer func() {
+		if cancelNetwork != nil {
+			cancelNetwork()
+		}
+	}()
 	var walk func(*html.Node) error
 	walk = func(node *html.Node) error {
 		if r.document != "" && node.Type == html.ElementNode && node.Data == "a" {
@@ -115,27 +147,48 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 					continue
 				}
 				source := node.Attr[i].Val
-				if strings.HasPrefix(source, "data:") {
-					uri, err := r.inlineImage(source)
-					if err != nil {
-						return err
-					}
-					node.Attr[i].Val = uri
-					if _, ok := sources[uri]; !ok {
-						if len(paths) == maxAssets {
-							return fmt.Errorf("编辑器图片资源超过 %d 项", maxAssets)
-						}
-						sources[uri] = uri
-						paths = append(paths, uri)
-					}
-					break
+				inline := strings.HasPrefix(source, "data:")
+				var parsed *url.URL
+				var parseErr error
+				if !inline {
+					parsed, parseErr = url.Parse(source)
 				}
-				parsed, parseErr := url.Parse(source)
-				if r.document != "" && (parseErr != nil || parsed.Scheme != "peb" && !validResourcePath(source, true)) {
+				remoteImage := surfaceID != "" && parsed != nil && (parsed.Scheme == "http" || parsed.Scheme == "https")
+				svgIcon := surfaceID != "" && strings.HasPrefix(source, "data:image/svg+xml;base64,")
+				documentImage := !inline && r.document != "" && (parseErr != nil || parsed.Scheme != "peb" && !validResourcePath(source, true))
+				if inline || remoteImage || documentImage {
 					changed = true
-					uri, err := r.documentImage(ctx, source)
+					var uri string
+					var err error
+					switch {
+					case inline:
+						uri, err = r.inlineImage(source)
+						if err != nil && !svgIcon {
+							return err
+						}
+					case remoteImage:
+						// All network images in an action share a budget so an
+						// unreachable icon cannot exhaust the action reply deadline.
+						if networkCtx == nil {
+							networkCtx, cancelNetwork = context.WithTimeout(ctx, StartupTimeout/2)
+						}
+						uri, err = r.documentImage(networkCtx, source)
+					default:
+						uri, err = r.documentImage(ctx, source)
+					}
+					if _, used := sources[uri]; !used && err == nil && (remoteImage || svgIcon) {
+						asset := r.cache[uri]
+						pixels := asset.config.Width * asset.config.Height
+						if len(paths) == maxAssets || iconBytes+len(asset.data) > maxTotalBytes || iconPixels+pixels > maxPixels {
+							err = fmt.Errorf("菜单图标总量超过限制")
+						} else {
+							iconBytes += len(asset.data)
+							iconPixels += pixels
+						}
+					}
 					if err != nil {
-						// A missing image must not hide the rest of the document.
+						// Keep the control usable and retry missing images on the next update.
+						reusable = false
 						node.Attr = append(node.Attr[:i], node.Attr[i+1:]...)
 						node.Attr = append(node.Attr, html.Attribute{Key: "title", Val: err.Error()})
 						break
@@ -154,7 +207,7 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 					return parseErr
 				}
 				name := parsed.Path
-				if parsed.Scheme == "peb" && parsed.Host == r.remote.Info.ID && (strings.HasPrefix(parsed.Path, "/inline/") || r.document != "" && strings.HasPrefix(parsed.Path, "/document/")) {
+				if parsed.Scheme == "peb" && parsed.Host == r.remote.Info.ID && (strings.HasPrefix(parsed.Path, "/inline/") || strings.HasPrefix(parsed.Path, "/document/")) {
 					if _, ok := r.cache[source]; !ok {
 						return fmt.Errorf("未知的文档图片 %q", source)
 					}
@@ -232,7 +285,7 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 		r.cache[name] = viewResource{data, config}
 		r.bytes += len(data)
 	}
-	assets := make(map[string][]byte, len(paths))
+	assets = make(map[string][]byte, len(paths))
 	totalBytes, totalPixels := 0, int64(0)
 	for _, name := range paths {
 		asset := r.cache[name]
@@ -246,15 +299,20 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 	return assets, renderViewNodes(view, nodes)
 }
 
-// Inline raster images become validated, memory-backed assets just like bundled
+// Inline images become validated, memory-backed assets just like bundled
 // images. This also lets remote extensions show clipboard previews without files.
 func (r *viewResources) inlineImage(source string) (string, error) {
 	header, encoded, ok := strings.Cut(source, ",")
-	ext := ".png"
-	if header == "data:image/jpeg;base64" {
+	var ext string
+	switch header {
+	case "data:image/png;base64":
+		ext = ".png"
+	case "data:image/jpeg;base64":
 		ext = ".jpg"
-	} else if header != "data:image/png;base64" {
-		return "", fmt.Errorf("仅支持 PNG 或 JPEG 内嵌图片")
+	case "data:image/svg+xml;base64":
+		ext = ".svg"
+	default:
+		return "", fmt.Errorf("仅支持 PNG、JPEG 或 SVG 内嵌图片")
 	}
 	if !ok || len(source) > peb.MaxDocument {
 		return "", fmt.Errorf("内嵌图片超过大小限制")

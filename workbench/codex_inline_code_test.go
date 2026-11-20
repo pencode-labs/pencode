@@ -8,8 +8,8 @@ import (
 
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 )
 
@@ -29,7 +29,7 @@ func TestCodexInlineCodeSpacingAndWrapping(t *testing.T) {
 	t.Cleanup(func() { _ = face.Close() })
 	for _, text := range []string{"conf_wi", "<strong>conf_wi</strong>", strings.Repeat("game-common/app/", 8)} {
 		t.Run(text, func(t *testing.T) {
-			root, err := dom.Parse(`<article class="codex-chat"><p id="paragraph" style="width:240px"><span id="before">当前使用</span><code id="code">` + text + `</code><span id="after">分支</span></p></article>`)
+			root, err := parse.Parse(`<article class="codex-chat"><p id="paragraph" style="width:240px"><span id="before">当前使用</span><code id="code">` + text + `</code><span id="after">分支</span></p></article>`)
 			if err != nil {
 				t.Fatal(err)
 			}

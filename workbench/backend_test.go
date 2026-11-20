@@ -219,7 +219,7 @@ func openProjectFileAndWait(t testing.TB, model *workspaceModel, p *pencodeProje
 }
 func moveResourceAndWait(t testing.TB, model *workspaceModel, source *pencodeProject, relative string, target *pencodeProject, directory string) error {
 	t.Helper()
-	if err := model.moveProjectResource(source, relative, target, directory); err != nil {
+	if err := model.transferProjectResources(pencodeFileClipboard{project: source, paths: []string{relative}, cut: true}, target, directory, false); err != nil {
 		return err
 	}
 	return awaitFileIO(t, model)

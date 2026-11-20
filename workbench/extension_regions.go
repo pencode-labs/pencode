@@ -1,7 +1,7 @@
 package workbench
 
 import (
-	"github.com/onix-engine/onix/html/dom"
+	uinode "github.com/onix-engine/onix/scene/node"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -10,7 +10,7 @@ import (
 // Each data-pencode-region element must have a data-ref; nested regions belong
 // to their outer region and are replaced with it.
 type pencodeExtensionRegion struct {
-	tree       *dom.Node
+	tree       *uinode.Node
 	definition *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
 	ref, html  string
 }

@@ -175,10 +175,9 @@ func TestPencodeThemeSelectionAndEditorColors(t *testing.T) {
 	if !ok {
 		t.Fatal("theme selector is missing")
 	}
-	field, _ := content.Get[ui.Selector](selector)
 	control, _ := content.Get[htmlui.Control](selector)
-	if field.Selected != 2 || len(control.Options) != 3 {
-		t.Fatalf("theme options or selection are stale: %+v", field)
+	if control.Selected != 2 || len(control.Options) != 3 {
+		t.Fatalf("theme options or selection are stale: selected=%d options=%d", control.Selected, len(control.Options))
 	}
 	saved, _ := loadPencodeSettings()
 	if saved.Theme != "light-plus" {

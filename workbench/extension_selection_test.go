@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/onix-engine/onix/font"
-	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/scene"
 	engineui "github.com/onix-engine/onix/ui"
@@ -30,7 +30,7 @@ func TestExtensionSelectableTextWhitespace(t *testing.T) {
 		{"table", "<p>结果</p><table><tr><th>名称</th><th>是否通过</th></tr>\n<tr><td>8 个中文</td><td>✅</td></tr>\n<tr><td>超出</td><td>❌</td></tr></table><p>结束</p>", "结果\n\n名称\t是否通过\n8 个中文\t✅\n超出\t❌\n\n结束"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			tree, err := dom.Parse(`<div data-ref="transcript">` + test.html + `</div>`)
+			tree, err := parse.Parse(`<div data-ref="transcript">` + test.html + `</div>`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,6 +132,82 @@ func TestExtensionSelectionRangeRetainsWhitespace(t *testing.T) {
 	}
 	if allocations := testing.AllocsPerRun(100, func() { _ = s.text() }); allocations != 0 {
 		t.Fatalf("copy allocated %g", allocations)
+	}
+}
+
+func TestExtensionSelectionWrappedTable(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	w := m.fontResources
+	if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
+		HTML: `<div data-ref="transcript" data-pencode-selectable><section data-ref="message" data-pencode-region><p>Start</p><table><tr><th>Operation</th><th>Route</th><th>Details</th></tr><tr><td>Query<br><code>getList</code></td><td><code>35409/<br>35410</code></td><td>Empty request. <code>getList</code><br>Returns opponents.</td></tr><tr><td>Preview<br><code>getOpponentInfo</code></td><td><code>35403/<br>35404</code></td><td>Send <code>enemyId</code>.<br>Read <code>formation</code> and <code>enemyHeroList</code>.</td></tr></table><p>Fields: <code>formation</code> and <code>enemyHeroList</code>.</p><p>Finish</p></section></div>`,
+		CSS:  `[data-ref="transcript"] { height:650px; overflow:auto; font-size:14px; line-height:24px; } table { width:520px; table-layout:fixed; } td, th { padding:8px; vertical-align:top; } code { font-size:13px; }`,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	markPencodeRootDirtyByModel(w, m)
+	for range 3 {
+		languageInteractionStep(t, app)
+	}
+	selection := &m.actions.ui.selection
+	var copied string
+	state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
+	point := func(label string, caret int) (float64, float64) {
+		t.Helper()
+		for _, values := range w.Query2[scene.Text2D, scene.UIGlobalTransform]() {
+			text := values.A.Ref()
+			if text.Value != label {
+				continue
+			}
+			x, y, _, height, ok := scene.TextCaretRect2D(text, text.Text(), caret)
+			if !ok {
+				t.Fatal("missing text geometry")
+			}
+			matrix := values.B.Ref().Matrix
+			return float64(matrix[12] + (x+.1)*matrix[0]), float64(matrix[13] + (y+height*.5)*matrix[5])
+		}
+		t.Fatalf("missing text %q", label)
+		return 0, 0
+	}
+	for _, test := range []struct {
+		from, to, want string
+		start, end     int
+	}{
+		{"Start", "Finish", "", 0, 6},
+		{"Finish", "Start", "", 6, 0},
+		{"getOpponentInfo", "getOpponentInfo", "getOpponentInfo", 0, 15},
+		{"getOpponentInfo", "getOpponentInfo", "getOpponentInfo", 15, 0},
+	} {
+		selection.lastClick = selection.lastClick.Add(-1e9)
+		x, y := point(test.from, test.start)
+		endX, endY := point(test.to, test.end)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		if selection.surface == nil || selection.content == "" {
+			t.Fatal("table selection did not begin")
+		}
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: endX, Y: endY})
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: endX, Y: endY})
+		languageInteractionStep(t, app)
+		want := test.want
+		if want == "" {
+			want = selection.content
+		}
+		selection.copy(state)
+		if copied != want {
+			t.Fatalf("drag %q:%d to %q:%d copied %q, want %q", test.from, test.start, test.to, test.end, copied, want)
+		}
+		for entity, text := range w.Query[scene.Text2D]() {
+			if _, inside := extensionTextContainer(w, entity, selection.area); !inside || text.Ref().Value == "" {
+				continue
+			}
+			found := false
+			for _, span := range selection.spans {
+				found = found || span.entity == entity
+			}
+			if !found {
+				t.Errorf("rendered table text %q cannot be selected", text.Ref().Value)
+			}
+		}
 	}
 }
 

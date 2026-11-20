@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/onix-engine/onix/input"
-	"github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/remote"
@@ -71,10 +70,8 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 	}
 	checkInput := func(want string) {
 		t.Helper()
-		control, _ := model.fontResources.Get[htmlui.Control](field)
-		text, _ := model.fontResources.Get[ui.TextField](field)
-		if control.Value != want || text.Text().String() != want {
-			t.Fatalf("displayed path = %q / %q, want %q", control.Value, text.Text().String(), want)
+		if got := htmlui.ControlValue(app.World, field); got != want {
+			t.Fatalf("displayed path = %q, want %q", got, want)
 		}
 	}
 	checkChoices("app", "assets", "other")
@@ -88,15 +85,40 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 	typePath(directory + "/ap")
 	checkChoices("app")
 	checkInput(directory + "/ap")
+	pickerBounds := editorContextBounds(t, model, "connection-project-picker")
+	listBounds := editorContextBounds(t, model, "connection-project-list")
+	checkBounds := func() {
+		t.Helper()
+		if got := editorContextBounds(t, model, "connection-project-picker"); got != pickerBounds {
+			t.Fatalf("picker bounds changed from %+v to %+v", pickerBounds, got)
+		}
+		if got := editorContextBounds(t, model, "connection-project-list"); got != listBounds {
+			t.Fatalf("list bounds changed from %+v to %+v", listBounds, got)
+		}
+	}
 	for entity, access := range model.fontResources.Query[htmlui.Component[pencodeProjectDirectoryProps, struct{}]]() {
 		component := access.Get()
-		component.Definition.Behavior.HandleEvent(&htmlui.ComponentEventContext[pencodeProjectDirectoryProps, struct{}]{World: app.World, Component: entity, Props: &component.Props, Ref: "directory", Event: htmlui.Event{Kind: htmlui.EventClick}})
+		event := htmlui.ComponentEventContext[pencodeProjectDirectoryProps, struct{}]{World: app.World, Component: entity, Props: &component.Props, Ref: "directory", Event: htmlui.Event{Kind: htmlui.EventClick}}
+		component.Definition.Behavior.HandleEvent(&event)
+		component.Definition.Behavior.HandleEvent(&event)
 		break
 	}
 	checkInput(directory + "/app")
+	// Hold the response until a frame has rendered the loading state.
+	picker := &session.connection.picker
+	select {
+	case result := <-picker.results:
+		step()
+		checkChoices("app")
+		checkBounds()
+		picker.results <- result
+	case <-time.After(5 * time.Second):
+		t.Fatal("missing directory response")
+	}
 	waitProjectPicker(t, model)
 	step()
 	checkChoices("nested")
+	checkBounds()
 	checkInput(directory + "/app")
 	model.connectionEvent("connection-project-up", "")
 	waitProjectPicker(t, model)
@@ -105,6 +127,7 @@ func TestProjectPickerFiltersAndSynchronizesEditedInput(t *testing.T) {
 	checkInput(directory)
 	typePath("")
 	checkChoices()
+	checkBounds()
 	if session.connection.picker.selected() {
 		t.Fatal("empty path selected a directory")
 	}

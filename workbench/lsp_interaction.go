@@ -510,8 +510,11 @@ func (model *workspaceModel) languageSymbolAtPointer(world *module.Content, x, y
 		if segmentEnd <= segmentStart {
 			continue
 		}
-		var bounds scene.TextRangeRect2D
-		ui.underlineRects, bounds, ok = scene.AppendTextUnderlineRects2D(ui.underlineRects, text, i, segmentStart, segmentEnd, 1)
+		rects, bounds, ok := scene.AppendTextUnderlineRects2D(ui.underlineRects, text, i, segmentStart, segmentEnd, 1)
+		if ok && bounds.Width > 0 {
+			// Use the full bounds so the link underline crosses descenders.
+			ui.underlineRects = append(rects[:len(ui.underlineRects)], bounds)
+		}
 		if hovered && ok && localX >= bounds.X && localX < bounds.X+bounds.Width {
 			underline = htmlui.Rect{X: ui.underlineOriginX + bounds.X, Y: ui.underlineOriginY + bounds.Y, Width: bounds.Width, Height: bounds.Height}
 			valid = true

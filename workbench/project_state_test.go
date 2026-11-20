@@ -31,7 +31,9 @@ func TestProjectStateRoundTrip(t *testing.T) {
 	p.ExpandedDirs = map[string]bool{"src": false}
 	p.tree.position = -1230
 	p.sourceControl.Snapshot.Repository.Root = p.Path + "/nested"
-	m.sidebarHidden, m.sidebarWidthStyle, m.sourceChangesWidthStyle = true, "flex-basis:300px;", "width:260px;"
+	p.sourceControl.RepositoriesCollapsed, p.sourceControl.RepositoriesWidthStyle = true, "width:300px;"
+	m.toggleSidebar()
+	m.sidebarWidthStyle, m.sourceChangesWidthStyle = "flex-basis:300px;", "width:260px;"
 	m.bottom.active, m.bottom.heightStyle = pencodePanelSourceControl, "height:320px;max-height:75%;"
 	m.bottom.source, m.bottom.filter = m.outputStore().Channel("server"), "error"
 	m.syncActiveProjectFields()
@@ -68,11 +70,14 @@ func TestProjectStateRoundTrip(t *testing.T) {
 	if !maps.Equal(restored.ExpandedDirs, p.ExpandedDirs) || restored.tree.position != -1230 || !restored.tree.restore || next.revealProject != nil {
 		t.Fatal("restoration expanded or recentered the saved tree")
 	}
-	if next.bottom.active != m.bottom.active || next.bottom.heightStyle != m.bottom.heightStyle || next.sidebarHidden != m.sidebarHidden || next.sidebarWidthStyle != m.sidebarWidthStyle || next.sourceChangesWidthStyle != m.sourceChangesWidthStyle || next.bottom.source.Name != "server" || next.bottom.filter != "error" {
+	if next.bottom.active != m.bottom.active || next.bottom.heightStyle != m.bottom.heightStyle || !next.sidebarHidden() || next.sidebarWidthStyle != m.sidebarWidthStyle || next.sourceChangesWidthStyle != m.sourceChangesWidthStyle || next.bottom.source.Name != "server" || next.bottom.filter != "error" {
 		t.Fatal("panel layout was not restored")
 	}
 	if restored.sourceControl.Snapshot.Repository.Root != p.sourceControl.Snapshot.Repository.Root || restored.sourceControl.FollowPath != restored.ActivePath {
 		t.Fatal("repository choice was not restored")
+	}
+	if !restored.sourceControl.RepositoriesCollapsed || restored.sourceControl.RepositoriesWidthStyle != p.sourceControl.RepositoriesWidthStyle {
+		t.Fatal("repository sidebar layout was not restored")
 	}
 }
 

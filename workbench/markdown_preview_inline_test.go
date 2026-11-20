@@ -7,8 +7,8 @@ import (
 
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 	"github.com/onix-engine/onix/syntax"
 )
@@ -38,7 +38,7 @@ func TestMarkdownPreviewInlineCodePaddingAndWrapping(t *testing.T) {
 		}
 		for name, text := range map[string]string{"short": "return", "path": strings.Repeat("game-common/app/", 8)} {
 			t.Run(id+"/"+name, func(t *testing.T) {
-				root, err := dom.Parse(`<article class="markdown-preview"><p style="width:240px"><code id="code"><span class="tok-keyword">` + text + `</span></code> after</p></article>`)
+				root, err := parse.Parse(`<article class="markdown-preview"><p style="width:240px"><code id="code"><span class="tok-keyword">` + text + `</span></code> after</p></article>`)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -35,8 +35,31 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 			languageInteractionStep(t, app)
 		}
 	}
-	show(false, false)
+	show(true, false)
 	surface := m.actions.ui.editor
+	state, _ := app.World.GetResource[*input.State]()
+	closeID := "file-tab-close:" + surface.rootID
+	hoverClose := func() {
+		t.Helper()
+		control, ok := htmlui.ControlByID(app.World, m.surface, closeID)
+		if !ok {
+			t.Fatal("busy tab close control is missing")
+		}
+		bounds := editorContextBounds(t, m, closeID)
+		scale := float64(m.settings.Zoom) / 100
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(bounds.X+bounds.Width/2) * scale, Y: float64(bounds.Y+bounds.Height/2) * scale})
+		languageInteractionStep(t, app)
+		if inputState, ok := app.World.Get[scene.InputState2D](control); !ok || !inputState.Hovered {
+			t.Fatal("mouse did not enter the busy tab close control")
+		}
+	}
+	hoverClose()
+	if m.actions.ui.editor != surface || !htmlui.Animating(app.World) {
+		t.Fatal("hovering the active busy tab changed selection or stopped its animation")
+	}
+	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: 0, Y: 0})
+	languageInteractionStep(t, app)
+	show(false, false)
 	file, project := m.activeProjectState().ActivePath, m.activeProjectState()
 	m.selectProjectTab(project, file)
 	markPencodeRootDirtyByModel(m.fontResources, m)
@@ -76,8 +99,13 @@ func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 	check(false, true)
 	show(true, false)
 	check(true, false)
-	state, _ := app.World.GetResource[*input.State]()
-	editorContextClick(t, app, m, state, "file-tab-close:"+surface.rootID)
+	hoverClose()
+	check(true, false)
+	show(false, true)
+	check(false, true)
+	show(true, false)
+	check(true, false)
+	editorContextClick(t, app, m, state, closeID)
 	for range 3 {
 		languageInteractionStep(t, app)
 	}
@@ -132,6 +160,21 @@ func TestExtensionEditorTabFollowsOutputUntilUserScrolls(t *testing.T) {
 	s = scroll()
 	if end := s.ContentSize.Y() - s.ViewportSize.Y(); math.Abs(float64(s.Position.Y()+end)) > 1 {
 		t.Fatal("streaming did not follow the bottom")
+	}
+	first := m.actions.ui.editor
+	project := m.activeProjectState()
+	m.selectProjectTab(project, project.ActivePath)
+	markPencodeRootDirtyByModel(w, m)
+	languageInteractionStep(t, app)
+	if m.actions.ui.editor != nil {
+		t.Fatal("project editor tab did not become active")
+	}
+	m.selectExtensionTab(first)
+	markPencodeRootDirtyByModel(w, m)
+	languageInteractionStep(t, app)
+	s = scroll()
+	if end := s.ContentSize.Y() - s.ViewportSize.Y(); math.Abs(float64(s.Position.Y()+end)) > 1 {
+		t.Fatalf("switching editor tabs lost the bottom position: %+v", s)
 	}
 }
 

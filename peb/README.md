@@ -556,7 +556,7 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 
 按钮设置 `data-ref` 和 `data-pencode-copy="文本"` 后，点击由宿主直接将属性值写入本机剪贴板，保留原始换行、空格和 Markdown，无需声明 `Events`。属性值须进行 HTML 转义；禁用和隐藏按钮不执行复制。显式订阅该按钮的 `click` 时，由扩展接管操作。
 
-文本控件设置 `data-pencode-paste-images` 后，粘贴快捷键可接收剪贴板图片，无需额外订阅事件。宿主发送 `Kind:"paste"`、`InputType:"image/png"`、`Data:PNG data URL`，并携带当前 `Value`、`Anchor` 和 `Focus`。普通文本继续原生粘贴。图片编码后超过 `MaxDocument`（2 MiB，原图约 1.5 MiB）时发送 `InputType:"error"`，`Data` 为可展示的错误消息。扩展 UI 的 `img` 支持 PNG/JPEG base64 data URL；宿主校验后转为缓存的内存图片资源，沿用现有图片尺寸及总量限制。
+文本控件设置 `data-pencode-paste-images` 后，粘贴快捷键可接收剪贴板图片，无需额外订阅事件。宿主发送 `Kind:"paste"`、`InputType:"image/png"`、`Data:PNG data URL`，并携带当前 `Value`、`Anchor` 和 `Focus`。普通文本继续原生粘贴。图片编码后超过 `MaxDocument`（2 MiB，原图约 1.5 MiB）时发送 `InputType:"error"`，`Data` 为可展示的错误消息。扩展 UI 的 `img` 支持 PNG、JPEG 和 SVG 的 base64 data URL，也支持 HTTP(S) 图片地址。宿主校验后将图片缓存在内存中，沿用现有图片尺寸及总量限制。
 
 生命周期事件无需显式订阅：
 

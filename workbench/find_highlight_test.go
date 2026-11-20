@@ -100,6 +100,59 @@ func TestFindHighlightBackgroundAndCurrentBorder(t *testing.T) {
 	}
 }
 
+func TestFindHighlightAfterEditorRemount(t *testing.T) {
+	app, m, _, _ := languageInteractionFixture(t)
+	world := m.fontResources
+	const content = "CS_ActivityController_getConf = 5103;\nSC_ActivityGetConfResponse = 5104;"
+	m.updateActiveContent(content)
+	m.setEditorValueAndCaret(world, content, 0)
+	m.findQuery = "Activity"
+	m.runShortcut(world, pencodeShortcutFind)
+	step := func() {
+		markPencodeRootDirtyByModel(world, m)
+		for range 4 {
+			languageInteractionStep(t, app)
+		}
+	}
+	assertPaint := func() {
+		t.Helper()
+		paint := &m.editor.findPaint
+		if got, _ := world.Get[scene.Parent](paint.root); got.Entity != m.editor.control {
+			t.Fatalf("find paint is attached to %d, want editor %d", got.Entity, m.editor.control)
+		}
+		backgrounds, borders := 0, 0
+		for _, entity := range paint.quads {
+			if visible, _ := world.Get[scene.Visibility](entity); visible.Visible {
+				sprite, _ := world.Get[scene.Sprite2D](entity)
+				if sprite.Shape.BorderWidth > 0 {
+					borders++
+				} else {
+					backgrounds++
+				}
+			}
+		}
+		if m.findCountLabel != "1/2" || backgrounds != 2 || borders != 1 {
+			t.Fatalf("find count=%s, backgrounds=%d, borders=%d", m.findCountLabel, backgrounds, borders)
+		}
+	}
+	step()
+	assertPaint()
+	control := m.editor.control
+	file := m.activeFile()
+	project := m.activeProjectState()
+	const other = "binary.dat"
+	project.Files[other] = &openFile{Path: other, Name: other, unsupported: true}
+	project.Tabs = append(project.Tabs, other)
+	m.selectProjectTab(project, other)
+	step()
+	m.selectProjectTab(project, file.Path)
+	step()
+	if m.editor.control == control || !world.IsAlive(m.editor.control) {
+		t.Fatal("editor was not remounted")
+	}
+	assertPaint()
+}
+
 func TestFindHighlightThemeColors(t *testing.T) {
 	for _, id := range syntax.BuiltinThemeIDs {
 		t.Run(id, func(t *testing.T) {

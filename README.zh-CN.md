@@ -64,7 +64,7 @@ cd pencode
 go mod tidy
 ```
 
-请使用提供 `github.com/onix-engine/onix/html/{css,dom,layout,style}` 公开包的 Onix 源码版本。工作台及其测试已使用这些 API，可以作为独立模块构建：
+请使用提供 `github.com/onix-engine/onix/html/parse` 和 `github.com/onix-engine/onix/scene/node` 的 Onix 源码版本。在仓库根目录编译 Pencode。
 
 ```sh
 go build ./...

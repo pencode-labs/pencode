@@ -22,6 +22,9 @@ func (model *workspaceModel) selectExtensionTab(surface *pencodeExtensionSurface
 	if model.closing.action != pencodeCloseNone {
 		return
 	}
+	if current := model.actions.ui.editor; current != nil && current != surface {
+		current.saveScrollPositions()
+	}
 	model.cancelFileOpens()
 	model.actions.ui.editor = surface
 	model.sourceState().Active = ""

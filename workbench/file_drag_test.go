@@ -3,6 +3,7 @@ package workbench
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -79,7 +80,7 @@ func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 			model.setZoom(model.fontResources, zoom)
 			model.updateActiveContent("unsaved drag text")
 			before := model.activeFile()
-			model.fileClipboard = pencodeFileClipboard{project: project, path: "target/keep.txt"}
+			model.fileClipboard = pencodeFileClipboard{project: project, paths: []string{"target/keep.txt"}}
 			languageInteractionStep(t, app)
 			fileDragStart(t, app, model, state, model.projectTreeRowID(project, "main.go"))
 			checkFileDragPreview(t, model, "")
@@ -94,7 +95,7 @@ func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 			if model.activePath != "target/main.go" || model.activeContent() != before.content() || !model.activeFile().Dirty || len(model.activeFile().undo) != len(before.undo) {
 				t.Fatal("drag lost the active document or its edit history")
 			}
-			if model.fileClipboard.path != "target/keep.txt" {
+			if !slices.Equal(model.fileClipboard.paths, []string{"target/keep.txt"}) {
 				t.Fatal("drag changed an unrelated clipboard resource")
 			}
 			if _, err := os.Stat(filepath.Join(project.Path, "main.go")); !os.IsNotExist(err) {
@@ -117,6 +118,50 @@ func TestFileDragMovesBuffersAndFolderToRoot(t *testing.T) {
 				t.Fatalf("folder did not return to root: %q, %v", content, err)
 			}
 		})
+	}
+}
+
+func TestFileDragUpdatesTreeBeforeWatchConfirmation(t *testing.T) {
+	model, project := resourceTestModel(t)
+	for _, name := range []string{"from/nested/a.go", "keep/stay.go", "to/last.go"} {
+		resourceTestWrite(t, project, name, "")
+	}
+	model.startProjectWatch(project)
+	t.Cleanup(project.stopWatch)
+	model.startProjectScan(project, true)
+	waitPencodeProjectScan(t, project, func() { model.pollProjectScans() })
+	model.pollProjectWatches()
+	project.ExpandedDirs["keep"] = true
+	project.ExpandedDirs["from/nested"] = true
+	before, index := sourceFirst(project.Entries), project.index
+	if err := moveResourceAndWait(t, model, project, "from/nested", project, "to"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"from", "keep", "keep/stay.go", "to", "to/nested", "to/nested/a.go", "to/last.go"}
+	if !slices.EqualFunc(project.Entries, want, func(entry treeEntry, name string) bool { return entry.Path == name }) ||
+		project.scan != nil || sourceFirst(project.Entries) != before || !project.ExpandedDirs["keep"] || !project.ExpandedDirs["to/nested"] {
+		t.Fatalf("drop did not update the existing tree in place: %+v", project.Entries)
+	}
+	revision := project.tree.revision
+	if err := moveResourceAndWait(t, model, project, "to/last.go", project, "to"); err != nil || project.tree.revision != revision {
+		t.Fatalf("same-parent drop changed the tree: %v", err)
+	}
+	model.quickOpen = true
+	deadline := time.Now().Add(5 * time.Second)
+	for project.index == index {
+		model.pollProjectWatches()
+		model.pollProjectScans()
+		if time.Now().After(deadline) {
+			t.Fatal("move did not reach the file search index")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if project.tree.revision != revision || sourceFirst(project.Entries) != before {
+		t.Fatal("watch confirmation rebuilt the tree")
+	}
+	matches, err := project.backend.SearchPaths(t.Context(), project.index, "nested/a.go", nil)
+	if err != nil || !slices.Equal(matches, []string{"to/nested/a.go"}) {
+		t.Fatalf("file search after move: %v, %v", matches, err)
 	}
 }
 
@@ -205,7 +250,7 @@ func TestFileDragPreviewFollowsPointerAndFitsViewport(t *testing.T) {
 			fileDragOver(t, app, model, state, "editor-body")
 			checkFileDragPreview(t, model, name)
 			bounds := editorContextBounds(t, model, "file-drag-preview")
-			if bounds.Width <= 0 || bounds.Width > 240 || bounds.Height <= 0 || bounds.Height > 40 {
+			if bounds.Width <= 0 || bounds.Width > 240 || bounds.Height < 32 || bounds.Height > 34 {
 				t.Fatalf("long name did not produce a compact preview: %+v", bounds)
 			}
 			drag := &model.fileDrag
@@ -309,14 +354,14 @@ func TestProjectResourceDragRejectsCollisionAndDescendant(t *testing.T) {
 	openProjectFile(project, "src/nested/note.txt")
 	model.syncActiveProjectFields()
 	model.updateActiveContent("unsaved cross-project text")
-	model.fileClipboard = pencodeFileClipboard{project: project, path: "src/nested/note.txt"}
+	model.fileClipboard = pencodeFileClipboard{project: project, paths: []string{"src/nested/note.txt"}}
 	if err := moveResourceAndWait(t, model, project, "src", other, ""); err != nil {
 		t.Fatal(err)
 	}
 	if file := other.Files["src/nested/note.txt"]; file == nil || !file.Dirty || file.content() != "unsaved cross-project text" || len(file.undo) == 0 {
 		t.Fatal("cross-project drag lost the edited buffer")
 	}
-	if model.fileClipboard.project != other || model.fileClipboard.path != "src/nested/note.txt" {
+	if model.fileClipboard.project != other || !slices.Equal(model.fileClipboard.paths, []string{"src/nested/note.txt"}) {
 		t.Fatal("clipboard did not follow the moved resource")
 	}
 }

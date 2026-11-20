@@ -166,7 +166,7 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 	app, model, provider, state := languageInteractionFixture(t)
 	world := model.fontResources
 	longSymbol := strings.Repeat("longSymbol", 8)
-	value := "package demo\n\tvar 中文变量 = 1\n" + strings.Repeat("// wrapped text ", 30) + "\n\tvar wrappedSymbol = 中文变量\n" + strings.Repeat(" ", 65) + "edgeSymbol\nvar " + longSymbol + " = 1\nvar path = \"github.com/onix-engine/onix/scene\"\n"
+	value := "package demo\n\tvar 中文变量 = 1\n" + strings.Repeat("// wrapped text ", 30) + "\n\tvar wrappedSymbol = 中文变量\n" + strings.Repeat(" ", 65) + "edgeSymbol\nvar " + longSymbol + " = 1\nvar path = \"github.com/onix-engine/onix/scene\"\nvar ActivityOpenManager = 1\n"
 	model.updateActiveContent(value)
 	// Compare Ctrl styling against final tokens, not a debounced edit preview.
 	model.highlightDue = time.Time{}
@@ -177,7 +177,7 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 	for _, zoom := range []int{100, 150, 70} {
 		model.setZoom(world, zoom)
 		languageInteractionStep(t, app)
-		for _, name := range []string{"中文变量", "wrappedSymbol", "edgeSymbol", longSymbol, "github.com/onix-engine/onix/scene"} {
+		for _, name := range []string{"中文变量", "wrappedSymbol", "edgeSymbol", longSymbol, "github.com/onix-engine/onix/scene", "ActivityOpenManager"} {
 			index := strings.LastIndex(value, name)
 			caret := utf8.RuneCountInString(value[:index]) + utf8.RuneCountInString(name)/2
 			model.setEditorValueAndCaret(world, value, caret)
@@ -196,6 +196,12 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			offset, start, end, underline, valid := model.languageSymbolAtPointer(world, px, py, editorRect, bodyRect)
 			if !valid || start != index || end != index+len(name) || underline.Width < 1 {
 				t.Fatalf("zoom %d %s: offset=%d range=%d:%d valid=%v", zoom, name, offset, start, end, valid)
+			}
+			if name == "ActivityOpenManager" {
+				rects := model.languageUI.underlineRects
+				if len(rects) != 1 || rects[0].Width != underline.Width {
+					t.Fatalf("zoom %d: expected a continuous underline of width %g, got %+v", zoom, underline.Width, rects)
+				}
 			}
 			scale := float64(zoom) / 100
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(px) * scale, Y: float64(py) * scale})

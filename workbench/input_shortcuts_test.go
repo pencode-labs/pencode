@@ -116,9 +116,9 @@ hello world</textarea></main>`,
 	check := func(value string, caret, anchor int) {
 		t.Helper()
 		field := w.Ref[engineui.TextField](control)
-		native, _ := w.Get[htmlui.Control](control)
-		if field.Value != value || native.Value != value || field.Caret != caret || field.Anchor != anchor || w.FocusedControl() != control {
-			t.Fatalf("input mismatch: field=%+v native=%q, want %q %d:%d", field, native.Value, value, caret, anchor)
+		native := htmlui.ControlValue(app.World, control)
+		if native != value || field.Caret != caret || field.Anchor != anchor || w.FocusedControl() != control {
+			t.Fatalf("input mismatch: field=%+v native=%q, want %q %d:%d", field, native, value, caret, anchor)
 		}
 	}
 	const original = "甲乙🙂\nhello world"
@@ -210,9 +210,9 @@ func TestCodexComposerPasteAfterModifierRelease(t *testing.T) {
 			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: test.primary})
 			languageInteractionStep(t, app)
 			field = w.Mut[engineui.TextField](control)
-			native, _ := w.Get[htmlui.Control](control)
-			if field.Value != "甲中\ncode()尾" || native.Value != field.Value || field.Caret != 9 || field.Anchor != 9 || w.FocusedControl() != control {
-				t.Fatalf("quick paste lost text or selection: field=%+v native=%q", field, native.Value)
+			native := htmlui.ControlValue(app.World, control)
+			if native != "甲中\ncode()尾" || field.Caret != 9 || field.Anchor != 9 || w.FocusedControl() != control {
+				t.Fatalf("quick paste lost text or selection: field=%+v native=%q", field, native)
 			}
 			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: test.primary})
 			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyZ})

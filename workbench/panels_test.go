@@ -206,14 +206,16 @@ func TestPencodeProblemNavigationDoesNotChangeDocument(t *testing.T) {
 }
 
 func TestPencodeProblemNavigationOnlyMovesCaret(t *testing.T) {
-	_, model, _, _ := languageInteractionFixture(t)
+	app, model, _, _ := languageInteractionFixture(t)
 	world := model.fontResources
-	control := world.Mut[htmlui.Control](model.editor.control)
-	control.DirtyValue = false
+	control := model.editor.control
+	if htmlui.ControlValueDirty(app.World, control) {
+		t.Fatal("editor value is already dirty before navigation")
+	}
 	model.languages.panel.navigate = model.activeFile()
 	model.languages.panel.offset = 3
 	model.focusLanguageControls(world)
-	if control.DirtyValue {
+	if htmlui.ControlValueDirty(app.World, control) {
 		t.Fatal("navigation rewrote unchanged editor content")
 	}
 	field := world.Ref[engineui.TextField](model.editor.control)
@@ -446,6 +448,39 @@ func TestPencodeBottomPanelsDiagnosticsAndOutput(t *testing.T) {
 	if !ok || !exists || len(control.Options) < 2 {
 		t.Fatalf("missing output sources: %+v", control)
 	}
+	selectSource := func(label string) {
+		t.Helper()
+		editorContextClick(t, app, model, state, "output-source")
+		entity, _ := world.HTMLControl(model.surface, "output-source")
+		if control := world.Ref[htmlui.Control](entity); control == nil || !control.Open {
+			t.Fatal("output source picker did not open")
+		}
+		var option ecs.Entity
+		for candidate, access := range world.Query[engineui.SelectorItem]() {
+			item := access.Ref()
+			if item.Owner == entity && item.Label == label {
+				option = candidate
+				break
+			}
+		}
+		if option == 0 {
+			t.Fatalf("missing output source option %q", label)
+		}
+		transform := world.Ref[scene.UIGlobalTransform](option)
+		target := world.Ref[scene.InputTarget2D](option)
+		x := float64(transform.Matrix[12] + target.Width/2)
+		y := float64(transform.Matrix[13] + target.Height/2)
+		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		if control := world.Ref[htmlui.Control](entity); control == nil || !control.Open {
+			t.Fatal("pressing an output source closed the picker before mouse-up")
+		}
+		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		if source := model.bottom.source; source == nil || source.Name != label {
+			t.Fatalf("clicking %q left the output source at %v", label, source)
+		}
+	}
 	event := func(ref, value string) {
 		t.Helper()
 		if !model.handleBottomPanelEvent(world, ref, value) {
@@ -454,40 +489,40 @@ func TestPencodeBottomPanelsDiagnosticsAndOutput(t *testing.T) {
 		markPencodeRootDirtyByModel(world, model)
 		languageInteractionStep(t, app)
 	}
-	event("output-source", "Extension: sample")
-	readOutput := func() htmlui.Control {
+	selectSource("Extension: sample")
+	readOutput := func() string {
 		t.Helper()
 		entity, ok := world.HTMLControl(model.surface, "output-content")
 		control, exists := world.Get[htmlui.Control](entity)
 		if !ok || !exists || !control.ReadOnly {
 			t.Fatal("missing read-only output control")
 		}
-		return control
+		return htmlui.ControlValue(app.World, entity)
 	}
-	if got := readOutput().Value; got != "[Info] plugin ready\n" {
+	if got := readOutput(); got != "[Info] plugin ready\n" {
 		t.Fatalf("wrong source output %q", got)
 	}
 	model.logOutput("Extension: sample", "[Error] failed")
 	languageInteractionStep(t, app)
 	event("output-filter", "Error")
-	if got := readOutput().Value; got != "[Error] failed\n" {
+	if got := readOutput(); got != "[Error] failed\n" {
 		t.Fatalf("filter output %q", got)
 	}
 	event("output-filter", "")
 	event("output-clear", "")
-	if got := readOutput().Value; got != "" {
+	if got := readOutput(); got != "" {
 		t.Fatalf("clear output %q", got)
 	}
-	event("output-source", "pencode")
-	if got := readOutput().Value; !strings.Contains(got, "host output") {
+	selectSource("pencode")
+	if got := readOutput(); !strings.Contains(got, "host output") {
 		t.Fatalf("clearing source lost host output %q", got)
 	}
 	provider.server.Label = "Fixture LSP"
 	raw := json.RawMessage(`{"type":2,"message":"language warning"}`)
 	model.languages.events <- pencodeLanguageEvent{session: provider, method: "window/logMessage", params: raw}
 	languageInteractionStep(t, app)
-	event("output-source", "Language Server: Fixture LSP")
-	if got := readOutput().Value; got != "[Warning] language warning\n" {
+	selectSource("Language Server: Fixture LSP")
+	if got := readOutput(); got != "[Warning] language warning\n" {
 		t.Fatalf("missing classified LSP output %q", got)
 	}
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})

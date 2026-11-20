@@ -39,10 +39,10 @@ func (m *workspaceModel) terminalState() *pencodeTerminals {
 	}
 	return m.terminals
 }
-func (m *workspaceModel) newTerminal() {
+func (m *workspaceModel) newTerminal() *pencodeTerminal {
 	if !m.backendConnected() {
 		m.setActiveStatus(m.tr("工作区服务未连接，请等待连接恢复"))
-		return
+		return nil
 	}
 	t := m.terminalState()
 	m.terminalView.context.open = false
@@ -70,6 +70,7 @@ func (m *workspaceModel) newTerminal() {
 	t.active = item
 	t.focus = true
 	m.bottom.active = pencodePanelTerminal
+	return item
 }
 func (m *workspaceModel) closeTerminal(root string) {
 	t := m.terminals
@@ -95,6 +96,27 @@ func (m *workspaceModel) closeTerminal(root string) {
 		t.focus = true
 	}
 	m.closeEmptyTerminalPanel()
+}
+
+func (m *workspaceModel) runExtensionTerminalCommand(command string) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return
+	}
+	if item := m.newTerminal(); item != nil {
+		m.writeTerminal(item, []byte(command+"\nexit\n"))
+	}
+}
+
+func (m *workspaceModel) openExtensionSettings(id string) {
+	m.ensureSettings()
+	m.settingsOpen = true
+	m.settingsShortcuts = false
+	m.settingsAbout = false
+	m.settingsExtensions = true
+	m.settingsExtensionsExpanded = true
+	m.settingsExtension = id
+	m.settingsFeedback = ""
 }
 func (m *workspaceModel) removeTerminal(index int) {
 	t := m.terminals

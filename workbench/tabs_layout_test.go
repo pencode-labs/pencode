@@ -8,8 +8,8 @@ import (
 
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/css"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/html/layout"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 	"github.com/onix-engine/onix/syntax"
 )
@@ -41,8 +41,8 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 			bold := face
 			for size := pencodeMinUIFontSize; size <= pencodeMaxUIFontSize; size++ {
 				t.Run(strconv.Itoa(size), func(t *testing.T) {
-					document, err := dom.Parse(`<html style="font-size:` + strconv.Itoa(size) + `px"><body><div class="pencode-root">
-<button id="project" class="pencode-project-tab-select"><span id="project-name">Pencode 项目</span></button>
+					document, err := parse.Parse(`<html style="font-size:` + strconv.Itoa(size) + `px"><body><div class="pencode-root">
+<button id="project" class="pencode-project-tab-select"><span class="pencode-project-tab-icon"><span id="project-icon">P</span></span><span id="project-name" class="pencode-project-tab-name">Pencode 项目</span></button>
 <div id="tabs" class="pencode-tabs"><div class="pencode-tab active"><button class="pencode-tab-select"><img class="pencode-tab-icon"><span id="tab-name" class="pencode-tab-name">app_ecs.go</span></button><button class="pencode-tab-close"></button></div></div>
 <button class="pencode-lsp-result pencode-lsp-reference-location"><span id="reference-label" class="pencode-lsp-result-label"><span>func (b *Bundle) </span><mark id="reference-match">ValidateSceneFeatures</mark><span>(id SceneID)</span></span></button>
 </div></body></html>`)
@@ -68,7 +68,7 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 						}
 					}
 					visit(root)
-					for _, pair := range [][2]string{{"project-name", "project"}, {"tab-name", "tabs"}} {
+					for _, pair := range [][2]string{{"project-icon", "project"}, {"project-name", "project"}, {"tab-name", "tabs"}} {
 						label, row := boxes[pair[0]], boxes[pair[1]]
 						if label == nil || row == nil || len(label.TextFragments) == 0 {
 							t.Fatalf("missing label or row: %v", pair)
@@ -132,7 +132,7 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 func TestPencodeTabLabelVerticalAlignment(t *testing.T) {
 	_, session := newPencodeTestApp(t)
 	model := session.active.model
-	document, err := dom.Parse(`<html><body><div class="pencode-tabs"><div id="tab" class="pencode-tab active"><button class="pencode-tab-select"><img id="icon" class="pencode-tab-icon"><span id="name" class="pencode-tab-name">app_ecs.go</span></button><button id="close" class="pencode-tab-close"></button></div></div></body></html>`)
+	document, err := parse.Parse(`<html><body><div class="pencode-tabs"><div id="tab" class="pencode-tab active"><button class="pencode-tab-select"><img id="icon" class="pencode-tab-icon"><span id="name" class="pencode-tab-name">app_ecs.go</span></button><button id="close" class="pencode-tab-close"></button></div></div></body></html>`)
 	if err != nil {
 		t.Fatal(err)
 	}

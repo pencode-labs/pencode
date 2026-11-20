@@ -250,7 +250,7 @@ func TestSourceControlBranchSubmenuCreation(t *testing.T) {
 		if s.Snapshot.Branch != name || sourceTestGit(t, r, "rev-parse", "HEAD") != base {
 			t.Fatalf("new branch %s did not start at %s", name, ref)
 		}
-		if _, ok := s.branch("refs/heads/" + name); !ok {
+		if _, ok := s.Snapshot.branchPicker().branch("refs/heads/" + name); !ok {
 			t.Fatal("created branch missing from refreshed menu")
 		}
 	}
@@ -261,7 +261,7 @@ func TestSourceControlBranchMenuRenderCache(t *testing.T) {
 	s := m.sourceState()
 	s.Snapshot.Branch = "main"
 	s.Snapshot.Branches = []sourceBranch{{Ref: "refs/heads/main", Name: "main"}, {Ref: "refs/remotes/origin/topic", Name: "origin/topic", Remote: true}}
-	m.toggleSourceBranches()
+	m.toggleSourceBranches("sc-branches")
 	render := func() {
 		s.overlayView.reset()
 		m.renderSourceBranches(&s.overlayView)
@@ -353,6 +353,15 @@ func TestSourceControlBranchSubmenuDeletion(t *testing.T) {
 		if math.Abs(float64(submenu.X-menu.X-menu.Width)) > 1 && math.Abs(float64(submenu.X+submenu.Width-menu.X)) > 1 {
 			t.Fatalf("submenu does not touch parent: parent=%+v submenu=%+v", menu, submenu)
 		}
+		edge := menu.X + 1
+		if submenu.X > menu.X {
+			edge = menu.X + menu.Width - 1
+		}
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(edge) * scale, Y: y})
+		languageInteractionStep(t, app)
+		if !s.BranchSubmenu {
+			t.Fatal("crossing the branch menu padding closed the submenu")
+		}
 		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(submenu.X+submenu.Width/2) * scale, Y: float64(submenu.Y+20) * scale})
 		languageInteractionStep(t, app)
 		if !s.BranchSubmenu {
@@ -372,7 +381,7 @@ func TestSourceControlBranchSubmenuDeletion(t *testing.T) {
 	editorContextClick(t, app, m, state, "sc-branch-delete")
 	editorContextClick(t, app, m, state, "sc-prompt-confirm")
 	sourceWait(t, app, m)
-	if _, ok := s.branch("refs/heads/topic"); ok {
+	if _, ok := s.Snapshot.branchPicker().branch("refs/heads/topic"); ok {
 		t.Fatal("deleted branch remained in the refreshed menu")
 	}
 	open("refs/heads/main")

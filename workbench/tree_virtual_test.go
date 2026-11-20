@@ -35,7 +35,7 @@ func TestPencodeTreeVirtualWindowAndHitTargets(t *testing.T) {
 		t.Helper()
 		scroll := world.Mut[scene.UIScroll](area)
 		mounted := 0
-		for _, access := range world.Query[htmlui.Component[treeProps, struct{}]]() {
+		for _, access := range world.Query[htmlui.Component[treeProps, treeRowState]]() {
 			if access.Get().Props.Project == project {
 				mounted++
 			}

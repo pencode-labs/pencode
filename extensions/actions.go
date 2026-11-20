@@ -323,6 +323,9 @@ func (extension *ActionExtension) run(parent context.Context, values peb.Setting
 			if ui.View != nil || ui.Close {
 				delete(resyncing, ui.ID)
 			}
+			if ui.Close && resources.last.surface == ui.ID {
+				resources.last = preparedView{}
+			}
 			ui = full
 			resourceCtx, finish := context.WithTimeout(ctx, StartupTimeout)
 			assets, prepareErr := resources.prepare(resourceCtx, ui.View, ui.ID)

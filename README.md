@@ -64,7 +64,7 @@ cd pencode
 go mod tidy
 ```
 
-Use an Onix checkout that provides the public `github.com/onix-engine/onix/html/{css,dom,layout,style}` packages. The workbench and its tests use these APIs and can build as an independent module:
+Use an Onix checkout that provides `github.com/onix-engine/onix/html/parse` and `github.com/onix-engine/onix/scene/node`. Build Pencode from the repository root.
 
 ```sh
 go build ./...

@@ -85,7 +85,8 @@ func TestSourceDiffNativeEditingCopyRevertAndSave(t *testing.T) {
 	if !leftBinding.ReadOnly || rightBinding.ReadOnly {
 		t.Fatal("wrong editor permissions")
 	}
-	if leftBinding.DefaultValue != "" || rightBinding.DefaultValue != "" || leftBinding.Value != left || rightBinding.Value != right {
+	if leftBinding.DefaultValue != "" || rightBinding.DefaultValue != "" ||
+		htmlui.ControlValue(app.World, leftControl) != left || htmlui.ControlValue(app.World, rightControl) != right {
 		t.Fatal("comparison must bind live text without duplicating it in HTML layout")
 	}
 	valueEntity, _ := m.fontResources.FindPart[engineui.ValuePart, scene.Text2D](rightControl)

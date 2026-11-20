@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/onix-engine/onix/ecs"
-	"github.com/onix-engine/onix/html/dom"
+	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
+	uinode "github.com/onix-engine/onix/scene/node"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/extensions"
@@ -43,18 +44,20 @@ type pencodeExtensionSurfaceProps struct {
 	Visible  bool
 }
 type pencodeExtensionFocus struct {
-	inputLinks  *pencodeInputLinks
-	ref, id     string
-	submit      string
-	style       string
-	caret       string
-	height      float32
-	showOutput  bool
-	autosize    bool
-	completion  bool
-	pasteImages bool
-	placeCaret  bool
-	selectText  bool
+	inputLinks            *pencodeInputLinks
+	ref, id               string
+	submit                string
+	style                 string
+	caret                 string
+	terminalCommand       string
+	height                float32
+	showOutput            bool
+	autosize              bool
+	completion            bool
+	pasteImages           bool
+	placeCaret            bool
+	selectText            bool
+	openExtensionSettings bool
 }
 type pencodeExtensionIcon struct {
 	ref, source, foreground, copyRef string
@@ -69,7 +72,7 @@ type pencodeExtensionScroll struct {
 }
 type pencodeExtensionSurface struct {
 	expiresAt                      time.Time
-	tree                           *dom.Node
+	tree                           *uinode.Node
 	model                          *workspaceModel
 	document                       *pencodeCustomDocument
 	session                        *extensions.ActionSession
@@ -202,12 +205,12 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 	surface.revision++
 	if fresh {
 		surface.invocation = state.invocations[owner]
-		if ui.Context.ID != "" {
-			surface.invocation.context = ui.Context
-			surface.invocation.anchor = "action-extensions/" + owner + "/" + ui.Context.ID
-		}
 		surface.x, surface.y = surface.invocation.x, surface.invocation.y
 		state.surfaces = append(state.surfaces, surface)
+	}
+	if ui.Context.ID != "" && (fresh || ui.Kind == peb.ContextMenu) {
+		surface.invocation.context = ui.Context
+		surface.invocation.anchor = "action-extensions/" + owner + "/" + ui.Context.ID
 	}
 	if ui.Anchor != "" {
 		surface.invocation.anchor = anchor
@@ -300,7 +303,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			r.tree = old.tree
 		}
 		if r.tree == nil {
-			r.tree, err = dom.Parse(r.html)
+			r.tree, err = parse.Parse(r.html)
 			if err != nil {
 				return err
 			}
@@ -309,7 +312,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	}
 	tree := s.tree
 	if tree == nil || s.definition.Template.Source != template {
-		tree, err = dom.Parse(template)
+		tree, err = parse.Parse(template)
 		if err != nil {
 			return err
 		}
@@ -342,7 +345,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	scrolls := make([]pencodeExtensionScroll, 0, len(s.scrolls))
 	followsOutput := false
 	fill := false
-	if err := scratch.validate(view, tree, trees, func(node *dom.Node, hidden bool) {
+	if err := scratch.validate(view, tree, trees, func(node *uinode.Node, hidden bool) {
 		if !hidden {
 			ref, _ := node.Attr("data-ref")
 			href, _ := node.Attr("data-pencode-href")
@@ -428,6 +431,11 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				}
 				action, _ := node.Attr("data-pencode-action")
 				showOutput := node.Data == "button" && action == "show-output"
+				terminalCommand := ""
+				if node.Data == "button" && action == "run-terminal" {
+					terminalCommand, _ = node.Attr("data-pencode-terminal-command")
+				}
+				openExtensionSettings := node.Data == "button" && action == "open-extension-settings"
 				if showOutput {
 					channel = s.model.outputStore().Channel("Extension: " + s.owner)
 				}
@@ -460,7 +468,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 					}
 				}
 				role, _ := node.Attr("role")
-				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", pasteImages: pasteImages, caret: caret, placeCaret: placeCaret, inputLinks: inputLinks, selectText: node.Data == "a" || role == "link"})
+				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", pasteImages: pasteImages, caret: caret, placeCaret: placeCaret, inputLinks: inputLinks, selectText: node.Data == "a" || role == "link", terminalCommand: terminalCommand, openExtensionSettings: openExtensionSettings})
 			}
 		}
 	}); err != nil {
@@ -509,7 +517,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			for _, f := range surface.focus {
 				target.Attr(f.ref, "id", f.id)
 				target.Event(f.ref, htmlui.EventFocus)
-				if f.showOutput {
+				if f.showOutput || f.terminalCommand != "" || f.openExtensionSettings {
 					target.Event(f.ref, htmlui.EventClick)
 				}
 			}
@@ -538,7 +546,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				}
 			}
 			if event.Kind == htmlui.EventClick {
-				if selection := &surface.model.actions.ui.selection; selection.surface == surface && selection.dragged {
+				if selection := &surface.model.actions.ui.selection; selection.surface == surface && selection.suppressClick(c.World) {
 					return
 				}
 				if value, ok := surface.copies[c.Ref]; ok {
@@ -551,6 +559,9 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 					return
 				}
 				if href := surface.links[c.Ref]; href != "" {
+					if surface.ui.Kind == peb.ContextMenu {
+						surface.model.closeExtensionSurface(surface, "button", false)
+					}
 					surface.openLink(href)
 					markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
 					return
@@ -562,10 +573,28 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 					}
 				}
 				for _, f := range surface.focus {
-					if f.ref == c.Ref && f.showOutput {
+					if f.ref != c.Ref {
+						continue
+					}
+					if f.showOutput {
 						p := &surface.model.bottom
 						p.active, p.source, p.filter = pencodePanelOutput, surface.output, ""
 						p.options = p.options[:0]
+						markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
+						return
+					}
+					if f.terminalCommand != "" {
+						surface.model.closeExtensionSurface(surface, "button", false)
+						// A menu may arrive after the user has switched projects.
+						if root := surface.ui.Context.ProjectPath; root == "" || root == surface.model.projectPath {
+							surface.model.runExtensionTerminalCommand(f.terminalCommand)
+						}
+						markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
+						return
+					}
+					if f.openExtensionSettings {
+						surface.model.openExtensionSettings(surface.owner)
+						surface.model.closeExtensionSurface(surface, "button", false)
 						markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
 						return
 					}
@@ -669,6 +698,34 @@ func (s *pencodeExtensionSurface) captureScroll(ref, id, key string, follow bool
 		break
 	}
 	return state
+}
+
+func (s *pencodeExtensionSurface) saveScrollPositions() {
+	if s.model == nil || s.model.fontResources == nil {
+		return
+	}
+	selection := &s.model.actions.ui.selection
+	for i := range s.scrolls {
+		state := &s.scrolls[i]
+		node, ok := s.model.fontResources.HTMLNode(s.model.surface, state.id)
+		if !ok {
+			continue
+		}
+		area, ok := node.ScrollContainer()
+		if !ok {
+			continue
+		}
+		scroll, ok := s.model.fontResources.Get[scene.UIScroll](area)
+		if !ok {
+			continue
+		}
+		state.position = [2]float32{scroll.Position.X(), scroll.Position.Y()}
+		state.restore = true
+		state.end = state.follow && scroll.ContentSize.Y()-scroll.ViewportSize.Y()+scroll.Position.Y() < 24
+		if selection.surface == s && selection.region == state.id && (selection.dragging || selection.anchor != selection.caret) {
+			state.end = false
+		}
+	}
 }
 
 func (s *pencodeExtensionSurface) scrollTarget() string {
@@ -942,6 +999,7 @@ func (model *workspaceModel) expireExtensionNotifications(now time.Time) (change
 // Called after layout: position overlays inside the viewport and focus new surfaces.
 func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChanged bool) {
 	state := &model.actions.ui
+	inputLayoutChanged := false
 	if state.revealNotifications {
 		if node, ok := world.HTMLNode(model.surface, "pencode-extension-notifications"); ok {
 			if area, ok := node.ScrollContainer(); ok {
@@ -981,6 +1039,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 			}
 		}
 		if s.resizeInputs(world) {
+			inputLayoutChanged = true
 			if err := world.SyncHTML(); err != nil {
 				model.setActiveStatus(err.Error())
 				return
@@ -1037,6 +1096,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 						if field.Value == s.inputValue {
 							field.Anchor, field.Caret = s.inputAnchor, s.inputCaret
 						}
+						inputLayoutChanged = true
 					}
 					s.inputID, s.inputValue = "", ""
 				}
@@ -1055,6 +1115,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 					if caret, err := strconv.Atoi(position); err == nil {
 						caret = max(0, min(caret, field.Text().Runes()))
 						field.Anchor, field.Caret = caret, caret
+						inputLayoutChanged = true
 						if state.overlay == nil || state.overlay == s {
 							world.Focus(control)
 						}
@@ -1146,6 +1207,7 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 			}
 		}
 	}
+	scrollChanged = scrollChanged || inputLayoutChanged
 	return
 }
 

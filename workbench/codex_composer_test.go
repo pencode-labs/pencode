@@ -56,6 +56,17 @@ func TestCodexComposerGrowsUpwardBeforeScrolling(t *testing.T) {
 	if grown.Height <= initial.Height || grown.Y >= initial.Y || math.Abs(float64(grown.Y+grown.Height-initial.Y-initial.Height)) > 1 {
 		t.Fatalf("input did not grow upward: initial=%+v grown=%+v", initial, grown)
 	}
+	caretVisual, ok := w.FindPart[engineui.CaretPart, engineui.SurfaceStyle](control)
+	if !ok {
+		t.Fatal("missing composer caret")
+	}
+	transform := w.Ref[scene.UIGlobalTransform](caretVisual)
+	size := w.Ref[scene.Size2D](caretVisual)
+	x, y, right, bottom, ok := scene.BoundsInSpace2D(transform.Matrix, scene.AnchorTopLeft, size.Width, size.Height, true)
+	wantCaret := input.TextInputRect{X: x, Y: y, Width: right - x, Height: bottom - y}
+	if got := state.TextInputConfig().Caret; !ok || got != wantCaret {
+		t.Fatalf("composer resized with stale IME coordinates: got=%+v want=%+v", got, wantCaret)
+	}
 	if current := editorContextBounds(t, m, "pencode-extension-composer-footer"); current != footer {
 		t.Fatalf("growing input moved the footer: before=%+v after=%+v", footer, current)
 	}
@@ -93,6 +104,74 @@ func TestCodexComposerGrowsUpwardBeforeScrolling(t *testing.T) {
 	show("")
 	if b := bounds(); b.Height != initial.Height {
 		t.Fatalf("clearing the draft did not reset input height: %+v", b)
+	}
+}
+
+func TestCodexComposerKeepsIMEThroughRunningUpdate(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	w := m.fontResources
+	process := &extensions.ActionSession{}
+	show := func(transcript, activity string) {
+		t.Helper()
+		if err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Kind: peb.EditorTab, Busy: true, View: &peb.EditorView{
+			HTML: `<main data-pencode-layout="fill"><div data-ref="transcript" data-pencode-scroll="end" data-pencode-scroll-key="running">` + transcript + `</div><div data-ref="live-changes-region" data-pencode-region>` +
+				activity + `</div><textarea id="pencode-extension-codex-prompt" data-ref="prompt" data-pencode-markdown-links data-pencode-autosize style="width:400px;min-height:38px">保留草稿</textarea></main>`,
+			Events: []peb.EditorBinding{{Ref: "prompt", Kind: "input"}},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		markPencodeRootDirtyByModel(w, m)
+	}
+	show("", "")
+	for range 3 {
+		languageInteractionStep(t, app)
+	}
+	const promptID = "pencode-extension-codex-prompt"
+	prompt, ok := w.HTMLControl(m.surface, promptID)
+	if !ok || !w.Focus(prompt) {
+		t.Fatal("cannot focus composer")
+	}
+	state, _ := app.World.GetResource[*input.State]()
+	state.Enqueue(input.Event{Kind: input.EventTextComposition, Composition: input.TextComposition{Text: "ni", Active: true}})
+	languageInteractionStep(t, app)
+	before := state.TextInputConfig()
+	const reply = `<p data-ref="reply" data-pencode-region>新输出</p>`
+	var replacementFound bool
+	for _, update := range []struct{ transcript, activity string }{
+		{reply, `<p id="pencode-extension-running-change" style="height:60px">1 个文件已更改</p>`},
+		{reply, ""},
+	} {
+		show(update.transcript, update.activity)
+		mounted := false
+		for range 3 {
+			languageInteractionStep(t, app)
+			if _, ok := w.HTMLNode(m.surface, "pencode-extension-running-change"); ok == (update.activity != "") {
+				mounted = true
+				break
+			}
+		}
+		if !mounted {
+			t.Fatalf("running activity did not update: %q", update.activity)
+		}
+		current, ok := w.HTMLControl(m.surface, promptID)
+		field, _ := w.Get[engineui.TextField](current)
+		after := state.TextInputConfig()
+		if !ok || w.FocusedControl() != current || !state.Composing() || field.Composition != "ni" ||
+			!after.Active || after.Revision != before.Revision || after.Caret.Height <= 0 || after.Caret.Y == before.Caret.Y {
+			t.Fatalf("running update interrupted the IME: before=%+v after=%+v field=%+v", before, after, field)
+		}
+		replacementFound = replacementFound || prompt != current
+		before = after
+		prompt = current
+	}
+	if !replacementFound {
+		t.Fatal("view update did not exercise native control replacement")
+	}
+	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "你"})
+	languageInteractionStep(t, app)
+	if field, _ := w.Get[engineui.TextField](prompt); field.Value != "保留草稿你" {
+		t.Fatalf("IME commit lost the draft or composition: %q", field.Value)
 	}
 }
 
@@ -145,6 +224,9 @@ func TestCodexComposerPointerFocusAcceptsText(t *testing.T) {
 		field := w.Mut[engineui.TextField](control)
 		if !ok || field == nil || w.FocusedControl() != control || !field.Focused || !state.TextInputConfig().Active {
 			t.Fatalf("pointer %v did not focus the prompt: control=%v focused=%v field=%+v", point, control, w.FocusedControl(), field)
+		}
+		if caret := state.TextInputConfig().Caret; caret.X <= 0 || caret.Y <= 0 || caret.Height <= 0 {
+			t.Fatalf("pointer %v left the IME without a screen anchor: %+v", point, caret)
 		}
 		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "输入"})
 		languageInteractionStep(t, app)

@@ -262,7 +262,7 @@ func (model *workspaceModel) renderLanguageEditorPopups(view *htmlui.View) {
 				ui.underlineNodes = append(ui.underlineNodes, htmlui.VNode{Key: uint64(i + 1), Tag: "span", Attributes: []htmlui.VNodeAttribute{{Name: "style"}}})
 			}
 			attribute := &ui.underlineNodes[i].Attributes[0]
-			attribute.Value = languageUnderlineStyle(attribute.Value, ui.underlineOriginX+rect.X, ui.underlineOriginY+rect.Y, rect.Width, rect.Height)
+			attribute.Value = languageUnderlineStyle(attribute.Value, ui.underlineOriginX+rect.X, ui.underlineOriginY+rect.Y+1, rect.Width, rect.Height)
 		}
 		view.Keyed("lsp-hover-underline", ui.underlineNodes[:len(ui.underlineRects)])
 	}

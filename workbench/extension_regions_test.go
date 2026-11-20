@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/scene"
-
 	engineui "github.com/onix-engine/onix/ui"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/peb"
@@ -81,6 +81,10 @@ func TestExtensionHistoryRegionRetainsChatAndInput(t *testing.T) {
 	w.SetControlValue(control, "draft still being typed")
 	field := w.Mut[engineui.TextField](control)
 	field.Anchor, field.Caret = 3, 8
+	state, _ := app.World.GetResource[*input.State]()
+	state.Enqueue(input.Event{Kind: input.EventTextComposition, Composition: input.TextComposition{Text: "ni", Active: true}})
+	languageInteractionStep(t, app)
+	before := state.TextInputConfig()
 	show(`<button data-ref="saved" class="history-row">Updated task</button><p>More history</p>`)
 	if current, ok := w.HTMLControl(m.surface, promptID); !ok || current != control || w.FocusedControl() != control {
 		t.Fatal("history refresh replaced or unfocused the prompt")
@@ -88,6 +92,10 @@ func TestExtensionHistoryRegionRetainsChatAndInput(t *testing.T) {
 	field = w.Mut[engineui.TextField](control)
 	if field.Text().String() != "draft still being typed" || field.Anchor != 3 || field.Caret != 8 {
 		t.Fatalf("history refresh changed the draft or selection: %+v", field)
+	}
+	if config := state.TextInputConfig(); !state.Composing() || field.Composition != "ni" ||
+		!config.Active || config.Revision != before.Revision || config.Caret.Height <= 0 || config.Caret != before.Caret {
+		t.Fatalf("history refresh interrupted the IME: before=%+v after=%+v composition=%q", before, config, field.Composition)
 	}
 	if current, ok := w.HTMLNode(m.surface, s.prefix+"control-transcript"); !ok || current != transcript || s.definition != definition {
 		t.Fatal("history refresh replaced the chat")

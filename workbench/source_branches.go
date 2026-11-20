@@ -9,6 +9,7 @@ import (
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 type sourceBranch struct {
@@ -16,8 +17,14 @@ type sourceBranch struct {
 	Remote              bool
 }
 
-func (s *pencodeSourceControl) branch(ref string) (sourceBranch, bool) {
-	for _, branch := range s.Snapshot.Branches {
+type sourceBranchPicker struct {
+	Root, Current string
+	Branches      []sourceBranch
+	Integrating   bool
+}
+
+func (p sourceBranchPicker) branch(ref string) (sourceBranch, bool) {
+	for _, branch := range p.Branches {
 		if branch.Ref == ref {
 			return branch, true
 		}
@@ -102,27 +109,18 @@ func (r sourceRepository) switchBranch(branch sourceBranch, branches []sourceBra
 	return err
 }
 
-func (m *workspaceModel) switchSourceBranch(ref string) {
+func (m *workspaceModel) switchSourceBranch(picker sourceBranchPicker, branch sourceBranch) {
 	s := m.sourceState()
-	if m.sourceHasDrafts() || s.unsaved() {
+	if m.sourceHasDraftsIn(picker.Root) {
 		s.Notice = m.tr("请先保存编辑器中的项目修改，再切换分支。")
 		return
 	}
-	for _, branch := range s.Snapshot.Branches {
-		if branch.Ref != ref || !branch.Remote && branch.Name == s.Snapshot.Branch {
-			continue
-		}
-		r, branches := s.Snapshot.Repository, s.Snapshot.Branches
-		m.sourceJob(sourceWrite, func() sourceResult {
-			err := r.switchBranch(branch, branches)
-			snapshot, refreshErr := r.snapshot(sourceHistoryPageSize)
-			if err == nil {
-				err = refreshErr
-			}
-			return sourceResult{Snapshot: &snapshot, Err: err, Message: "Branch switched", Reload: err == nil}
-		})
-		return
-	}
+	r := s.Snapshot.Repository
+	r.Root = picker.Root
+	m.writeSourceRepository(r, func() sourceResult {
+		err := r.switchBranch(branch, picker.Branches)
+		return sourceResult{Err: err, Message: "Branch switched", Reload: err == nil}
+	})
 }
 
 type sourceBranchMenuKey struct {
@@ -135,6 +133,7 @@ type sourceBranchMenuKey struct {
 	SubX, SubY, SubWidth float32
 	Submenu              bool
 	Integrating          bool
+	Loading              bool
 }
 
 var sourceBranchActions = [...]struct{ ID, Label string }{
@@ -147,49 +146,111 @@ var sourceBranchActions = [...]struct{ ID, Label string }{
 	{"sc-branch-rebase", "Rebase…"},
 }
 
-func (s *pencodeSourceControl) branchActionEnabled(index int) bool {
-	if s.BranchIndex < 0 || s.BranchIndex >= len(s.Snapshot.Branches) {
+func (p sourceBranchPicker) actionEnabled(index, branchIndex int) bool {
+	if branchIndex < 0 || branchIndex >= len(p.Branches) {
 		return false
 	}
-	branch := s.Snapshot.Branches[s.BranchIndex]
+	branch := p.Branches[branchIndex]
 	switch sourceBranchActions[index].ID {
 	case "sc-branch-checkout", "sc-branch-delete":
-		return branch.Remote || branch.Name != s.Snapshot.Branch
+		return branch.Remote || branch.Name != p.Current
 	case "sc-branch-create", "sc-branch-tag":
 		return true
 	case "sc-branch-rename":
 		return !branch.Remote
 	case "sc-branch-merge", "sc-branch-rebase":
-		return !s.Snapshot.Rebasing && s.Snapshot.MergeMessage == "" && (branch.Remote || branch.Name != s.Snapshot.Branch)
+		return !p.Integrating && (branch.Remote || branch.Name != p.Current)
 	}
 	return false
 }
 
 func (s *pencodeSourceControl) stepBranchAction(direction int) {
+	picker := s.branchMenu()
 	for range sourceBranchActions {
 		s.BranchSubIndex = (s.BranchSubIndex + direction + len(sourceBranchActions)) % len(sourceBranchActions)
-		if s.branchActionEnabled(s.BranchSubIndex) {
+		if picker.actionEnabled(s.BranchSubIndex, s.BranchIndex) {
 			return
 		}
 	}
 }
 
-func (m *workspaceModel) toggleSourceBranches() {
+func (s *sourceSnapshot) branchPicker() sourceBranchPicker {
+	return sourceBranchPicker{Root: s.Repository.Root, Branches: s.Branches, Current: s.Branch, Integrating: s.Rebasing || s.MergeMessage != ""}
+}
+
+func (s *pencodeSourceControl) branchMenu() sourceBranchPicker {
+	if s.BranchTrigger == "sc-branches" {
+		return s.Snapshot.branchPicker()
+	}
+	if s.branchPicker != nil {
+		return *s.branchPicker
+	}
+	return sourceBranchPicker{}
+}
+
+func (s *pencodeSourceControl) promptBranches() sourceBranchPicker {
+	if s.promptPicker != nil {
+		return *s.promptPicker
+	}
+	return s.Snapshot.branchPicker()
+}
+
+func (m *workspaceModel) toggleSourceBranches(trigger string) {
 	s := m.sourceState()
-	s.BranchMenuOpen = !s.BranchMenuOpen
+	s.BranchMenuOpen = !s.BranchMenuOpen || s.BranchTrigger != trigger
 	s.MenuOpen, s.BranchSubmenu = false, false
-	s.BranchFocus = true
+	s.BranchTrigger, s.BranchFocus = trigger, true
+	s.branchPicker = nil
 	if !s.BranchMenuOpen {
 		return
 	}
+	s.selectCurrentBranch()
+	m.positionSourceBranches(m.fontResources)
+	if root, ok := strings.CutPrefix(trigger, sourceRepositoryBranchPrefix); ok && s.BranchMenuOpen {
+		r := s.Snapshot.Repository
+		r.Root = root
+		m.sourceJob(sourceQuery, func() sourceResult {
+			branches, err := r.branches()
+			picker := &sourceBranchPicker{Root: root, Branches: branches}
+			if err == nil {
+				picker.Current = r.headLabel()
+				_, mergeErr := r.command("rev-parse", "--verify", "--quiet", "MERGE_HEAD")
+				rebasing, rebaseErr := r.Backend.GitRebasing(r.baseContext(), root)
+				picker.Integrating, err = mergeErr == nil || rebasing, rebaseErr
+			}
+			return sourceResult{BranchPicker: picker, Err: err}
+		})
+	}
+}
+
+func (s *pencodeSourceControl) selectCurrentBranch() {
 	s.BranchIndex, s.BranchSubIndex = 0, -1
-	for i, branch := range s.Snapshot.Branches {
-		if !branch.Remote && branch.Name == s.Snapshot.Branch {
+	picker := s.branchMenu()
+	for i, branch := range picker.Branches {
+		if !branch.Remote && branch.Name == picker.Current {
 			s.BranchIndex = i
 			break
 		}
 	}
-	m.positionSourceBranches(m.fontResources)
+}
+
+func (m *workspaceModel) sourceBranchAnchor(world *module.Content) (htmlui.Rect, bool) {
+	trigger, _ := world.HTMLNode(m.surface, m.sourceState().BranchTrigger)
+	anchor, ok := trigger.Bounds()
+	if !ok {
+		return anchor, false
+	}
+	list, _ := world.HTMLNode(m.surface, "sc-repositories-list")
+	viewport, ok := list.Bounds()
+	if entity, scrollable := list.ScrollContainer(); scrollable {
+		if scroll := world.Ref[scene.UIScroll](entity); scroll != nil {
+			anchor.Y += scroll.Position[1]
+		}
+	}
+	bottom := min(anchor.Y+anchor.Height, viewport.Y+viewport.Height)
+	anchor.Y = max(anchor.Y, viewport.Y)
+	anchor.Height = bottom - anchor.Y
+	return anchor, ok && anchor.Height > 0
 }
 
 func (m *workspaceModel) positionSourceBranches(world *module.Content) {
@@ -199,16 +260,17 @@ func (m *workspaceModel) positionSourceBranches(world *module.Content) {
 	s := m.sourceState()
 	root, _ := world.HTMLNode(m.surface, "pencode-root")
 	area, ok := root.Bounds()
-	trigger, _ := world.HTMLNode(m.surface, "sc-branches")
-	anchor, anchored := trigger.Bounds()
+	anchor, anchored := m.sourceBranchAnchor(world)
 	if !ok || !anchored {
+		s.BranchMenuOpen, s.BranchSubmenu = false, false
 		return
 	}
 	const margin, gap = float32(12), float32(4)
 	height := float32(40)
-	if count := len(s.Snapshot.Branches); count != 0 {
+	branches := s.branchMenu().Branches
+	if count := len(branches); count != 0 {
 		groups := 1
-		if s.Snapshot.Branches[0].Remote != s.Snapshot.Branches[count-1].Remote {
+		if branches[0].Remote != branches[count-1].Remote {
 			groups++
 		}
 		height = float32(12 + 28*(count+groups))
@@ -262,9 +324,10 @@ func (m *workspaceModel) positionSourceBranchSubmenu(world *module.Content) bool
 
 func (m *workspaceModel) hoverSourceBranches(world *module.Content, x, y float32) bool {
 	s := m.sourceState()
+	picker := s.branchMenu()
 	if s.BranchSubmenu && m.pointerInsideRefs(world, x, y, []string{"sc-branch-submenu"}) {
 		for i, action := range sourceBranchActions {
-			if m.pointerInsideRefs(world, x, y, []string{action.ID}) && s.branchActionEnabled(i) {
+			if m.pointerInsideRefs(world, x, y, []string{action.ID}) && picker.actionEnabled(i, s.BranchIndex) {
 				changed := s.BranchSubIndex != i
 				s.BranchSubIndex = i
 				return changed
@@ -283,13 +346,17 @@ func (m *workspaceModel) hoverSourceBranches(world *module.Content, x, y float32
 			offset = scroll.Position[1]
 		}
 	}
-	for i := range s.Snapshot.Branches {
+	for i := range picker.Branches {
 		if i >= len(s.branchView.clicks) {
 			break
 		}
 		item, _ := world.HTMLNode(m.surface, s.branchView.clicks[i])
 		row, bounded := item.Bounds()
 		row.Y += offset
+		// The open row extends through the menu padding on the way to its submenu.
+		if s.BranchSubmenu && i == s.BranchIndex {
+			row.X, row.Width = bounds.X, bounds.Width
+		}
 		if !bounded || !languageRectContains(row, x, y) {
 			continue
 		}
@@ -306,11 +373,13 @@ func (m *workspaceModel) hoverSourceBranches(world *module.Content, x, y float32
 
 func (m *workspaceModel) renderSourceBranches(overlay *sourceVNodeView) {
 	s := m.sourceState()
+	picker := s.branchMenu()
+	branches, current := picker.Branches, picker.Current
 	key := sourceBranchMenuKey{
-		Theme: m.workbenchTheme, Branches: sourceFirst(s.Snapshot.Branches), Count: len(s.Snapshot.Branches), Index: s.BranchIndex, Current: s.Snapshot.Branch,
+		Theme: m.workbenchTheme, Branches: sourceFirst(branches), Count: len(branches), Index: s.BranchIndex, Current: current,
 		X: s.MenuX, Y: s.MenuY, Width: s.BranchWidth, Height: s.BranchHeight,
 		Submenu: s.BranchSubmenu, SubIndex: s.BranchSubIndex, SubX: s.BranchSubX, SubY: s.BranchSubY, SubWidth: s.BranchSubWidth,
-		Integrating: s.Snapshot.Rebasing || s.Snapshot.MergeMessage != "",
+		Integrating: picker.Integrating, Loading: s.BranchTrigger != "sc-branches" && s.branchPicker == nil,
 	}
 	b := &s.branchView
 	if b.used == 0 || s.branchKey != key {
@@ -318,7 +387,7 @@ func (m *workspaceModel) renderSourceBranches(overlay *sourceVNodeView) {
 		b.reset()
 		b.open("div", "branches", "id", "sc-branch-menu", "class", "pencode-editor-context sc-branch-menu", "role", "menu", "aria-label", "Git branches", "style", fmt.Sprintf("left:%gpx;top:%gpx;width:%gpx;max-height:%gpx", s.MenuX, s.MenuY, s.BranchWidth, s.BranchHeight))
 		lastGroup := ""
-		for i, branch := range s.Snapshot.Branches {
+		for i, branch := range branches {
 			group := "Local branches"
 			if branch.Remote {
 				group = "Remote branches"
@@ -331,20 +400,23 @@ func (m *workspaceModel) renderSourceBranches(overlay *sourceVNodeView) {
 				b.text("div", "heading", group, "class", "sc-branch-heading", "aria-hidden", "true")
 				lastGroup = group
 			}
-			current := !branch.Remote && branch.Name == s.Snapshot.Branch
+			checked := !branch.Remote && branch.Name == current
 			class, tabindex := "sc-branch-item", "-1"
 			if i == s.BranchIndex {
 				class, tabindex = class+" active", "0"
 			}
-			b.open("button", branch.Ref, "id", "sc-branch:"+branch.Ref, "type", "button", "class", class, "role", "menuitem", "aria-haspopup", "menu", "aria-expanded", strconv.FormatBool(i == s.BranchIndex && s.BranchSubmenu), "tabindex", tabindex, "title", branch.Name)
-			if current {
+			b.open("button", branch.Ref, "id", "sc-branch:"+branch.Ref, "type", "button", "class", class, "tabindex", tabindex, "title", branch.Name)
+			b.attr("role", "menuitem")
+			b.attr("aria-haspopup", "menu")
+			b.attr("aria-expanded", strconv.FormatBool(i == s.BranchIndex && s.BranchSubmenu))
+			if checked {
 				b.attr("aria-current", "true")
 			}
 			if i == s.BranchIndex && s.BranchSubmenu {
 				b.attr("aria-controls", "sc-branch-submenu")
 			}
 			b.text("span", "name", branch.Name, "class", "sc-branch-name")
-			if current {
+			if checked {
 				m.sourceIcon(b, "current", "check", "")
 			}
 			m.sourceIcon(b, "submenu", "chevron-right", "")
@@ -352,27 +424,29 @@ func (m *workspaceModel) renderSourceBranches(overlay *sourceVNodeView) {
 		}
 		if lastGroup != "" {
 			b.close()
+		} else if key.Loading {
+			b.text("div", "loading", "Loading branches…", "class", "sc-branch-heading", "role", "status")
 		} else {
 			b.text("div", "empty", "No branches yet", "class", "sc-branch-heading")
 		}
 		b.close()
-		if s.BranchSubmenu && s.BranchIndex < len(s.Snapshot.Branches) {
-			branch := s.Snapshot.Branches[s.BranchIndex]
+		if s.BranchSubmenu && s.BranchIndex < len(branches) {
+			branch := branches[s.BranchIndex]
 			b.open("div", "branch-actions", "id", "sc-branch-submenu", "class", "pencode-editor-context sc-branch-submenu", "role", "menu", "aria-label", branch.Name+" actions", "aria-labelledby", "sc-branch:"+branch.Ref, "style", fmt.Sprintf("left:%gpx;top:%gpx;width:%gpx", s.BranchSubX, s.BranchSubY, s.BranchSubWidth))
 			for i, action := range sourceBranchActions {
 				label := action.Label
 				switch action.ID {
 				case "sc-branch-merge":
-					label = "Merge “" + branch.Name + "” into “" + s.Snapshot.Branch + "”…"
+					label = "Merge “" + branch.Name + "” into “" + current + "”…"
 				case "sc-branch-rebase":
-					label = "Rebase “" + s.Snapshot.Branch + "” onto “" + branch.Name + "”…"
+					label = "Rebase “" + current + "” onto “" + branch.Name + "”…"
 				}
 				class, tabindex := "", "-1"
 				if i == s.BranchSubIndex {
 					class, tabindex = "active", "0"
 				}
 				b.open("button", action.ID, "id", action.ID, "type", "button", "role", "menuitem", "class", class, "tabindex", tabindex, "title", label)
-				if !s.branchActionEnabled(i) {
+				if !picker.actionEnabled(i, s.BranchIndex) {
 					b.attr("disabled", "")
 				}
 				b.text("span", "label", label, "class", "sc-branch-name")
@@ -386,7 +460,8 @@ func (m *workspaceModel) renderSourceBranches(overlay *sourceVNodeView) {
 
 func (m *workspaceModel) sourceBranchShortcut(state *input.State) bool {
 	s := m.sourceState()
-	count := len(s.Snapshot.Branches)
+	branches := s.branchMenu().Branches
+	count := len(branches)
 	switch {
 	case m.uiKey(state, input.KeyTab):
 		s.BranchMenuOpen, s.BranchFocus = false, true
@@ -431,6 +506,8 @@ func (m *workspaceModel) sourceBranchShortcut(state *input.State) bool {
 			if !m.uiKey(state, input.KeyRight) {
 				m.sourceAction(sourceBranchActions[s.BranchSubIndex].ID)
 			}
+		} else if s.BranchTrigger != "sc-branches" && !m.uiKey(state, input.KeyRight) {
+			m.sourceAction("sc-branch:" + branches[s.BranchIndex].Ref)
 		} else {
 			s.BranchSubmenu, s.BranchSubIndex, s.BranchFocus = true, -1, true
 			s.stepBranchAction(1)
@@ -447,8 +524,9 @@ func (m *workspaceModel) focusSourceBranches(world *module.Content) {
 	if !s.BranchFocus {
 		return
 	}
-	id := "sc-branches"
-	if s.BranchMenuOpen && len(s.Snapshot.Branches) != 0 {
+	id := s.BranchTrigger
+	branches := s.branchMenu().Branches
+	if s.BranchMenuOpen && len(branches) != 0 {
 		id = s.branchView.clicks[s.BranchIndex]
 		if s.BranchSubmenu && s.BranchSubIndex >= 0 {
 			id = sourceBranchActions[s.BranchSubIndex].ID

@@ -10,10 +10,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/onix-engine/onix/ecs"
-	"github.com/onix-engine/onix/html/dom"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
+	uinode "github.com/onix-engine/onix/scene/node"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
@@ -23,7 +23,7 @@ type pencodeExtensionSelectable struct{ ref, id string }
 
 type pencodeExtensionTextSpan struct {
 	value          string
-	offset         int
+	offset, order  int
 	entity, scroll ecs.Entity
 	x, y, height   float32
 }
@@ -40,6 +40,7 @@ type pencodeExtensionTextSelection struct {
 	key                       string
 	quads                     []ecs.Entity
 	spans                     []pencodeExtensionTextSpan
+	blocks                    []pencodeExtensionTextSpan
 	anchor, caret             pencodeExtensionTextPoint
 	anchorOffset, caretOffset int
 	area                      ecs.Entity
@@ -57,7 +58,7 @@ func (s *pencodeExtensionSurface) selectableText(ref string) string {
 	return s.selectableTextRanges(ref, nil)
 }
 
-func (s *pencodeExtensionSurface) selectableTextRanges(ref string, visit func(*dom.Node, int, int)) string {
+func (s *pencodeExtensionSurface) selectableTextRanges(ref string, visit func(*uinode.Node, int, int)) string {
 	var b strings.Builder
 	space, breaks := false, 0
 	separate := func(count int) {
@@ -80,8 +81,8 @@ func (s *pencodeExtensionSurface) selectableTextRanges(ref string, visit func(*d
 		}
 		space, breaks = false, 0
 	}
-	var walk func(*dom.Node, bool, bool)
-	walk = func(node *dom.Node, selected, pre bool) {
+	var walk func(*uinode.Node, bool, bool)
+	walk = func(node *uinode.Node, selected, pre bool) {
 		if _, hidden := node.Attr("hidden"); hidden {
 			return
 		}
@@ -114,7 +115,7 @@ func (s *pencodeExtensionSurface) selectableTextRanges(ref string, visit func(*d
 			if boundary > 0 {
 				separate(boundary)
 			}
-			if node.Type == dom.TextNode {
+			if node.Type == uinode.TextNode {
 				start := b.Len()
 				defer func() {
 					if visit != nil && b.Len() > start {
@@ -218,6 +219,16 @@ func extensionTextOrder(world *module.Content, area ecs.Entity, a, b pencodeExte
 	return cmp.Compare(x.Matrix[12], y.Matrix[12])
 }
 
+func extensionTextBlockOrder(a, b pencodeExtensionTextSpan) int {
+	if order := cmp.Compare(a.order, b.order); order != 0 {
+		return order
+	}
+	if order := cmp.Compare(a.y, b.y); order != 0 {
+		return order
+	}
+	return cmp.Compare(a.x, b.x)
+}
+
 // Collect the rendered runs, so copying follows the visible Markdown text and
 // includes code, links and tool output without changing their layout.
 func (s *pencodeExtensionTextSelection) collect(world *module.Content, surface *pencodeExtensionSurface, ref string) {
@@ -265,15 +276,50 @@ func (s *pencodeExtensionTextSelection) collectText(world *module.Content, surfa
 			}
 		}
 		size, _ := world.Get[scene.Size2D](entity)
-		s.spans = append(s.spans, pencodeExtensionTextSpan{entity: entity, scroll: scroll, value: text.Value, x: transform.Matrix[12], y: transform.Matrix[13], height: size.Height * transform.Matrix[5]})
+		order, _ := world.Get[scene.UIStackIndex](entity)
+		s.spans = append(s.spans, pencodeExtensionTextSpan{entity: entity, scroll: scroll, order: int(order), value: text.Value, x: transform.Matrix[12], y: transform.Matrix[13], height: size.Height * transform.Matrix[5]})
 	}
-	slices.SortFunc(s.spans, func(a, b pencodeExtensionTextSpan) int {
+	// Paint stack values group runs by HTML block; their relative values can
+	// also include z-index and positioning. Order the blocks geometrically,
+	// keeping wrapped table cells and nested scroll contents contiguous.
+	slices.SortFunc(s.spans, extensionTextBlockOrder)
+	clear(s.blocks)
+	s.blocks = s.blocks[:0]
+	for start := 0; start < len(s.spans); {
+		end := start + 1
+		block := s.spans[start]
+		for end < len(s.spans) && s.spans[end].order == block.order {
+			block.x = min(block.x, s.spans[end].x)
+			end++
+		}
+		block.offset, block.order = start, end
+		s.blocks = append(s.blocks, block)
+		start = end
+	}
+	slices.SortFunc(s.blocks, func(a, b pencodeExtensionTextSpan) int {
 		return extensionTextOrder(world, s.area, a, b)
 	})
+	// Different inline fonts can also shift the first line of adjacent cells.
+	for start := 0; start < len(s.blocks); {
+		end := start + 1
+		for end < len(s.blocks) && s.blocks[end].scroll == s.blocks[start].scroll && s.blocks[end].y < s.blocks[start].y+s.blocks[start].height*.6 {
+			end++
+		}
+		slices.SortFunc(s.blocks[start:end], func(a, b pencodeExtensionTextSpan) int { return cmp.Compare(a.x, b.x) })
+		start = end
+	}
+	for order, block := range s.blocks {
+		for i := block.offset; i < block.order; i++ {
+			s.spans[i].order = order
+		}
+	}
+	clear(s.blocks)
+	s.blocks = s.blocks[:0]
+	slices.SortFunc(s.spans, extensionTextBlockOrder)
 	// Inline fonts can have different top edges on the same visual row.
 	for start := 0; start < len(s.spans); {
 		end := start + 1
-		for end < len(s.spans) && s.spans[end].scroll == s.spans[start].scroll && s.spans[end].y >= s.spans[start].y && s.spans[end].y < s.spans[start].y+s.spans[start].height*.6 {
+		for end < len(s.spans) && s.spans[end].order == s.spans[start].order && s.spans[end].y >= s.spans[start].y && s.spans[end].y < s.spans[start].y+s.spans[start].height*.6 {
 			end++
 		}
 		slices.SortFunc(s.spans[start:end], func(a, b pencodeExtensionTextSpan) int { return cmp.Compare(a.x, b.x) })
@@ -600,6 +646,17 @@ func (s *pencodeExtensionTextSelection) begin(world *module.Content, surface *pe
 		return true
 	}
 	return false
+}
+
+func (s *pencodeExtensionTextSelection) suppressClick(world *ecs.World) bool {
+	state, _ := world.GetResource[*input.State]()
+	pointer := state.Pointer()
+	// Onix dispatches pointer clicks before the workbench updates the selection.
+	if !pointer.Released || pointer.Pressed {
+		return false
+	}
+	dx, dy := pointer.X-pointer.PressX, pointer.Y-pointer.PressY
+	return s.dragged || s.dragging && dx*dx+dy*dy >= 16
 }
 
 func (m *workspaceModel) updateExtensionSelection(world *module.Content, state *input.State) bool {

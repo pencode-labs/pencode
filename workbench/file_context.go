@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
@@ -22,6 +23,7 @@ type pencodeFileContext struct {
 	transfer                          *fileIOJob
 	dialog, name, title, message, err string
 	path                              string
+	paths                             []string
 	depth, index                      int
 	x, y                              float32
 	pending                           bool
@@ -32,37 +34,53 @@ type pencodeFileContext struct {
 
 type pencodeFileClipboard struct {
 	project *pencodeProject
-	path    string
+	paths   []string
 	cut     bool
 }
 
 func (c *pencodeFileContext) inline() bool {
+	return c.creating() || c.dialog == "rename"
+}
+
+func (c *pencodeFileContext) creating() bool {
 	return c.dialog == "new-file" || c.dialog == "new-folder"
 }
 
-func (model *workspaceModel) renderFileCreation(view *htmlui.View) {
+func (model *workspaceModel) renderFileName(view *htmlui.View, props treeProps) {
 	c := &model.fileContext
-	view.Attr("create", "style", fmt.Sprintf("padding-left:%dpx", 24+c.depth*16))
-	icon := treeIcon(&treeProps{Model: model, Name: c.name, IsDir: c.dialog == "new-folder"})
-	view.Attr("create-icon", "src", model.themedIcon(icon, "icon.foreground"))
-	view.Attr("create-name", "value", c.name)
-	label := model.tr("新建文件")
-	if c.dialog == "new-folder" {
-		label = model.tr("新建文件夹")
+	label, padding := "新建文件", 24
+	switch c.dialog {
+	case "rename":
+		label, padding = "重命名", 4
+		view.Attr("edit-row", "id", "file-tree-rename")
+		view.Attr("edit-row", "class", treeRowClass(&props))
+		view.RemoveAttr("edit-arrow", "hidden")
+		if props.IsDir {
+			view.Attr("edit-arrow", "src", model.themedIcon("icons/chevron-right.svg", "icon.foreground"))
+			view.Attr("edit-row", "aria-expanded", boolAttribute(model.isProjectDirectoryExpanded(props.Project, props.Path, props.Depth)))
+		}
+	case "new-folder":
+		label = "新建文件夹"
 	}
-	view.Attr("create-name", "aria-label", label)
-	view.Attr("create-name", "aria-invalid", boolAttribute(c.err != ""))
+	if c.creating() {
+		props.Name, props.IsDir = c.name, c.dialog == "new-folder"
+	}
+	view.Attr("edit-row", "style", fmt.Sprintf("padding-left:%dpx", padding+props.Depth*16))
+	view.Attr("edit-icon", "src", model.themedIcon(treeIcon(&props), treeIconForeground(&props)))
+	view.Attr("edit-name", "value", c.name)
+	view.Attr("edit-name", "aria-label", model.tr(label))
+	view.Attr("edit-name", "aria-invalid", boolAttribute(c.err != ""))
 	if c.pending {
-		view.Attr("create-name", "disabled", "")
+		view.Attr("edit-name", "disabled", "")
 	} else {
-		view.RemoveAttr("create-name", "disabled")
+		view.RemoveAttr("edit-name", "disabled")
 	}
-	view.Event("create-name", htmlui.EventInput)
-	view.Text("create-error", c.err)
+	view.Event("edit-name", htmlui.EventInput)
+	view.Text("edit-error", c.err)
 	if c.err == "" {
-		view.Attr("create-error", "hidden", "")
+		view.Attr("edit-error", "hidden", "")
 	} else {
-		view.RemoveAttr("create-error", "hidden")
+		view.RemoveAttr("edit-error", "hidden")
 	}
 }
 
@@ -115,46 +133,43 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 	view.Text("file-dialog-title", c.title)
 	view.Text("file-dialog-message", c.message)
 	view.Text("file-dialog-error", c.err)
-	view.Attr("file-dialog-name", "value", c.name)
-	if c.dialog == "delete" || c.dialog == "overwrite" {
-		view.Attr("file-dialog-name", "hidden", "")
-		label := model.tr("删除")
-		if c.dialog == "overwrite" {
-			label = model.tr("覆盖")
-		}
-		view.Text("file-dialog-submit", label)
-	} else {
-		view.RemoveAttr("file-dialog-name", "hidden")
-		view.Text("file-dialog-submit", model.tr("确定"))
+	label := "删除"
+	if c.dialog == "overwrite" {
+		label = "覆盖"
 	}
+	view.Text("file-dialog-submit", model.tr(label))
 	if c.err == "" {
 		view.Attr("file-dialog-error", "hidden", "")
 	} else {
 		view.RemoveAttr("file-dialog-error", "hidden")
 	}
-	view.Event("file-dialog-name", htmlui.EventInput)
 	view.Event("file-dialog-submit", htmlui.EventClick)
 	view.Event("file-dialog-cancel", htmlui.EventClick)
 }
 
 func (model *workspaceModel) fileContextEnabled(ref string) bool {
 	c := &model.fileContext
+	multiple := c.project != nil && c.project.tree.selection.multiple(c.path)
 	switch ref {
 	case "file-context-open":
-		return c.path != "" && (c.directory || model.canOpenFile(c.path))
-	case "file-context-rename", "file-context-delete", "file-context-cut", "file-context-copy":
+		return !multiple && c.path != "" && (c.directory || model.canOpenFile(c.path))
+	case "file-context-rename":
+		return !multiple && c.path != ""
+	case "file-context-delete", "file-context-cut", "file-context-copy":
 		return c.path != ""
 	case "file-context-paste":
-		return c.externalFiles || model.fileClipboard.project != nil && model.fileClipboard.path != ""
+		return c.externalFiles || len(model.fileClipboard.paths) != 0
 	case "file-context-reveal":
-		return !model.remoteWorkspace()
+		return !multiple && !model.remoteWorkspace()
+	case "file-context-find", "file-context-new-file", "file-context-new-folder":
+		return !multiple
 	}
 	return true
 }
 
 func (model *workspaceModel) updateFileContext(world *module.Content, state *input.State) bool {
 	c := &model.fileContext
-	if model.folderSearch.open || model.settingsOpen || model.quickOpen || model.sidebarHidden || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
+	if model.folderSearch.open || model.settingsOpen || model.quickOpen || model.sidebarHidden() || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
 		changed := c.open || c.dialog != ""
 		*c = pencodeFileContext{}
 		return changed
@@ -167,7 +182,22 @@ func (model *workspaceModel) updateFileContext(world *module.Content, state *inp
 		if c.inline() && !c.needsFocus && !c.pending && state.MousePressed(input.MouseLeft) {
 			pointer := state.Pointer()
 			zoom := max(float32(model.settings.Zoom)/100, .01)
-			if !model.pointerInsideRefs(world, pointer.X/zoom, pointer.Y/zoom, []string{"file-tree-create"}) {
+			x, y := pointer.X/zoom, pointer.Y/zoom
+			row := "file-tree-create"
+			if c.dialog == "rename" {
+				row = "file-tree-rename"
+			}
+			inside := false
+			if node, ok := world.HTMLNode(model.surface, row); ok {
+				if bounds, ok := node.Bounds(); ok {
+					if scroll := world.Ref[scene.UIScroll](c.project.tree.area); scroll != nil {
+						bounds.X += scroll.Position.X()
+						bounds.Y += scroll.Position.Y()
+					}
+					inside = languageRectContains(bounds, x, y) && model.pointerInsideRefs(world, x, y, []string{treeRowID(c.project.Path)})
+				}
+			}
+			if !inside {
 				if strings.TrimSpace(c.name) == "" {
 					*c = pencodeFileContext{}
 				} else {
@@ -207,6 +237,10 @@ func (model *workspaceModel) updateFileContext(world *module.Content, state *inp
 		return changed
 	}
 	bounds, _ := root.Bounds()
+	selection := &project.tree.selection
+	if relative != "" && !selection.contains(relative) {
+		selection.set(relative)
+	}
 	*c = pencodeFileContext{project: project, path: relative, directory: directory, depth: depth, open: true,
 		externalFiles: clipboard.HasFiles(),
 		x:             max(4, min(x-bounds.X, bounds.Width-276)), y: max(4, min(y-bounds.Y, bounds.Height-395))}
@@ -224,7 +258,7 @@ func (model *workspaceModel) fileContextTarget(world *module.Content, x, y float
 }
 
 func (model *workspaceModel) fileTreeTarget(world *module.Content, x, y float32) (*pencodeProject, string, bool, int) {
-	for _, access := range world.Query[htmlui.Component[treeProps, struct{}]]() {
+	for _, access := range world.Query[htmlui.Component[treeProps, treeRowState]]() {
 		props := access.Get().Props
 		if props.Editing {
 			continue
@@ -281,28 +315,30 @@ func (model *workspaceModel) focusFileContext(world *module.Content) {
 	if !c.needsFocus || c.dialog == "" {
 		return
 	}
-	ref := "file-dialog-name"
+	ref := "file-dialog-cancel"
 	if c.inline() {
 		ref = "file-tree-name"
 	}
-	if c.dialog == "delete" || c.dialog == "overwrite" {
-		ref = "file-dialog-cancel"
-	}
 	if control, ok := world.HTMLControl(model.surface, ref); ok {
-		if c.dialog != "delete" && c.dialog != "overwrite" {
-			if _, ready := world.Get[engineui.TextField](control); !ready {
-				if model.app != nil && model.app.WakeAt != nil {
-					model.app.WakeAt(time.Now())
-				}
-				return
+		field := world.Mut[engineui.TextField](control)
+		if c.inline() && field == nil {
+			if model.app != nil && model.app.WakeAt != nil {
+				model.app.WakeAt(time.Now())
 			}
+			return
 		}
 		if !world.Focus(control) {
 			return
 		}
 		c.needsFocus = false
-		if field := world.Mut[engineui.TextField](control); field != nil {
-			field.Anchor = 0
+		if field != nil {
+			end := len(c.name)
+			if c.dialog == "rename" && !c.directory && c.err == "" {
+				if dot := strings.LastIndexByte(c.name, '.'); dot > 0 {
+					end = dot
+				}
+			}
+			field.Anchor, field.Caret = 0, utf8.RuneCountInString(c.name[:end])
 		}
 	}
 }
@@ -314,7 +350,7 @@ func (model *workspaceModel) handleFileContextKeys(world *module.Content, state 
 		return true
 	}
 	if c.dialog != "" {
-		if c.dialog != "delete" && c.dialog != "overwrite" && model.uiKey(state, input.KeyEnter) {
+		if c.inline() && model.uiKey(state, input.KeyEnter) {
 			model.submitFileDialog(world)
 			return true
 		}
@@ -357,8 +393,6 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 			return false
 		}
 		switch ref {
-		case "file-dialog-name":
-			c.name, c.err = value, ""
 		case "file-dialog-submit":
 			model.submitFileDialog(world)
 		case "file-dialog-cancel":
@@ -377,38 +411,34 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 	switch action := strings.TrimPrefix(ref, "file-context-"); action {
 	case "find":
 		model.openFolderSearch(project, model.fileContextDirectory(), false)
-	case "new-file", "new-folder", "rename", "delete":
+	case "new-file", "new-folder":
 		c.dialog, c.needsFocus, c.err, c.name = action, true, "", ""
-		if c.inline() {
-			c.path, c.directory = model.fileContextDirectory(), true
-			if c.path == "." {
-				c.path = ""
-			}
-			c.depth = 0
-			model.activateProject(project)
-			if project.ExpandedDirs == nil {
-				project.ExpandedDirs = make(map[string]bool)
-			}
-			for parent := c.path; parent != "" && parent != "."; parent = path.Dir(parent) {
-				project.ExpandedDirs[parent] = true
-				c.depth++
-			}
-			project.tree.revision++
-			model.revealProject, model.revealPath = nil, ""
-			break
+		c.path, c.directory = model.fileContextDirectory(), true
+		if c.path == "." {
+			c.path = ""
 		}
-		switch action {
-		case "rename":
-			c.title = model.tr("重命名")
-		case "delete":
-			c.title = model.tr("删除")
+		c.depth = 0
+		model.activateProject(project)
+		if project.ExpandedDirs == nil {
+			project.ExpandedDirs = make(map[string]bool)
 		}
-		c.message = model.tr("位置：") + filepath.Join(project.Path, filepath.FromSlash(model.fileContextDirectory()))
-		if action == "rename" {
-			c.name = path.Base(relative)
+		for parent := c.path; parent != "" && parent != "."; parent = path.Dir(parent) {
+			project.ExpandedDirs[parent] = true
+			c.depth++
 		}
-		if action == "delete" {
-			c.message = fmt.Sprintf(model.tr("确定永久删除“%s”及其内容？未保存的更改也会丢失。"), relative)
+		project.tree.revision++
+		model.revealProject, model.revealPath = nil, ""
+	case "rename":
+		c.dialog, c.needsFocus, c.err, c.name = action, true, "", path.Base(relative)
+		model.revealProject, model.revealPath = nil, ""
+	case "delete":
+		c.dialog, c.needsFocus, c.err = action, true, ""
+		c.title = model.tr("删除")
+		c.paths = project.tree.selection.targets(relative, true)
+		if len(c.paths) == 1 {
+			c.message = fmt.Sprintf(model.tr("确定永久删除“%s”及其内容？未保存的更改也会丢失。"), c.paths[0])
+		} else {
+			c.message = fmt.Sprintf(model.tr("确定永久删除选中的 %d 项及其内容？未保存的更改也会丢失。"), len(c.paths))
 		}
 	case "open":
 		model.activateProject(project)
@@ -425,23 +455,12 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 			model.setProjectStatus(project, model.tr("无法打开文件管理器：")+err.Error())
 		}
 	case "copy-path", "copy-relative":
-		text := relative
-		if action == "copy-path" {
-			text = filepath.Join(project.Path, filepath.FromSlash(relative))
-		} else if text == "" {
-			text = "."
-		}
-		state, _ := world.Resource[*input.State]()
-		if !state.SetClipboardText(text) {
-			model.setProjectStatus(project, model.tr("无法写入剪贴板"))
-		}
+		model.copyTreePaths(world, project, project.tree.selection.targets(relative, false), action == "copy-path")
 	case "cut", "copy":
 		// Taking an internal copy replaces any older native file clipboard.
-		state, _ := world.Resource[*input.State]()
-		if !state.SetClipboardText(filepath.Join(project.Path, filepath.FromSlash(relative))) {
-			model.setProjectStatus(project, model.tr("无法写入剪贴板"))
-		}
-		model.fileClipboard = pencodeFileClipboard{project, relative, action == "cut"}
+		paths := project.tree.selection.targets(relative, true)
+		model.copyTreePaths(world, project, paths, true)
+		model.fileClipboard = pencodeFileClipboard{project: project, paths: paths, cut: action == "cut"}
 		c.externalFiles = false
 	case "paste":
 		if err := model.pasteFileClipboard(project, model.fileContextDirectory()); err != nil {
@@ -454,25 +473,56 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 	return true
 }
 
-// Only inspect the tree when its paste binding is pressed; idle frames do not
-// query the native clipboard or allocate temporary row lists.
-func (model *workspaceModel) fileTreePasteShortcut(world *module.Content, state *input.State, goos string) bool {
-	if world == nil || model.sidebarHidden || model.settingsOpen || model.quickOpen || !model.commandMatches("file-context-paste", state, goos) {
+func (model *workspaceModel) copyTreePaths(world *module.Content, project *pencodeProject, paths []string, absolute bool) {
+	var text strings.Builder
+	for i, relative := range paths {
+		if i != 0 {
+			text.WriteByte('\n')
+		}
+		if absolute {
+			relative = filepath.Join(project.Path, filepath.FromSlash(relative))
+		} else if relative == "" {
+			relative = "."
+		}
+		text.WriteString(relative)
+	}
+	state, ok := world.Resource[*input.State]()
+	if !ok || !state.SetClipboardText(text.String()) {
+		model.setProjectStatus(project, model.tr("无法写入剪贴板"))
+	}
+}
+
+func (model *workspaceModel) fileTreeShortcut(world *module.Content, state *input.State, goos string) bool {
+	if world == nil || model.sidebarHidden() || model.settingsOpen || model.quickOpen {
 		return false
 	}
+	ref := ""
+	for _, candidate := range [...]string{"file-context-paste", "file-context-rename", "file-context-cut", "file-context-copy", "file-context-delete", "file-context-copy-path", "file-context-copy-relative"} {
+		if model.commandMatches(candidate, state, goos) {
+			ref = candidate
+			break
+		}
+	}
+	if ref == "" {
+		return false
+	}
+	paste := ref == "file-context-paste"
 	focused := world.FocusedControl()
-	for _, access := range world.Query[htmlui.Component[treeProps, struct{}]]() {
+	for _, access := range world.Query[htmlui.Component[treeProps, treeRowState]]() {
 		props := access.Get().Props
 		if props.Model != model || props.Editing {
 			continue
 		}
 		if control, ok := world.HTMLControl(model.surface, props.RowID); ok && control == focused {
-			model.fileContext = pencodeFileContext{project: props.Project, path: props.Path, directory: props.IsDir,
-				open: true, externalFiles: clipboard.HasFiles()}
-			model.handleFileContextEvent(world, "file-context-paste", "")
+			model.fileContext = pencodeFileContext{project: props.Project, path: props.Path, directory: props.IsDir, depth: props.Depth,
+				open: true, externalFiles: paste && clipboard.HasFiles()}
+			model.handleFileContextEvent(world, ref, "")
 			model.fileContext.open = false
 			return true
 		}
+	}
+	if !paste {
+		return false
 	}
 	for _, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {
 		props := access.Get().Props
@@ -536,6 +586,13 @@ func (model *workspaceModel) submitFileDialog(world *module.Content) {
 	c := &model.fileContext
 	if c.pending {
 		return
+	}
+	if c.dialog == "rename" {
+		current := path.Base(c.path)
+		if c.name == current || strings.TrimSpace(c.name) == current {
+			*c = pencodeFileContext{}
+			return
+		}
 	}
 	if err := model.applyFileDialog(); err != nil {
 		c.err = err.Error()

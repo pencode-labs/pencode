@@ -83,7 +83,7 @@ func TestPencodeTreeRevealWaitsForScanAndSidebar(t *testing.T) {
 	project.scan = &pencodeProjectScan{}
 	model.centerRevealedTreeRow(nil)
 	project.scan = nil
-	model.sidebarHidden = true
+	model.toggleSidebar()
 	model.centerRevealedTreeRow(nil)
 	if model.revealProject != project || model.revealPath != "target.go" {
 		t.Fatal("pending navigation was lost before the tree could be displayed")
@@ -127,7 +127,7 @@ func TestPencodeNavigationCentersExplorerRows(t *testing.T) {
 			switch action {
 			case "tree":
 				for _, relative := range []string{directory + "/item-41.go", target} {
-					handleTreeEvent(&module.ContentEventContext[treeProps, struct{}]{
+					handleTreeEvent(&module.ContentEventContext[treeProps, treeRowState]{
 						World: world,
 						Props: &treeProps{Model: model, Project: project, Path: relative},
 						Ref:   "row",

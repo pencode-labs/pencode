@@ -53,10 +53,10 @@ func TestSavePreservesExplorer(t *testing.T) {
 	// Geometry may be synchronized by a status-line reflow; the tree's render
 	// callback itself must stay idle when only save bindings change.
 	rowRenders := 0
-	for _, component := range m.fontResources.Query[htmlui.Component[treeProps, struct{}]]() {
+	for _, component := range m.fontResources.Query[htmlui.Component[treeProps, treeRowState]]() {
 		definition := component.Ref().Definition
 		render := definition.Behavior.Render
-		definition.Behavior.Render = func(context htmlui.RenderContext[treeProps, struct{}], view *htmlui.View) {
+		definition.Behavior.Render = func(context htmlui.RenderContext[treeProps, treeRowState], view *htmlui.View) {
 			if context.Props.Path == "item-15.go" {
 				rowRenders++
 			}

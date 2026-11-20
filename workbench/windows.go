@@ -163,7 +163,6 @@ func (w *pencodeWindow) fingerprint(m *workspaceModel) uint64 {
 	windowHash(&h, m.activeProjectIndex)
 	windowHash(&h, m.viewportWidth)
 	windowHash(&h, m.viewportHeight)
-	windowHash(&h, m.sidebarHidden)
 	windowHash(&h, m.sidebarWidthStyle)
 	windowHash(&h, m.sourceChangesWidthStyle)
 	windowHash(&h, m.bottom.heightStyle)
@@ -178,10 +177,13 @@ func (w *pencodeWindow) fingerprint(m *workspaceModel) uint64 {
 	for _, p := range m.projects {
 		windowHash(&h, p.Path)
 		windowHash(&h, p.Loose)
+		windowHash(&h, p.sidebarCollapsed)
 		windowHash(&h, p.ActivePath)
 		windowHash(&h, p.AllDirectoriesCollapsed)
 		windowHash(&h, p.tree.position)
 		windowHash(&h, p.sourceControl.Snapshot.Repository.Root)
+		windowHash(&h, p.sourceControl.RepositoriesWidthStyle)
+		windowHash(&h, p.sourceControl.RepositoriesCollapsed)
 		var expanded uint64
 		for path, open := range p.ExpandedDirs {
 			if open {

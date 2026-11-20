@@ -337,6 +337,6 @@ func TestKeymapDebugAndFileCommandsUseReplacedBindings(t *testing.T) {
 		t.Fatal("old rename shortcut still triggers")
 	}
 	if !m.handleShortcutKeys(m.fontResources, keymapState(pencodeBindingChord("Alt+R"), runtime.GOOS), runtime.GOOS) || m.fileContext.dialog != "rename" {
-		t.Fatal("remapped file rename shortcut did not open dialog")
+		t.Fatal("remapped file rename shortcut did not start inline editing")
 	}
 }

@@ -36,12 +36,17 @@
 
 
   <nav id="project-menu" data-ref="project-menu" class="pencode-project-menu" role="menu" aria-label="打开项目" hidden>
-    <button id="project-menu-local" data-ref="project-menu-local" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-local-icon" src="icons/folder-opened.svg" alt=""><span>打开本地项目</span></button>
-    <button id="project-menu-remote" data-ref="project-menu-remote" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-remote-icon" src="icons/remote.svg" alt=""><span>打开远程项目</span></button>
+    <button id="project-menu-local" data-ref="project-menu-local" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-local-icon" src="icons/folder-opened.svg" alt=""><span>本地项目</span></button>
+    <button id="project-menu-remote" data-ref="project-menu-remote" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="project-menu-remote-icon" src="icons/remote.svg" alt=""><span>远程项目</span></button>
+    <button id="project-menu-recent" data-ref="project-menu-recent" class="pencode-project-menu-item" type="button" role="menuitem" aria-haspopup="menu" aria-controls="project-menu-recent-list" aria-expanded="false"><img data-ref="project-menu-recent-icon" src="icons/folder-opened.svg" alt=""><span>最近项目</span><img data-ref="project-menu-recent-arrow" class="pencode-project-menu-arrow" src="icons/chevron-right.svg" alt=""></button>
     <section data-ref="project-menu-hosts" class="pencode-project-menu-hosts" role="group" aria-label="远程主机" hidden>
       <div class="pencode-project-menu-label" aria-hidden="true">远程主机</div>
       <div data-ref="project-menu-host-list"></div>
     </section>
+  </nav>
+  <nav id="project-menu-recent-list" data-ref="project-menu-recent-list" class="pencode-project-menu" role="menu" aria-label="最近项目" hidden>
+    <div id="project-menu-recent-empty" data-ref="project-menu-recent-empty" class="pencode-project-menu-label">暂无最近打开的项目</div>
+    <div data-ref="project-menu-recent-items"></div>
   </nav>
 
   <section id="connection-panel" data-ref="connection-panel" class="pencode-connection" role="dialog" aria-labelledby="connection-title" hidden>
@@ -267,150 +272,152 @@
 
     <div id="sidebar-collapsed" data-ref="sidebar-collapsed" class="pencode-sidebar-collapsed" hidden><button id="sidebar-expand" data-ref="sidebar-expand" class="pencode-icon-button" type="button" title="展开侧栏" aria-label="展开侧栏" aria-controls="sidebar" aria-expanded="false"><img data-ref="sidebar-expand-icon" src="icons/chevron-right.svg" alt=""></button></div>
     <main class="pencode-editor-shell">
-      <div id="tabs" data-ref="tabs" class="pencode-tabs" role="tablist" aria-label="打开的文件"><div data-ref="file-tabs" class="sc-file-tabs"></div><div data-ref="source-tabs" class="sc-tab-list"></div></div>
-      <div id="editor-header" data-ref="editor-header" class="pencode-editor-header" hidden>
-        <nav data-ref="editor-path" class="pencode-editor-path" aria-label="当前文件路径">
-          <ol data-ref="editor-path-segments"></ol>
-        </nav>
-        <button id="editor-split" data-ref="editor-split" class="pencode-icon-button" type="button" title="切换双栏布局" aria-label="切换双栏布局" aria-pressed="false" hidden><img data-ref="editor-split-icon" src="icons/split-horizontal.svg" alt=""></button>
-      </div>
-      <div id="editor-page" data-ref="editor-page" class="pencode-file-page" role="toolbar" aria-label="大文件分段浏览" hidden>
-        <button data-ref="editor-page-first" type="button">开头</button>
-        <button data-ref="editor-page-prev" type="button">上一段</button>
-        <span data-ref="editor-page-range" role="status"></span>
-        <select data-ref="editor-page-position" aria-label="跳转到文件位置"><option value="" selected>跳转位置</option><option value="0">开头</option><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100">末尾</option></select>
-        <button data-ref="editor-page-next" type="button">下一段</button>
-        <button data-ref="editor-page-last" type="button">末尾</button>
-      </div>
-      <div id="editor-body" data-ref="editor-body" class="pencode-editor-body">
-        <section data-ref="extension-editor" class="pencode-extension-editor-slot" aria-label="扩展会话" hidden></section>
-        <div id="editor-tools" data-ref="editor-tools" class="pencode-editor-tools" role="toolbar" aria-label="文件打开方式" hidden>
-          <button id="editor-text" data-ref="editor-text" class="pencode-action" type="button" title="代码编辑器" aria-label="代码编辑器" aria-pressed="true" hidden><img data-ref="editor-text-icon" src="icons/code.svg" alt=""></button>
-          <button id="editor-image" data-ref="editor-image" class="pencode-action" type="button" title="图片预览" aria-label="图片预览" aria-pressed="false" hidden><img data-ref="editor-image-icon" src="icons/image.svg" alt=""></button>
-          <div data-ref="actions-open-with" class="pencode-open-with-actions"></div>
+      <div id="editor-panel" class="pencode-editor-panel">
+        <div id="tabs" data-ref="tabs" class="pencode-tabs" role="tablist" aria-label="打开的文件"><div data-ref="file-tabs" class="sc-file-tabs"></div><div data-ref="source-tabs" class="sc-tab-list"></div></div>
+        <div id="editor-header" data-ref="editor-header" class="pencode-editor-header" hidden>
+          <nav data-ref="editor-path" class="pencode-editor-path" aria-label="当前文件路径">
+            <ol data-ref="editor-path-segments"></ol>
+          </nav>
+          <button id="editor-split" data-ref="editor-split" class="pencode-icon-button" type="button" title="切换双栏布局" aria-label="切换双栏布局" aria-pressed="false" hidden><img data-ref="editor-split-icon" src="icons/split-horizontal.svg" alt=""></button>
         </div>
-        <section id="source-content" data-ref="source-content" class="sc-workspace" aria-label="Source Control 编辑区" hidden></section>
-        <section id="custom-editor" data-ref="custom-editor" class="pencode-custom-editor" aria-label="扩展编辑器" hidden>
-          <p data-ref="custom-editor-status" role="status"></p>
-          <button id="editor-open-text" data-ref="editor-open-text" class="pencode-open-text" type="button" hidden>使用代码编辑器打开</button>
-          <div data-ref="custom-editor-content" class="pencode-custom-editor-content"></div>
-        </section>
-        <aside id="editor-gutter" data-ref="editor-gutter" class="pencode-line-numbers" aria-hidden="true"></aside>
-        <textarea id="editor" data-ref="editor" class="pencode-editor" wrap="soft" spellcheck="false" autocapitalize="off"
-          autocomplete="off" aria-autocomplete="list" aria-controls="lsp-completion-list" aria-label="代码编辑器"></textarea>
-        <section id="lsp-panel" data-ref="lsp-panel" class="pencode-lsp-panel" aria-label="语言服务结果" hidden>
-          <div id="lsp-panel-header" data-ref="lsp-panel-header" class="pencode-lsp-panel-header"><strong class="pencode-lsp-panel-title" data-ref="lsp-title"></strong><button class="pencode-icon-button" data-ref="lsp-close" type="button" title="关闭语言服务结果" aria-label="关闭语言服务结果"><img data-ref="lsp-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div>
-          <div data-ref="lsp-query-row" class="pencode-lsp-query" hidden>
-            <input class="pencode-lsp-query-input" id="lsp-query" data-ref="lsp-query" type="text" aria-label="符号名称或查询" placeholder="输入符号名称或查询" autocomplete="off" spellcheck="false">
-            <button class="pencode-lsp-button" data-ref="lsp-submit" type="button">确定</button>
+        <div id="editor-page" data-ref="editor-page" class="pencode-file-page" role="toolbar" aria-label="大文件分段浏览" hidden>
+          <button data-ref="editor-page-first" type="button">开头</button>
+          <button data-ref="editor-page-prev" type="button">上一段</button>
+          <span data-ref="editor-page-range" role="status"></span>
+          <select data-ref="editor-page-position" aria-label="跳转到文件位置"><option value="" selected>跳转位置</option><option value="0">开头</option><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100">末尾</option></select>
+          <button data-ref="editor-page-next" type="button">下一段</button>
+          <button data-ref="editor-page-last" type="button">末尾</button>
+        </div>
+        <div id="editor-body" data-ref="editor-body" class="pencode-editor-body">
+          <section data-ref="extension-editor" class="pencode-extension-editor-slot" aria-label="扩展会话" hidden></section>
+          <div id="editor-tools" data-ref="editor-tools" class="pencode-editor-tools" role="toolbar" aria-label="文件打开方式" hidden>
+            <button id="editor-text" data-ref="editor-text" class="pencode-action" type="button" title="代码编辑器" aria-label="代码编辑器" aria-pressed="true" hidden><img data-ref="editor-text-icon" src="icons/code.svg" alt=""></button>
+            <button id="editor-image" data-ref="editor-image" class="pencode-action" type="button" title="图片预览" aria-label="图片预览" aria-pressed="false" hidden><img data-ref="editor-image-icon" src="icons/image.svg" alt=""></button>
+            <div data-ref="actions-open-with" class="pencode-open-with-actions"></div>
           </div>
-          <pre id="lsp-body" class="pencode-lsp-body" data-ref="lsp-body" role="status"></pre>
-          <div class="pencode-lsp-results">
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-0" type="button" hidden><img data-ref="lsp-row-0-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-0-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-0-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-0-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-0-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-1" type="button" hidden><img data-ref="lsp-row-1-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-1-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-1-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-1-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-1-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-2" type="button" hidden><img data-ref="lsp-row-2-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-2-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-2-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-2-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-2-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-3" type="button" hidden><img data-ref="lsp-row-3-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-3-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-3-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-3-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-3-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-4" type="button" hidden><img data-ref="lsp-row-4-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-4-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-4-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-4-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-4-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-5" type="button" hidden><img data-ref="lsp-row-5-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-5-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-5-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-5-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-5-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-6" type="button" hidden><img data-ref="lsp-row-6-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-6-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-6-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-6-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-6-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-7" type="button" hidden><img data-ref="lsp-row-7-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-7-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-7-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-7-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-7-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-8" type="button" hidden><img data-ref="lsp-row-8-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-8-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-8-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-8-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-8-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-9" type="button" hidden><img data-ref="lsp-row-9-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-9-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-9-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-9-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-9-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-10" type="button" hidden><img data-ref="lsp-row-10-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-10-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-10-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-10-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-10-count" class="pencode-lsp-result-count" hidden></span></button>
-            <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-11" type="button" hidden><img data-ref="lsp-row-11-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-11-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-11-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-11-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-11-count" class="pencode-lsp-result-count" hidden></span></button>
+          <section id="source-content" data-ref="source-content" class="sc-workspace" aria-label="Source Control 编辑区" hidden></section>
+          <section id="custom-editor" data-ref="custom-editor" class="pencode-custom-editor" aria-label="扩展编辑器" hidden>
+            <p data-ref="custom-editor-status" role="status"></p>
+            <button id="editor-open-text" data-ref="editor-open-text" class="pencode-open-text" type="button" hidden>使用代码编辑器打开</button>
+            <div data-ref="custom-editor-content" class="pencode-custom-editor-content"></div>
+          </section>
+          <aside id="editor-gutter" data-ref="editor-gutter" class="pencode-line-numbers" aria-hidden="true"></aside>
+          <textarea id="editor" data-ref="editor" class="pencode-editor" wrap="soft" spellcheck="false" autocapitalize="off"
+            autocomplete="off" aria-autocomplete="list" aria-controls="lsp-completion-list" aria-label="代码编辑器"></textarea>
+          <section id="lsp-panel" data-ref="lsp-panel" class="pencode-lsp-panel" aria-label="语言服务结果" hidden>
+            <div id="lsp-panel-header" data-ref="lsp-panel-header" class="pencode-lsp-panel-header"><strong class="pencode-lsp-panel-title" data-ref="lsp-title"></strong><button class="pencode-icon-button" data-ref="lsp-close" type="button" title="关闭语言服务结果" aria-label="关闭语言服务结果"><img data-ref="lsp-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div>
+            <div data-ref="lsp-query-row" class="pencode-lsp-query" hidden>
+              <input class="pencode-lsp-query-input" id="lsp-query" data-ref="lsp-query" type="text" aria-label="符号名称或查询" placeholder="输入符号名称或查询" autocomplete="off" spellcheck="false">
+              <button class="pencode-lsp-button" data-ref="lsp-submit" type="button">确定</button>
+            </div>
+            <pre id="lsp-body" class="pencode-lsp-body" data-ref="lsp-body" role="status"></pre>
+            <div class="pencode-lsp-results">
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-0" type="button" hidden><img data-ref="lsp-row-0-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-0-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-0-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-0-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-0-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-1" type="button" hidden><img data-ref="lsp-row-1-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-1-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-1-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-1-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-1-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-2" type="button" hidden><img data-ref="lsp-row-2-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-2-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-2-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-2-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-2-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-3" type="button" hidden><img data-ref="lsp-row-3-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-3-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-3-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-3-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-3-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-4" type="button" hidden><img data-ref="lsp-row-4-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-4-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-4-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-4-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-4-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-5" type="button" hidden><img data-ref="lsp-row-5-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-5-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-5-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-5-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-5-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-6" type="button" hidden><img data-ref="lsp-row-6-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-6-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-6-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-6-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-6-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-7" type="button" hidden><img data-ref="lsp-row-7-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-7-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-7-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-7-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-7-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-8" type="button" hidden><img data-ref="lsp-row-8-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-8-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-8-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-8-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-8-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-9" type="button" hidden><img data-ref="lsp-row-9-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-9-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-9-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-9-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-9-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-10" type="button" hidden><img data-ref="lsp-row-10-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-10-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-10-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-10-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-10-count" class="pencode-lsp-result-count" hidden></span></button>
+              <button class="pencode-lsp-button pencode-lsp-result" data-ref="lsp-row-11" type="button" hidden><img data-ref="lsp-row-11-toggle" class="pencode-lsp-result-toggle" src="icons/chevron-right.svg" alt="" hidden><img data-ref="lsp-row-11-icon" class="pencode-lsp-result-icon" alt="" hidden><span data-ref="lsp-row-11-label" class="pencode-lsp-result-label"></span><span data-ref="lsp-row-11-path" class="pencode-lsp-result-path" hidden></span><span data-ref="lsp-row-11-count" class="pencode-lsp-result-count" hidden></span></button>
+            </div>
+            <div id="lsp-pagination" data-ref="lsp-pagination" class="pencode-lsp-panel-footer" hidden><button class="pencode-icon-button pencode-lsp-previous" data-ref="lsp-previous" type="button" title="上一页结果" aria-label="上一页结果"><img data-ref="lsp-previous-icon" src="icons/chevron-right.svg" alt=""></button><span data-ref="lsp-page"></span><button class="pencode-icon-button" data-ref="lsp-next" type="button" title="下一页结果" aria-label="下一页结果"><img data-ref="lsp-next-icon" src="icons/chevron-right.svg" alt=""></button></div>
+          </section>
+          <div id="lsp-hover" data-ref="lsp-hover" class="pencode-lsp-hover" role="tooltip" hidden>
+            <div data-ref="lsp-hover-body" class="pencode-lsp-hover-body"></div>
           </div>
-          <div id="lsp-pagination" data-ref="lsp-pagination" class="pencode-lsp-panel-footer" hidden><button class="pencode-icon-button pencode-lsp-previous" data-ref="lsp-previous" type="button" title="上一页结果" aria-label="上一页结果"><img data-ref="lsp-previous-icon" src="icons/chevron-right.svg" alt=""></button><span data-ref="lsp-page"></span><button class="pencode-icon-button" data-ref="lsp-next" type="button" title="下一页结果" aria-label="下一页结果"><img data-ref="lsp-next-icon" src="icons/chevron-right.svg" alt=""></button></div>
-        </section>
-        <div id="lsp-hover" data-ref="lsp-hover" class="pencode-lsp-hover" role="tooltip" hidden>
-          <div data-ref="lsp-hover-body" class="pencode-lsp-hover-body"></div>
-        </div>
-        <div id="lsp-hover-underline" data-ref="lsp-hover-underline" class="pencode-lsp-hover-underline" aria-hidden="true" hidden></div>
-        <div id="lsp-completion" data-ref="lsp-completion" class="pencode-lsp-completion" hidden>
-          <div id="lsp-completion-list" class="pencode-lsp-completion-list" role="listbox" aria-label="代码补全">
-            <button id="lsp-completion-0" data-ref="lsp-completion-0" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-0-icon" data-ref="lsp-completion-0-icon" alt="" aria-hidden="true"><span id="lsp-completion-0-label" data-ref="lsp-completion-0-label"></span></button>
-            <button id="lsp-completion-1" data-ref="lsp-completion-1" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-1-icon" data-ref="lsp-completion-1-icon" alt="" aria-hidden="true"><span id="lsp-completion-1-label" data-ref="lsp-completion-1-label"></span></button>
-            <button id="lsp-completion-2" data-ref="lsp-completion-2" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-2-icon" data-ref="lsp-completion-2-icon" alt="" aria-hidden="true"><span id="lsp-completion-2-label" data-ref="lsp-completion-2-label"></span></button>
-            <button id="lsp-completion-3" data-ref="lsp-completion-3" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-3-icon" data-ref="lsp-completion-3-icon" alt="" aria-hidden="true"><span id="lsp-completion-3-label" data-ref="lsp-completion-3-label"></span></button>
-            <button id="lsp-completion-4" data-ref="lsp-completion-4" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-4-icon" data-ref="lsp-completion-4-icon" alt="" aria-hidden="true"><span id="lsp-completion-4-label" data-ref="lsp-completion-4-label"></span></button>
-            <button id="lsp-completion-5" data-ref="lsp-completion-5" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-5-icon" data-ref="lsp-completion-5-icon" alt="" aria-hidden="true"><span id="lsp-completion-5-label" data-ref="lsp-completion-5-label"></span></button>
-            <button id="lsp-completion-6" data-ref="lsp-completion-6" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-6-icon" data-ref="lsp-completion-6-icon" alt="" aria-hidden="true"><span id="lsp-completion-6-label" data-ref="lsp-completion-6-label"></span></button>
-            <button id="lsp-completion-7" data-ref="lsp-completion-7" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-7-icon" data-ref="lsp-completion-7-icon" alt="" aria-hidden="true"><span id="lsp-completion-7-label" data-ref="lsp-completion-7-label"></span></button>
-            <button id="lsp-completion-8" data-ref="lsp-completion-8" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-8-icon" data-ref="lsp-completion-8-icon" alt="" aria-hidden="true"><span id="lsp-completion-8-label" data-ref="lsp-completion-8-label"></span></button>
-            <button id="lsp-completion-9" data-ref="lsp-completion-9" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-9-icon" data-ref="lsp-completion-9-icon" alt="" aria-hidden="true"><span id="lsp-completion-9-label" data-ref="lsp-completion-9-label"></span></button>
-            <button id="lsp-completion-10" data-ref="lsp-completion-10" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-10-icon" data-ref="lsp-completion-10-icon" alt="" aria-hidden="true"><span id="lsp-completion-10-label" data-ref="lsp-completion-10-label"></span></button>
-            <button id="lsp-completion-11" data-ref="lsp-completion-11" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-11-icon" data-ref="lsp-completion-11-icon" alt="" aria-hidden="true"><span id="lsp-completion-11-label" data-ref="lsp-completion-11-label"></span></button>
-          </div>
-          <div id="lsp-completion-pagination" data-ref="lsp-completion-pagination" class="pencode-lsp-panel-footer" hidden>
-            <button class="pencode-icon-button pencode-lsp-previous" data-ref="lsp-completion-previous" type="button" title="上一页补全" aria-label="上一页补全"><img data-ref="lsp-completion-previous-icon" src="icons/chevron-right.svg" alt=""></button>
-            <span data-ref="lsp-completion-page"></span>
-            <button class="pencode-icon-button" data-ref="lsp-completion-next" type="button" title="下一页补全" aria-label="下一页补全"><img data-ref="lsp-completion-next-icon" src="icons/chevron-right.svg" alt=""></button>
-          </div>
-        </div>
-        <div id="lsp-context" data-ref="lsp-context" class="pencode-editor-context" role="menu" aria-label="编辑操作" hidden>
-          <button id="editor-context-cut" data-ref="editor-context-cut" type="button" role="menuitem" tabindex="-1"><span>剪切</span><span data-ref="editor-context-cut-shortcut" class="pencode-context-hint">Ctrl+X</span></button>
-          <button id="editor-context-copy" data-ref="editor-context-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span data-ref="editor-context-copy-shortcut" class="pencode-context-hint">Ctrl+C</span></button>
-          <button id="editor-context-paste" data-ref="editor-context-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span data-ref="editor-context-paste-shortcut" class="pencode-context-hint">Ctrl+V</span></button>
-          <button id="editor-context-select-all" data-ref="editor-context-select-all" type="button" role="menuitem" tabindex="-1"><span>全选</span><span data-ref="editor-context-select-all-shortcut" class="pencode-context-hint">Ctrl+A</span></button>
-          <div class="pencode-context-separator" role="separator"></div>
-          <button id="lsp-context-3" data-ref="lsp-context-3" type="button" role="menuitem" tabindex="-1">转到定义</button>
-          <button id="lsp-context-7" data-ref="lsp-context-7" type="button" role="menuitem" tabindex="-1">查找引用</button>
-          <button id="lsp-context-8" data-ref="lsp-context-8" type="button" role="menuitem" tabindex="-1">重命名符号</button>
-          <button id="lsp-context-11" data-ref="lsp-context-11" type="button" role="menuitem" tabindex="-1">代码操作</button>
-          <button id="lsp-context-9" data-ref="lsp-context-9" type="button" role="menuitem" tabindex="-1">格式化文档</button>
-          <div class="pencode-context-separator" role="separator"></div>
-          <button id="editor-context-group-1" data-ref="editor-context-group-1" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="lsp-context-submenu"><span>导航与符号</span><span aria-hidden="true">›</span></button>
-          <button id="editor-context-group-2" data-ref="editor-context-group-2" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="lsp-context-submenu"><span>代码辅助</span><span aria-hidden="true">›</span></button>
-          <button id="editor-context-group-3" data-ref="editor-context-group-3" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="lsp-context-submenu"><span>更多语言工具</span><span aria-hidden="true">›</span></button>
-          <div data-ref="actions-right-context" class="pencode-context-actions" role="group" aria-label="扩展操作"></div>
-        </div>
-        <div id="lsp-context-submenu" data-ref="lsp-context-submenu" class="pencode-editor-context" role="menu" aria-label="语言工具" hidden>
-          <button id="lsp-context-4" data-ref="lsp-context-4" type="button" role="menuitem" tabindex="-1">转到声明</button>
-          <button id="lsp-context-5" data-ref="lsp-context-5" type="button" role="menuitem" tabindex="-1">转到类型定义</button>
-          <button id="lsp-context-6" data-ref="lsp-context-6" type="button" role="menuitem" tabindex="-1">转到实现</button>
-          <button id="lsp-context-12" data-ref="lsp-context-12" type="button" role="menuitem" tabindex="-1">文档符号</button>
-          <button id="lsp-context-13" data-ref="lsp-context-13" type="button" role="menuitem" tabindex="-1">工作区符号</button>
-          <button id="lsp-context-14" data-ref="lsp-context-14" type="button" role="menuitem" tabindex="-1">符号高亮位置</button>
-          <button id="lsp-context-0" data-ref="lsp-context-0" type="button" role="menuitem" tabindex="-1">代码补全</button>
-          <button id="lsp-context-1" data-ref="lsp-context-1" type="button" role="menuitem" tabindex="-1">悬浮信息</button>
-          <button id="lsp-context-2" data-ref="lsp-context-2" type="button" role="menuitem" tabindex="-1">参数提示</button>
-          <button id="lsp-context-10" data-ref="lsp-context-10" type="button" role="menuitem" tabindex="-1">格式化选区</button>
-          <button id="lsp-context-18" data-ref="lsp-context-18" type="button" role="menuitem" tabindex="-1">扩展选择</button>
-          <button id="lsp-context-15" data-ref="lsp-context-15" type="button" role="menuitem" tabindex="-1">Code Lens</button>
-          <button id="lsp-context-16" data-ref="lsp-context-16" type="button" role="menuitem" tabindex="-1">内嵌提示</button>
-          <button id="lsp-context-17" data-ref="lsp-context-17" type="button" role="menuitem" tabindex="-1">折叠区域</button>
-          <button id="lsp-context-19" data-ref="lsp-context-19" type="button" role="menuitem" tabindex="-1">文档链接</button>
-          <button id="lsp-context-20" data-ref="lsp-context-20" type="button" role="menuitem" tabindex="-1">调用层级</button>
-          <button id="lsp-context-21" data-ref="lsp-context-21" type="button" role="menuitem" tabindex="-1">类型层级</button>
-          <button id="lsp-context-22" data-ref="lsp-context-22" type="button" role="menuitem" tabindex="-1">拉取诊断</button>
-        </div>
-        <div id="find-bar" data-ref="find-bar" class="pencode-find" hidden>
-          <div class="pencode-find-layout">
-            <button id="find-toggle-replace" data-ref="find-toggle-replace" class="pencode-find-toggle" type="button" title="展开替换" aria-label="展开替换" aria-expanded="false"><img data-ref="find-toggle-replace-icon" src="icons/chevron-right.svg" alt=""></button>
-            <div class="pencode-find-rows">
-              <div class="pencode-find-row">
-                <input id="find-query" data-ref="find-query" type="text" aria-label="查找" placeholder="查找">
-                <button data-ref="find-case" class="pencode-find-action pencode-find-option" type="button" title="区分大小写" aria-label="区分大小写" aria-pressed="false">Aa</button>
-                <button data-ref="find-word" class="pencode-find-action pencode-find-option" type="button" title="全字匹配" aria-label="全字匹配" aria-pressed="false">ab</button>
-                <button data-ref="find-regex" class="pencode-find-action pencode-find-option" type="button" title="使用正则表达式" aria-label="使用正则表达式" aria-pressed="false">.*</button>
-                <button data-ref="find-selection" class="pencode-find-action pencode-find-option" type="button" title="在选定内容中查找" aria-label="在选定内容中查找" aria-pressed="false">≡</button>
-                <span data-ref="find-count" class="pencode-find-count"></span>
-                <button data-ref="find-previous" class="pencode-find-action pencode-find-previous" type="button" title="上一个匹配" aria-label="上一个匹配"><img data-ref="find-previous-icon" src="icons/chevron-right.svg" alt=""></button>
-                <button data-ref="find-next" class="pencode-find-action" type="button" title="下一个匹配" aria-label="下一个匹配"><img data-ref="find-next-icon" src="icons/chevron-right.svg" alt=""></button>
-                <button data-ref="find-close" class="pencode-find-action" type="button" title="关闭查找" aria-label="关闭查找"><img data-ref="find-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
-              </div>
-              <div data-ref="replace-row" class="pencode-find-row" hidden>
-                <input id="replace-query" data-ref="replace-query" type="text" aria-label="替换为" placeholder="替换为">
-                <button data-ref="find-preserve" class="pencode-find-action pencode-find-option" type="button" title="保留大小写" aria-label="保留大小写" aria-pressed="false">AB</button>
-                <button data-ref="replace-one" class="pencode-replace-action" type="button">替换</button>
-                <button data-ref="replace-all" class="pencode-replace-action" type="button">全部替换</button>
-              </div>
+          <div id="lsp-hover-underline" data-ref="lsp-hover-underline" class="pencode-lsp-hover-underline" aria-hidden="true" hidden></div>
+          <div id="lsp-completion" data-ref="lsp-completion" class="pencode-lsp-completion" hidden>
+            <div id="lsp-completion-list" class="pencode-lsp-completion-list" role="listbox" aria-label="代码补全">
+              <button id="lsp-completion-0" data-ref="lsp-completion-0" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-0-icon" data-ref="lsp-completion-0-icon" alt="" aria-hidden="true"><span id="lsp-completion-0-label" data-ref="lsp-completion-0-label"></span></button>
+              <button id="lsp-completion-1" data-ref="lsp-completion-1" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-1-icon" data-ref="lsp-completion-1-icon" alt="" aria-hidden="true"><span id="lsp-completion-1-label" data-ref="lsp-completion-1-label"></span></button>
+              <button id="lsp-completion-2" data-ref="lsp-completion-2" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-2-icon" data-ref="lsp-completion-2-icon" alt="" aria-hidden="true"><span id="lsp-completion-2-label" data-ref="lsp-completion-2-label"></span></button>
+              <button id="lsp-completion-3" data-ref="lsp-completion-3" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-3-icon" data-ref="lsp-completion-3-icon" alt="" aria-hidden="true"><span id="lsp-completion-3-label" data-ref="lsp-completion-3-label"></span></button>
+              <button id="lsp-completion-4" data-ref="lsp-completion-4" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-4-icon" data-ref="lsp-completion-4-icon" alt="" aria-hidden="true"><span id="lsp-completion-4-label" data-ref="lsp-completion-4-label"></span></button>
+              <button id="lsp-completion-5" data-ref="lsp-completion-5" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-5-icon" data-ref="lsp-completion-5-icon" alt="" aria-hidden="true"><span id="lsp-completion-5-label" data-ref="lsp-completion-5-label"></span></button>
+              <button id="lsp-completion-6" data-ref="lsp-completion-6" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-6-icon" data-ref="lsp-completion-6-icon" alt="" aria-hidden="true"><span id="lsp-completion-6-label" data-ref="lsp-completion-6-label"></span></button>
+              <button id="lsp-completion-7" data-ref="lsp-completion-7" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-7-icon" data-ref="lsp-completion-7-icon" alt="" aria-hidden="true"><span id="lsp-completion-7-label" data-ref="lsp-completion-7-label"></span></button>
+              <button id="lsp-completion-8" data-ref="lsp-completion-8" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-8-icon" data-ref="lsp-completion-8-icon" alt="" aria-hidden="true"><span id="lsp-completion-8-label" data-ref="lsp-completion-8-label"></span></button>
+              <button id="lsp-completion-9" data-ref="lsp-completion-9" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-9-icon" data-ref="lsp-completion-9-icon" alt="" aria-hidden="true"><span id="lsp-completion-9-label" data-ref="lsp-completion-9-label"></span></button>
+              <button id="lsp-completion-10" data-ref="lsp-completion-10" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-10-icon" data-ref="lsp-completion-10-icon" alt="" aria-hidden="true"><span id="lsp-completion-10-label" data-ref="lsp-completion-10-label"></span></button>
+              <button id="lsp-completion-11" data-ref="lsp-completion-11" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-11-icon" data-ref="lsp-completion-11-icon" alt="" aria-hidden="true"><span id="lsp-completion-11-label" data-ref="lsp-completion-11-label"></span></button>
+            </div>
+            <div id="lsp-completion-pagination" data-ref="lsp-completion-pagination" class="pencode-lsp-panel-footer" hidden>
+              <button class="pencode-icon-button pencode-lsp-previous" data-ref="lsp-completion-previous" type="button" title="上一页补全" aria-label="上一页补全"><img data-ref="lsp-completion-previous-icon" src="icons/chevron-right.svg" alt=""></button>
+              <span data-ref="lsp-completion-page"></span>
+              <button class="pencode-icon-button" data-ref="lsp-completion-next" type="button" title="下一页补全" aria-label="下一页补全"><img data-ref="lsp-completion-next-icon" src="icons/chevron-right.svg" alt=""></button>
             </div>
           </div>
-          <p data-ref="find-error" class="pencode-find-error" role="alert" hidden></p>
-        </div>
-        <div data-ref="editor-empty" class="pencode-editor-empty" hidden>
-          <span class="pencode-editor-empty-mark">/</span>
-          <span>从左侧打开一个文件</span>
+          <div id="lsp-context" data-ref="lsp-context" class="pencode-editor-context" role="menu" aria-label="编辑操作" hidden>
+            <button id="editor-context-cut" data-ref="editor-context-cut" type="button" role="menuitem" tabindex="-1"><span>剪切</span><span data-ref="editor-context-cut-shortcut" class="pencode-context-hint">Ctrl+X</span></button>
+            <button id="editor-context-copy" data-ref="editor-context-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span data-ref="editor-context-copy-shortcut" class="pencode-context-hint">Ctrl+C</span></button>
+            <button id="editor-context-paste" data-ref="editor-context-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span data-ref="editor-context-paste-shortcut" class="pencode-context-hint">Ctrl+V</span></button>
+            <button id="editor-context-select-all" data-ref="editor-context-select-all" type="button" role="menuitem" tabindex="-1"><span>全选</span><span data-ref="editor-context-select-all-shortcut" class="pencode-context-hint">Ctrl+A</span></button>
+            <div class="pencode-context-separator" role="separator"></div>
+            <button id="lsp-context-3" data-ref="lsp-context-3" type="button" role="menuitem" tabindex="-1">转到定义</button>
+            <button id="lsp-context-7" data-ref="lsp-context-7" type="button" role="menuitem" tabindex="-1">查找引用</button>
+            <button id="lsp-context-8" data-ref="lsp-context-8" type="button" role="menuitem" tabindex="-1">重命名符号</button>
+            <button id="lsp-context-11" data-ref="lsp-context-11" type="button" role="menuitem" tabindex="-1">代码操作</button>
+            <button id="lsp-context-9" data-ref="lsp-context-9" type="button" role="menuitem" tabindex="-1">格式化文档</button>
+            <div class="pencode-context-separator" role="separator"></div>
+            <button id="editor-context-group-1" data-ref="editor-context-group-1" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="lsp-context-submenu"><span>导航与符号</span><span aria-hidden="true">›</span></button>
+            <button id="editor-context-group-2" data-ref="editor-context-group-2" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="lsp-context-submenu"><span>代码辅助</span><span aria-hidden="true">›</span></button>
+            <button id="editor-context-group-3" data-ref="editor-context-group-3" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="lsp-context-submenu"><span>更多语言工具</span><span aria-hidden="true">›</span></button>
+            <div data-ref="actions-right-context" class="pencode-context-actions" role="group" aria-label="扩展操作"></div>
+          </div>
+          <div id="lsp-context-submenu" data-ref="lsp-context-submenu" class="pencode-editor-context" role="menu" aria-label="语言工具" hidden>
+            <button id="lsp-context-4" data-ref="lsp-context-4" type="button" role="menuitem" tabindex="-1">转到声明</button>
+            <button id="lsp-context-5" data-ref="lsp-context-5" type="button" role="menuitem" tabindex="-1">转到类型定义</button>
+            <button id="lsp-context-6" data-ref="lsp-context-6" type="button" role="menuitem" tabindex="-1">转到实现</button>
+            <button id="lsp-context-12" data-ref="lsp-context-12" type="button" role="menuitem" tabindex="-1">文档符号</button>
+            <button id="lsp-context-13" data-ref="lsp-context-13" type="button" role="menuitem" tabindex="-1">工作区符号</button>
+            <button id="lsp-context-14" data-ref="lsp-context-14" type="button" role="menuitem" tabindex="-1">符号高亮位置</button>
+            <button id="lsp-context-0" data-ref="lsp-context-0" type="button" role="menuitem" tabindex="-1">代码补全</button>
+            <button id="lsp-context-1" data-ref="lsp-context-1" type="button" role="menuitem" tabindex="-1">悬浮信息</button>
+            <button id="lsp-context-2" data-ref="lsp-context-2" type="button" role="menuitem" tabindex="-1">参数提示</button>
+            <button id="lsp-context-10" data-ref="lsp-context-10" type="button" role="menuitem" tabindex="-1">格式化选区</button>
+            <button id="lsp-context-18" data-ref="lsp-context-18" type="button" role="menuitem" tabindex="-1">扩展选择</button>
+            <button id="lsp-context-15" data-ref="lsp-context-15" type="button" role="menuitem" tabindex="-1">Code Lens</button>
+            <button id="lsp-context-16" data-ref="lsp-context-16" type="button" role="menuitem" tabindex="-1">内嵌提示</button>
+            <button id="lsp-context-17" data-ref="lsp-context-17" type="button" role="menuitem" tabindex="-1">折叠区域</button>
+            <button id="lsp-context-19" data-ref="lsp-context-19" type="button" role="menuitem" tabindex="-1">文档链接</button>
+            <button id="lsp-context-20" data-ref="lsp-context-20" type="button" role="menuitem" tabindex="-1">调用层级</button>
+            <button id="lsp-context-21" data-ref="lsp-context-21" type="button" role="menuitem" tabindex="-1">类型层级</button>
+            <button id="lsp-context-22" data-ref="lsp-context-22" type="button" role="menuitem" tabindex="-1">拉取诊断</button>
+          </div>
+          <div id="find-bar" data-ref="find-bar" class="pencode-find" hidden>
+            <div class="pencode-find-layout">
+              <button id="find-toggle-replace" data-ref="find-toggle-replace" class="pencode-find-toggle" type="button" title="展开替换" aria-label="展开替换" aria-expanded="false"><img data-ref="find-toggle-replace-icon" src="icons/chevron-right.svg" alt=""></button>
+              <div class="pencode-find-rows">
+                <div class="pencode-find-row">
+                  <input id="find-query" data-ref="find-query" type="text" aria-label="查找" placeholder="查找">
+                  <button data-ref="find-case" class="pencode-find-action pencode-find-option" type="button" title="区分大小写" aria-label="区分大小写" aria-pressed="false">Aa</button>
+                  <button data-ref="find-word" class="pencode-find-action pencode-find-option" type="button" title="全字匹配" aria-label="全字匹配" aria-pressed="false">ab</button>
+                  <button data-ref="find-regex" class="pencode-find-action pencode-find-option" type="button" title="使用正则表达式" aria-label="使用正则表达式" aria-pressed="false">.*</button>
+                  <button data-ref="find-selection" class="pencode-find-action pencode-find-option" type="button" title="在选定内容中查找" aria-label="在选定内容中查找" aria-pressed="false">≡</button>
+                  <span data-ref="find-count" class="pencode-find-count"></span>
+                  <button data-ref="find-previous" class="pencode-find-action pencode-find-previous" type="button" title="上一个匹配" aria-label="上一个匹配"><img data-ref="find-previous-icon" src="icons/chevron-right.svg" alt=""></button>
+                  <button data-ref="find-next" class="pencode-find-action" type="button" title="下一个匹配" aria-label="下一个匹配"><img data-ref="find-next-icon" src="icons/chevron-right.svg" alt=""></button>
+                  <button data-ref="find-close" class="pencode-find-action" type="button" title="关闭查找" aria-label="关闭查找"><img data-ref="find-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
+                </div>
+                <div data-ref="replace-row" class="pencode-find-row" hidden>
+                  <input id="replace-query" data-ref="replace-query" type="text" aria-label="替换为" placeholder="替换为">
+                  <button data-ref="find-preserve" class="pencode-find-action pencode-find-option" type="button" title="保留大小写" aria-label="保留大小写" aria-pressed="false">AB</button>
+                  <button data-ref="replace-one" class="pencode-replace-action" type="button">替换</button>
+                  <button data-ref="replace-all" class="pencode-replace-action" type="button">全部替换</button>
+                </div>
+              </div>
+            </div>
+            <p data-ref="find-error" class="pencode-find-error" role="alert" hidden></p>
+          </div>
+          <div data-ref="editor-empty" class="pencode-editor-empty" hidden>
+            <span class="pencode-editor-empty-mark">/</span>
+            <span>从左侧打开一个文件</span>
+          </div>
         </div>
       </div>
       <div id="panel-resize" data-ref="panel-resize" class="pencode-panel-resize" role="separator" aria-orientation="horizontal" aria-label="拖动调整底部面板高度" hidden></div>
@@ -509,7 +516,7 @@
       <p data-ref="connection-project-host" class="pencode-connection-feedback"></p>
       <label for="connection-project-path">远端目录</label>
       <div class="pencode-project-path"><input id="connection-project-path" data-ref="connection-project-path" type="text" autocomplete="off" spellcheck="false"><button id="connection-project-up" data-ref="connection-project-up" class="pencode-icon-button" type="button" title="上级目录" aria-label="上级目录"><img data-ref="connection-project-up-icon" src="icons/arrow-up.svg" alt=""></button></div>
-      <nav data-ref="connection-project-list" class="pencode-project-directories" aria-label="子文件夹"></nav>
+      <nav id="connection-project-list" data-ref="connection-project-list" class="pencode-project-directories" aria-label="子文件夹"></nav>
       <p data-ref="connection-project-feedback" class="pencode-connection-feedback" role="status" aria-live="polite"></p>
       <footer class="pencode-connection-form-actions"><button id="connection-project-cancel" data-ref="connection-project-cancel" type="button">取消</button><button id="connection-project-open" data-ref="connection-project-open" class="primary" type="button">打开此目录</button></footer>
     </section>
@@ -601,7 +608,6 @@
     <section class="pencode-close-dialog" role="dialog" aria-modal="true" aria-labelledby="file-dialog-title" aria-describedby="file-dialog-message">
       <h2 id="file-dialog-title" data-ref="file-dialog-title"></h2>
       <p id="file-dialog-message" data-ref="file-dialog-message" class="pencode-close-message"></p>
-      <input id="file-dialog-name" data-ref="file-dialog-name" class="pencode-file-name" type="text" aria-label="名称" autocomplete="off" spellcheck="false">
       <p data-ref="file-dialog-error" class="pencode-close-error" role="alert" hidden></p>
       <div class="pencode-close-actions">
         <button id="file-dialog-submit" data-ref="file-dialog-submit" class="pencode-close-save" type="button">确定</button>

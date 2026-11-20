@@ -562,7 +562,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 	// Recording and overlays own the keyboard before background command routing.
 	model.ensureSettings()
 	if model.projectMenu.open {
-		return model.projectMenuKeys(state)
+		return model.projectMenuKeys(world, state)
 	}
 	if model.capturingShortcut {
 		if state.KeyPressed(input.KeyEscape) {
@@ -736,7 +736,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		model.openFolderSearch(model.activeProjectState(), "", model.settings.Bindings["folder-replace"].matchesGlobal(world, state, goos))
 		return true
 	}
-	if model.fileTreePasteShortcut(world, state, goos) || model.editorNavigationShortcut(world, state, goos) || model.editorClipboardShortcut(world, state, goos) {
+	if model.fileTreeShortcut(world, state, goos) || model.editorNavigationShortcut(world, state, goos) || model.editorClipboardShortcut(world, state, goos) {
 		return true
 	}
 	if model.handleLanguageKeys(world, state) {

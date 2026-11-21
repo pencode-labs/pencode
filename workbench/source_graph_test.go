@@ -2,6 +2,67 @@ package workbench
 
 import "testing"
 
+func TestSourceControlGraphKeepsCheckedOutBranchLeftmost(t *testing.T) {
+	r := sourceTestRepository(t)
+	commit := func(day, subject string) {
+		date := "2026-01-" + day + "T12:00:00Z"
+		t.Setenv("GIT_COMMITTER_DATE", date)
+		sourceTestGit(t, r, "commit", "--date="+date, "--allow-empty", "-m", subject)
+	}
+	commit("01", "base")
+	sourceTestGit(t, r, "branch", "topic")
+	commit("02", "main parent")
+	commit("03", "main tip")
+	sourceTestGit(t, r, "switch", "topic")
+	commit("04", "topic parent")
+	commit("05", "topic tip")
+	sourceTestGit(t, r, "switch", "main")
+
+	first, err := r.snapshot(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.HasMore || len(first.Commits) != 1 {
+		t.Fatalf("unexpected first page: %+v", first.sourceHistoryPage)
+	}
+	rest, err := r.historyPage(first.HistoryRefs, len(first.Commits), 10, first.Graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commits := append(first.Commits, rest.Commits...)
+	subjects := [...]string{"topic tip", "topic parent", "main tip", "main parent", "base"}
+	if len(commits) != len(subjects) {
+		t.Fatalf("unexpected commit count: %d", len(commits))
+	}
+	for i, c := range commits {
+		if c.Subject != subjects[i] {
+			t.Fatalf("row %d: got %q, want %q", i, c.Subject, subjects[i])
+		}
+		if i < 2 {
+			if c.Lane != 1 || len(c.Edges) != 1 || c.Edges[0].From != 1 || c.Edges[0].To != 1 {
+				t.Fatalf("topic should have the only visible path above HEAD, in lane 1: %+v", c)
+			}
+		} else if c.Lane != 0 || c.Color != commits[2].Color || c.Incoming != (i > 2) {
+			t.Fatalf("main history should follow lane 0 from HEAD: %+v", c)
+		}
+	}
+	if joins := commits[4].Joins; len(joins) != 1 || joins[0].From != 1 || joins[0].To != 0 {
+		t.Fatalf("topic should join lane 0 at the shared base: %+v", joins)
+	}
+
+	sourceTestGit(t, r, "switch", "topic")
+	switched := sourceTestSnapshot(t, r)
+	for i, c := range switched.Commits {
+		wantLane := 0
+		if i == 2 || i == 3 {
+			wantLane = 1
+		}
+		if c.Lane != wantLane {
+			t.Fatalf("lane after checking out topic: %s has lane %d, want %d", c.Subject, c.Lane, wantLane)
+		}
+	}
+}
+
 func TestSourceControlGraphJoinsAtParentCommit(t *testing.T) {
 	commits := []sourceCommit{
 		{Hash: "merge", Parents: "main side"},

@@ -125,7 +125,7 @@ func TestFindKeepsEditorContextAndLanguageShortcuts(t *testing.T) {
 	}
 	editor, _ := w.HTMLNode(m.surface, "editor")
 	rect, _ := editor.Bounds()
-	text, ox, oy := m.languageEditorGeometry(w, rect)
+	text, ox, oy := m.editor.languageEditorGeometry(w, rect)
 	x, y, _, height, _ := scene.TextCaretRect2D(text, content, anchor+1)
 	rightClick := func() {
 		t.Helper()

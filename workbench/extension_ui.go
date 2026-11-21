@@ -50,6 +50,7 @@ type pencodeExtensionFocus struct {
 	style                 string
 	caret                 string
 	terminalCommand       string
+	terminalCWD           string
 	height                float32
 	showOutput            bool
 	autosize              bool
@@ -431,9 +432,10 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				}
 				action, _ := node.Attr("data-pencode-action")
 				showOutput := node.Data == "button" && action == "show-output"
-				terminalCommand := ""
+				var terminalCommand, terminalCWD string
 				if node.Data == "button" && action == "run-terminal" {
 					terminalCommand, _ = node.Attr("data-pencode-terminal-command")
+					terminalCWD, _ = node.Attr("data-pencode-terminal-cwd")
 				}
 				openExtensionSettings := node.Data == "button" && action == "open-extension-settings"
 				if showOutput {
@@ -468,7 +470,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 					}
 				}
 				role, _ := node.Attr("role")
-				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", pasteImages: pasteImages, caret: caret, placeCaret: placeCaret, inputLinks: inputLinks, selectText: node.Data == "a" || role == "link", terminalCommand: terminalCommand, openExtensionSettings: openExtensionSettings})
+				focus = append(focus, pencodeExtensionFocus{ref: ref, id: id, submit: submit, showOutput: showOutput, autosize: node.Data == "textarea" && autosize, style: style, completion: completion == "true", pasteImages: pasteImages, caret: caret, placeCaret: placeCaret, inputLinks: inputLinks, selectText: node.Data == "a" || role == "link", terminalCommand: terminalCommand, terminalCWD: terminalCWD, openExtensionSettings: openExtensionSettings})
 			}
 		}
 	}); err != nil {
@@ -587,7 +589,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 						surface.model.closeExtensionSurface(surface, "button", false)
 						// A menu may arrive after the user has switched projects.
 						if root := surface.ui.Context.ProjectPath; root == "" || root == surface.model.projectPath {
-							surface.model.runExtensionTerminalCommand(f.terminalCommand)
+							surface.model.runExtensionTerminalCommand(f.terminalCommand, f.terminalCWD)
 						}
 						markPencodeRootDirtyByModel(surface.model.fontResources, surface.model)
 						return

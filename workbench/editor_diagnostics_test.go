@@ -123,6 +123,92 @@ func TestPencodeEditorDiagnosticsFromUnopenedProblem(t *testing.T) {
 	}
 }
 
+func TestPencodeEditorDiagnosticsFadeUnusedCode(t *testing.T) {
+	app, model, provider, _ := languageInteractionFixture(t)
+	world, file := model.fontResources, model.activeFile()
+	const content = "package demo\n\nfunc f() { used := \"🙂\"; unused := 123; _ = used }\n"
+	file.contentSnapshot = snapshotText(content)
+	model.setEditorValueAndCaret(world, content, 0)
+	model.syncLanguageDocuments()
+	markPencodeRootDirtyByModel(world, model)
+	languageInteractionStep(t, app)
+	doc := model.languages.documents[file]
+	start, end := strings.Index(content, "unused")+1, strings.Index(content, "; _")
+	position := func(offset int) lsp.Position {
+		t.Helper()
+		pos, err := lsp.PositionAt(content, offset, lsp.UTF16)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pos
+	}
+	hint := lsp.Diagnostic{Severity: lsp.DiagnosticSeverityHint, Message: "unused variable", Range: lsp.Range{Start: position(start), End: position(end)}}
+	publish := func(items ...lsp.Diagnostic) {
+		t.Helper()
+		raw, err := json.Marshal(lsp.PublishDiagnosticsParams{URI: doc.uri, Version: &doc.version, Diagnostics: items})
+		if err != nil {
+			t.Fatal(err)
+		}
+		model.languages.events <- pencodeLanguageEvent{session: provider, method: "textDocument/publishDiagnostics", params: raw}
+		languageInteractionStep(t, app)
+	}
+	colorAt := func(spans []scene.TextSpan2D, offset int, foreground graphics.ColorRGBA) graphics.ColorRGBA {
+		for _, span := range spans {
+			if span.Start <= offset && offset < span.End {
+				return span.Color
+			}
+		}
+		return foreground
+	}
+	assertOpacity := func(faded bool) {
+		t.Helper()
+		value, _ := world.Get[scene.Text2D](model.editor.text)
+		var base []scene.TextSpan2D
+		if model.highlightedContent == value.Text() {
+			base = model.highlightScratch
+		}
+		for offset := start - 1; offset <= end; offset++ {
+			expected := colorAt(base, offset, value.Color)
+			if faded && start <= offset && offset < end {
+				expected.A *= model.workbenchTheme.unusedOpacity
+			}
+			if actual := colorAt(value.Spans, offset, value.Color); actual != expected {
+				t.Fatalf("color at byte %d = %+v, want %+v", offset, actual, expected)
+			}
+		}
+	}
+	publish(hint)
+	assertOpacity(false)
+	hint.Tags = []int{lsp.DiagnosticTagUnnecessary}
+	publish(hint)
+	assertOpacity(true)
+	paint := &model.editor.diagnostics
+	if len(model.bottom.problems) != 1 || len(paint.ranges) != 0 || paint.key.file != nil {
+		t.Fatal("unused hint should appear in Problems and fade inline")
+	}
+	value, _ := world.Get[scene.Text2D](model.editor.text)
+	base := model.highlightScratch
+	key := pencodeOverlayPaintKey(model, value.Text(), base, 0, 0)
+	if allocations := testing.AllocsPerRun(100, func() {
+		paint.fadeUnused(model, value.Color, base, key)
+	}); allocations != 0 {
+		t.Fatalf("cached unused decorations allocated %g times", allocations)
+	}
+	overlap := hint
+	overlap.Range.Start = position(start + 1)
+	overlap.Severity = 2
+	publish(hint, overlap)
+	assertOpacity(true)
+	if len(paint.ranges) != 1 || paint.key.file != file {
+		t.Fatal("unused warning lost its diagnostic decorations")
+	}
+	hint.Tags = nil
+	publish(hint)
+	assertOpacity(false)
+	publish()
+	assertOpacity(false)
+}
+
 func TestPencodeEditorDiagnosticDecorations(t *testing.T) {
 	app, model, provider, _ := languageInteractionFixture(t)
 	world := model.fontResources

@@ -40,6 +40,10 @@ func (m *workspaceModel) terminalState() *pencodeTerminals {
 	return m.terminals
 }
 func (m *workspaceModel) newTerminal() *pencodeTerminal {
+	return m.openTerminal("")
+}
+
+func (m *workspaceModel) openTerminal(cwd string) *pencodeTerminal {
 	if !m.backendConnected() {
 		m.setActiveStatus(m.tr("工作区服务未连接，请等待连接恢复"))
 		return nil
@@ -64,7 +68,7 @@ func (m *workspaceModel) newTerminal() *pencodeTerminal {
 		if err != nil {
 			return nil, err
 		}
-		return backend.OpenTerminal(ctx, workspace.Path, 80, 12)
+		return backend.OpenTerminal(ctx, workspace.Path, cwd, 80, 12)
 	})
 	t.items = append(t.items, item)
 	t.active = item
@@ -98,13 +102,13 @@ func (m *workspaceModel) closeTerminal(root string) {
 	m.closeEmptyTerminalPanel()
 }
 
-func (m *workspaceModel) runExtensionTerminalCommand(command string) {
+func (m *workspaceModel) runExtensionTerminalCommand(command, cwd string) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return
 	}
-	if item := m.newTerminal(); item != nil {
-		m.writeTerminal(item, []byte(command+"\nexit\n"))
+	if item := m.openTerminal(cwd); item != nil {
+		m.writeTerminal(item, []byte(command+"\n"))
 	}
 }
 

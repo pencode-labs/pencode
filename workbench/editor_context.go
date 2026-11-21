@@ -58,12 +58,12 @@ func (model *workspaceModel) renderEditorContextMenu(view *htmlui.View) {
 		if i >= 9 {
 			view.Attr(ref, "aria-expanded", boolAttribute(i-8 == ui.contextGroup))
 		} else if i < 4 {
-			setContextMenuEnabled(view, ref, i >= 2 || ui.contextCaret != ui.contextAnchor)
+			setContextMenuEnabled(view, ref, (i != 0 && i != 2 || model.languageEditable()) && (i >= 2 || ui.contextCaret != ui.contextAnchor))
 		}
 	}
 	var doc *pencodeLanguageDocument
 	if model.languages != nil {
-		doc = model.languages.documents[model.activeFile()]
+		doc = model.languages.documents[model.languageFile()]
 	}
 	for i, action := range pencodeLanguageActions {
 		ref := pencodeLanguageContextRefs[i]
@@ -199,8 +199,8 @@ func (model *workspaceModel) handleEditorContextEvent(world *module.Content, ref
 		if ref == pencodeEditorContextRefs[i] {
 			if ui.contextOpen {
 				model.openEditorContextGroup(world, i-8)
-				world.Focus(model.editor.control)
-				if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
+				world.Focus(model.languageEditor().control)
+				if field := world.Mut[engineui.TextField](model.languageEditor().control); field != nil {
 					field.Caret, field.Anchor = ui.contextCaret, ui.contextAnchor
 				}
 				ui.contextFocus = true
@@ -226,24 +226,25 @@ func (model *workspaceModel) handleEditorContextEvent(world *module.Content, ref
 }
 
 func (model *workspaceModel) runEditorContextEdit(world *module.Content, ref string) {
-	if f := model.activeFile(); f != nil && f.pageLoading && ref != "editor-context-copy" && ref != "editor-context-select-all" {
+	if !model.languageEditable() && ref != "editor-context-copy" && ref != "editor-context-select-all" {
 		return
 	}
 	ui := &model.languageUI
-	if world == nil || !ui.contextOpen || ui.contextFile != model.activeFile() || ui.contextContent != model.activeSnapshot() {
+	if world == nil || !ui.contextOpen || ui.contextFile == nil || ui.contextFile != model.languageFile() || ui.contextContent != ui.contextFile.snapshot() {
 		model.dismissLanguageContext()
 		return
 	}
+	content := ui.contextContent
 	caret, anchor := ui.contextCaret, ui.contextAnchor
 	model.dismissLanguageContext()
-	world.Focus(model.editor.control)
+	world.Focus(model.languageEditor().control)
 	ui.contextFocus = true
-	field := world.Mut[engineui.TextField](model.editor.control)
+	field := world.Mut[engineui.TextField](model.languageEditor().control)
 	if field == nil {
 		return
 	}
 	field.Caret, field.Anchor, field.Selecting = caret, anchor, false
-	value := model.activeContent()
+	value := content.String()
 	if ref == "editor-context-select-all" {
 		field.Caret, field.Anchor = utf8.RuneCountInString(value), 0
 		return
@@ -269,10 +270,16 @@ func (model *workspaceModel) runEditorContextEdit(world *module.Content, ref str
 		edit.Text = pasted
 	}
 	value, caret, _ = state.ApplyTextEditsInRange(value, start, end, field.MaxRunes, true, []input.TextEdit{edit})
+	if tab := model.languageDiffTab(); tab != nil {
+		tab.editResult(value)
+		model.bindSourceDiffControls(world)
+		field.Caret, field.Anchor = caret, caret
+		return
+	}
 	model.updateActiveContent(value)
 	model.setEditorValueAndCaret(world, value, caret)
 	if ref == "editor-context-paste" {
-		if area := world.Mut[engineui.Textarea](model.editor.control); area != nil {
+		if area := world.Mut[engineui.Textarea](model.languageEditor().control); area != nil {
 			// Pasting preserves the viewport even when the new caret is outside it.
 			area.RestoreScroll(area.ScrollX, area.ScrollY)
 		}

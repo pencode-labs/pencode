@@ -32,6 +32,44 @@ func (p sourceBranchPicker) branch(ref string) (sourceBranch, bool) {
 	return sourceBranch{}, false
 }
 
+func (s *sourceSnapshot) branchAt(hash string) sourceBranch {
+	picker := s.branchPicker()
+	var remote sourceBranch
+	for line := range strings.SplitSeq(s.HistoryRefs, "\n") {
+		tip, ref, ok := strings.Cut(line, " ")
+		if !ok || tip != hash {
+			continue
+		}
+		if branch, ok := picker.branch(ref); ok {
+			if !branch.Remote {
+				return branch
+			}
+			if remote.Ref == "" {
+				remote = branch
+			}
+		}
+	}
+	return remote
+}
+
+func (r sourceRepository) merge(revision string, branch sourceBranch) error {
+	if branch.Ref == "" {
+		_, err := r.command("merge", "--no-edit", "--", revision)
+		return err
+	}
+	kind := "branch"
+	if branch.Remote {
+		kind = "remote-tracking branch"
+	}
+	destination := "HEAD"
+	if current, err := r.command("symbolic-ref", "--quiet", "HEAD"); err == nil {
+		destination = strings.TrimPrefix(strings.TrimSpace(string(current)), "refs/heads/")
+	}
+	message := "Merge " + kind + " '" + branch.Name + "' into " + destination
+	_, err := r.command("merge", "--no-edit", "-m", message, "--", revision)
+	return err
+}
+
 func (r sourceRepository) deleteBranch(branch sourceBranch) error {
 	if !branch.Remote {
 		_, err := r.command("branch", "--delete", "--", branch.Name)
@@ -209,7 +247,7 @@ func (m *workspaceModel) toggleSourceBranches(trigger string) {
 	if root, ok := strings.CutPrefix(trigger, sourceRepositoryBranchPrefix); ok && s.BranchMenuOpen {
 		r := s.Snapshot.Repository
 		r.Root = root
-		m.sourceJob(sourceQuery, func() sourceResult {
+		m.projectSourceJob(s, root, sourceQuery, func() sourceResult {
 			branches, err := r.branches()
 			picker := &sourceBranchPicker{Root: root, Branches: branches}
 			if err == nil {

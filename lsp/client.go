@@ -139,7 +139,7 @@ func defaultCapabilities() map[string]any {
 			"definition":    map[string]any{"linkSupport": true}, "declaration": map[string]any{"linkSupport": true}, "typeDefinition": map[string]any{"linkSupport": true}, "implementation": map[string]any{"linkSupport": true},
 			"documentSymbol":     map[string]any{"hierarchicalDocumentSymbolSupport": true},
 			"codeAction":         map[string]any{"dataSupport": true, "resolveSupport": map[string]any{"properties": []string{"edit", "command"}}},
-			"publishDiagnostics": map[string]any{"versionSupport": true, "relatedInformation": true, "tagSupport": map[string]any{"valueSet": []int{1, 2}}, "dataSupport": true},
+			"publishDiagnostics": map[string]any{"versionSupport": true, "relatedInformation": true, "tagSupport": map[string]any{"valueSet": []int{DiagnosticTagUnnecessary, DiagnosticTagDeprecated}}, "dataSupport": true},
 			"rename":             map[string]any{"prepareSupport": true},
 		},
 	}

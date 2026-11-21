@@ -27,12 +27,16 @@ func languageInteractionFixture(t *testing.T) (*onix.App, *workspaceModel, *penc
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
 	server := &extensions.LanguageServer{LanguageServer: peb.LanguageServer{ID: "test/lsp", LanguageID: "go", Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}
-	provider := &pencodeLanguageSession{key: pencodeLanguageKey{model.projectPath, server.ID}, server: server, jobs: make(chan pencodeLanguageJob, 64), cancel: func() {}, client: &lsp.Client{Encoding: lsp.UTF16, Capabilities: lsp.ServerCapabilities{
+	provider := &pencodeLanguageSession{key: pencodeLanguageKey{model.projectPath, server.ID, 0}, server: server, jobs: make(chan pencodeLanguageJob, 64), cancel: func() {}, client: &lsp.Client{Encoding: lsp.UTF16, Capabilities: lsp.ServerCapabilities{
 		"completionProvider":    json.RawMessage(`{"triggerCharacters":["."]}`),
 		"signatureHelpProvider": json.RawMessage(`{"triggerCharacters":["("],"retriggerCharacters":[","]}`),
 		"hoverProvider":         json.RawMessage(`true`), "referencesProvider": json.RawMessage(`true`), "definitionProvider": json.RawMessage(`true`), "documentRangeFormattingProvider": json.RawMessage(`true`),
 	}}}
 	model.languages = &pencodeLanguageState{servers: []*extensions.LanguageServer{server}, sessions: map[pencodeLanguageKey]*pencodeLanguageSession{provider.key: provider}, documents: make(map[*openFile]*pencodeLanguageDocument), events: make(chan pencodeLanguageEvent, 64)}
+	for pane := 1; pane <= 2; pane++ {
+		key := pencodeLanguageKey{model.projectPath, server.ID, pane}
+		model.languages.sessions[key] = &pencodeLanguageSession{key: key, server: server, client: provider.client, jobs: make(chan pencodeLanguageJob, 64), cancel: func() {}}
+	}
 	model.syncLanguageDocuments()
 	model.fontResources.Focus(model.editor.control)
 	model.app.GetViewport = func() (int, int) { return 1440, 900 }
@@ -187,13 +191,13 @@ func TestLanguageHoverAndControlClickUseRenderedSymbols(t *testing.T) {
 			bodyNode, _ := world.HTMLNode(model.surface, "editor-body")
 			editorRect, _ := editorNode.Bounds()
 			bodyRect, _ := bodyNode.Bounds()
-			text, ox, oy := model.languageEditorGeometry(world, editorRect)
+			text, ox, oy := model.editor.languageEditorGeometry(world, editorRect)
 			x, y, _, h, ok := scene.TextCaretRect2D(text, value, caret)
 			if !ok {
 				t.Fatal("text layout unavailable")
 			}
 			px, py := ox+x+1, oy+y+h*.5
-			offset, start, end, underline, valid := model.languageSymbolAtPointer(world, px, py, editorRect, bodyRect)
+			offset, start, end, underline, valid := model.languageSymbolAtPointer(world, &model.editor, model.activeSnapshot(), px, py, editorRect, bodyRect)
 			if !valid || start != index || end != index+len(name) || underline.Width < 1 {
 				t.Fatalf("zoom %d %s: offset=%d range=%d:%d valid=%v", zoom, name, offset, start, end, valid)
 			}
@@ -344,7 +348,7 @@ func TestLanguageStringHoverCoversContents(t *testing.T) {
 			bodyNode, _ := world.HTMLNode(model.surface, "editor-body")
 			editorRect, _ := editorNode.Bounds()
 			bodyRect, _ := bodyNode.Bounds()
-			text, ox, oy := model.languageEditorGeometry(world, editorRect)
+			text, ox, oy := model.editor.languageEditorGeometry(world, editorRect)
 			var px, py float32
 			for offset, character := range value[start:end] {
 				if character == '\n' {
@@ -365,7 +369,7 @@ func TestLanguageStringHoverCoversContents(t *testing.T) {
 					}
 				}
 				px, py = ox+x+1, oy+y+h*.5
-				gotOffset, gotStart, gotEnd, _, valid := model.languageSymbolAtPointer(world, px, py, editorRect, bodyRect)
+				gotOffset, gotStart, gotEnd, _, valid := model.languageSymbolAtPointer(world, &model.editor, model.activeSnapshot(), px, py, editorRect, bodyRect)
 				if !valid || gotStart != start || gotEnd != end || gotOffset != start+offset {
 					t.Fatalf("zoom %d, %q at byte %d: offset=%d range=%d:%d valid=%v, want %d:%d", zoom, literal, offset, gotOffset, gotStart, gotEnd, valid, start, end)
 				}
@@ -374,7 +378,7 @@ func TestLanguageStringHoverCoversContents(t *testing.T) {
 				t.Fatal("multiline string did not underline all lines")
 			}
 			if allocations := testing.AllocsPerRun(100, func() {
-				model.languageSymbolAtPointer(world, px, py, editorRect, bodyRect)
+				model.languageSymbolAtPointer(world, &model.editor, model.activeSnapshot(), px, py, editorRect, bodyRect)
 			}); allocations != 0 {
 				t.Fatalf("string hover allocated %g times", allocations)
 			}
@@ -468,7 +472,7 @@ func TestLanguageContextPreservesSelectionAndStaleHoverIsRejected(t *testing.T) 
 	languageInteractionStep(t, app)
 	editorNode, _ := world.HTMLNode(model.surface, "editor")
 	rect, _ := editorNode.Bounds()
-	text, ox, oy := model.languageEditorGeometry(world, rect)
+	text, ox, oy := model.editor.languageEditorGeometry(world, rect)
 	x, y, _, height, _ := scene.TextCaretRect2D(text, value, caret+1)
 	state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseRight, X: float64(ox + x), Y: float64(oy + y + height/2)})
 	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseRight, X: float64(ox + x), Y: float64(oy + y + height/2)})
@@ -515,7 +519,7 @@ func TestLanguageEditorActionsSuspendHoverOutsidePopup(t *testing.T) {
 	languageInteractionStep(t, app)
 	editorNode, _ := world.HTMLNode(model.surface, "editor")
 	editorRect, _ := editorNode.Bounds()
-	text, ox, oy := model.languageEditorGeometry(world, editorRect)
+	text, ox, oy := model.editor.languageEditorGeometry(world, editorRect)
 	offset := strings.Index(value, "symbol") + 1
 	x, y, _, height, _ := scene.TextCaretRect2D(text, value, offset)
 	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(ox + x), Y: float64(oy + y + height/2)})

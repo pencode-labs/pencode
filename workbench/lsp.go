@@ -17,7 +17,10 @@ import (
 	"github.com/pencode-labs/pencode/lsp"
 )
 
-type pencodeLanguageKey struct{ root, id string }
+type pencodeLanguageKey struct {
+	root, id string
+	pane     int
+}
 type pencodeLanguageState struct {
 	servers          []*extensions.LanguageServer
 	sessions         map[pencodeLanguageKey]*pencodeLanguageSession
@@ -27,6 +30,7 @@ type pencodeLanguageState struct {
 	panel            pencodeLanguagePanel
 }
 type pencodeLanguageDocument struct {
+	tab         *sourceTab
 	file        *openFile
 	project     *pencodeProject
 	semantic    *pencodeSemanticTokens
@@ -36,6 +40,7 @@ type pencodeLanguageDocument struct {
 	saved       piecetree.Snapshot
 	root        string
 	uri         lsp.URI
+	pane        int
 	version     int
 	seen        bool
 }
@@ -96,6 +101,7 @@ type pencodeLanguageJob struct {
 	content     piecetree.Snapshot
 	method      string
 	uri         lsp.URI
+	pane        int
 	version     int
 	offset      int
 	token       uint64
@@ -180,12 +186,12 @@ func (model *workspaceModel) closeLanguageServers() {
 		}
 		model.languages = nil
 		clear(model.bottom.diagnostics)
+		model.bottom.diagnosticRevision++
 		model.bottom.problemsDirty = true
 	}
 }
-func (model *workspaceModel) startLanguageSession(root string, server *extensions.LanguageServer) *pencodeLanguageSession {
+func (model *workspaceModel) startLanguageSession(key pencodeLanguageKey, server *extensions.LanguageServer) *pencodeLanguageSession {
 	state := model.languages
-	key := pencodeLanguageKey{root, server.ID}
 	if existing := state.sessions[key]; existing != nil {
 		return existing
 	}
@@ -233,7 +239,7 @@ func (model *workspaceModel) startLanguageSession(root string, server *extension
 		}
 		// Extension launchers can install their language tools on first use.
 		startup, stop := context.WithTimeout(ctx, 10*time.Minute)
-		client, err := server.Start(startup, root, handler)
+		client, err := server.Start(startup, key.root, handler)
 		stop()
 		if err != nil {
 			publish(pencodeLanguageEvent{method: "failed", err: err})
@@ -366,73 +372,82 @@ func (model *workspaceModel) syncLanguageDocuments() {
 	for _, doc := range state.documents {
 		doc.seen = false
 	}
-	visit := func(root string, project *pencodeProject, files map[string]*openFile) {
-		for _, file := range files {
-			if !file.text() || file.page.Paged {
+	visit := func(root, directory string, project *pencodeProject, file *openFile, tab *sourceTab, pane int) {
+		if !file.text() || file.page.Paged {
+			return
+		}
+		doc := state.documents[file]
+		if doc == nil {
+			matched := false
+			for _, server := range state.servers {
+				if server.Match(file.Name) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return
+			}
+			doc = &pencodeLanguageDocument{file: file, tab: tab, pane: pane, project: project, root: root, uri: lsp.FileURI(filepath.Join(directory, filepath.FromSlash(file.Path))), content: file.snapshot(), saved: file.savedContent, version: 1, servers: make(map[*pencodeLanguageSession]pencodeLanguageSynced), diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
+			state.documents[file] = doc
+		}
+		doc.seen = true
+		if doc.content != file.snapshot() {
+			doc.version++
+			doc.content = file.snapshot()
+			for session := range doc.diagnostics {
+				model.setProblems(session, doc.uri, nil)
+			}
+			clear(doc.diagnostics)
+		}
+		doc.saved = file.savedContent
+		for _, server := range state.servers {
+			if !server.Match(file.Name) {
 				continue
 			}
-			doc := state.documents[file]
-			if doc == nil {
-				matched := false
-				for _, server := range state.servers {
-					if server.Match(file.Name) {
-						matched = true
-						break
-					}
-				}
-				if !matched {
-					continue
-				}
-				doc = &pencodeLanguageDocument{file: file, project: project, root: root, uri: lsp.FileURI(filepath.Join(root, filepath.FromSlash(file.Path))), content: file.snapshot(), saved: file.savedContent, version: 1, servers: make(map[*pencodeLanguageSession]pencodeLanguageSynced), diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
-				state.documents[file] = doc
+			session := model.startLanguageSession(pencodeLanguageKey{root, server.ID, pane}, server)
+			if session.client == nil || session.failed {
+				continue
 			}
-			doc.seen = true
-			if doc.content != file.snapshot() {
-				doc.version++
-				doc.content = file.snapshot()
-				for session := range doc.diagnostics {
-					model.setProblems(session, doc.uri, nil)
-				}
-				clear(doc.diagnostics)
+			synced, exists := doc.servers[session]
+			if exists && synced.version == doc.version && synced.saveRevision == file.saveRevision {
+				continue
 			}
-			doc.saved = file.savedContent
-			for _, server := range state.servers {
-				if !server.Match(file.Name) {
-					continue
-				}
-				session := model.startLanguageSession(root, server)
-				if session.client == nil || session.failed {
-					continue
-				}
-				synced, exists := doc.servers[session]
-				if exists && synced.version == doc.version && synced.saveRevision == file.saveRevision {
-					continue
-				}
-				job := pencodeLanguageJob{document: doc, uri: doc.uri, content: doc.content, version: doc.version, save: exists && synced.saveRevision != file.saveRevision, saved: doc.saved}
-				if synced.update.replace(job) {
-					doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: synced.update}
-					continue
-				}
-				if len(session.jobs) == cap(session.jobs) {
-					continue
-				}
-				update := &pencodeLanguageUpdate{job: job}
-				select {
-				case session.jobs <- pencodeLanguageJob{update: update}:
-					doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: update}
-				default:
-				}
+			job := pencodeLanguageJob{document: doc, uri: doc.uri, content: doc.content, version: doc.version, save: exists && synced.saveRevision != file.saveRevision, saved: doc.saved}
+			if synced.update.replace(job) {
+				doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: synced.update}
+				continue
+			}
+			if len(session.jobs) == cap(session.jobs) {
+				continue
+			}
+			update := &pencodeLanguageUpdate{job: job}
+			select {
+			case session.jobs <- pencodeLanguageJob{update: update}:
+				doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: update}
+			default:
 			}
 		}
 	}
 	if len(model.projects) > 0 {
 		for _, project := range model.projects {
-			visit(project.Path, project, project.Files)
+			for _, file := range project.Files {
+				visit(project.Path, project.Path, project, file, nil, 0)
+			}
 		}
 	} else {
-		visit(model.projectPath, nil, model.files)
+		for _, file := range model.files {
+			visit(model.projectPath, model.projectPath, nil, file, nil, 0)
+		}
 	}
+	// Retire the previous comparison before opening another version of the same URI.
+	tab := model.languageDiffTab()
+	var closing [2]bool
 	for file, doc := range state.documents {
+		if doc.tab == tab && tab != nil {
+			continue
+		}
+
 		if doc.seen {
 			continue
 		}
@@ -451,6 +466,16 @@ func (model *workspaceModel) syncLanguageDocuments() {
 		}
 		if closed {
 			delete(state.documents, file)
+		} else if doc.pane != 0 {
+			closing[doc.pane-1] = true
+		}
+	}
+	if tab != nil {
+		directory := model.sourceState().Snapshot.Repository.Root
+		for side := range tab.languageFiles {
+			if !closing[side] {
+				visit(model.projectPath, directory, model.activeProjectState(), tab.languageFile(side), tab, side+1)
+			}
 		}
 	}
 	// Removing a root closes every process, including servers that failed to start.
@@ -474,7 +499,7 @@ func (model *workspaceModel) languageDocument() *pencodeLanguageDocument {
 		return nil
 	}
 	model.syncLanguageDocuments()
-	return model.languages.documents[model.activeFile()]
+	return model.languages.documents[model.languageFile()]
 }
 func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 	state := model.languages
@@ -515,7 +540,7 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 				}
 				stale := false
 				for _, doc := range state.documents {
-					if doc.uri != p.URI {
+					if doc.uri != p.URI || doc.root != event.session.key.root || doc.pane != event.session.key.pane {
 						continue
 					}
 					stale = p.Version != nil && *p.Version != doc.version
@@ -524,9 +549,8 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 					}
 					break
 				}
-				if !stale {
-					model.setProblems(event.session, p.URI, p.Diagnostics)
-					changed = changed || model.bottom.problemsDirty
+				if !stale && event.session.key.pane == 0 {
+					changed = model.setProblems(event.session, p.URI, p.Diagnostics) || changed
 				}
 			case "workspace/applyEdit":
 				var p struct {

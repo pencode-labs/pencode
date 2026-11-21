@@ -1,4 +1,6 @@
-# Pencode CS v17
+# Pencode CS v18
+
+v18 为 TerminalOpen 增加工作目录。GUI 与 server 必须同时更新。
 
 v17 增加 GitRebasing，在后端检查 Git 的 rebase 状态目录，支持远程仓库及 worktree；GUI 与 server 必须同时更新。
 
@@ -13,7 +15,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 15 |
+| 4 | 2 | 协议版本，当前 18 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -72,7 +74,8 @@ IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功�
 | FileRead | path:string, links:u32, limit:u32 | content:bytes |
 | FileSave | path:string, diskBaseline:string, result:string | 空 |
 | DiffPatch | left:bytes, right:bytes | unifiedPatch:bytes |
-| ProcessOpen / TerminalOpen | cols:u32, rows:u32, command:string, args:string[] | stream:u64, stderrStream:u64 |
+| ProcessOpen | cols:u32, rows:u32, command:string, args:string[] | stream:u64, stderrStream:u64 |
+| TerminalOpen | cols:u32, rows:u32, cwd:string, args:string[]（空） | stream:u64, stderrStream:u64 |
 | DebugAdapterOpen | adapter:string（Delve / stdio / tcp）, command:string, address:string, args:string[] | stream:u64, stderrStream:u64 |
 | DebugTerminalOpen | cwd:string, args:string[], count:u32, {key:string, present:u32, [value:string]}[] | pid:u32, stream:u64, stderrStream:u64（零） |
 | StreamRead | stream:u64 | eof:u32, data:bytes |
@@ -103,7 +106,7 @@ IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功�
 | ExtensionProcess | handle:u64 | stream:u64, stderrStream:u64 |
 | ExtensionLanguageProcess | handle:u64, contributionID:string | stream:u64, stderrStream:u64 |
 
-所有布尔值只取 0/1。`FileRead links=1` 返回 Git 工作树中符号链接自身的文本，并把缺失文件视为空；普通源码读取跟随工作区内的链接，通过 os.Root 拒绝越界。`FileSave` 检查磁盘原文，写临时文件并替换。TerminalOpen 不使用 command/args，stderrStream 为零，因为 PTY 合并输出。
+所有布尔值只取 0/1。`FileRead links=1` 返回 Git 工作树中符号链接自身的文本，并把缺失文件视为空；普通源码读取跟随工作区内的链接，通过 os.Root 拒绝越界。`FileSave` 检查磁盘原文，写临时文件并替换。`TerminalOpen` 的 `cwd` 为空时使用工作区根目录，相对路径以工作区根目录为基准。PTY 合并输出，`stderrStream` 为零。
 
 每条流有八个 32 KiB 服务端缓冲，输出窗口最多 256 KiB，按需接收并施加背压；StreamRead 等待首批数据后，立即合并已有数据返回（最多 256 KiB），不等待填满窗口；StreamWrite 最大 256 KiB，客户端串行发送完整 Write 内的批次，保持并发写入的消息顺序；每连接最多 16 条流（普通进程占 stdout、stderr 两条，PTY 占一条）。流关闭会终止并回收进程；正常连接退出先让服务端清理资源，再由传输层执行超时终止。标准流保持 LSP 原始 JSON-RPC，工作台收到的双向请求语义保持不变。
 

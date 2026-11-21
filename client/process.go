@@ -32,11 +32,11 @@ type Process struct {
 	eof        bool
 }
 
-func (c *Client) openProcess(ctx context.Context, op protocol.Operation, root, name string, args []string, cols, rows int) (*Process, error) {
+func (c *Client) openProcess(ctx context.Context, op protocol.Operation, root, target string, args []string, cols, rows int) (*Process, error) {
 	e := service(op, root)
 	e.U32(uint32(cols))
 	e.U32(uint32(rows))
-	e.String(name)
+	e.String(target)
 	e.U32(uint32(len(args)))
 	for _, v := range args {
 		e.String(v)
@@ -64,8 +64,10 @@ func (c *Client) decodeProcess(d *protocol.Decoder, cols, rows int) (*Process, e
 func (c *Client) OpenProcess(ctx context.Context, root, name string, args ...string) (*Process, error) {
 	return c.openProcess(ctx, protocol.ProcessOpen, root, name, args, 0, 0)
 }
-func (c *Client) OpenTerminal(ctx context.Context, root string, cols, rows int) (*Process, error) {
-	return c.openProcess(ctx, protocol.TerminalOpen, root, "", nil, cols, rows)
+
+// OpenTerminal resolves cwd on the workspace machine. An empty cwd uses root.
+func (c *Client) OpenTerminal(ctx context.Context, root, cwd string, cols, rows int) (*Process, error) {
+	return c.openProcess(ctx, protocol.TerminalOpen, root, cwd, nil, cols, rows)
 }
 func (p *Process) request(ctx context.Context, op protocol.Operation, encode func(*protocol.Encoder)) (protocol.Decoder, error) {
 	e := service(op, "")

@@ -154,7 +154,7 @@ func TestLanguageWorkbenchGoplsAndExtensionUnload(t *testing.T) {
 		t.Fatal("LSP did not settle", model.status, model.languages.panel.body)
 	}
 	wait(func() bool { doc := model.languages.documents[file]; return doc != nil && len(doc.servers) == 1 })
-	session := model.languages.sessions[pencodeLanguageKey{project.Path, "extensions/go/gopls"}]
+	session := model.languages.sessions[pencodeLanguageKey{project.Path, "extensions/go/gopls", 0}]
 	model.runLanguageAction(nil, "textDocument/formatting", false)
 	wait(func() bool { return strings.Contains(file.content(), "a, b int") })
 	if !file.Dirty || len(file.undo) != 1 {
@@ -180,7 +180,7 @@ func TestLanguageWorkbenchGoplsAndExtensionUnload(t *testing.T) {
 func TestLanguageIdlePollingDoesNotAllocate(t *testing.T) {
 	model, project, file := languageTestModel(t)
 	server := &extensions.LanguageServer{LanguageServer: peb.LanguageServer{ID: "extensions/test/test", LanguageID: "go", Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}
-	session := &pencodeLanguageSession{key: pencodeLanguageKey{project.Path, server.ID}, server: server, client: &lsp.Client{Capabilities: lsp.ServerCapabilities{}, Encoding: lsp.UTF16}, jobs: make(chan pencodeLanguageJob, 1), cancel: func() {}}
+	session := &pencodeLanguageSession{key: pencodeLanguageKey{project.Path, server.ID, 0}, server: server, client: &lsp.Client{Capabilities: lsp.ServerCapabilities{}, Encoding: lsp.UTF16}, jobs: make(chan pencodeLanguageJob, 1), cancel: func() {}}
 	doc := &pencodeLanguageDocument{file: file, project: project, root: project.Path, uri: lsp.FileURI(filepath.Join(project.Path, file.Path)), version: 1, content: file.snapshot(), saved: file.savedContent, servers: map[*pencodeLanguageSession]pencodeLanguageSynced{session: {version: 1}}, diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
 	model.languages.servers = []*extensions.LanguageServer{server}
 	model.languages.sessions[session.key] = session
@@ -205,7 +205,7 @@ func TestLanguageResultCannotOverwriteChangedDocument(t *testing.T) {
 func TestLanguageQueuedSnapshotsCoalesceWithoutRetainingOldVersions(t *testing.T) {
 	model, project, file := languageTestModel(t)
 	server := &extensions.LanguageServer{LanguageServer: peb.LanguageServer{ID: "extensions/test/test", LanguageID: "go", Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}
-	session := &pencodeLanguageSession{key: pencodeLanguageKey{project.Path, server.ID}, server: server, client: &lsp.Client{Encoding: lsp.UTF16}, jobs: make(chan pencodeLanguageJob, 64), cancel: func() {}}
+	session := &pencodeLanguageSession{key: pencodeLanguageKey{project.Path, server.ID, 0}, server: server, client: &lsp.Client{Encoding: lsp.UTF16}, jobs: make(chan pencodeLanguageJob, 64), cancel: func() {}}
 	model.languages.servers = []*extensions.LanguageServer{server}
 	model.languages.sessions[session.key] = session
 	model.syncLanguageDocuments()

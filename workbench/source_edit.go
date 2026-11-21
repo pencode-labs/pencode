@@ -3,6 +3,7 @@ package workbench
 import (
 	"unicode/utf8"
 
+	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
 	engineui "github.com/onix-engine/onix/ui"
@@ -36,10 +37,13 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		s.gutterTab = nil
 		return
 	}
-	for side, id := range [...]string{"sc-code-left-input", "sc-code-right-input"} {
+	for side, id := range diffInputs {
 		control, ok := world.HTMLControl(m.surface, id)
 		if !ok {
 			continue
+		}
+		if !world.Has[engineui.TextFieldKeyHandler](control) {
+			_ = world.Insert(control, engineui.TextFieldKeyHandler{Handle: m.diffLanguageKeyHandled})
 		}
 		if binding := world.Mut[htmlui.Control](control); binding != nil {
 			binding.Wrap = false
@@ -80,6 +84,7 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		if !ok {
 			continue
 		}
+		s.diffEditors[side].control, s.diffEditors[side].text = control, entity
 		text := world.Mut[scene.Text2D](entity)
 		text.Font, text.LineHeight, text.LineLayout = font, 20, &tab.LineLayouts[side]
 		if width, ok := world.ControlTextTabWidth(control, text); ok {
@@ -90,13 +95,17 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 		if h.ready && h.source == value && h.theme == m.syntaxTheme && h.definitions == m.syntaxDefinitions {
 			spans = h.spans
 		}
+		if m.languages != nil {
+			spans = m.documentLanguageHighlight(m.languages.documents[tab.languageFiles[side]], spans, h.revision)
+		}
+		spans = s.diffEditors[side].languageLinkSpans(m, *field, spans, tab.languageFiles[side], h.revision)
 		paint := pencodeOverlayPaintKey(m, value, spans, 0, 0)
 		paint.paint = h.revision
 		s.diffEditors[side].syncPaint(text, *field, spans, paint)
 		s.inlinePaint[side].sync(world, m, tab, side, text)
 		// The outer viewport owns scrolling, including automatic caret reveal.
 		if field.Focused && (s.diffEditors[side].caretContent != snapshotText(value) || s.diffEditors[side].caretIndex != field.Caret) {
-			if node, ok := world.HTMLNode(m.surface, [...]string{"sc-code-left", "sc-code-right"}[side]); ok {
+			if node, ok := world.HTMLNode(m.surface, diffViewports[side]); ok {
 				if area, ok := node.ScrollContainer(); ok {
 					if scroll := world.Mut[scene.UIScroll](area); scroll != nil {
 						x, y, _, height, ok := scene.TextCaretRect2D(text, value, field.Caret)
@@ -122,3 +131,5 @@ func (m *workspaceModel) bindSourceDiffControls(world *module.Content) {
 	}
 	s.diffPaneTab = tab
 }
+
+func (m *workspaceModel) diffLanguageKeyHandled(*input.State) bool { return m.languageUI.keysHandled }

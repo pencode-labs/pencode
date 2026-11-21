@@ -48,6 +48,7 @@ func TestSyntaxCaptureDeltaTransfer(t *testing.T) {
 
 func TestSyntaxCaptureDeltaMatchesShiftedSuffix(t *testing.T) {
 	before := []syntax.Capture{{StartByte: 0, EndByte: 2, Capture: "keyword"}, {StartByte: 3, EndByte: 4, Capture: "variable"}, {StartByte: 5, EndByte: 8, Capture: "string"}}
+	session := syntaxSession{names: []captureName{{capture: "keyword"}, {capture: "variable"}, {capture: "string"}}, previous: []captureRange{{0, 2, 0}, {3, 4, 1}, {5, 8, 2}}}
 	for _, test := range []struct {
 		after                 []syntax.Capture
 		shift, prefix, suffix int
@@ -57,7 +58,7 @@ func TestSyntaxCaptureDeltaMatchesShiftedSuffix(t *testing.T) {
 		{[]syntax.Capture{{StartByte: 0, EndByte: 9, Capture: "comment"}}, 1, 0, 0},
 		{nil, -8, 0, 0},
 	} {
-		prefix, suffix := syntaxCaptureDelta(before, test.after, test.shift)
+		prefix, suffix := session.captureDelta(test.after, test.shift)
 		if prefix != test.prefix || suffix != test.suffix {
 			t.Fatalf("delta=(%d,%d) want=(%d,%d)", prefix, suffix, test.prefix, test.suffix)
 		}
@@ -65,9 +66,9 @@ func TestSyntaxCaptureDeltaMatchesShiftedSuffix(t *testing.T) {
 }
 
 func TestSyntaxCaptureDeltaIncludesScopeChanges(t *testing.T) {
-	before := []syntax.Capture{{StartByte: 0, EndByte: 2, Capture: "variable", Scopes: "source.go variable.other.go"}}
+	session := syntaxSession{names: []captureName{{"variable", "source.go variable.other.go"}}, previous: []captureRange{{0, 2, 0}}}
 	after := []syntax.Capture{{StartByte: 0, EndByte: 2, Capture: "variable", Scopes: "source.go variable.parameter.go"}}
-	if prefix, suffix := syntaxCaptureDelta(before, after, 0); prefix != 0 || suffix != 0 {
+	if prefix, suffix := session.captureDelta(after, 0); prefix != 0 || suffix != 0 {
 		t.Fatal("scope-only change was omitted from delta")
 	}
 }

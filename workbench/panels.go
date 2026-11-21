@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/onix-engine/onix/module"
-	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/lsp"
 	"github.com/pencode-labs/pencode/output"
@@ -95,10 +94,10 @@ type pencodeBottomPanel struct {
 	options                          []htmlui.VNode
 	outputRevision, storeRevision    uint64
 	problemRevision                  uint64
+	diagnosticRevision               uint64
 	problemsDirty                    bool
 	problemGroupsInitialized         bool
 	active                           pencodePanel
-	focusEditor                      bool
 }
 
 func (model *workspaceModel) outputStore() *output.Store {
@@ -152,29 +151,33 @@ func languageMessageLevel(level int) string {
 	}
 }
 
-func (model *workspaceModel) setProblems(session *pencodeLanguageSession, uri lsp.URI, items []lsp.Diagnostic) {
+func (model *workspaceModel) setProblems(session *pencodeLanguageSession, uri lsp.URI, items []lsp.Diagnostic) bool {
 	p := &model.bottom
 	key := pencodeDiagnosticKey{session, uri}
+	previous := p.diagnostics[key]
 	if len(items) == 0 {
-		if _, ok := p.diagnostics[key]; !ok {
-			return
+		if len(previous) == 0 {
+			return false
 		}
 		delete(p.diagnostics, key)
 	} else {
 		if p.diagnostics == nil {
 			p.diagnostics = make(map[pencodeDiagnosticKey][]lsp.Diagnostic)
 		}
-		previous := p.diagnostics[key]
 		p.diagnostics[key] = items
-		if slices.EqualFunc(previous, items, equalProblemDiagnostic) {
-			return
-		}
 	}
-	p.problemsDirty = true
+	if !slices.EqualFunc(previous, items, equalProblemDiagnostic) {
+		p.problemsDirty = true
+	} else if slices.EqualFunc(previous, items, func(a, b lsp.Diagnostic) bool {
+		return slices.Contains(a.Tags, lsp.DiagnosticTagUnnecessary) == slices.Contains(b.Tags, lsp.DiagnosticTagUnnecessary)
+	}) {
+		return false
+	}
+	p.diagnosticRevision++
+	return true
 }
 
 func equalProblemDiagnostic(a, b lsp.Diagnostic) bool {
-	// Keep the latest server metadata without rebuilding identical visible rows.
 	return a.Range == b.Range && a.Severity == b.Severity && a.Source == b.Source && a.Message == b.Message
 }
 
@@ -182,6 +185,7 @@ func (model *workspaceModel) clearSessionProblems(session *pencodeLanguageSessio
 	for key := range model.bottom.diagnostics {
 		if key.session == session {
 			delete(model.bottom.diagnostics, key)
+			model.bottom.diagnosticRevision++
 			model.bottom.problemsDirty = true
 		}
 	}
@@ -423,24 +427,6 @@ func setPanelVisible(view *htmlui.View, ref string, visible bool) {
 	}
 }
 
-func (model *workspaceModel) focusPanelEditor(world *module.Content) {
-	if !model.bottom.focusEditor {
-		return
-	}
-	model.bottom.focusEditor = false
-	if !model.textEditorActive() {
-		return
-	}
-	field, ok := world.Get[engineui.TextField](model.editor.control)
-	if ok && world.Focus(model.editor.control) {
-		current := world.Mut[engineui.TextField](model.editor.control)
-		current.Caret, current.Anchor = field.Caret, field.Anchor
-		if textarea := world.Mut[engineui.Textarea](model.editor.control); textarea != nil {
-			textarea.RestoreScroll(textarea.ScrollX, textarea.ScrollY)
-		}
-	}
-}
-
 func (model *workspaceModel) syncOutput() {
 	p := &model.bottom
 	store := model.outputStore()
@@ -502,8 +488,7 @@ func (model *workspaceModel) handleBottomPanelEvent(world *module.Content, ref, 
 		}
 		p.active = pencodePanelClosed
 		if world != nil {
-			// Restore focus after native pointer handling and panel layout finish.
-			p.focusEditor = true
+			model.editor.restoreFocus = true
 		}
 	case "output-source":
 		for _, c := range p.channels {

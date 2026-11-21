@@ -3,10 +3,12 @@ package workbench
 import (
 	"errors"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/onix-engine/onix/input"
 )
@@ -78,7 +80,7 @@ func TestSourceControlRepositoryRefCache(t *testing.T) {
 			found := false
 			for _, group := range s.repositoryView.groups {
 				if group.node.Key == sourceVNodeKey("div", root) {
-					if len(group.children) == 2 && len(group.children[1].Children) == 1 {
+					if len(group.children) == 5 && len(group.children[1].Children) == 1 {
 						content := group.children[1].Children[0].Children
 						found = len(content) == 2 && content[1].Text == want[i]
 					}
@@ -95,6 +97,233 @@ func TestSourceControlRepositoryRefCache(t *testing.T) {
 	check("main", "feature/child")
 	s.Snapshot.Branch = "abcdef01 (detached)"
 	check("abcdef01 (detached)", "feature/child")
+}
+
+func TestSourceControlRepositoryRowActionsRunIndependently(t *testing.T) {
+	seed := sourceTestRepository(t)
+	sourceTestWrite(t, seed, "main.go", "package main\n")
+	sourceTestGit(t, seed, "add", "main.go")
+	sourceTestGit(t, seed, "commit", "-m", "base")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	sourceTestGit(t, seed, "clone", "--bare", seed.Root, remote)
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seed.Backend.OpenWorkspace(t.Context(), project); err != nil {
+		t.Fatal(err)
+	}
+	slow := sourceRepository{Root: filepath.ToSlash(filepath.Join(project, "slow")), Backend: seed.Backend}
+	fast := sourceRepository{Root: filepath.ToSlash(filepath.Join(project, "fast")), Backend: seed.Backend}
+	for _, r := range []sourceRepository{slow, fast} {
+		sourceTestGit(t, seed, "clone", remote, r.Root)
+	}
+	if _, err := seed.Backend.GitRepositories(t.Context(), project); err != nil {
+		t.Fatal(err)
+	}
+	sourceTestGit(t, slow, "switch", "-c", "publish")
+	sourceTestGit(t, slow, "push", "-u", "origin", "publish")
+	sourceTestGit(t, slow, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "outgoing")
+	for range 2 {
+		sourceTestGit(t, seed, "commit", "--allow-empty", "-m", "incoming")
+	}
+	sourceTestGit(t, seed, "push", remote, "main")
+	remoteHead := sourceTestGit(t, seed, "rev-parse", "HEAD")
+
+	hooks := filepath.Join(slow.Root, ".git", "hooks")
+	if err := os.MkdirAll(hooks, 0755); err != nil {
+		t.Fatal(err)
+	}
+	sourceTestGit(t, slow, "config", "core.hooksPath", hooks)
+	const hook = "#!/bin/sh\ntouch .git/push-started\nwhile [ ! -f .git/push-release ]; do sleep 0.05; done\n"
+	if err := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte(hook), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("ONIX_PENCODE_PROFILE_PROJECT", project)
+	t.Setenv("ONIX_PENCODE_PROFILE_FILE", "slow/main.go")
+	app, m, _, state := languageInteractionFixture(t)
+	m.languages = nil
+	release := filepath.Join(slow.Root, ".git", "push-release")
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0644) })
+	editorContextClick(t, app, m, state, "status-source-control")
+	sourceWait(t, app, m)
+	s := m.sourceState()
+	if s.Snapshot.Repository.Root != slow.Root {
+		t.Fatal("the project did not select the repository for the active file")
+	}
+	wait := func(ready func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !ready() {
+			if time.Now().After(deadline) {
+				t.Fatalf("repository actions did not reach the expected state: %s", m.status)
+			}
+			languageInteractionStep(t, app)
+			time.Sleep(time.Millisecond)
+		}
+	}
+	attribute := func(id, key string) string {
+		t.Helper()
+		node, ok := m.fontResources.HTMLNode(m.surface, id)
+		if !ok {
+			t.Fatalf("missing repository action %s", id)
+		}
+		value, _ := node.Attribute(key)
+		return value
+	}
+	push := sourceRepositoryActionPrefix + "push:" + slow.Root
+	pull := sourceRepositoryActionPrefix + "pull:" + fast.Root
+	refresh := sourceRepositoryActionPrefix + "refresh:" + fast.Root
+	branch := editorContextBounds(t, m, sourceRepositoryBranchPrefix+fast.Root)
+	if bounds := editorContextBounds(t, m, refresh); bounds.X < branch.X+branch.Width-1 || bounds.Y < branch.Y || bounds.Y+bounds.Height > branch.Y+branch.Height {
+		t.Fatalf("refresh is outside the branch's action area: branch=%+v refresh=%+v", branch, bounds)
+	}
+	if attribute(push, "aria-label") != "Push (1)" || attribute(pull, "aria-label") != "Pull" {
+		t.Fatal("the row actions did not show the initial tracking counts")
+	}
+	editorContextClick(t, app, m, state, push)
+	wait(func() bool {
+		_, err := os.Stat(filepath.Join(slow.Root, ".git", "push-started"))
+		return err == nil && attribute(push, "aria-busy") == "true"
+	})
+	editorContextClick(t, app, m, state, refresh)
+	wait(func() bool { return attribute(pull, "aria-label") == "Pull (2)" })
+	s.RepositoriesWidthStyle = "width:120px;"
+	m.sourceChanged()
+	languageInteractionStep(t, app)
+	column := editorContextBounds(t, m, "sc-repositories")
+	fastPush := editorContextBounds(t, m, sourceRepositoryActionPrefix+"push:"+fast.Root)
+	if fastPush.X+fastPush.Width > column.X+column.Width {
+		t.Fatalf("count pushed an action outside the repository column: %+v", fastPush)
+	}
+	editorContextClick(t, app, m, state, pull)
+	wait(func() bool { return attribute(pull, "aria-label") == "Pull" })
+	if s.Snapshot.Repository.Root != slow.Root || attribute(push, "aria-busy") != "true" || sourceTestGit(t, fast, "rev-parse", "HEAD") != remoteHead {
+		t.Fatal("the other repository's pull did not complete while push was running")
+	}
+	if err := os.WriteFile(release, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	wait(func() bool { return attribute(push, "aria-label") == "Push" && attribute(push, "aria-busy") == "" })
+}
+
+func TestSourceControlBranchCheckoutDuringCommitAndSync(t *testing.T) {
+	seed := sourceTestRepository(t)
+	sourceTestWrite(t, seed, "main.go", "package main\n")
+	sourceTestGit(t, seed, "add", "main.go")
+	sourceTestGit(t, seed, "commit", "-m", "base")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	sourceTestGit(t, seed, "clone", "--bare", seed.Root, remote)
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seed.Backend.OpenWorkspace(t.Context(), project); err != nil {
+		t.Fatal(err)
+	}
+	slow := sourceRepository{Root: filepath.ToSlash(filepath.Join(project, "slow")), Backend: seed.Backend}
+	fast := sourceRepository{Root: filepath.ToSlash(filepath.Join(project, "fast")), Backend: seed.Backend}
+	for _, r := range []sourceRepository{slow, fast} {
+		sourceTestGit(t, seed, "clone", remote, r.Root)
+	}
+	if _, err := seed.Backend.GitRepositories(t.Context(), project); err != nil {
+		t.Fatal(err)
+	}
+	sourceTestGit(t, fast, "branch", "topic")
+	sourceTestGit(t, slow, "config", "user.name", "Test")
+	sourceTestGit(t, slow, "config", "user.email", "test@example.invalid")
+	sourceTestGit(t, slow, "config", "commit.gpgsign", "false")
+	hooks := filepath.Join(slow.Root, ".git", "hooks")
+	sourceTestGit(t, slow, "config", "core.hooksPath", hooks)
+	for _, name := range []string{"pre-commit", "pre-push"} {
+		hook := "#!/bin/sh\ntouch .git/hooks/" + name + "-started\nwhile [ ! -f .git/hooks/" + name + "-release ]; do sleep 0.05; done\n"
+		if err := os.WriteFile(filepath.Join(hooks, name), []byte(hook), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sourceTestWrite(t, slow, "main.go", "package main\n// outgoing\n")
+	sourceTestGit(t, slow, "add", "main.go")
+
+	t.Setenv("ONIX_PENCODE_PROFILE_PROJECT", project)
+	t.Setenv("ONIX_PENCODE_PROFILE_FILE", "slow/main.go")
+	app, m, _, state := languageInteractionFixture(t)
+	t.Cleanup(func() {
+		for _, name := range []string{"pre-commit", "pre-push"} {
+			_ = os.WriteFile(filepath.Join(hooks, name+"-release"), nil, 0644)
+		}
+	})
+	m.languages = nil
+	editorContextClick(t, app, m, state, "status-source-control")
+	sourceWait(t, app, m)
+	s := m.sourceState()
+	fastIndex := slices.Index(s.Repositories, fast.Root)
+	if s.Snapshot.Repository.Root != slow.Root || fastIndex < 0 {
+		t.Fatalf("unexpected repository selection %q from %v", s.Snapshot.Repository.Root, s.Repositories)
+	}
+	wait := func(ready func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !ready() {
+			if time.Now().After(deadline) {
+				t.Fatalf("Git job did not reach the expected state. Status %q, notice %q", m.status, s.Notice)
+			}
+			languageInteractionStep(t, app)
+			time.Sleep(time.Millisecond)
+		}
+	}
+	for _, test := range []struct{ Job, Hook, Branch, WantMessage string }{
+		{sourceRepositoryCommit, "pre-commit", "topic", ""},
+		{sourceRepositorySync, "pre-push", "main", "slow draft"},
+	} {
+		s.CommitMessage = "slow draft"
+		editorContextClick(t, app, m, state, "sc-create-commit")
+		wait(func() bool {
+			_, err := os.Stat(filepath.Join(hooks, test.Hook+"-started"))
+			return err == nil && s.repositoryJobs[slow.Root].Name == test.Job
+		})
+		activeBranch, _ := m.fontResources.HTMLNode(m.surface, "sc-branches")
+		trigger := sourceRepositoryBranchPrefix + fast.Root
+		otherBranch, _ := m.fontResources.HTMLNode(m.surface, trigger)
+		_, activeDisabled := activeBranch.Attribute("disabled")
+		_, otherDisabled := otherBranch.Attribute("disabled")
+		if !activeDisabled || otherDisabled {
+			t.Fatalf("during %s, disabled branches were slow=%t, fast=%t", test.Job, activeDisabled, otherDisabled)
+		}
+		m.sourceAction("sc-diff:" + url.PathEscape("slow/main.go"))
+		editorContextClick(t, app, m, state, trigger)
+		wait(func() bool { return s.BranchMenuOpen && s.branchPicker != nil })
+		row := editorContextBounds(t, m, "sc-branch:refs/heads/"+test.Branch)
+		scale := float64(m.settings.Zoom) / 100
+		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(row.X+row.Width/2) * scale, Y: float64(row.Y+row.Height/2) * scale})
+		languageInteractionStep(t, app)
+		editorContextClick(t, app, m, state, "sc-branch-checkout")
+		wait(func() bool { return s.RepositoryRefs[fastIndex] == test.Branch })
+		if s.Snapshot.Repository.Root != slow.Root || s.repositoryJobs[slow.Root].Name != test.Job || fast.headLabel() != test.Branch {
+			t.Fatalf("checkout of %s did not finish independently during %s", test.Branch, test.Job)
+		}
+		editorContextClick(t, app, m, state, "sc-repository:"+fast.Root)
+		sourceWait(t, app, m)
+		if s.Snapshot.Repository.Root != fast.Root || s.Snapshot.Branch != test.Branch {
+			t.Fatalf("could not select the other repository during %s", test.Job)
+		}
+		s.CommitMessage = "fast draft"
+		if err := os.WriteFile(filepath.Join(hooks, test.Hook+"-release"), nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		wait(func() bool { return s.repositoryJobs[slow.Root].Done == nil })
+		if s.CommitMessage != "fast draft" || s.modal() || s.Snapshot.Repository.Root != fast.Root {
+			t.Fatalf("completion of %s changed the selected repository's view", test.Job)
+		}
+		editorContextClick(t, app, m, state, "sc-repository:"+slow.Root)
+		sourceWait(t, app, m)
+		if s.CommitMessage != test.WantMessage {
+			t.Fatalf("after %s the original draft was %q, want %q", test.Job, s.CommitMessage, test.WantMessage)
+		}
+	}
+	if s.Snapshot.Sync != (sourceSyncStatus{}) {
+		t.Fatalf("sync kept stale tracking counts: %+v", s.Snapshot.Sync)
+	}
 }
 
 func TestSourceControlRepositoryFailureRetainsDrafts(t *testing.T) {
@@ -226,7 +455,7 @@ func TestSourceControlRepositoryListAndAutomaticSelection(t *testing.T) {
 	s.Tabs = []*sourceTab{dirty}
 	// Hold a sync open until the foreground has switched repositories.
 	syncDone := make(chan sourceResult, 1)
-	s.Done, s.JobKind = syncDone, sourceSync
+	s.repositoryJobs = map[string]sourceRepositoryJob{nestedRoot: {Done: syncDone, Name: sourceRepositorySync}}
 	m.sourceChanged()
 	languageInteractionStep(t, app)
 	parent = editorContextBounds(t, m, "sc-repository:"+parentRoot)
@@ -240,7 +469,7 @@ func TestSourceControlRepositoryListAndAutomaticSelection(t *testing.T) {
 		t.Fatal("manual selection lost a nested draft or reused its commit message")
 	}
 	editorContextClick(t, app, m, state, "sc-repository:"+nestedRoot)
-	if s.Done != syncDone || !s.busy() || s.CommitMessage != "child draft" {
+	if s.repositoryJobs[nestedRoot].Done != syncDone || !s.busy() || s.CommitMessage != "child draft" {
 		t.Fatal("switching back did not restore the child's running sync and draft")
 	}
 	editorContextClick(t, app, m, state, "sc-repository:"+parentRoot)

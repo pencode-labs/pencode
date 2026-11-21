@@ -139,7 +139,7 @@ func testLanguageHoverRenderedBounds(t *testing.T, indent, zoom, width, lines in
 	languageInteractionStep(t, app)
 	editorNode, _ := world.HTMLNode(model.surface, "editor")
 	editorRect, _ := editorNode.Bounds()
-	text, ox, oy := model.languageEditorGeometry(world, editorRect)
+	text, ox, oy := model.editor.languageEditorGeometry(world, editorRect)
 	x, y, _, height, ok := scene.TextCaretRect2D(text, value, strings.Index(value, "Before")+2)
 	if !ok {
 		t.Fatal("editor text layout unavailable")

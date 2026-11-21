@@ -79,9 +79,15 @@ func (model *workspaceModel) languageProvider(doc *pencodeLanguageDocument, meth
 	if doc == nil || model.languages == nil {
 		return nil
 	}
+	if !doc.writable() {
+		switch method {
+		case "textDocument/completion", "textDocument/rename", "textDocument/formatting", "textDocument/rangeFormatting", "textDocument/codeAction", "textDocument/codeLens":
+			return nil
+		}
+	}
 	capability, _ := languageAction(method)
 	for _, server := range model.languages.servers {
-		candidate := model.languages.sessions[pencodeLanguageKey{doc.root, server.ID}]
+		candidate := model.languages.sessions[pencodeLanguageKey{doc.root, server.ID, doc.pane}]
 		if synced, ok := doc.servers[candidate]; ok && candidate != nil && candidate.client != nil && !candidate.failed && synced.version == doc.version && candidate.client.Supports(method, capability) {
 			return candidate
 		}
@@ -100,7 +106,7 @@ func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, e
 		return
 	}
 	model.dismissLanguagePanel()
-	field, ok := world.Get[engineui.TextField](model.editor.control)
+	field, ok := world.Get[engineui.TextField](model.languageEditor().control)
 	state, _ := world.Resource[*input.State]()
 	if !ok || !field.Focused || field.Composition != "" || state != nil && state.Composing() || field.Anchor != field.Caret {
 		return
@@ -152,7 +158,7 @@ func (model *workspaceModel) scheduleLanguageCompletion(world *module.Content, e
 	if method == "" {
 		return
 	}
-	ui.completionFile, ui.completionContent = model.activeFile(), value
+	ui.completionFile, ui.completionContent = model.languageFile(), value
 	ui.completionMethod, ui.trigger, ui.completionCaret = method, trigger, field.Caret
 	ui.completionDue = time.Now().Add(pencodeCompletionDelay)
 	model.wakeLanguageAt(ui.completionDue)
@@ -190,12 +196,12 @@ func (model *workspaceModel) runLanguageContext(world *module.Content, index int
 	ui := &model.languageUI
 	file, content, caret, anchor := ui.contextFile, ui.contextContent, ui.contextCaret, ui.contextAnchor
 	model.dismissLanguageContext()
-	if world == nil || index < 0 || index >= len(pencodeLanguageActions) || file != model.activeFile() || content != model.activeSnapshot() {
+	if world == nil || index < 0 || index >= len(pencodeLanguageActions) || file == nil || file != model.languageFile() || content != file.snapshot() {
 		return
 	}
-	world.Focus(model.editor.control)
+	world.Focus(model.languageEditor().control)
 	ui.contextFocus = true
-	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
+	if field := world.Mut[engineui.TextField](model.languageEditor().control); field != nil {
 		field.Caret, field.Anchor = caret, anchor
 	}
 	model.runLanguageAction(world, pencodeLanguageActions[index].method, false)
@@ -207,7 +213,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 	}
 	ui := &model.languageUI
 	ui.keysHandled = false
-	if model.folderSearch.open || model.tabContext.open || model.fileContext.open || model.fileContext.dialog != "" || !model.textEditorActive() || model.settingsOpen || model.quickOpen || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
+	if model.folderSearch.open || model.tabContext.open || model.fileContext.open || model.fileContext.dialog != "" || !model.languageEditorActive() || model.sourceState().modal() || model.sourceState().MenuOpen || model.sourceState().BranchMenuOpen || model.settingsOpen || model.quickOpen || model.closing.action != pencodeCloseNone || model.market != nil && model.market.open {
 		changed := ui.contextOpen || ui.hover.open || ui.hover.link || model.languages != nil && (model.languages.panel.open || model.languages.panel.completion)
 		model.cancelLanguageAutomatic()
 		model.cancelLanguageHover()
@@ -216,9 +222,17 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		return changed
 	}
 	changed := false
-	field, _ := world.Get[engineui.TextField](model.editor.control)
-	file := model.activeFile()
-	if ui.contextOpen && (ui.contextFile != file || ui.contextContent != model.activeSnapshot()) {
+	if tab := model.languageDiffTab(); tab != nil {
+		s := model.sourceState()
+		for side := range s.diffEditors {
+			if control := s.diffEditors[side].control; control != 0 && world.FocusedControl() == control {
+				s.languageSide = side
+			}
+		}
+	}
+	field, _ := world.Get[engineui.TextField](model.languageEditor().control)
+	file := model.languageFile()
+	if ui.contextOpen && (ui.contextFile != file || ui.contextContent != file.snapshot()) {
 		model.dismissLanguageContext()
 		changed = true
 	}
@@ -241,12 +255,10 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		}
 	}
 	body, bodyOK := world.HTMLNode(model.surface, "editor-body")
-	editor, editorOK := world.HTMLNode(model.surface, "editor")
-	if !bodyOK || !editorOK {
+	if !bodyOK {
 		return changed
 	}
 	bodyRect, _ := body.Bounds()
-	editorRect, _ := editor.Bounds()
 	zoom := max(float32(model.settings.Zoom)/100, .01)
 	pointer := state.Pointer()
 	x, y := pointer.X/zoom, pointer.Y/zoom
@@ -259,12 +271,17 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		changed = true
 	}
 	popup := model.pointerInsideRefs(world, x, y, []string{"lsp-context", "lsp-context-submenu", "lsp-completion", "lsp-panel", "lsp-hover"})
-	inside := languageRectContains(editorRect, x, y) && !popup && !(model.findOpen && model.pointerInsideRefs(world, x, y, []string{"find-bar"}))
+	pointed, pointedFile, editorRect, side := model.languagePointerEditor(world, x, y)
+	inside := pointed != nil && !popup && !(model.findOpen && model.pointerInsideRefs(world, x, y, []string{"find-bar"}))
 	if state.MousePressed(input.MouseRight) && inside {
 		model.cancelLanguageAutomatic()
 		model.cancelLanguageHover()
 		model.dismissLanguagePanel()
-		caret := model.editorOffsetAtPointer(world, x, y, editorRect)
+		model.sourceState().languageSide = side
+		file = pointedFile
+		field, _ = world.Get[engineui.TextField](pointed.control)
+		text, ox, oy := pointed.languageEditorGeometry(world, editorRect)
+		caret := scene.TextCaretIndex2D(text, file.snapshot(), x-ox, y-oy)
 		ui.contextCaret, ui.contextAnchor = caret, caret
 		if caret >= min(field.Caret, field.Anchor) && caret <= max(field.Caret, field.Anchor) {
 			ui.contextCaret, ui.contextAnchor = field.Caret, field.Anchor
@@ -273,7 +290,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		ui.contextX, ui.contextY = clampLanguagePopup(x-bodyRect.X, y-bodyRect.Y, bodyRect, 240, 364)
 		ui.contextIndex, ui.contextGroup = 0, 0
 		ui.contextPointerX, ui.contextPointerY = x, y
-		world.Focus(model.editor.control)
+		world.Focus(model.languageEditor().control)
 		return true
 	}
 	if ui.contextOpen && pointer.Device == input.PointerDeviceMouse && (x != ui.contextPointerX || y != ui.contextPointerY) {
@@ -281,7 +298,7 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		changed = model.hoverEditorContext(world, x, y) || changed
 	}
 	if state.PointerPressed() || state.MousePressed(input.MouseRight) || state.MousePressed(input.MouseMiddle) {
-		if model.languages != nil && (!popup || model.languages.panel.open && !model.pointerInsideRefs(world, x, y, []string{"lsp-panel"})) {
+		if model.languages != nil && !popup && !ui.contextFocus {
 			model.dismissLanguagePanel()
 			changed = true
 		}
@@ -306,7 +323,8 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		}
 		return changed
 	}
-	offset, start, end, underline, valid := model.languageSymbolAtPointer(world, x, y, editorRect, bodyRect)
+	file = pointedFile
+	offset, start, end, underline, valid := model.languageSymbolAtPointer(world, pointed, file.snapshot(), x, y, editorRect, bodyRect)
 	if !valid || state.Composing() || model.languages == nil {
 		if ui.hover.file != nil {
 			model.cancelLanguageHover()
@@ -315,11 +333,12 @@ func (model *workspaceModel) updateLanguageInteractions(world *module.Content, s
 		return changed
 	}
 	if state.MouseReleased(input.MouseLeft) && primary {
+		model.sourceState().languageSide = side
 		model.cancelLanguageAutomatic()
 		model.cancelLanguageHover()
 		model.dismissLanguageContext()
-		world.Focus(model.editor.control)
-		if f := world.Mut[engineui.TextField](model.editor.control); f != nil {
+		world.Focus(model.languageEditor().control)
+		if f := world.Mut[engineui.TextField](model.languageEditor().control); f != nil {
 			f.Caret, f.Anchor, f.Selecting = file.snapshot().RuneOffset(offset), file.snapshot().RuneOffset(offset), false
 		}
 		var doc *pencodeLanguageDocument
@@ -430,11 +449,12 @@ func languageCompletionMatches(text, prefix string) bool {
 }
 
 func (model *workspaceModel) requestLanguageHover() {
-	if model.languageHoverBlocked() {
+	if model.languages == nil || model.languageHoverBlocked() {
 		return
 	}
 	h := &model.languageUI.hover
-	doc := model.languageDocument()
+	model.syncLanguageDocuments()
+	doc := model.languages.documents[h.file]
 	session := model.languageProvider(doc, "textDocument/hover")
 	if session == nil {
 		return
@@ -457,23 +477,18 @@ func (model *workspaceModel) requestLanguageHover() {
 
 // Text hit testing shares the textarea's cached layout (including wrapping,
 // variable-width glyphs, tabs and font settings) and its current scroll offset.
-func (model *workspaceModel) languageEditorGeometry(world *module.Content, rect htmlui.Rect) (*scene.Text2D, float32, float32) {
-	text := world.Mut[scene.Text2D](model.editor.text)
-	transform, ok := world.Get[scene.UITransform](model.editor.text)
+func (ed *pencodeEditor) languageEditorGeometry(world *module.Content, rect htmlui.Rect) (*scene.Text2D, float32, float32) {
+	text := world.Mut[scene.Text2D](ed.text)
+	transform, ok := world.Get[scene.UITransform](ed.text)
 	if text == nil || !ok {
 		return nil, 0, 0
 	}
 	return text, rect.X + transform.Translation.X.Value, rect.Y + transform.Translation.Y.Value
 }
 
-func (model *workspaceModel) editorOffsetAtPointer(world *module.Content, x, y float32, rect htmlui.Rect) int {
-	text, originX, originY := model.languageEditorGeometry(world, rect)
-	return scene.TextCaretIndex2D(text, model.activeSnapshot(), x-originX, y-originY)
-}
-
-func (model *workspaceModel) languageSymbolAtPointer(world *module.Content, x, y float32, editor, body htmlui.Rect) (offset, start, end int, underline htmlui.Rect, valid bool) {
-	text, originX, originY := model.languageEditorGeometry(world, editor)
-	if text == nil || text.Text() != model.activeSnapshot() {
+func (model *workspaceModel) languageSymbolAtPointer(world *module.Content, ed *pencodeEditor, content piecetree.Snapshot, x, y float32, editor, body htmlui.Rect) (offset, start, end int, underline htmlui.Rect, valid bool) {
+	text, originX, originY := ed.languageEditorGeometry(world, editor)
+	if text == nil || text.Text() != content {
 		return
 	}
 	value := text.Text()
@@ -532,14 +547,23 @@ func (model *workspaceModel) editorPopupPoint(world *module.Content, offset int)
 		return 8, 8
 	}
 	body, bodyOK := world.HTMLNode(model.surface, "editor-body")
-	editor, editorOK := world.HTMLNode(model.surface, "editor")
+	ref := "editor"
+	s := model.sourceState()
+	if model.languageDiffTab() != nil {
+		ref = diffInputs[s.languageSide]
+	}
+	editor, editorOK := world.HTMLNode(model.surface, ref)
 	if !bodyOK || !editorOK {
 		return 8, 8
 	}
 	bodyRect, _ := body.Bounds()
 	editorRect, _ := editor.Bounds()
-	text, originX, originY := model.languageEditorGeometry(world, editorRect)
-	value := model.activeSnapshot()
+	if tab := model.languageDiffTab(); tab != nil {
+		editorRect.X += tab.scrollApplied[s.languageSide][0]
+		editorRect.Y += tab.scrollApplied[s.languageSide][1]
+	}
+	text, originX, originY := model.languageEditor().languageEditorGeometry(world, editorRect)
+	value := model.languageFile().snapshot()
 	caret := value.RuneOffset(min(offset, value.Len()))
 	x, y, _, height, ok := scene.TextCaretRect2D(text, value, caret)
 	if !ok {
@@ -591,7 +615,7 @@ func (model *workspaceModel) constrainLanguagePopups(world *module.Content) {
 		anchorX, anchorY := *x, *y
 		if ref == "lsp-panel" || ref == "lsp-completion" {
 			p := &model.languages.panel
-			if p.job.document != nil && p.job.document.file == model.activeFile() {
+			if p.job.document != nil && p.job.document.file == model.languageFile() {
 				anchorX, anchorY = p.originX, p.originY
 			}
 		}

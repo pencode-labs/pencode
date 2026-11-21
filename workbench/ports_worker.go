@@ -25,8 +25,9 @@ type pencodePortCommand struct {
 }
 type pencodePortRow struct {
 	key, remote, local, source, process, status, url, label, protocol, visibility string
+	address                                                                       pencodePortKey
 	id                                                                            uint64
-	port, localPort                                                               uint16
+	localPort                                                                     uint16
 	failed, allInterfaces                                                         bool
 }
 type pencodeForward struct {
@@ -62,6 +63,19 @@ func openExternalCommand(ctx context.Context, address string) *exec.Cmd {
 	}
 }
 
+type pencodeListeningPorts map[pencodePortKey]protocol.Port
+
+func (present pencodeListeningPorts) update(ports []protocol.Port) {
+	clear(present)
+	for _, port := range ports {
+		port.Host = normalizePortHost(port.Host)
+		key := pencodePortKey{port.Host, port.Number}
+		if old, ok := present[key]; !ok || old.Process == "" {
+			present[key] = port
+		}
+	}
+}
+
 func startPorts(backend *client.Client, options pencodePortsOptions, wake func()) *pencodePorts {
 	ctx, cancel := context.WithCancel(context.Background())
 	p := &pencodePorts{backend: backend, commands: make(chan pencodePortCommand, 8), cancel: cancel, done: make(chan struct{})}
@@ -73,8 +87,9 @@ func startPorts(backend *client.Client, options pencodePortsOptions, wake func()
 		defer close(p.done)
 		ticker := time.NewTicker(3 * time.Second)
 		defer ticker.Stop()
-		forwards := make(map[string]*pencodeForward)
-		suppressed := make(map[string]bool)
+		forwards := make(map[pencodePortKey]*pencodeForward)
+		suppressed := make(map[pencodePortKey]bool)
+		present := make(pencodeListeningPorts)
 		for _, key := range state.Suppressed {
 			suppressed[key] = true
 		}
@@ -90,7 +105,8 @@ func startPorts(backend *client.Client, options pencodePortsOptions, wake func()
 		message, selected, failed, dirty := "", "", false, false
 		refreshRow := func(f *pencodeForward) {
 			s, row := f.spec, &f.row
-			row.key, row.port, row.label, row.protocol, row.allInterfaces = s.key(), s.Port, s.Label, s.Protocol, s.AllInterfaces
+			row.address = s.key()
+			row.key, row.label, row.protocol, row.allInterfaces = row.address.String(), s.Label, s.Protocol, s.AllInterfaces
 			row.remote = strconv.Itoa(int(s.Port))
 			if s.Host != "localhost" {
 				row.remote = row.key
@@ -127,8 +143,8 @@ func startPorts(backend *client.Client, options pencodePortsOptions, wake func()
 		}
 		add := func(spec pencodePortSpec, restore bool) error {
 			key := spec.key()
-			if _, ok := forwards[key]; ok {
-				selected = key
+			if existing := forwards[key]; existing != nil {
+				selected = existing.row.key
 				return fmt.Errorf("%s 已在转发", key)
 			}
 			if len(forwards) >= pencodePortLimit {
@@ -166,21 +182,26 @@ func startPorts(backend *client.Client, options pencodePortsOptions, wake func()
 				scratch = append(scratch, row)
 			}
 			slices.SortFunc(scratch, func(a, b pencodePortRow) int {
-				if a.port != b.port {
-					return int(a.port) - int(b.port)
+				if a.address.port != b.address.port {
+					return int(a.address.port) - int(b.address.port)
 				}
 				return strings.Compare(a.key, b.key)
 			})
 			if dirty {
 				state.Forwards = make([]pencodePortSpec, 0, len(forwards))
 				for _, row := range scratch {
-					state.Forwards = append(state.Forwards, forwards[row.key].spec)
+					state.Forwards = append(state.Forwards, forwards[row.address].spec)
 				}
-				state.Suppressed = make([]string, 0, len(suppressed))
+				state.Suppressed = make([]pencodePortKey, 0, len(suppressed))
 				for key := range suppressed {
 					state.Suppressed = append(state.Suppressed, key)
 				}
-				slices.Sort(state.Suppressed)
+				slices.SortFunc(state.Suppressed, func(a, b pencodePortKey) int {
+					if a.host != b.host {
+						return strings.Compare(a.host, b.host)
+					}
+					return int(a.port) - int(b.port)
+				})
 				dirty = false
 			}
 			p.mu.Lock()
@@ -206,14 +227,7 @@ func startPorts(backend *client.Client, options pencodePortsOptions, wake func()
 			if strings.HasPrefix(message, "检测端口失败：") {
 				message, failed = "", false
 			}
-			present := make(map[string]protocol.Port, len(ports))
-			for _, port := range ports {
-				port.Host = normalizePortHost(port.Host)
-				key := (pencodePortSpec{Host: port.Host, Port: port.Number}).key()
-				if old, ok := present[key]; !ok || old.Process == "" {
-					present[key] = port
-				}
-			}
+			present.update(ports)
 			for key, f := range forwards {
 				port, exists := present[key]
 				if f.spec.Auto && !exists {
@@ -268,22 +282,27 @@ func startPorts(backend *client.Client, options pencodePortsOptions, wake func()
 				return
 			case command := <-p.commands:
 				message, failed, selected = "", false, ""
-				entry := forwards[command.key]
+				var entry *pencodeForward
+				if command.key != "" {
+					if address, err := parsePortAddress(command.key); err == nil {
+						entry = forwards[pencodePortKey{address.Host, address.Number}]
+					}
+				}
 				var err error
 				switch command.op {
 				case "add":
 					spec := pencodePortSpec{Host: normalizePortHost(command.remote.Host), Port: command.remote.Number, Local: command.local, Protocol: "http"}
 					err = add(spec, false)
 					if err == nil {
-						selected = spec.key()
+						selected = forwards[spec.key()].row.key
 					}
 				case "stop":
 					if entry != nil {
 						if entry.forward != nil {
 							entry.forward.Close()
 						}
-						delete(forwards, command.key)
-						suppressed[command.key] = true
+						delete(forwards, entry.row.address)
+						suppressed[entry.row.address] = true
 						dirty = true
 					}
 				case "refresh":

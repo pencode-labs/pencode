@@ -23,6 +23,8 @@ type pencodeDiagnosticRange struct {
 	severity   int
 }
 
+type pencodeUnusedRange struct{ start, end int }
+
 type pencodeDiagnosticPaint struct {
 	waveTexture          *graphics.Texture
 	file                 *openFile
@@ -30,7 +32,10 @@ type pencodeDiagnosticPaint struct {
 	quads, labels, waves []ecs.Entity
 	waveViews            []*graphics.Texture
 	ranges               []pencodeDiagnosticRange
+	unused               []pencodeUnusedRange
+	unusedSpans          []scene.TextSpan2D
 	underlines           []scene.TextRangeRect2D
+	unusedKey            pencodeOverlayKey
 	key                  pencodeDiagnosticPaintKey
 	root                 ecs.Entity
 	revision             uint64
@@ -47,19 +52,12 @@ type pencodeDiagnosticPaintKey struct {
 	spacing, lineHeight, ink float32
 }
 
-func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspaceModel) {
-	file := model.activeFile()
-	text := world.Mut[scene.Text2D](model.editor.text)
-	visible := model.screen == pencodeWorkspace && !model.settingsOpen && model.textEditorActive() && file != nil &&
-		text != nil && text.Text() == file.snapshot() && model.workbenchTheme != nil
-	if !visible {
-		paint.hide(world)
-		return
-	}
-	model.syncProblems()
-	if paint.file != file || paint.content != file.snapshot() || paint.revision != model.bottom.problemRevision {
+func (paint *pencodeDiagnosticPaint) syncRanges(model *workspaceModel, file *openFile) {
+	if paint.file != file || paint.content != file.snapshot() || paint.revision != model.bottom.diagnosticRevision {
 		clear(paint.ranges)
 		paint.ranges = paint.ranges[:0]
+		paint.unused = paint.unused[:0]
+		paint.unusedKey = pencodeOverlayKey{}
 		filename := path.Clean(filepath.ToSlash(filepath.Join(model.projectPath, filepath.FromSlash(file.Path))))
 		for key, diagnostics := range model.bottom.diagnostics {
 			// Workspace diagnostics can arrive before the file has an LSP document.
@@ -90,6 +88,14 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 				if startErr != nil || endErr != nil || end < start {
 					continue
 				}
+				if slices.Contains(diagnostic.Tags, lsp.DiagnosticTagUnnecessary) {
+					if start < end {
+						paint.unused = append(paint.unused, pencodeUnusedRange{start, end})
+					}
+					if severity == lsp.DiagnosticSeverityHint {
+						continue
+					}
+				}
 				message := strings.ReplaceAll(strings.ReplaceAll(diagnostic.Message, "\r", " "), "\n", " ")
 				paint.ranges = append(paint.ranges, pencodeDiagnosticRange{start: start, end: end, message: message, severity: severity})
 			}
@@ -107,8 +113,78 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 			}
 			return strings.Compare(a.message, b.message)
 		})
-		paint.file, paint.content, paint.revision = file, file.snapshot(), model.bottom.problemRevision
+		slices.SortFunc(paint.unused, func(a, b pencodeUnusedRange) int { return a.start - b.start })
+		merged := paint.unused[:0]
+		for _, span := range paint.unused {
+			if len(merged) > 0 && span.start <= merged[len(merged)-1].end {
+				merged[len(merged)-1].end = max(merged[len(merged)-1].end, span.end)
+			} else {
+				merged = append(merged, span)
+			}
+		}
+		paint.unused = merged
+		paint.file, paint.content, paint.revision = file, file.snapshot(), model.bottom.diagnosticRevision
 	}
+}
+
+func (paint *pencodeDiagnosticPaint) fadeUnused(model *workspaceModel, foreground graphics.ColorRGBA, spans []scene.TextSpan2D, key pencodeOverlayKey) ([]scene.TextSpan2D, pencodeOverlayKey) {
+	file := model.activeFile()
+	if file == nil || key.source != file.snapshot() || key.theme == nil || key.theme.unusedOpacity == 1 {
+		return spans, key
+	}
+	paint.syncRanges(model, file)
+	if len(paint.unused) == 0 {
+		return spans, key
+	}
+	key.diagnostics, key.unusedForeground = paint.revision, foreground
+	if paint.unusedKey != key {
+		paint.unusedSpans = fadeUnusedSpans(paint.unusedSpans[:0], spans, paint.unused, key.source.Len(), foreground, key.theme.unusedOpacity)
+		paint.unusedKey = key
+	}
+	return paint.unusedSpans, key
+}
+
+// Sweep color spans and unused ranges together, using the editor foreground in gaps.
+func fadeUnusedSpans(dst, base []scene.TextSpan2D, unused []pencodeUnusedRange, length int, foreground graphics.ColorRGBA, opacity float32) []scene.TextSpan2D {
+	for start := 0; start < length && (len(base) > 0 || len(unused) > 0); {
+		end, color := length, foreground
+		styled := len(base) > 0 && base[0].Start <= start
+		if styled {
+			end, color = base[0].End, base[0].Color
+		} else if len(base) > 0 {
+			end = base[0].Start
+		}
+		faded := len(unused) > 0 && unused[0].start <= start
+		if faded {
+			end = min(end, unused[0].end)
+			color.A *= opacity
+		} else if len(unused) > 0 {
+			end = min(end, unused[0].start)
+		}
+		if (styled || faded) && start < end {
+			dst = appendPencodeSpan(dst, scene.TextSpan2D{Start: start, End: end, Color: color})
+		}
+		if styled && base[0].End == end {
+			base = base[1:]
+		}
+		if faded && unused[0].end == end {
+			unused = unused[1:]
+		}
+		start = end
+	}
+	return dst
+}
+
+func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspaceModel) {
+	file := model.activeFile()
+	text := world.Mut[scene.Text2D](model.editor.text)
+	visible := model.screen == pencodeWorkspace && !model.settingsOpen && model.textEditorActive() && file != nil &&
+		text != nil && text.Text() == file.snapshot() && model.workbenchTheme != nil
+	if !visible {
+		paint.hide(world)
+		return
+	}
+	paint.syncRanges(model, file)
 	if len(paint.ranges) == 0 {
 		paint.hide(world)
 		return

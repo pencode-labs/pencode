@@ -202,7 +202,16 @@ func TestServerIndexPagesSearchAndWorkspaceLifetime(t *testing.T) {
 	if len(all) != 304 || all[0].Path != "src" {
 		t.Fatalf("wrong index order or excludes: %d %+v", len(all), all[:1])
 	}
-	paths, err := c.SearchPaths(t.Context(), id, "", []string{"中文.go", "missing.go", "image.png"})
+	paths, err := c.SearchPaths(t.Context(), id, "", nil)
+	if err != nil || len(paths) != 128 {
+		t.Fatalf("unranked search returned %d paths, %v", len(paths), err)
+	}
+	for i, name := range paths {
+		if name != all[i+1].Path { // The first index entry is the src directory.
+			t.Fatalf("unranked result %d = %q, want %q", i, name, all[i+1].Path)
+		}
+	}
+	paths, err = c.SearchPaths(t.Context(), id, "", []string{"中文.go", "missing.go", "image.png"})
 	if err != nil || paths[0] != "中文.go" {
 		t.Fatal("history order", paths, err)
 	}
@@ -327,7 +336,7 @@ func TestRemotePTYOutputAndExitStatus(t *testing.T) {
 		t.Skip("POSIX shell")
 	}
 	c, w := peer(t, nil)
-	p, err := c.OpenTerminal(t.Context(), w.Path, 80, 12)
+	p, err := c.OpenTerminal(t.Context(), w.Path, "", 80, 12)
 	if err != nil {
 		t.Fatal(err)
 	}

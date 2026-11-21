@@ -46,22 +46,22 @@ func (a *workspaceModel) sourceMutation(r sourceRepository, message string, oper
 }
 
 func (a *workspaceModel) writeSourceRepository(r sourceRepository, operation func() sourceResult) {
-	if r.Root == "" {
+	s := a.sourceState()
+	if r.Root == "" || s.Done != nil || s.repositoryBusy(r.Root) {
 		return
 	}
-	s := a.sourceState()
 	active := r.Root == s.Snapshot.Repository.Root
 	if !active {
 		s.RefreshPending = true
 	}
-	a.sourceJob(sourceWrite, func() sourceResult {
+	a.projectSourceJob(s, r.Root, sourceWrite, func() sourceResult {
 		result := operation()
-		if active {
-			snapshot, err := r.snapshot(sourceHistoryPageSize)
+		snapshot, err := r.snapshot(sourceHistoryPageSize)
+		if active || err == nil {
 			result.Snapshot = &snapshot
-			if result.Err == nil {
-				result.Err = err
-			}
+		}
+		if result.Err == nil {
+			result.Err = err
 		}
 		return result
 	})
@@ -145,11 +145,24 @@ func (a *workspaceModel) sourceAction(id string) {
 		}
 		return
 	}
+	if target, ok := strings.CutPrefix(id, sourceRepositoryActionPrefix); ok {
+		if a.bottom.active == pencodePanelSourceControl && !s.RepositoriesCollapsed {
+			op, root, _ := strings.Cut(target, ":")
+			for _, action := range sourceRepositoryActions {
+				if op == action.Name {
+					a.startSourceRepositoryAction(root, op)
+					break
+				}
+			}
+		}
+		return
+	}
 	// Periodic reads must not swallow clicks or block foreground operations.
 	// Their private context and mailbox can be discarded without cancelling writes.
 	s.cancelRefresh()
-	if s.Done != nil {
-		if strings.HasPrefix(id, "sc-open:") || strings.HasPrefix(id, "sc-diff:") {
+	open := strings.HasPrefix(id, "sc-open:") || strings.HasPrefix(id, "sc-diff:")
+	if s.Done != nil || open && s.repositoryJobs[s.Snapshot.Repository.Root].Done != nil {
+		if open {
 			s.PendingPinned = s.PendingPinned && s.PendingOpen == id
 			s.PendingOpen = id
 			s.PendingSelection = s.Selection
@@ -157,7 +170,8 @@ func (a *workspaceModel) sourceAction(id string) {
 		return
 	}
 	if root, ok := strings.CutPrefix(id, sourceRepositoryBranchPrefix); ok {
-		if a.bottom.active == pencodePanelSourceControl && !s.RepositoriesCollapsed && root != s.Snapshot.Repository.Root && s.backgroundSyncs[root] == nil && slices.Contains(s.Repositories, root) {
+		if a.bottom.active == pencodePanelSourceControl && !s.RepositoriesCollapsed && root != s.Snapshot.Repository.Root && !s.repositoryBusy(root) && slices.Contains(s.Repositories, root) {
+			s.PendingOpen, s.PendingPinned = "", false
 			a.toggleSourceBranches(id)
 			a.sourceChanged()
 		}
@@ -216,6 +230,9 @@ func (a *workspaceModel) sourceAction(id string) {
 		a.sourceChanged()
 		return
 	}
+	if s.repositoryJobs[s.Snapshot.Repository.Root].Done != nil && !(id == "sc-prompt-confirm" && s.promptPicker != nil) {
+		return
+	}
 	s.MenuOpen = false
 	if id != "sc-branches" {
 		s.BranchMenuOpen, s.BranchSubmenu = false, false
@@ -252,7 +269,7 @@ func (a *workspaceModel) sourceAction(id string) {
 		if s.Context == nil {
 			s.Context, s.Cancel = context.WithCancel(context.Background())
 		}
-		backend, project, ctx := a.backend, a.projectPath, s.Context
+		backend, project, ctx, knownRoots := a.backend, a.projectPath, s.Context, s.Repositories
 		a.sourceJob(sourceQuery, func() sourceResult {
 			roots, err := backend.GitRepositories(ctx, project)
 			if err != nil {
@@ -263,9 +280,12 @@ func (a *workspaceModel) sourceAction(id string) {
 				return sourceResult{Err: fmt.Errorf("文件不在 Git 仓库中：%s", name)}
 			}
 			repository := sourceRepository{Root: root, Backend: backend, Context: ctx}
-			snapshot, err := repository.statusSnapshot()
-			snapshot.Branch = repository.headLabel()
-			return sourceResult{Repositories: roots, RepositoryRefs: repository.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, DiffPath: name, Err: err, StatusOnly: true}
+			snapshot, err := repository.refreshSnapshot(true)
+			result := sourceResult{Repositories: roots, Snapshot: &snapshot, DiffPath: name, Err: err, StatusOnly: true}
+			if !slices.Equal(knownRoots, roots) {
+				result.RepositoryRefs, result.RepositorySync = repository.repositoryHeads(roots, &snapshot)
+			}
+			return result
 		})
 	case strings.HasPrefix(id, "sc-open:"):
 		parts := strings.SplitN(strings.TrimPrefix(id, "sc-open:"), ":", 2)
@@ -378,13 +398,9 @@ func (a *workspaceModel) sourceAction(id string) {
 				s.Notice = a.tr("请先保存编辑内容，再同步远程。")
 				break
 			}
-			a.sourceJob(sourceSync, func() sourceResult {
+			a.startSourceRepositoryJob(r, sourceRepositorySync, func(r sourceRepository) sourceResult {
 				reload, err := r.syncChanges()
-				snapshot, refreshErr := r.snapshot(sourceHistoryPageSize)
-				if err == nil {
-					err = refreshErr
-				}
-				return sourceResult{Snapshot: &snapshot, Err: err, Message: "Changes synchronized", Reload: reload}
+				return sourceResult{Err: err, Message: "Changes synchronized", Reload: reload}
 			})
 			break
 		}
@@ -400,7 +416,9 @@ func (a *workspaceModel) sourceAction(id string) {
 			break
 		}
 		message := s.CommitMessage
-		a.sourceMutation(r, "Commit created", func() error { return r.commit(message) })
+		a.startSourceRepositoryJob(r, sourceRepositoryCommit, func(r sourceRepository) sourceResult {
+			return sourceResult{Err: r.commit(message), Message: "Commit created"}
+		})
 	case id == "sc-close-tab" || strings.HasPrefix(id, "sc-close-tab:"):
 		key := s.Active
 		if id != "sc-close-tab" {
@@ -608,6 +626,7 @@ func (a *workspaceModel) confirmSourceOperation() {
 		return
 	}
 	var args []string
+	var mergeBranch sourceBranch
 	switch op {
 	case "checkout":
 		args = []string{"switch", "--detach", hash}
@@ -616,7 +635,10 @@ func (a *workspaceModel) confirmSourceOperation() {
 	case "tag":
 		args = []string{"tag", "--", value, hash}
 	case "merge":
-		args = []string{"merge", "--no-edit", hash}
+		var ok bool
+		if mergeBranch, ok = picker.branch(hash); !ok {
+			mergeBranch = s.Snapshot.branchAt(hash)
+		}
 	case "rebase":
 		args = []string{"rebase", "--no-autostash", hash}
 	case "rebase-continue":
@@ -643,9 +665,12 @@ func (a *workspaceModel) confirmSourceOperation() {
 	}
 	a.writeSourceRepository(r, func() sourceResult {
 		var err error
-		if op == "push" {
+		switch op {
+		case "push":
 			err = r.push()
-		} else {
+		case "merge":
+			err = r.merge(hash, mergeBranch)
+		default:
 			_, err = r.command(args...)
 		}
 		return sourceResult{Err: err, Message: "Git " + op + " completed", Reload: op != "push" && op != "tag" && op != "reset-soft"}
@@ -696,7 +721,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		First: s.GraphFirst, Visible: s.GraphVisible, Changes: s.changeRanges(), TreeRevision: s.TreeRevision,
 		Sync:    s.Snapshot.Sync,
 		Message: s.CommitMessage, MergeMessage: s.Snapshot.MergeMessage, Multiline: s.MessageMultiline, Selected: s.SelectedHash, Busy: s.busy(), Modal: s.modal(), HasMore: s.Snapshot.HasMore,
-		Syncing:           s.Done != nil && s.JobKind == sourceSync,
+		Syncing:           s.repositoryJobs[s.Snapshot.Repository.Root].Name == sourceRepositorySync,
 		RepositoryError:   s.RepositoryError,
 		Repositories:      a.sourceRepositoryKey(),
 		ChangesWidthStyle: a.sourceChangesWidthStyle, Resizing: a.resize.target == pencodeResizeSourceChanges,

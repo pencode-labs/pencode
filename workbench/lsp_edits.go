@@ -23,12 +23,13 @@ type languageEditTarget struct {
 	edits                     []lsp.TextEdit
 }
 type languageEditPlan struct {
-	state    *pencodeLanguageState
-	session  *pencodeLanguageSession
-	client   *lsp.Client
-	complete func(error)
-	encoding lsp.PositionEncoding
-	targets  []languageEditTarget
+	comparison *pencodeLanguageDocument
+	state      *pencodeLanguageState
+	session    *pencodeLanguageSession
+	client     *lsp.Client
+	complete   func(error)
+	encoding   lsp.PositionEncoding
+	targets    []languageEditTarget
 }
 
 func (p *languageEditPlan) finish(err error) {
@@ -65,6 +66,12 @@ func (model *workspaceModel) applyLanguageWorkspaceEdit(session *pencodeLanguage
 		return fmt.Errorf("%s", model.tr("请等待文件操作完成"))
 	}
 	plan := &languageEditPlan{state: model.languages, session: session, client: session.client, encoding: session.client.Encoding, complete: complete}
+	if session.key.pane != 0 {
+		plan.comparison = model.comparisonDocument(session)
+		if !plan.comparison.writable() || model.sourceState().busy() {
+			return fmt.Errorf("%s", model.tr("差异视图为只读"))
+		}
+	}
 	seen := make(map[lsp.URI]struct{}, len(edit.Changes)+len(edit.DocumentChanges))
 	add := func(uri lsp.URI, edits []lsp.TextEdit, version *int) error {
 		filename, err := uri.Path()
@@ -85,6 +92,13 @@ func (model *workspaceModel) applyLanguageWorkspaceEdit(session *pencodeLanguage
 			return fmt.Errorf("不能修改二进制文件：%s", relative)
 		}
 		t := languageEditTarget{uri: uri, relative: relative, file: files[relative], edits: edits, version: version}
+		if doc := plan.comparison; doc != nil {
+			if uri == doc.uri {
+				t.file = doc.file
+			} else if t.file != nil && t.file.Dirty {
+				return fmt.Errorf(model.tr("文档已改变，编辑未应用：%s"), relative)
+			}
+		}
 		if t.file == nil {
 			if version != nil {
 				return fmt.Errorf("未打开文档不能使用指定版本：%s", relative)
@@ -169,6 +183,8 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 			err = j.ctx.Err()
 		} else if m.languages != plan.state || plan.session.client != plan.client || plan.session.failed {
 			err = fmt.Errorf("%s", m.tr("语言服务已改变，编辑未应用"))
+		} else if doc := plan.comparison; doc != nil && (m.comparisonDocument(plan.session) != doc || m.sourceState().busy()) {
+			err = fmt.Errorf("%s", m.tr("文档已改变，请重新请求"))
 		} else if j.project != nil && !m.projectLive(j.project) || j.project == nil && m.projectPath != j.root {
 			err = fmt.Errorf("%s", m.tr("工作区已关闭，编辑未应用"))
 		}
@@ -180,6 +196,9 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 	if err == nil {
 		for _, t := range plan.targets {
 			f := files[t.relative]
+			if doc := plan.comparison; doc != nil && t.uri == doc.uri {
+				f = doc.tab.languageFile(doc.pane - 1)
+			}
 			if f != t.file || f != nil && f.content() != t.before {
 				err = fmt.Errorf(m.tr("文档已改变，编辑未应用：%s"), t.relative)
 				break
@@ -197,6 +216,10 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 		for i := range plan.targets {
 			t := &plan.targets[i]
 			f := t.file
+			if doc := plan.comparison; doc != nil && t.uri == doc.uri {
+				doc.tab.editResult(t.content)
+				continue
+			}
 			if f == nil {
 				f = &openFile{document: t.document, Path: t.relative, Name: filepath.Base(t.relative), contentSnapshot: snapshotText(t.before), savedContent: snapshotText(t.before)}
 				t.document = nil
@@ -249,6 +272,17 @@ func (model *workspaceModel) navigateLanguageLocation(world *module.Content, loc
 	encoding := lsp.UTF16
 	if model.languages != nil && model.languages.panel.session != nil && model.languages.panel.session.client != nil {
 		encoding = model.languages.panel.session.client.Encoding
+	}
+	if model.languages != nil {
+		if doc := model.comparisonDocument(model.languages.panel.session); doc != nil && doc.uri == location.URI {
+			if world == nil {
+				return false
+			}
+			model.sourceState().languageSide = doc.pane - 1
+			world.Focus(model.languageEditor().control)
+			model.selectLanguageRange(world, doc, r, encoding)
+			return true
+		}
 	}
 	if project != nil {
 		model.activateProject(project)

@@ -48,7 +48,7 @@ func (a *workspaceModel) renderSourceTabs(b *sourceVNodeView) {
 		b.open("div", "merge", "class", "sc-merge")
 		b.open("section", "local", "class", "sc-merge-side")
 		b.text("h3", "label", "Local / Current", "class", "sc-heading")
-		sourceCodeLines(b, tab, true)
+		a.sourceCodeLines(b, tab, true)
 		b.close()
 		b.open("section", "result", "class", "sc-merge-result")
 		b.text("label", "label", "Merge Result", "for", "sc-merge-result", "class", "sc-heading")
@@ -61,7 +61,7 @@ func (a *workspaceModel) renderSourceTabs(b *sourceVNodeView) {
 		b.close()
 		b.open("section", "incoming", "class", "sc-merge-side")
 		b.text("h3", "label", "Incoming", "class", "sc-heading")
-		sourceCodeLines(b, tab, false)
+		a.sourceCodeLines(b, tab, false)
 		b.close()
 		b.close()
 	} else {
@@ -79,9 +79,9 @@ func (a *workspaceModel) renderSourceTabs(b *sourceVNodeView) {
 		b.text("div", "overview", "", "class", "sc-diff-overview-heading", "aria-hidden", "true")
 		b.close()
 		b.open("div", "diff-panes", "class", "sc-diff-panes")
-		sourceCodeLines(b, tab, true)
+		a.sourceCodeLines(b, tab, true)
 		a.renderDiffGutter(b, tab)
-		sourceCodeLines(b, tab, false)
+		a.sourceCodeLines(b, tab, false)
 		a.renderSourceOverview(b, tab)
 		b.close()
 	}
@@ -89,11 +89,12 @@ func (a *workspaceModel) renderSourceTabs(b *sourceVNodeView) {
 	b.close()
 }
 
-func sourceCodeLines(b *sourceVNodeView, tab *sourceTab, left bool) {
-	id := "sc-code-right"
+func (a *workspaceModel) sourceCodeLines(b *sourceVNodeView, tab *sourceTab, left bool) {
+	side := 1
 	if left {
-		id = "sc-code-left"
+		side = 0
 	}
+	id := diffViewports[side]
 	b.open("div", id+"-pane", "class", "sc-code-pane")
 	b.open("div", id, "id", id, "class", "sc-code-scroll", "tabindex", "0", "aria-label", "Code lines")
 	// Both sides retain the full document's width outside the visible window.
@@ -113,18 +114,11 @@ func sourceCodeLines(b *sourceVNodeView, tab *sourceTab, left bool) {
 			numbers.Write(strconv.AppendInt(digits[:0], int64(number), 10))
 		}
 		numbers.WriteByte('\n')
-		highlight := &tab.Highlight[1]
-		if left {
-			highlight = &tab.Highlight[0]
-		}
+		highlight := &tab.Highlight[side]
 		if tab.Kind == "merge" {
 			sourceCodeCell(b, strconv.Itoa(i), text, number, kind, highlight)
 		} else {
 			sourceCodeCell(b, strconv.Itoa(i), "", number, kind, nil)
-			side := 1
-			if left {
-				side = 0
-			}
 			for index, change := range row.Changes {
 				if change.Start[side] == change.End[side] {
 					continue
@@ -144,7 +138,11 @@ func sourceCodeLines(b *sourceVNodeView, tab *sourceTab, left bool) {
 		if !left {
 			label = "Modified code"
 		}
-		b.open("textarea", "input", "id", id+"-input", "class", "sc-code-input", "wrap", "soft", "spellcheck", "false", "aria-label", label)
+		class := "sc-code-input"
+		if h := &a.languageUI.hover; h.link && h.file == tab.languageFiles[side] {
+			class += " pencode-editor-link"
+		}
+		b.open("textarea", "input", "id", diffInputs[side], "class", class, "wrap", "soft", "spellcheck", "false", "aria-label", label)
 		if left || !tab.editable() {
 			b.attr("readonly", "")
 		}

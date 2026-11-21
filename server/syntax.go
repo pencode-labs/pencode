@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -10,10 +11,20 @@ import (
 	"github.com/pencode-labs/pencode/protocol"
 )
 
+type captureName struct {
+	capture, scopes string
+}
+
+// The previous wire ranges only need the dictionary ID and byte offsets.
+type captureRange struct {
+	start, end, name uint32
+}
+
 type syntaxSession struct {
-	captures map[syntax.Capture]uint32
+	captures map[captureName]uint32
+	names    []captureName
 	source   piecetree.Snapshot
-	previous []syntax.Capture
+	previous []captureRange
 	document syntax.Document
 	version  uint64
 }
@@ -47,7 +58,7 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 		if len(s.syntax) >= 8 {
 			return &protocol.Error{Code: protocol.Busy, Message: "syntax session budget exceeded"}
 		}
-		p = &syntaxSession{captures: make(map[syntax.Capture]uint32)}
+		p = &syntaxSession{captures: make(map[captureName]uint32)}
 		s.syntax[id] = p
 	}
 	if version != p.version {
@@ -73,49 +84,67 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 	p.version++
 	e.U64(p.version)
 	e.String(p.document.Language())
-	captures := p.document.Captures()
-	prefix, suffix := syntaxCaptureDelta(p.previous, captures, shift)
+	p.encodeCaptures(e, p.document.Captures(), shift)
+	return nil
+}
+
+func (p *syntaxSession) encodeCaptures(e *protocol.Encoder, captures []syntax.Capture, shift int) {
+	prefix, suffix := p.captureDelta(captures, shift)
+	end := len(captures) - suffix
 	e.U32(uint32(prefix))
 	e.U32(uint32(len(p.previous) - prefix - suffix))
-	e.U32(uint32(len(captures) - prefix - suffix))
-	for _, token := range captures[prefix : len(captures)-suffix] {
-		e.U32(uint32(token.StartByte))
-		e.U32(uint32(token.EndByte))
-		name := syntax.Capture{Capture: token.Capture, Scopes: token.Scopes}
-		captureID, exists := p.captures[name]
-		if !exists {
-			captureID = uint32(len(p.captures))
-			p.captures[name] = captureID
+	e.U32(uint32(end - prefix))
+
+	// Move retained ranges before filling the gap. A large deletion should
+	// allocate only the surviving ranges.
+	old := p.previous
+	if cap(old) > max(4096, len(captures)*4) {
+		p.previous = make([]captureRange, len(captures))
+		copy(p.previous, old[:prefix])
+	} else {
+		p.previous = slices.Grow(old, max(0, len(captures)-len(old)))[:len(captures)]
+	}
+	tail := p.previous[end:]
+	copy(tail, old[len(old)-suffix:])
+	if shift != 0 {
+		for i := range tail {
+			tail[i].start = captures[end+i].StartByte
+			tail[i].end = captures[end+i].EndByte
 		}
-		e.U32(captureID)
+	}
+	for i := prefix; i < end; i++ {
+		token := captures[i]
+		name := captureName{token.Capture, token.Scopes}
+		id, exists := p.captures[name]
 		if !exists {
-			e.String(token.Capture)
-			e.String(token.Scopes)
+			id = uint32(len(p.names))
+			p.captures[name] = id
+			p.names = append(p.names, name)
+		}
+		p.previous[i] = captureRange{token.StartByte, token.EndByte, id}
+		e.U32(token.StartByte)
+		e.U32(token.EndByte)
+		e.U32(id)
+		if !exists {
+			e.String(name.capture)
+			e.String(name.scopes)
 		}
 	}
-	old := len(p.previous)
-	p.previous = append(p.previous[:0], captures...)
-	if len(p.previous) < old {
-		clear(p.previous[len(p.previous):old])
-	}
-	if cap(p.previous) > max(4096, len(captures)*4) {
-		p.previous = append([]syntax.Capture(nil), p.previous...)
-	}
-	return nil
 }
 
 // Compare actual captures after parsing: edits such as multiline comments may
 // invalidate highlighting far beyond the textual edit. A suffix can be kept
 // only when both its ranges and capture names match after the byte shift.
-func syntaxCaptureDelta(before, after []syntax.Capture, shift int) (prefix, suffix int) {
-	for prefix < min(len(before), len(after)) && before[prefix] == after[prefix] {
+func (p *syntaxSession) captureDelta(after []syntax.Capture, shift int) (prefix, suffix int) {
+	before := p.previous
+	matches := func(old captureRange, next syntax.Capture, shift int) bool {
+		return int(old.start)+shift == int(next.StartByte) && int(old.end)+shift == int(next.EndByte) &&
+			p.names[old.name] == (captureName{next.Capture, next.Scopes})
+	}
+	for prefix < min(len(before), len(after)) && matches(before[prefix], after[prefix], 0) {
 		prefix++
 	}
-	for suffix < min(len(before), len(after))-prefix {
-		old, next := before[len(before)-suffix-1], after[len(after)-suffix-1]
-		if int(old.StartByte)+shift != int(next.StartByte) || int(old.EndByte)+shift != int(next.EndByte) || old.Capture != next.Capture || old.Scopes != next.Scopes {
-			break
-		}
+	for suffix < min(len(before), len(after))-prefix && matches(before[len(before)-suffix-1], after[len(after)-suffix-1], shift) {
 		suffix++
 	}
 	return

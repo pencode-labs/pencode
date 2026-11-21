@@ -88,6 +88,8 @@ type sourceDiffBlock struct {
 	LeftStart, LeftEnd, RightStart, RightEnd int
 }
 type sourceTab struct {
+	languageFiles             [2]*openFile
+	PreviousPath              string
 	Key, Path, Revision, Kind string
 	// Disk is the file read when opening; saving refuses to overwrite external edits.
 	Disk                           string
@@ -220,6 +222,16 @@ func (r sourceRepository) snapshot(limit int) (sourceSnapshot, error) {
 	return s, err
 }
 
+func (r sourceRepository) refreshSnapshot(statusOnly bool) (sourceSnapshot, error) {
+	if !statusOnly {
+		return r.snapshot(sourceHistoryPageSize)
+	}
+	snapshot, err := r.statusSnapshot()
+	snapshot.Branch = r.headLabel()
+	snapshot.Sync, _ = r.syncStatus()
+	return snapshot, err
+}
+
 type sourceSyncStatus struct{ Ahead, Behind int }
 
 func (s sourceSnapshot) syncPending() bool {
@@ -278,11 +290,19 @@ type sourceHistoryPage struct {
 // Pin the traversal to the captured ref tips. A branch change while loading a
 // later page cannot shift offsets or duplicate commits in the current graph.
 func (r sourceRepository) historyPage(refs string, offset, limit int, previous sourceGraph) (sourceHistoryPage, error) {
-	page := sourceHistoryPage{Graph: sourceGraph{lanes: slices.Clone(previous.lanes), nextColor: previous.nextColor}}
+	page := sourceHistoryPage{Graph: sourceGraph{
+		lanes:       slices.Clone(previous.lanes),
+		nextColor:   previous.nextColor,
+		headPending: previous.headPending,
+	}}
 	args := []string{"log", "--date-order", "--date=short", "--format=%H%x00%P%x00%s%x00%an%x00%ad%x00%D%x00", "--skip=" + strconv.Itoa(offset), "-n", strconv.Itoa(limit + 1)}
 	for line := range strings.SplitSeq(refs, "\n") {
-		if hash, _, ok := strings.Cut(line, " "); ok {
+		if hash, ref, ok := strings.Cut(line, " "); ok {
 			args = append(args, hash)
+			if offset == 0 && ref == "HEAD" {
+				page.Graph.lanes = append(page.Graph.lanes, sourceGraphLane{Hash: hash})
+				page.Graph.headPending = true
+			}
 		}
 	}
 	args = append(args, "--")
@@ -321,7 +341,8 @@ type sourceGraphLane struct {
 
 type sourceGraph struct {
 	lanes, next []sourceGraphLane
-	nextColor   int
+	nextColor   uint8
+	headPending bool // Lane zero is reserved and hidden until HEAD is visited.
 }
 
 func (g *sourceGraph) allocateColor(used uint8) int {
@@ -333,7 +354,7 @@ func (g *sourceGraph) allocateColor(used uint8) int {
 		color = (color + 1) % sourceGraphColorCount
 	}
 	g.nextColor = (color + 1) % sourceGraphColorCount
-	return color
+	return int(color)
 }
 
 func (g *sourceGraph) append(c *sourceCommit) {
@@ -355,7 +376,7 @@ func (g *sourceGraph) append(c *sourceCommit) {
 			next = append(next, branch)
 		}
 	}
-	c.Incoming = lane >= 0
+	c.Incoming = lane >= 0 && (lane != 0 || !g.headPending)
 	if lane < 0 {
 		lane = len(lanes)
 		lanes = append(lanes, sourceGraphLane{Hash: c.Hash, Color: g.allocateColor(usedColors)})
@@ -388,13 +409,17 @@ func (g *sourceGraph) append(c *sourceCommit) {
 			}
 		} else if branch.Hash != c.Hash {
 			to := survivor
+			survivor++
+			if from == 0 && g.headPending {
+				continue
+			}
 			if len(parents) != 0 && to >= lane {
 				to++
 			}
 			c.Edges = append(c.Edges, sourceEdge{From: from, To: to, Color: branch.Color, ToColor: next[to].Color})
-			survivor++
 		}
 	}
+	g.headPending = g.headPending && lane != 0
 	g.lanes, g.next = next, lanes[:0]
 }
 
@@ -612,6 +637,7 @@ func (r sourceRepository) openDiff(file sourceFile, kind, revision string) (*sou
 	oldPath := file.Path
 	if file.Previous != "" {
 		oldPath = file.Previous
+		t.PreviousPath = oldPath
 	}
 	switch kind {
 	case "merge":

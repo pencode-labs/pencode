@@ -12,7 +12,7 @@ import (
 )
 
 func TestIndexCleanSnapshotSharesImmutableEntries(t *testing.T) {
-	previous := []protocol.IndexEntry{{Path: "nested/file.go", Depth: 1}}
+	previous := []indexEntry{{filename: "file.go", directory: &indexDirectory{prefix: "nested/", depth: 1}}}
 	p := &serviceIndex{root: t.TempDir(), changed: make(chan struct{})}
 	p.walkSnapshot(t.Context(), previous, workspaceTreeDelta{})
 	if !p.done || p.err != nil || len(p.entries) != 1 || &p.entries[0] != &previous[0] {
@@ -27,7 +27,7 @@ func TestIndexCleanSnapshotSharesImmutableEntries(t *testing.T) {
 	}
 }
 
-func indexSnapshot(t *testing.T, root string, previous []protocol.IndexEntry, delta workspaceTreeDelta) []protocol.IndexEntry {
+func indexSnapshot(t *testing.T, root string, previous []indexEntry, delta workspaceTreeDelta) []indexEntry {
 	t.Helper()
 	p := &serviceIndex{root: root, changed: make(chan struct{})}
 	p.walkSnapshot(t.Context(), previous, delta)
@@ -36,6 +36,15 @@ func indexSnapshot(t *testing.T, root string, previous []protocol.IndexEntry, de
 	}
 	return p.entries
 }
+
+func indexWireEntry(entry indexEntry) protocol.IndexEntry {
+	var e protocol.Encoder
+	entry.encodePath(&e)
+	d := protocol.Decoder{Buffer: e.Buffer}
+	return protocol.IndexEntry{Path: d.String(), Depth: entry.depth(), Directory: entry.isDir()}
+}
+
+func sameIndexEntry(a, b indexEntry) bool { return indexWireEntry(a) == indexWireEntry(b) }
 
 func TestIndexReconcilesDirectoryChanges(t *testing.T) {
 	root := t.TempDir()
@@ -64,7 +73,7 @@ func TestIndexReconcilesDirectoryChanges(t *testing.T) {
 	copy(delta.directories[:], []string{".", "a", "a/deep", "replace", "replace/nested"})
 	next := indexSnapshot(t, root, previous, delta)
 	full := indexSnapshot(t, root, nil, workspaceTreeDelta{full: true})
-	if !slices.Equal(next, full) {
+	if !slices.EqualFunc(next, full, sameIndexEntry) {
 		t.Fatalf("incremental snapshot differs from full scan:\n%+v\n%+v", next, full)
 	}
 	// The parent directory is clean in this second refresh. A nested hint
@@ -74,7 +83,7 @@ func TestIndexReconcilesDirectoryChanges(t *testing.T) {
 	delta.directories[0] = "a/deep"
 	next = indexSnapshot(t, root, next, delta)
 	full = indexSnapshot(t, root, nil, workspaceTreeDelta{full: true})
-	if !slices.Equal(next, full) {
+	if !slices.EqualFunc(next, full, sameIndexEntry) {
 		t.Fatalf("nested directory refresh differs from full scan: %+v", next)
 	}
 }
@@ -103,7 +112,7 @@ func TestIndexReusesUnchangedSubtrees(t *testing.T) {
 	delta.directories[0] = "changed"
 	next := indexSnapshot(t, root, previous, delta)
 	for _, path := range []string{"cached/deep/keep.go", "changed/new.go"} {
-		if !slices.ContainsFunc(next, func(e protocol.IndexEntry) bool { return e.Path == path }) {
+		if !slices.ContainsFunc(next, func(e indexEntry) bool { return indexWireEntry(e).Path == path }) {
 			t.Fatalf("snapshot omitted %s", path)
 		}
 	}

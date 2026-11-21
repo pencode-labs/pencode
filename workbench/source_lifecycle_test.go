@@ -96,8 +96,9 @@ func TestSourceControlCloseChecksOnlyUnsavedEditsAndWrites(t *testing.T) {
 			m := &workspaceModel{projects: []*pencodeProject{project}, activeProjectIndex: 0, projectPath: project.Path}
 			s := &project.sourceControl
 			wantBlocked := false
+			s.Snapshot.Repository.Root = project.Path
 			switch name {
-			case "refresh", "query", "write", "completed-write", "sync", "completed-sync":
+			case "refresh", "query", "write", "completed-write":
 				s.Done = make(chan sourceResult, 1)
 				s.JobKind = sourceQuery
 				if name == "refresh" {
@@ -107,17 +108,17 @@ func TestSourceControlCloseChecksOnlyUnsavedEditsAndWrites(t *testing.T) {
 					s.JobKind = sourceWrite
 					wantBlocked = name == "write"
 				}
-				if name == "sync" || name == "completed-sync" {
-					s.JobKind = sourceSync
-					wantBlocked = name == "sync"
-				}
 				if strings.HasPrefix(name, "completed-") {
 					s.Done <- sourceResult{}
 				}
-			case "background-sync", "completed-background-sync":
+			case "sync", "completed-sync", "background-sync", "completed-background-sync":
 				done := make(chan sourceResult, 1)
-				s.backgroundSyncs = map[string]chan sourceResult{"/project/child": done}
-				wantBlocked = name == "background-sync"
+				root := project.Path
+				if strings.Contains(name, "background") {
+					root += "/child"
+				}
+				s.repositoryJobs = map[string]sourceRepositoryJob{root: {Done: done, Name: sourceRepositorySync}}
+				wantBlocked = !strings.HasPrefix(name, "completed-")
 				if !wantBlocked {
 					done <- sourceResult{Message: "Changes synchronized"}
 				}

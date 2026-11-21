@@ -106,6 +106,12 @@ func (model *workspaceModel) prepareReferencePreviews(groups map[lsp.URI]int) {
 		encoding = panel.session.client.Encoding
 	}
 	var lineStarts []int
+	if doc := model.comparisonDocument(panel.session); doc != nil {
+		if index, ok := groups[doc.uri]; ok {
+			lineStarts = panel.referenceGroups[index].setPreviews(doc.file.content(), lineStarts, encoding)
+			loaded[index] = true
+		}
+	}
 	visit := func(root string, files map[string]*openFile) {
 		for _, file := range files {
 			uri := lsp.FileURI(filepath.Join(root, filepath.FromSlash(file.Path)))

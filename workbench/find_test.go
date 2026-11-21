@@ -102,6 +102,57 @@ func TestFindReplaceNativeControlsAndUndo(t *testing.T) {
 	}
 }
 
+func TestCloseFindPreservesEditorView(t *testing.T) {
+	for _, method := range []string{"click", "escape"} {
+		t.Run(method, func(t *testing.T) {
+			app, m, _, state := languageInteractionFixture(t)
+			world := m.fontResources
+			const query = "target"
+			content := query + "\n" + strings.Repeat(strings.Repeat("x", 256)+"\n", 160)
+			m.updateActiveContent(content)
+			m.setEditorValueAndCaret(world, content, 0)
+			m.findQuery = query
+			m.openFind(false)
+			markPencodeRootDirtyByModel(world, m)
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
+			if !pencodeControlFocused(world, m.surface, "find-query") {
+				t.Fatal("find input did not gain focus")
+			}
+			// Scroll away from the selected match while find has focus.
+			area := world.Mut[engineui.Textarea](m.editor.control)
+			area.ScrollX, area.ScrollY = 100, 800
+			languageInteractionStep(t, app)
+			view := func() pencodeEditorView {
+				field := world.Ref[engineui.TextField](m.editor.control)
+				area := world.Ref[engineui.Textarea](m.editor.control)
+				return pencodeEditorView{field.Caret, field.Anchor, area.ScrollX, area.ScrollY}
+			}
+			want := view()
+			if want.caret != len(query) || want.anchor != 0 || want.scrollX <= 0 || want.scrollY <= 0 {
+				t.Fatalf("fixture did not select the match and scroll away from it: %+v", want)
+			}
+			if method == "click" {
+				editorContextClick(t, app, m, state, "find-close")
+			} else {
+				state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
+				state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
+				languageInteractionStep(t, app)
+			}
+			for range 3 {
+				if m.findOpen || !pencodeControlFocused(world, m.surface, "editor") {
+					t.Fatal("closing find did not return focus to the editor")
+				}
+				if got := view(); got != want {
+					t.Fatalf("closing find changed editor view from %+v to %+v", want, got)
+				}
+				languageInteractionStep(t, app)
+			}
+		})
+	}
+}
+
 func TestFindCacheAndLargeReplace(t *testing.T) {
 	f := &openFile{Path: "file.txt", Name: "file.txt", contentSnapshot: snapshotText(strings.Repeat("a ", pencodeFindMatchLimit+7))}
 	m := &workspaceModel{files: map[string]*openFile{f.Path: f}, activePath: f.Path, findOpen: true, findQuery: "a", replaceQuery: "b", findOptions: textsearch.Options{CaseSensitive: true}}

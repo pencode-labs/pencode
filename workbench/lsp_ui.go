@@ -121,7 +121,7 @@ func languageAction(method string) (string, string) {
 
 func (model *workspaceModel) renderLanguageTools(view *htmlui.View) {
 	state := model.languages
-	if state == nil || model.settingsOpen || model.quickOpen || !model.textEditorActive() {
+	if state == nil || model.settingsOpen || model.quickOpen || !model.languageEditorActive() {
 		view.Attr("lsp-panel", "hidden", "")
 		return
 	}
@@ -236,7 +236,7 @@ func (model *workspaceModel) renderLanguageTools(view *htmlui.View) {
 func (model *workspaceModel) renderLanguageEditorPopups(view *htmlui.View) {
 	ui := &model.languageUI
 	view.RemoveAttr("editor", "aria-activedescendant")
-	available := model.textEditorActive() && !model.settingsOpen && !model.quickOpen && model.closing.action == pencodeCloseNone
+	available := model.languageEditorActive() && !model.settingsOpen && !model.quickOpen && model.closing.action == pencodeCloseNone
 	for _, ref := range []string{"lsp-hover", "lsp-completion", "lsp-context", "lsp-context-submenu", "lsp-hover-underline"} {
 		view.Attr(ref, "hidden", "")
 	}
@@ -379,7 +379,7 @@ func (model *workspaceModel) handleLanguageEvent(c *module.ContentEventContext[a
 		model.runLanguageAction(c.World, p.method, true)
 	case "lsp-close":
 		model.dismissLanguagePanel()
-		c.World.Focus(model.editor.control)
+		c.World.Focus(model.languageEditor().control)
 	case "lsp-previous":
 		p.page = max(0, p.page-1)
 		p.selection = p.page * len(pencodeLanguageRowRefs)
@@ -427,7 +427,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 		p.query = ""
 		p.job = pencodeLanguageJob{document: doc, content: doc.content, version: doc.version}
 		if world != nil {
-			if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
+			if field, ok := world.Get[engineui.TextField](model.languageEditor().control); ok {
 				p.anchorX, p.anchorY = model.editorPopupPoint(world, runeOffsetBytes(doc.content, field.Caret))
 				p.originX, p.originY = p.anchorX, p.anchorY
 			}
@@ -440,7 +440,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 	}
 	caret, anchor := 0, 0
 	if world != nil {
-		if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
+		if field, ok := world.Get[engineui.TextField](model.languageEditor().control); ok {
 			caret, anchor = field.Caret, field.Anchor
 		}
 	}
@@ -531,7 +531,7 @@ func (model *workspaceModel) runLanguageAction(world *module.Content, method str
 	case session.jobs <- job:
 		p.pending = true
 		if submit && world != nil {
-			world.Focus(model.editor.control)
+			world.Focus(model.languageEditor().control)
 		}
 	default:
 		p.pending = false
@@ -559,7 +559,7 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 	job := event.job
 	if job.hover {
 		h := &model.languageUI.hover
-		if model.languageHoverBlocked() || h.token != job.token || job.document == nil || job.document.file != model.activeFile() || h.file != job.document.file || job.document.file.snapshot() != job.content || job.document.version != job.version || !job.document.seen {
+		if model.languageHoverBlocked() || h.token != job.token || job.document == nil || job.document.tab != model.languageDiffTab() || job.document.tab == nil && job.document.file != model.activeFile() || h.file != job.document.file || job.document.file.snapshot() != job.content || job.document.version != job.version || !job.document.seen {
 			return
 		}
 		if h.cancel != nil {
@@ -577,6 +577,10 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 		return
 	}
 	p.pending = false
+	if job.document.tab != model.languageDiffTab() || job.document.tab != nil && job.document.file != model.languageFile() {
+		model.dismissLanguagePanel()
+		return
+	}
 	if job.method != "workspace/executeCommand" && (job.document.file.snapshot() != job.content || job.document.version != job.version || !job.document.seen) {
 		p.body = model.tr("文档已改变，请重新请求")
 		p.rows = nil
@@ -735,9 +739,17 @@ func (model *workspaceModel) acceptLanguageResult(world *module.Content, event p
 		if json.Unmarshal(event.result, &report) == nil {
 			if report.Kind != "unchanged" {
 				job.document.diagnostics[event.session] = report.Items
-				model.setProblems(event.session, job.uri, report.Items)
+				if job.document.tab == nil {
+					model.setProblems(event.session, job.uri, report.Items)
+				}
 			}
-			model.showLanguageProblems()
+			if job.document.tab != nil {
+				for _, d := range job.document.diagnostics[event.session] {
+					p.rows = append(p.rows, pencodeLanguageRow{label: d.Message, location: &lsp.Location{URI: job.uri, Range: d.Range}})
+				}
+			} else {
+				model.showLanguageProblems()
+			}
 		}
 	default:
 		p.body = languageText(event.result)
@@ -756,7 +768,7 @@ func (model *workspaceModel) chooseLanguageCompletion(world *module.Content, ind
 		return
 	}
 	if world != nil {
-		world.Focus(model.editor.control)
+		world.Focus(model.languageEditor().control)
 	}
 	model.chooseLanguageRow(world, index)
 	p.completion = false
@@ -989,7 +1001,18 @@ func (model *workspaceModel) applyLanguageEdits(world *module.Content, session *
 		model.languages.panel.body = err.Error()
 		return false
 	}
-	model.applyFileContent(doc.file, doc.project, content, true)
+	if doc.tab != nil {
+		if !doc.writable() || model.languageDiffTab() != doc.tab || model.sourceState().busy() {
+			return false
+		}
+		doc.tab.editResult(content)
+		doc.tab.languageFile(1)
+		if world != nil {
+			model.bindSourceDiffControls(world)
+		}
+	} else {
+		model.applyFileContent(doc.file, doc.project, content, true)
+	}
 	if doc.file == model.activeFile() && world != nil {
 		setPencodeEditorValue(world, model.surface, content)
 	}
@@ -1038,9 +1061,14 @@ func (model *workspaceModel) applyLanguageCompletion(world *module.Content, sess
 		}
 	}
 	caretByte += len(primary.NewText)
-	if world != nil && p.job.document.file == model.activeFile() {
+	if world != nil && p.job.document.file == model.languageFile() {
 		content := p.job.document.file.snapshot()
-		model.setEditorSnapshotAndCaret(world, content, content.RuneOffset(min(caretByte, content.Len())))
+		caret := content.RuneOffset(min(caretByte, content.Len()))
+		if p.job.document.tab == nil {
+			model.setEditorSnapshotAndCaret(world, content, caret)
+		} else if field := world.Mut[engineui.TextField](model.languageEditor().control); field != nil {
+			field.Caret, field.Anchor = caret, caret
+		}
 	}
 	p.open, p.completion = false, false
 	if item.Command != nil {
@@ -1084,7 +1112,7 @@ func (model *workspaceModel) executeLanguageCommand(command lsp.Command) {
 	model.requestLanguageFollowup("workspace/executeCommand", map[string]any{"command": command.Command, "arguments": command.Arguments})
 }
 func (model *workspaceModel) selectLanguageRange(world *module.Content, doc *pencodeLanguageDocument, r lsp.Range, encoding lsp.PositionEncoding) {
-	if world == nil || doc.file != model.activeFile() {
+	if world == nil || doc.file != model.languageFile() {
 		return
 	}
 	start, err := lsp.OffsetAt(doc.content, r.Start, encoding)
@@ -1095,10 +1123,12 @@ func (model *workspaceModel) selectLanguageRange(world *module.Content, doc *pen
 	if err != nil {
 		return
 	}
-	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
+	if field := world.Mut[engineui.TextField](model.languageEditor().control); field != nil {
 		field.Anchor = doc.content.RuneOffset(start)
 		field.Caret = doc.content.RuneOffset(end)
-		model.revealEditorCaret(world, field.Caret)
+		if doc.tab == nil {
+			model.revealEditorCaret(world, field.Caret)
+		}
 	}
 }
 func (model *workspaceModel) languageHierarchyRows(method string, raw json.RawMessage) {
@@ -1136,12 +1166,12 @@ func (model *workspaceModel) languageHierarchyRows(method string, raw json.RawMe
 }
 func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 	if world != nil && model.languageUI.contextFocus {
-		if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
+		if field := world.Mut[engineui.TextField](model.languageEditor().control); field != nil {
 			caret, anchor := field.Caret, field.Anchor
-			world.Focus(model.editor.control)
+			world.Focus(model.languageEditor().control)
 			field.Caret, field.Anchor = caret, anchor
 		}
-		if area := world.Mut[engineui.Textarea](model.editor.control); area != nil {
+		if area := world.Mut[engineui.Textarea](model.languageEditor().control); area != nil {
 			// Returning from a menu must retain the view chosen by its action.
 			area.RestoreScroll(area.ScrollX, area.ScrollY)
 		}
@@ -1156,11 +1186,11 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 			p.focus = false
 		}
 	}
-	if p.navigate != nil && model.editor.file == p.navigate {
+	if p.navigate != nil && model.textEditorActive() && model.editor.file == p.navigate {
 		buffer := p.navigate.snapshotBuffer()
 		caret, anchor := buffer.RuneOffset(p.offset), buffer.RuneOffset(max(p.offset, p.endOffset))
 		// The editor has already bound this document; select the target without rewriting it.
-		if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
+		if field := world.Mut[engineui.TextField](model.languageEditor().control); field != nil {
 			field.Caret, field.Anchor = caret, anchor
 		}
 		model.revealEditorCaret(world, caret)
@@ -1169,12 +1199,12 @@ func (model *workspaceModel) focusLanguageControls(world *module.Content) {
 	}
 }
 func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *input.State) (handled bool) {
-	if model.settingsOpen || model.quickOpen || model.findInputFocused(world) || !model.textEditorActive() {
+	if model.settingsOpen || model.quickOpen || model.findInputFocused(world) || !model.languageEditorActive() {
 		return false
 	}
 	defer func() {
 		if handled {
-			if field, ok := world.Get[engineui.TextField](model.editor.control); ok && field.Focused {
+			if field, ok := world.Get[engineui.TextField](model.languageEditor().control); ok && field.Focused {
 				model.languageUI.keysHandled = true
 			}
 		}
@@ -1211,7 +1241,7 @@ func (model *workspaceModel) handleLanguageKeys(world *module.Content, state *in
 		model.runLanguageAction(world, p.method, true)
 		return true
 	}
-	field, ok := world.Get[engineui.TextField](model.editor.control)
+	field, ok := world.Get[engineui.TextField](model.languageEditor().control)
 	if !ok || !field.Focused {
 		return false
 	}

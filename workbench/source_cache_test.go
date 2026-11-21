@@ -95,6 +95,7 @@ func TestSourceControlSyncButtonCache(t *testing.T) {
 		Sync    sourceSyncStatus
 		Changes bool
 		Busy    bool
+		Syncing bool
 		JobKind sourceJobKind
 	}{
 		{Label: "Commit"},
@@ -105,11 +106,14 @@ func TestSourceControlSyncButtonCache(t *testing.T) {
 		{Sync: sourceSyncStatus{Ahead: 2}, Label: "Sync Changes", Busy: true, JobKind: sourceRefresh},
 		{Sync: sourceSyncStatus{Ahead: 2}, Label: "Sync Changes", Busy: true, JobKind: sourceQuery},
 		{Sync: sourceSyncStatus{Ahead: 2}, Label: "Sync Changes", Busy: true, JobKind: sourceWrite},
-		{Sync: sourceSyncStatus{Ahead: 2}, Label: "Sync Changes", Busy: true, JobKind: sourceSync},
+		{Sync: sourceSyncStatus{Ahead: 2}, Label: "Sync Changes", Busy: true, Syncing: true},
 		{Sync: sourceSyncStatus{Ahead: 2}, Label: "Sync Changes"},
 	} {
 		s.Done, s.JobKind = nil, test.JobKind
-		if test.Busy {
+		clear(s.repositoryJobs)
+		if test.Syncing {
+			s.repositoryJobs = map[string]sourceRepositoryJob{s.Snapshot.Repository.Root: {Done: make(chan sourceResult, 1), Name: sourceRepositorySync}}
+		} else if test.Busy {
 			s.Done = make(chan sourceResult, 1)
 		}
 		s.Snapshot.Sync = test.Sync
@@ -137,7 +141,7 @@ func TestSourceControlSyncButtonCache(t *testing.T) {
 				if id == "sc-create-commit" {
 					spinning := slices.Contains(group.node.Children[0].Attributes, html.VNodeAttribute{Name: "class", Value: "sc-icon sc-sync-spinning"})
 					busy := slices.Contains(group.attrs, html.VNodeAttribute{Name: "aria-busy", Value: "true"})
-					if want := test.Busy && test.JobKind == sourceSync; spinning != want || busy != want {
+					if want := test.Syncing; spinning != want || busy != want {
 						t.Fatalf("incorrect synchronization activity: spinning=%t, aria-busy=%t, want %t", spinning, busy, want)
 					}
 					for _, direction := range [...]struct {

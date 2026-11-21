@@ -23,7 +23,6 @@ const (
 	sourceQuery sourceJobKind = iota
 	sourceWrite
 	sourceRefresh
-	sourceSync
 )
 
 type sourceResult struct {
@@ -41,6 +40,7 @@ type sourceResult struct {
 	Files             []sourceFile
 	Repositories      []string
 	RepositoryRefs    []string
+	RepositorySync    []sourceSyncStatus
 	PageOffset        int
 	Selection         uint64
 	StatusOnly        bool
@@ -96,13 +96,14 @@ type pencodeSourceControl struct {
 	diffPaneTab                             *sourceTab
 	Owner                                   *workspaceModel
 	RepositoryViews                         map[string]sourceRepositoryView
-	backgroundSyncs                         map[string]chan sourceResult
+	repositoryJobs                          map[string]sourceRepositoryJob
 	Handlers                                map[string]sourceClickBinding
 	Cancel                                  context.CancelFunc
 	RefreshCancel                           context.CancelFunc
 	Done                                    chan sourceResult
 	branchPicker, promptPicker              *sourceBranchPicker
 	BranchTrigger                           string
+	jobRoot                                 string
 	RepositoryError                         string
 	RepositoriesWidthStyle                  string
 	lastClick                               string
@@ -120,6 +121,7 @@ type pencodeSourceControl struct {
 	Tabs                                    []*sourceTab
 	CommitFiles                             []sourceFile
 	RepositoryRefs                          []string
+	RepositorySync                          []sourceSyncStatus
 	Repositories                            []string
 	view, tabsView, overlayView             sourceVNodeView
 	branchView                              sourceVNodeView
@@ -145,6 +147,7 @@ type pencodeSourceControl struct {
 	BranchSubIndex                          int
 	PendingSelection                        uint64
 	Selection                               uint64
+	languageSide                            int
 	gutterRevision                          uint64
 	MessageAnchor, MessageCaret             int
 	ExpandedCommit                          int
@@ -200,7 +203,8 @@ func (s *pencodeSourceControl) unsavedRepositories() bool {
 	return false
 }
 func (s *pencodeSourceControl) busy() bool {
-	return s.Done != nil && (s.JobKind != sourceRefresh || s.Snapshot.Repository.Root == "")
+	root := s.Snapshot.Repository.Root
+	return s.repositoryJobs[root].Done != nil || s.Done != nil && (s.JobKind != sourceRefresh || root == "")
 }
 
 func (s *pencodeSourceControl) cancelRefresh() {
@@ -221,7 +225,7 @@ func (s *pencodeSourceControl) stop() {
 	}
 	s.Context = nil
 	s.Done = nil
-	clear(s.backgroundSyncs)
+	clear(s.repositoryJobs)
 	s.syncRevision++
 	s.PendingOpen, s.PendingPinned = "", false
 	s.RepositoriesLoaded = false
@@ -271,10 +275,11 @@ func (s *pencodeSourceControl) unsavedIn(root string) bool {
 	return false
 }
 func (m *workspaceModel) sourceJob(kind sourceJobKind, job func() sourceResult) {
-	m.projectSourceJob(m.sourceState(), kind, job)
+	s := m.sourceState()
+	m.projectSourceJob(s, s.Snapshot.Repository.Root, kind, job)
 }
 
-func (m *workspaceModel) projectSourceJob(s *pencodeSourceControl, kind sourceJobKind, job func() sourceResult) {
+func (m *workspaceModel) projectSourceJob(s *pencodeSourceControl, root string, kind sourceJobKind, job func() sourceResult) {
 	if s.Done != nil {
 		return
 	}
@@ -283,7 +288,7 @@ func (m *workspaceModel) projectSourceJob(s *pencodeSourceControl, kind sourceJo
 	}
 	ctx, done, wake := s.Context, make(chan sourceResult, 1), m.backgroundWake()
 	selection := s.Selection
-	s.Done, s.JobKind = done, kind
+	s.Done, s.JobKind, s.jobRoot = done, kind, root
 	m.sourceChanged()
 	go func() {
 		result := job()
@@ -303,7 +308,7 @@ func (m *workspaceModel) refreshProjectSourceControl(owner *pencodeProject) {
 	if owner != nil {
 		s, project, backend, activePath = &owner.sourceControl, owner.Path, owner.backend, owner.ActivePath
 	}
-	if s.Done != nil || project == "" {
+	if s.Done != nil || s.repositoryJobs[s.Snapshot.Repository.Root].Done != nil || project == "" {
 		return
 	}
 	s.RefreshPending, s.RefreshStarted = false, true
@@ -322,7 +327,7 @@ func (m *workspaceModel) refreshProjectSourceControl(owner *pencodeProject) {
 	statusOnly := s != m.sourceState() || !s.visible() && m.bottom.active != pencodePanelSourceControl && !s.modal()
 	ctx, cancel := context.WithCancel(s.Context)
 	s.RefreshCancel = cancel
-	m.projectSourceJob(s, sourceRefresh, func() sourceResult {
+	m.projectSourceJob(s, directory, sourceRefresh, func() sourceResult {
 		r := sourceRepository{Root: directory, Context: ctx, Backend: backend}
 		var repositories []string
 		if discover {
@@ -347,47 +352,10 @@ func (m *workspaceModel) refreshProjectSourceControl(owner *pencodeProject) {
 		if repositories != nil {
 			roots = repositories
 		}
-		if statusOnly {
-			snapshot, err := r.statusSnapshot()
-			snapshot.Branch = r.headLabel()
-			return sourceResult{TreeFiles: r.treeGitFiles(roots), Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err, StatusOnly: true}
-		}
-		snapshot, err := r.snapshot(sourceHistoryPageSize)
-		return sourceResult{TreeFiles: r.treeGitFiles(roots), Repositories: repositories, RepositoryRefs: r.repositoryRefs(roots, snapshot.Branch), Snapshot: &snapshot, Err: err}
+		snapshot, err := r.refreshSnapshot(statusOnly)
+		refs, counts := r.repositoryHeads(roots, &snapshot)
+		return sourceResult{TreeFiles: r.treeGitFiles(roots), Repositories: repositories, RepositoryRefs: refs, RepositorySync: counts, Snapshot: &snapshot, Err: err, StatusOnly: statusOnly}
 	})
-}
-
-// A detached sync can update its own cached view and project files while the
-// selected repository continues to use its foreground job slot.
-func (m *workspaceModel) pollBackgroundSyncs(s *pencodeSourceControl, project *pencodeProject) bool {
-	changed := false
-	for root, done := range s.backgroundSyncs {
-		select {
-		case result := <-done:
-			delete(s.backgroundSyncs, root)
-			s.syncRevision++
-			if result.Snapshot != nil {
-				view := s.RepositoryViews[root]
-				view.Snapshot = *result.Snapshot
-				if view.Message == "" {
-					view.Message = view.Snapshot.MergeMessage
-				}
-				s.RepositoryViews[root] = view
-			}
-			message := result.Message
-			if result.Err != nil {
-				message, _ = m.sourceErrorMessage(result)
-			}
-			m.setProjectStatus(project, root+": "+message)
-			if result.Reload && project != nil {
-				m.reloadSourceFiles(project)
-			}
-			s.RefreshPending = true
-			changed = true
-		default:
-		}
-	}
-	return changed
 }
 
 func (m *workspaceModel) sourceErrorMessage(result sourceResult) (string, bool) {
@@ -404,8 +372,18 @@ func (m *workspaceModel) sourceErrorMessage(result sourceResult) (string, bool) 
 }
 
 func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *pencodeProject) bool {
-	changed := m.pollBackgroundSyncs(s, project)
+	changed := m.pollSourceRepositoryJobs(s, project)
 	if s.Done == nil {
+		if s.PendingOpen != "" && !s.busy() {
+			pending, pinned := s.PendingOpen, s.PendingPinned
+			s.PendingOpen, s.PendingPinned = "", false
+			if s.PendingSelection == s.Selection && s == m.sourceState() && !s.modal() {
+				m.sourceAction(pending)
+				if pinned && s.OpenID == pending {
+					s.OpenPinned = true
+				}
+			}
+		}
 		return changed
 	}
 	select {
@@ -438,6 +416,9 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 		if result.RepositoryRefs != nil && !slices.Equal(result.RepositoryRefs, s.RepositoryRefs) {
 			s.RepositoryRefs = result.RepositoryRefs
 		}
+		if result.RepositorySync != nil && !slices.Equal(result.RepositorySync, s.RepositorySync) {
+			s.RepositorySync = result.RepositorySync
+		}
 		if result.RepositoryError != "" {
 			if s.Snapshot.Repository.Root != "" {
 				s.selectRepository(sourceRepository{})
@@ -448,39 +429,19 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			s.GraphFirst, s.GraphScrollY, s.RestoreGraph = 0, 0, true
 			s.MenuOpen, s.BranchMenuOpen = false, false
 		}
-		if result.Snapshot != nil && result.Snapshot.Repository.Root != "" {
-			if result.Snapshot.Repository.Root != s.Snapshot.Repository.Root {
-				visible := s.visible()
-				s.selectRepository(result.Snapshot.Repository)
-				if !visible {
-					s.Active, s.RestoreScroll = "", false
+		if snapshot := result.Snapshot; snapshot != nil && snapshot.Repository.Root != "" {
+			if s.JobKind == sourceWrite && snapshot.Repository.Root == s.jobRoot && s.jobRoot != s.Snapshot.Repository.Root {
+				s.cacheRepositorySnapshot(s.jobRoot, snapshot)
+			} else {
+				if snapshot.Repository.Root != s.Snapshot.Repository.Root {
+					visible := s.visible()
+					s.selectRepository(snapshot.Repository)
+					if !visible {
+						s.Active, s.RestoreScroll = "", false
+					}
 				}
+				s.applySourceSnapshot(snapshot, result.StatusOnly)
 			}
-			s.RepositoryError = ""
-			next := *result.Snapshot
-			if result.StatusOnly {
-				next = s.Snapshot
-				next.Repository, next.Files, next.Groups = result.Snapshot.Repository, result.Snapshot.Files, result.Snapshot.Groups
-				next.Branch, next.MergeMessage = result.Snapshot.Branch, result.Snapshot.MergeMessage
-				next.Rebasing = result.Snapshot.Rebasing
-			}
-			next.Repository.Context = s.Context
-			if slices.Equal(next.Branches, s.Snapshot.Branches) {
-				next.Branches = s.Snapshot.Branches
-			}
-			if slices.Equal(next.Files, s.Snapshot.Files) {
-				next.Files, next.Groups = s.Snapshot.Files, s.Snapshot.Groups
-			}
-			if next.HistoryRefs == s.Snapshot.HistoryRefs && len(s.Snapshot.Commits) >= len(next.Commits) {
-				next.sourceHistoryPage = s.Snapshot.sourceHistoryPage
-			} else if next.HistoryRefs != s.Snapshot.HistoryRefs {
-				s.GraphFirst, s.GraphScrollY, s.RestoreGraph = 0, 0, true
-				s.SelectedHash, s.CommitFiles = "", nil
-			}
-			if next.MergeMessage != "" && s.CommitMessage == "" {
-				s.CommitMessage = next.MergeMessage
-			}
-			s.Snapshot = next
 		}
 		if project != nil && (result.Repositories != nil || result.TreeFiles != nil || result.Snapshot != nil) {
 			project.treeGit.update(project.Path, s.Repositories, result.TreeFiles, result.Snapshot)
@@ -567,16 +528,6 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			} else {
 				m.status = result.Message
 			}
-			if result.Message == "Commit created" {
-				s.CommitMessage = ""
-				s.MessageMultiline, s.MessageFocus = false, false
-				s.MessageAnchor, s.MessageCaret = 0, 0
-				if m.fontResources != nil && s == m.sourceState() {
-					if entity, ok := m.fontResources.HTMLControl(m.surface, "sc-message"); ok {
-						m.fontResources.SetControlValue(entity, "")
-					}
-				}
-			}
 		}
 		if result.Reload && project != nil {
 			m.reloadSourceFiles(project)
@@ -594,6 +545,35 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 	default:
 		return changed
 	}
+}
+
+func (s *pencodeSourceControl) applySourceSnapshot(snapshot *sourceSnapshot, statusOnly bool) {
+	s.RepositoryError = ""
+	next := *snapshot
+	if statusOnly {
+		next = s.Snapshot
+		next.Repository, next.Files, next.Groups = snapshot.Repository, snapshot.Files, snapshot.Groups
+		next.Branch, next.MergeMessage = snapshot.Branch, snapshot.MergeMessage
+		next.Rebasing, next.Sync = snapshot.Rebasing, snapshot.Sync
+	}
+	next.Repository.Context = s.Context
+	if slices.Equal(next.Branches, s.Snapshot.Branches) {
+		next.Branches = s.Snapshot.Branches
+	}
+	if slices.Equal(next.Files, s.Snapshot.Files) {
+		next.Files, next.Groups = s.Snapshot.Files, s.Snapshot.Groups
+	}
+	if next.HistoryRefs == s.Snapshot.HistoryRefs && len(s.Snapshot.Commits) >= len(next.Commits) {
+		next.sourceHistoryPage = s.Snapshot.sourceHistoryPage
+	} else if next.HistoryRefs != s.Snapshot.HistoryRefs {
+		s.GraphFirst, s.GraphScrollY, s.RestoreGraph = 0, 0, true
+		s.SelectedHash, s.CommitFiles = "", nil
+	}
+	if next.MergeMessage != "" && s.CommitMessage == "" {
+		s.CommitMessage = next.MergeMessage
+	}
+	s.Snapshot = next
+	s.updateRepositoryHead(snapshot)
 }
 
 // Refresh only clean buffers after a workspace mutation. An edit made while Git
@@ -623,13 +603,13 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		s.MenuOpen, s.BranchMenuOpen = false, false
 		changed = true
 	}
-	if m.projectPath != "" && (s.RefreshPending || !s.RefreshStarted) && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen {
+	if m.projectPath != "" && (s.RefreshPending || !s.RefreshStarted) && !s.busy() && s.Done == nil && !s.modal() && !s.BranchMenuOpen && !s.MenuOpen {
 		m.refreshSourceControl()
 		changed = true
 	}
 	for _, project := range m.projects {
 		other := &project.sourceControl
-		if other != s && (other.RefreshPending || !other.RefreshStarted) && other.Done == nil && !other.modal() {
+		if other != s && (other.RefreshPending || !other.RefreshStarted) && !other.busy() && other.Done == nil && !other.modal() {
 			m.refreshProjectSourceControl(project)
 			changed = true
 		}
@@ -663,7 +643,7 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		s.MenuOpen = false
 		changed = true
 	}
-	if !s.modal() && !s.busy() && s.BranchMenuOpen {
+	if !s.modal() && s.BranchMenuOpen && !s.repositoryBusy(s.branchMenu().Root) {
 		if pointer.DeltaX != 0 || pointer.DeltaY != 0 || pointer.WheelY != 0 || state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight) {
 			changed = m.hoverSourceBranches(world, x, y) || changed
 		}
@@ -768,7 +748,13 @@ func (m *workspaceModel) handleSourceEvent(event htmlui.Event) bool {
 				if event.Document {
 					value = event.Snapshot.String()
 				}
-				t.editResult(value)
+				if value != t.Result {
+					old := snapshotText(t.Result)
+					t.editResult(value)
+					s.languageSide = 1
+					event.Value, event.Document = value, false
+					m.scheduleLanguageCompletion(m.fontResources, event, old)
+				}
 			}
 		}
 	case htmlui.EventClick:
@@ -1158,7 +1144,7 @@ func (m *workspaceModel) sourceCloseBlocked(project *pencodeProject) bool {
 		if m.pollSourceResult(s, p) {
 			m.sourceChanged()
 		}
-		if s.unsavedRepositories() || len(s.backgroundSyncs) != 0 || s.Done != nil && (s.JobKind == sourceWrite || s.JobKind == sourceSync) {
+		if s.unsavedRepositories() || len(s.repositoryJobs) != 0 || s.Done != nil && s.JobKind == sourceWrite {
 			m.activateProject(p)
 			if s.unsavedRepositories() {
 				s.Notice = m.tr("差异或合并编辑标签中有未保存的修改，请保存或关闭这些标签后再关闭项目或窗口。")

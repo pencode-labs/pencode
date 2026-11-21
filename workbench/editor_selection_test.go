@@ -37,7 +37,7 @@ func TestPencodeDoubleClickSelectsToken(t *testing.T) {
 			languageInteractionStep(t, app)
 			editorNode, _ := world.HTMLNode(model.surface, "editor")
 			rect, _ := editorNode.Bounds()
-			text, ox, oy := model.languageEditorGeometry(world, rect)
+			text, ox, oy := model.editor.languageEditorGeometry(world, rect)
 			// Hit the right half of the last glyph, where nearest-caret hit
 			// testing points at the following delimiter or whitespace.
 			x, y, _, height, ok := scene.TextCaretRect2D(text, value, end-1)

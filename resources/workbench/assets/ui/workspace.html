@@ -304,7 +304,7 @@
           <aside id="editor-gutter" data-ref="editor-gutter" class="pencode-line-numbers" aria-hidden="true"></aside>
           <textarea id="editor" data-ref="editor" class="pencode-editor" wrap="soft" spellcheck="false" autocapitalize="off"
             autocomplete="off" aria-autocomplete="list" aria-controls="lsp-completion-list" aria-label="代码编辑器"></textarea>
-          <section id="lsp-panel" data-ref="lsp-panel" class="pencode-lsp-panel" aria-label="语言服务结果" hidden>
+          <section id="lsp-panel" data-language-popup data-ref="lsp-panel" class="pencode-lsp-panel" aria-label="语言服务结果" hidden>
             <div id="lsp-panel-header" data-ref="lsp-panel-header" class="pencode-lsp-panel-header"><strong class="pencode-lsp-panel-title" data-ref="lsp-title"></strong><button class="pencode-icon-button" data-ref="lsp-close" type="button" title="关闭语言服务结果" aria-label="关闭语言服务结果"><img data-ref="lsp-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div>
             <div data-ref="lsp-query-row" class="pencode-lsp-query" hidden>
               <input class="pencode-lsp-query-input" id="lsp-query" data-ref="lsp-query" type="text" aria-label="符号名称或查询" placeholder="输入符号名称或查询" autocomplete="off" spellcheck="false">
@@ -327,11 +327,11 @@
             </div>
             <div id="lsp-pagination" data-ref="lsp-pagination" class="pencode-lsp-panel-footer" hidden><button class="pencode-icon-button pencode-lsp-previous" data-ref="lsp-previous" type="button" title="上一页结果" aria-label="上一页结果"><img data-ref="lsp-previous-icon" src="icons/chevron-right.svg" alt=""></button><span data-ref="lsp-page"></span><button class="pencode-icon-button" data-ref="lsp-next" type="button" title="下一页结果" aria-label="下一页结果"><img data-ref="lsp-next-icon" src="icons/chevron-right.svg" alt=""></button></div>
           </section>
-          <div id="lsp-hover" data-ref="lsp-hover" class="pencode-lsp-hover" role="tooltip" hidden>
+          <div id="lsp-hover" data-language-popup data-ref="lsp-hover" class="pencode-lsp-hover" role="tooltip" hidden>
             <div data-ref="lsp-hover-body" class="pencode-lsp-hover-body"></div>
           </div>
-          <div id="lsp-hover-underline" data-ref="lsp-hover-underline" class="pencode-lsp-hover-underline" aria-hidden="true" hidden></div>
-          <div id="lsp-completion" data-ref="lsp-completion" class="pencode-lsp-completion" hidden>
+          <div id="lsp-hover-underline" data-language-popup data-ref="lsp-hover-underline" class="pencode-lsp-hover-underline" aria-hidden="true" hidden></div>
+          <div id="lsp-completion" data-language-popup data-ref="lsp-completion" class="pencode-lsp-completion" hidden>
             <div id="lsp-completion-list" class="pencode-lsp-completion-list" role="listbox" aria-label="代码补全">
               <button id="lsp-completion-0" data-ref="lsp-completion-0" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-0-icon" data-ref="lsp-completion-0-icon" alt="" aria-hidden="true"><span id="lsp-completion-0-label" data-ref="lsp-completion-0-label"></span></button>
               <button id="lsp-completion-1" data-ref="lsp-completion-1" tabindex="-1" type="button" role="option" hidden><img id="lsp-completion-1-icon" data-ref="lsp-completion-1-icon" alt="" aria-hidden="true"><span id="lsp-completion-1-label" data-ref="lsp-completion-1-label"></span></button>
@@ -352,7 +352,7 @@
               <button class="pencode-icon-button" data-ref="lsp-completion-next" type="button" title="下一页补全" aria-label="下一页补全"><img data-ref="lsp-completion-next-icon" src="icons/chevron-right.svg" alt=""></button>
             </div>
           </div>
-          <div id="lsp-context" data-ref="lsp-context" class="pencode-editor-context" role="menu" aria-label="编辑操作" hidden>
+          <div id="lsp-context" data-language-popup data-ref="lsp-context" class="pencode-editor-context" role="menu" aria-label="编辑操作" hidden>
             <button id="editor-context-cut" data-ref="editor-context-cut" type="button" role="menuitem" tabindex="-1"><span>剪切</span><span data-ref="editor-context-cut-shortcut" class="pencode-context-hint">Ctrl+X</span></button>
             <button id="editor-context-copy" data-ref="editor-context-copy" type="button" role="menuitem" tabindex="-1"><span>复制</span><span data-ref="editor-context-copy-shortcut" class="pencode-context-hint">Ctrl+C</span></button>
             <button id="editor-context-paste" data-ref="editor-context-paste" type="button" role="menuitem" tabindex="-1"><span>粘贴</span><span data-ref="editor-context-paste-shortcut" class="pencode-context-hint">Ctrl+V</span></button>
@@ -369,7 +369,7 @@
             <button id="editor-context-group-3" data-ref="editor-context-group-3" type="button" role="menuitem" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="lsp-context-submenu"><span>更多语言工具</span><span aria-hidden="true">›</span></button>
             <div data-ref="actions-right-context" class="pencode-context-actions" role="group" aria-label="扩展操作"></div>
           </div>
-          <div id="lsp-context-submenu" data-ref="lsp-context-submenu" class="pencode-editor-context" role="menu" aria-label="语言工具" hidden>
+          <div id="lsp-context-submenu" data-language-popup data-ref="lsp-context-submenu" class="pencode-editor-context" role="menu" aria-label="语言工具" hidden>
             <button id="lsp-context-4" data-ref="lsp-context-4" type="button" role="menuitem" tabindex="-1">转到声明</button>
             <button id="lsp-context-5" data-ref="lsp-context-5" type="button" role="menuitem" tabindex="-1">转到类型定义</button>
             <button id="lsp-context-6" data-ref="lsp-context-6" type="button" role="menuitem" tabindex="-1">转到实现</button>
@@ -402,7 +402,7 @@
                   <span data-ref="find-count" class="pencode-find-count"></span>
                   <button data-ref="find-previous" class="pencode-find-action pencode-find-previous" type="button" title="上一个匹配" aria-label="上一个匹配"><img data-ref="find-previous-icon" src="icons/chevron-right.svg" alt=""></button>
                   <button data-ref="find-next" class="pencode-find-action" type="button" title="下一个匹配" aria-label="下一个匹配"><img data-ref="find-next-icon" src="icons/chevron-right.svg" alt=""></button>
-                  <button data-ref="find-close" class="pencode-find-action" type="button" title="关闭查找" aria-label="关闭查找"><img data-ref="find-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
+                  <button id="find-close" data-ref="find-close" class="pencode-find-action" type="button" title="关闭查找" aria-label="关闭查找"><img data-ref="find-close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
                 </div>
                 <div data-ref="replace-row" class="pencode-find-row" hidden>
                   <input id="replace-query" data-ref="replace-query" type="text" aria-label="替换为" placeholder="替换为">

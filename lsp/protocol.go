@@ -69,6 +69,13 @@ type LocationLink struct {
 	TargetRange          Range `json:"targetRange"`
 	TargetSelectionRange Range `json:"targetSelectionRange"`
 }
+
+const (
+	DiagnosticSeverityHint   = 4
+	DiagnosticTagUnnecessary = 1
+	DiagnosticTagDeprecated  = 2
+)
+
 type Diagnostic struct {
 	Source             string          `json:"source,omitempty"`
 	Message            string          `json:"message"`

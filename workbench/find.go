@@ -110,8 +110,8 @@ func (model *workspaceModel) closeFind(world *module.Content) {
 	model.findNeedsFocus = false
 	if preview := model.renderedFind(); preview != nil && world != nil {
 		preview.focus(world)
-	} else if world != nil && world.IsAlive(model.editor.control) {
-		world.Focus(model.editor.control)
+	} else if world != nil {
+		model.editor.restoreFocus = true
 	}
 	model.clearFindCache()
 }

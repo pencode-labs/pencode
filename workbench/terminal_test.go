@@ -1,6 +1,9 @@
 package workbench
 
 import (
+	"html"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -9,8 +12,71 @@ import (
 
 	"github.com/onix-engine/onix/input"
 	engineui "github.com/onix-engine/onix/ui"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 	"github.com/pencode-labs/pencode/terminal"
 )
+
+func TestExtensionTerminalWorkingDirectory(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("POSIX shell interaction")
+	}
+	t.Setenv("SHELL", "/bin/sh")
+	app, model, _, state := languageInteractionFixture(t)
+	defer model.closeTerminal("")
+
+	const relative = "web & tools"
+	nested := filepath.Join(model.projectPath, relative)
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	absolute := t.TempDir()
+	for _, tc := range []struct{ name, cwd, directory string }{
+		{"default", "", model.projectPath},
+		{"relative", relative, nested},
+		{"absolute", absolute, absolute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			waitFor := func(check func() bool, failure string) {
+				t.Helper()
+				for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+					languageInteractionStep(t, app)
+					if check() {
+						return
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+				t.Fatal(failure)
+			}
+			if err := model.applyExtensionUI("quick-commands", &extensions.ActionSession{}, peb.UI{
+				ID: "menu", Kind: peb.ContextMenu,
+				Placement: peb.UIPlacement{Mode: peb.PositionAbsolute, X: 100, Y: 100, Width: 180},
+				View:      &peb.EditorView{HTML: `<button data-ref="run" type="button" role="menuitem" data-pencode-action="run-terminal" data-pencode-terminal-command="touch cwd-marker" data-pencode-terminal-cwd="` + html.EscapeString(tc.cwd) + `">Run</button>`},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			markPencodeRootDirtyByModel(model.fontResources, model)
+			languageInteractionStep(t, app)
+			editorContextClick(t, app, model, state, model.actions.ui.overlay.focus[0].id)
+
+			marker := filepath.Join(tc.directory, "cwd-marker")
+			waitFor(func() bool {
+				_, err := os.Stat(marker)
+				return err == nil
+			}, "command did not finish in "+tc.directory)
+
+			item := model.terminalState().active
+			if item == nil || model.bottom.active != pencodePanelTerminal {
+				t.Fatal("terminal closed after the command finished")
+			}
+			model.writeTerminal(item, []byte("rm cwd-marker && exit\n"))
+			waitFor(func() bool {
+				_, err := os.Stat(marker)
+				return os.IsNotExist(err) && model.bottom.active == pencodePanelClosed
+			}, "terminal did not accept the follow-up command and exit")
+		})
+	}
+}
 
 func TestPencodeTerminalNativeInputAndLifecycle(t *testing.T) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {

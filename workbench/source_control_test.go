@@ -334,15 +334,16 @@ func TestSourceControlSyncChanges(t *testing.T) {
 				s := m.sourceState()
 				s.Snapshot, s.CommitMessage = snapshot, "keep this draft"
 				m.sourceAction("sc-create-commit")
-				if s.Done == nil || s.JobKind != sourceSync {
+				job := s.repositoryJobs[local.Root]
+				if job.Done == nil || job.Name != sourceRepositorySync {
 					t.Fatal("primary button did not start synchronization")
 				}
-				result := <-s.Done
+				result := <-job.Done
 				err = result.Err
 				if result.Reload || result.Message != "Changes synchronized" {
 					t.Fatal("push-only synchronization requested a workspace refresh")
 				}
-				s.Done <- result
+				job.Done <- result
 				m.pollSourceResult(s, p)
 				s.stop()
 				if p.scan != nil || p.index != 7 || len(p.Entries) != 1 || m.fileIO != nil {

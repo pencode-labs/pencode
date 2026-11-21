@@ -122,7 +122,7 @@ func (model *workspaceModel) fileContextRefs() []string {
 	return pencodeFileContextRefs[:]
 }
 func (model *workspaceModel) editorContextRefs() []string {
-	if model.actions.rightRefs != nil {
+	if model.actions.rightRefs != nil && !model.sourceState().visible() {
 		return model.actions.rightRefs
 	}
 	return pencodeEditorContextRefs[:]
@@ -142,7 +142,8 @@ func (model *workspaceModel) renderActions(view *htmlui.View, definition *htmlui
 			props.Active = model.fileContext.index == left
 			left++
 		case peb.RightContextMenu:
-			props.Active = model.languageUI.contextGroup == 0 && model.languageUI.contextIndex == right
+ if model.sourceState().visible() { continue }
+ props.Active = model.languageUI.contextGroup == 0 && model.languageUI.contextIndex == right
 			right++
 		}
 		view.AppendComponentChild(pencodeActionSlots[props.Action.Location], componentKey(props.Action.ID), definition, props, struct{}{})

@@ -200,7 +200,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 	model.focusFolderSearch(model.fontResources)
 	model.constrainFileContext(model.fontResources)
 	model.focusLanguageControls(model.fontResources)
-	model.focusPanelEditor(model.fontResources)
+	model.restoreEditorFocus(model.fontResources)
 	model.editor.syncCaretStatus(model.fontResources, model.surface, model)
 	model.editor.syncGutter(model.fontResources, model.surface, model)
 	model.editor.syncWidthGuide(model.fontResources, model.settings.EditorWidth, model.workbenchTheme.guide)

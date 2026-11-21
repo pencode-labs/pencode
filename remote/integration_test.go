@@ -195,12 +195,12 @@ func TestSSHIntegration(t *testing.T) {
 		t.Fatal("multiplexed process streams failed", string(data), err)
 	}
 	process.Close()
-	pty, err := backend.OpenTerminal(t.Context(), w.Path, 80, 12)
+	pty, err := backend.OpenTerminal(t.Context(), w.Path, directory, 80, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer pty.Close()
-	if _, err := pty.Write([]byte("printf '\\120\\105\\116_SSH_PTY\\n'; exit\n")); err != nil {
+	if _, err := pty.Write([]byte("test -f sshd_config && printf '\\120\\105\\116_SSH_PTY\\n'; exit\n")); err != nil {
 		t.Fatal(err)
 	}
 	data, err = io.ReadAll(pty)

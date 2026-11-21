@@ -288,7 +288,7 @@ func TestLanguageReferencePopupTracksActualHeight(t *testing.T) {
 	viewport, _ := body.Bounds()
 	editor, _ := world.HTMLNode(model.surface, "editor")
 	editorRect, _ := editor.Bounds()
-	text, _, _ := model.languageEditorGeometry(world, editorRect)
+	text, _, _ := model.editor.languageEditorGeometry(world, editorRect)
 	_, _, _, lineHeight, ok := scene.TextCaretRect2D(text, content, 0)
 	if !ok || lineHeight <= 0 {
 		t.Fatal("missing editor caret geometry")

@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/onix-engine/onix/input"
 )
@@ -23,6 +24,59 @@ func sourceTestConflict(t *testing.T) (sourceRepository, string) {
 	sourceTestWrite(t, r, name, "current\n")
 	sourceTestGit(t, r, "commit", "-am", "current")
 	return r, name
+}
+
+func TestSourceControlMergeGraphCommit(t *testing.T) {
+	for _, tc := range [...]struct {
+		name, ref, subject string
+	}{
+		{"local", "refs/heads/fix/合并,标题", "Merge branch 'fix/合并,标题' into main"},
+		{"remote", "refs/remotes/origin/topic", "Merge remote-tracking branch 'origin/topic' into main"},
+		{"unlabelled", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := sourceTestRepository(t)
+			sourceTestGit(t, r, "commit", "--allow-empty", "-m", "base")
+			sourceTestGit(t, r, "switch", "--detach")
+			sourceTestGit(t, r, "commit", "--allow-empty", "-m", "topic")
+			topic := sourceTestGit(t, r, "rev-parse", "HEAD")
+			sourceTestGit(t, r, "tag", "topic-tag")
+			sourceTestGit(t, r, "switch", "main")
+			sourceTestGit(t, r, "commit", "--allow-empty", "-m", "current")
+			before := sourceTestGit(t, r, "rev-parse", "HEAD")
+			if tc.ref != "" {
+				sourceTestGit(t, r, "update-ref", "refs/remotes/origin/topic", topic)
+				sourceTestGit(t, r, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/topic")
+				sourceTestGit(t, r, "update-ref", tc.ref, topic)
+			}
+			m := &workspaceModel{projectPath: r.Root, backend: r.Backend}
+			s := m.sourceState()
+			t.Cleanup(s.stop)
+			s.Snapshot = sourceTestSnapshot(t, r)
+			s.MenuHash = topic
+			m.sourceAction("sc-op:merge")
+			if tc.name == "local" {
+				// A ref update while the prompt is open must not change the merge parent.
+				sourceTestGit(t, r, "update-ref", tc.ref, before)
+			}
+			m.sourceAction("sc-prompt-confirm")
+			select {
+			case result := <-s.Done:
+				if result.Err != nil {
+					t.Fatal(result.Err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("merge timed out")
+			}
+			if got := sourceTestGit(t, r, "show", "-s", "--format=%P", "HEAD"); got != before+" "+topic {
+				t.Fatalf("unexpected merge parents: %s", got)
+			}
+			got := sourceTestGit(t, r, "show", "-s", "--format=%s", "HEAD")
+			if tc.subject != "" && got != tc.subject || tc.subject == "" && !strings.HasPrefix(got, "Merge commit '"+topic+"'") {
+				t.Fatalf("unexpected merge subject: %q", got)
+			}
+		})
+	}
 }
 
 func TestSourceControlMergeConflictFeedback(t *testing.T) {

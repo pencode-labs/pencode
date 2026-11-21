@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,13 +16,62 @@ import (
 	"github.com/pencode-labs/pencode/server/workspace"
 )
 
+// Files borrow a directory prefix shared by all siblings. A directory entry
+// has an empty filename and points to its own prefix, including the final slash.
+type indexEntry struct {
+	directory *indexDirectory
+	filename  string
+}
+
+type indexDirectory struct {
+	prefix string
+	depth  uint16 // Depth of its immediate children.
+}
+
+var indexRootDirectory indexDirectory
+
+func (d *indexDirectory) path() string {
+	if d.prefix == "" {
+		return "."
+	}
+	return d.prefix[:len(d.prefix)-1]
+}
+
+func (e indexEntry) isDir() bool { return e.filename == "" }
+
+func (e indexEntry) name() string {
+	if !e.isDir() {
+		return e.filename
+	}
+	path := e.directory.path()
+	return path[strings.LastIndexByte(path, '/')+1:]
+}
+
+func (e indexEntry) depth() uint16 {
+	if e.isDir() {
+		return e.directory.depth - 1
+	}
+	return e.directory.depth
+}
+
+func (e indexEntry) encodePath(out *protocol.Encoder) {
+	if e.isDir() {
+		out.String(e.directory.path())
+		return
+	}
+	prefix := e.directory.prefix
+	out.U32(uint32(len(prefix) + len(e.filename)))
+	out.Buffer = append(out.Buffer, prefix...)
+	out.Buffer = append(out.Buffer, e.filename...)
+}
+
 type serviceIndex struct {
 	err     error
 	changed chan struct{}
 	cancel  context.CancelFunc
 	watch   *workspaceWatch
 	root    string
-	entries []protocol.IndexEntry
+	entries []indexEntry
 	mu      sync.Mutex
 	done    bool
 }
@@ -31,7 +81,7 @@ func (p *serviceIndex) walk(ctx context.Context) {
 	p.walkSnapshot(ctx, nil, workspaceTreeDelta{full: true})
 }
 
-func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []protocol.IndexEntry, delta workspaceTreeDelta) {
+func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []indexEntry, delta workspaceTreeDelta) {
 	if !delta.full && delta.count == 0 {
 		// Completed snapshots are immutable, so a clean refresh can share them.
 		p.mu.Lock()
@@ -44,12 +94,12 @@ func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []protocol.Ind
 	if err == nil {
 		defer root.Close()
 		if delta.full {
-			err = p.scan(ctx, root, ".", 0)
+			err = p.scan(ctx, root, &indexRootDirectory)
 		} else {
 			p.mu.Lock()
-			p.entries = make([]protocol.IndexEntry, 0, len(previous))
+			p.entries = make([]indexEntry, 0, len(previous))
 			p.mu.Unlock()
-			err = p.reconcile(ctx, root, ".", 0, previous, &delta)
+			err = p.reconcile(ctx, root, &indexRootDirectory, previous, &delta)
 		}
 	}
 	p.mu.Lock()
@@ -61,7 +111,7 @@ func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []protocol.Ind
 	p.mu.Unlock()
 }
 
-func (p *serviceIndex) append(entries ...protocol.IndexEntry) error {
+func (p *serviceIndex) append(entries ...indexEntry) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	previous := len(p.entries)
@@ -75,7 +125,7 @@ func (p *serviceIndex) append(entries ...protocol.IndexEntry) error {
 	return nil
 }
 
-func (p *serviceIndex) reuse(ctx context.Context, entries []protocol.IndexEntry) error {
+func (p *serviceIndex) reuse(ctx context.Context, entries []indexEntry) error {
 	for len(entries) != 0 {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -89,10 +139,10 @@ func (p *serviceIndex) reuse(ctx context.Context, entries []protocol.IndexEntry)
 	return nil
 }
 
-func indexSubtreeEnd(entries []protocol.IndexEntry, start int) int {
+func indexSubtreeEnd(entries []indexEntry, start int) int {
 	end := start + 1
-	if entries[start].Directory {
-		for end < len(entries) && entries[end].Depth > entries[start].Depth {
+	if entries[start].isDir() {
+		for end < len(entries) && entries[end].depth() > entries[start].depth() {
 			end++
 		}
 	}
@@ -111,23 +161,24 @@ func compareIndexNames(a string, aDir bool, b string, bDir bool) int {
 
 // Reconcile direct children of dirty directories. Existing subtrees retain
 // their paths and entries; only newly discovered directories require a walk.
-func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory string, depth int, previous []protocol.IndexEntry, delta *workspaceTreeDelta) error {
+func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, dir *indexDirectory, previous []indexEntry, delta *workspaceTreeDelta) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if depth > protocol.IndexDepthLimit {
+	if dir.depth > protocol.IndexDepthLimit {
 		return fmt.Errorf("directory depth exceeds budget")
 	}
+	directory := dir.path()
 	if delta != nil && !delta.full && !delta.contains(directory) {
 		start := 0
 		for i := 0; i < len(previous); i++ {
 			entry := previous[i]
-			if entry.Directory && delta.contains(entry.Path) {
+			if entry.isDir() && delta.contains(entry.directory.path()) {
 				if err := p.reuse(ctx, previous[start:i+1]); err != nil {
 					return err
 				}
 				end := indexSubtreeEnd(previous, i)
-				if err := p.reconcile(ctx, root, entry.Path, int(entry.Depth)+1, previous[i+1:end], delta); err != nil {
+				if err := p.reconcile(ctx, root, entry.directory, previous[i+1:end], delta); err != nil {
 					return err
 				}
 				start = end
@@ -159,10 +210,6 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 	slices.SortFunc(children, func(a, b fs.DirEntry) int {
 		return compareIndexNames(a.Name(), a.IsDir(), b.Name(), b.IsDir())
 	})
-	prefix := ""
-	if directory != "." {
-		prefix = directory + "/"
-	}
 	offset := 0
 	for _, child := range children {
 		if err := ctx.Err(); err != nil {
@@ -176,28 +223,30 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 		case ".DS_Store", ".git", "dist", "node_modules":
 			continue
 		}
-		for offset < len(previous) && compareIndexNames(previous[offset].Name(), previous[offset].Directory, name, child.IsDir()) < 0 {
+		for offset < len(previous) && compareIndexNames(previous[offset].name(), previous[offset].isDir(), name, child.IsDir()) < 0 {
 			offset = indexSubtreeEnd(previous, offset)
 		}
-		var entry protocol.IndexEntry
-		var cached []protocol.IndexEntry
-		matched := offset < len(previous) && previous[offset].Name() == name && previous[offset].Directory == child.IsDir()
+		var entry indexEntry
+		var cached []indexEntry
+		matched := offset < len(previous) && previous[offset].name() == name && previous[offset].isDir() == child.IsDir()
 		if matched {
 			entry = previous[offset]
 			end := indexSubtreeEnd(previous, offset)
 			cached = previous[offset+1 : end]
 			offset = end
+		} else if child.IsDir() {
+			entry.directory = &indexDirectory{prefix: dir.prefix + name + "/", depth: dir.depth + 1}
 		} else {
-			entry = protocol.IndexEntry{Path: prefix + name, Depth: uint16(depth), Directory: child.IsDir()}
+			entry = indexEntry{directory: dir, filename: name}
 		}
 		if err := p.append(entry); err != nil {
 			return err
 		}
-		if entry.Directory {
+		if entry.isDir() {
 			if matched {
-				err = p.reconcile(ctx, root, entry.Path, depth+1, cached, delta)
+				err = p.reconcile(ctx, root, entry.directory, cached, delta)
 			} else {
-				err = p.scan(ctx, root, entry.Path, depth+1)
+				err = p.scan(ctx, root, entry.directory)
 			}
 			if err != nil {
 				return err
@@ -206,8 +255,8 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, directory s
 	}
 	return nil
 }
-func (p *serviceIndex) scan(ctx context.Context, root *os.Root, directory string, depth int) error {
-	return p.reconcile(ctx, root, directory, depth, nil, nil)
+func (p *serviceIndex) scan(ctx context.Context, root *os.Root, dir *indexDirectory) error {
+	return p.reconcile(ctx, root, dir, nil, nil)
 }
 func (s *services) index(ctx context.Context, op protocol.Operation, root string, d *protocol.Decoder, e *protocol.Encoder) error {
 	if op == protocol.IndexOpen {
@@ -230,7 +279,7 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 		id := s.next
 		watch := s.watches[root]
 		var baseline uint64
-		var previous []protocol.IndexEntry
+		var previous []indexEntry
 		delta := workspaceTreeDelta{full: true}
 		if watch != nil {
 			baseline, watch.index = watch.index, id
@@ -321,9 +370,9 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 				e.String(message)
 				e.U32(uint32(end - offset))
 				for _, entry := range p.entries[offset:end] {
-					e.String(entry.Path)
-					e.U32(uint32(entry.Depth))
-					if entry.Directory {
+					entry.encodePath(e)
+					e.U32(uint32(entry.depth()))
+					if entry.isDir() {
 						e.U32(1)
 					} else {
 						e.U32(0)
@@ -350,9 +399,9 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 		if count > 128 {
 			return protocol.ErrProtocol
 		}
-		preferred := make([]string, count)
-		for i := range preferred {
-			preferred[i] = d.String()
+		history := make(map[string]int, count)
+		for i := range count {
+			history[d.String()] = int(i)
 		}
 
 		if err := d.Done(); err != nil {
@@ -360,20 +409,26 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 		}
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		var results [128]string
+		var results [128]int
 		var ranks [128]int
 		n := 0
-		history := make(map[string]int, len(preferred))
-		for i, name := range preferred {
-			history[name] = i
-		}
-		for _, entry := range p.entries {
-			if entry.Directory || query != "" && !containsFold(entry.Path, query) {
+		var scratch [256]byte
+		path := scratch[:0]
+		needle := []byte(query)
+		for pos, entry := range p.entries {
+			if entry.isDir() {
 				continue
 			}
-			rank, known := history[entry.Path]
-			if !known {
-				rank = 128
+			rank := 128
+			if query != "" || count != 0 {
+				path = append(path[:0], entry.directory.prefix...)
+				path = append(path, entry.filename...)
+				if query != "" && !containsFold(path, needle) {
+					continue
+				}
+				if r, ok := history[string(path)]; ok {
+					rank = r
+				}
 			}
 			index := n
 			for index > 0 && rank < ranks[index-1] {
@@ -383,23 +438,26 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 				last := min(n, len(results)-1)
 				copy(results[index+1:last+1], results[index:last])
 				copy(ranks[index+1:last+1], ranks[index:last])
-				results[index], ranks[index] = entry.Path, rank
+				results[index], ranks[index] = pos, rank
 				n = min(n+1, len(results))
+				if count == 0 && n == len(results) {
+					break
+				}
 			}
 		}
 
 		e.U32(uint32(n))
-		for _, name := range results[:n] {
-			e.String(name)
+		for _, pos := range results[:n] {
+			p.entries[pos].encodePath(e)
 		}
 	default:
 		return protocol.ErrProtocol
 	}
 	return nil
 }
-func containsFold(value, query string) bool {
+func containsFold(value, query []byte) bool {
 	for i := 0; i+len(query) <= len(value); i++ {
-		if strings.EqualFold(value[i:i+len(query)], query) {
+		if bytes.EqualFold(value[i:i+len(query)], query) {
 			return true
 		}
 	}

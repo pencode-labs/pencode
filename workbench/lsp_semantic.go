@@ -84,21 +84,32 @@ func (model *workspaceModel) scheduleLanguageSemantic() {
 	if state == nil {
 		return
 	}
-	doc := state.documents[model.activeFile()]
-	if !model.textEditorActive() {
-		doc = nil
+	var active *pencodeLanguageDocument
+	if model.textEditorActive() {
+		active = state.documents[model.activeFile()]
 	}
-	if state.semanticDocument != doc {
+	if state.semanticDocument != active {
 		if previous := state.semanticDocument; previous != nil {
 			previous.semantic = nil
 		}
-		state.semanticDocument = doc
+		state.semanticDocument = active
 	}
+	if tab := model.languageDiffTab(); tab != nil {
+		for _, file := range tab.languageFiles {
+			model.scheduleDocumentSemantic(state.documents[file])
+		}
+	} else {
+		model.scheduleDocumentSemantic(active)
+	}
+}
+
+func (model *workspaceModel) scheduleDocumentSemantic(doc *pencodeLanguageDocument) {
 	if doc == nil {
 		return
 	}
+	state := model.languages
 	for _, server := range state.servers {
-		session := state.sessions[pencodeLanguageKey{doc.root, server.ID}]
+		session := state.sessions[pencodeLanguageKey{doc.root, server.ID, doc.pane}]
 		if session == nil || session.client == nil || session.failed || !session.client.Capabilities.Has("semanticTokensProvider") || doc.servers[session].version != doc.version {
 			continue
 		}
@@ -229,13 +240,15 @@ func (model *workspaceModel) languageHighlight(base []scene.TextSpan2D) []scene.
 	if state == nil {
 		return base
 	}
-	doc := state.documents[model.activeFile()]
+	return model.documentLanguageHighlight(state.documents[model.activeFile()], base, model.highlightPaintRevision)
+}
+func (model *workspaceModel) documentLanguageHighlight(doc *pencodeLanguageDocument, base []scene.TextSpan2D, revision uint64) []scene.TextSpan2D {
 	if doc == nil || doc.semantic == nil || doc.content != doc.file.snapshot() || doc.semantic.version != doc.version {
 		return base
 	}
 	semantic := doc.semantic
 	// Parsing replaces temporary edit colors without changing the source text.
-	if semantic.theme == model.syntaxTheme && semantic.baseSource == doc.content && semantic.baseRevision == model.highlightPaintRevision {
+	if semantic.theme == model.syntaxTheme && semantic.baseSource == doc.content && semantic.baseRevision == revision {
 		return semantic.merged
 	}
 	if semantic.theme != model.syntaxTheme {
@@ -253,7 +266,7 @@ func (model *workspaceModel) languageHighlight(base []scene.TextSpan2D) []scene.
 	semantic.merged = overlayLanguageSpans(semantic.merged[:0], base, semantic.spans)
 	semantic.theme = model.syntaxTheme
 	semantic.baseSource = doc.content
-	semantic.baseRevision = model.highlightPaintRevision
+	semantic.baseRevision = revision
 	return semantic.merged
 }
 

@@ -2579,7 +2579,7 @@ textarea:focus {
 
 /* Source control uses the workbench theme and the existing editor tab strip. */
 .sc-file-tabs, .sc-tab-list { display: flex; flex: 0 0 auto; min-width: 0; height: 100%; }
-.source-active > :not(.sc-workspace):not(.pencode-editor) { display: none !important; }
+.source-active > :not(.sc-workspace):not(.pencode-editor):not([data-language-popup]) { display: none !important; }
 .source-active > .pencode-editor { visibility: hidden; }
 .sc-workspace { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
 .sc-panel, .sc-editor { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
@@ -2831,6 +2831,24 @@ textarea:focus {
 .sc-branch-button:hover > .sc-branch-button-content,
 .sc-branch-button[aria-expanded="true"] > .sc-branch-button-content { background: var(--vscode-toolbar-hoverBackground); }
 .sc-branch-button:disabled { opacity: .45; }
+.sc-repository-action {
+    flex: 0 0 auto;
+    align-self: center;
+    gap: 2px;
+    width: auto;
+    min-width: 22px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0 4px;
+    border-radius: 6px;
+    color: inherit;
+}
+.sc-repository-action:last-child { margin-right: 2px; }
+.sc-repository-action .sc-icon { width: 14px; height: 14px; }
+.sc-repository-action-count { font-size: 11px; font-variant-numeric: tabular-nums; }
+.sc-repository-action:disabled { opacity: .45; cursor: default; }
+.sc-repository-action[aria-busy="true"] { opacity: 1; }
+.sc-repository-action:disabled:hover { background: transparent; }
 .sc-repository-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-branch-menu {
     position: absolute;

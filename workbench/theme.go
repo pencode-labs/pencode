@@ -25,6 +25,7 @@ type pencodeTheme struct {
 	border, guide    graphics.ColorRGBA
 	bracket          graphics.ColorRGBA
 	link             graphics.ColorRGBA
+	unusedOpacity    float32
 }
 
 type pencodeIconKey struct{ source, foreground string }
@@ -342,6 +343,13 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 		result.diagnosticColors[severity] = pencodeSyntaxColor(value)
+	}
+	result.unusedOpacity = 170.0 / 255 // VS Code's dark default, #000a.
+	if theme.Type == "light" {
+		result.unusedOpacity = 119.0 / 255 // #0007
+	}
+	if value, ok := theme.LookupColor("editorUnnecessaryCode.opacity"); ok {
+		result.unusedOpacity = float32(value.A) / 255
 	}
 	result.bracket = result.link
 	if value, ok := theme.LookupColor("editorBracketHighlight.foreground1"); ok {

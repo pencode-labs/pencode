@@ -39,6 +39,7 @@ type pencodeEditor struct {
 	guide                               ecs.Entity
 	caretIndex, caretLine               int
 	needsFocus                          bool
+	restoreFocus                        bool
 }
 
 type pencodeGutterLayoutKey struct {
@@ -52,6 +53,26 @@ type pencodeGutterLayoutKey struct {
 type pencodeEditorView struct {
 	caret, anchor    int
 	scrollX, scrollY float32
+}
+
+// Return focus after native input and layout settle, preserving the editor view.
+func (model *workspaceModel) restoreEditorFocus(world *module.Content) {
+	editor := &model.editor
+	if !editor.restoreFocus {
+		return
+	}
+	editor.restoreFocus = false
+	if !model.textEditorActive() {
+		return
+	}
+	field, ok := world.Get[engineui.TextField](editor.control)
+	if ok && world.Focus(editor.control) {
+		current := world.Mut[engineui.TextField](editor.control)
+		current.Caret, current.Anchor = field.Caret, field.Anchor
+		if textarea := world.Mut[engineui.Textarea](editor.control); textarea != nil {
+			textarea.RestoreScroll(textarea.ScrollX, textarea.ScrollY)
+		}
+	}
 }
 
 // Snapshot after native input and layout, before a tab event can replace the
@@ -245,11 +266,20 @@ func (editor *pencodeEditor) syncHighlight(valueText *scene.Text2D, field engine
 	if model.highlightedContent == field.Text() {
 		spans = model.languageHighlight(model.highlightScratch)
 	}
+	spans = editor.languageLinkSpans(model, field, spans, model.activeFile(), model.highlightPaintRevision)
+	spans = editor.brackets.highlight(field, model, spans)
+	key := pencodeOverlayPaintKey(model, field.Text(), spans, editor.brackets.paint.start, editor.brackets.paint.end)
+	spans, key = editor.diagnostics.fadeUnused(model, valueText.Color, spans, key)
+	editor.syncPaint(valueText, field, spans, key)
+}
+
+func (editor *pencodeEditor) languageLinkSpans(model *workspaceModel, field engineui.TextField, spans []scene.TextSpan2D, file *openFile, revision uint64) []scene.TextSpan2D {
 	if field.Composition == "" {
 		hover := &model.languageUI.hover
-		if hover.link && hover.file == model.activeFile() && hover.content == field.Text() && hover.start >= 0 && hover.start < hover.end && hover.end <= field.Text().Len() && model.workbenchTheme != nil {
+		if hover.link && file != nil && hover.file == file && hover.content == field.Text() && hover.start >= 0 && hover.start < hover.end && hover.end <= field.Text().Len() && model.workbenchTheme != nil {
 			link := [...]scene.TextSpan2D{{Start: hover.start, End: hover.end, Color: model.workbenchTheme.link}}
 			key := pencodeOverlayPaintKey(model, field.Text(), spans, hover.start, hover.end)
+			key.paint = revision
 			if key != editor.linkPaint {
 				editor.linkSpans = overlayLanguageSpans(editor.linkSpans[:0], spans, link[:])
 				editor.linkPaint = key
@@ -257,8 +287,7 @@ func (editor *pencodeEditor) syncHighlight(valueText *scene.Text2D, field engine
 			spans = editor.linkSpans
 		}
 	}
-	spans = editor.brackets.highlight(field, model, spans)
-	editor.syncPaint(valueText, field, spans, pencodeOverlayPaintKey(model, field.Text(), spans, editor.brackets.paint.start, editor.brackets.paint.end))
+	return spans
 }
 
 func (editor *pencodeEditor) syncPaint(valueText *scene.Text2D, field engineui.TextField, spans []scene.TextSpan2D, paint pencodeOverlayKey) {

@@ -173,8 +173,9 @@ func (m *workspaceModel) updateInputContext(world *module.Content, state *input.
 	if !state.MousePressed(input.MouseRight) || state.Composing() {
 		return false, changed
 	}
+	panes := &m.sourceState().diffEditors
 	for entity, access := range world.Query2[engineui.TextField, scene.InputState2D]() {
-		if !access.B.Get().Hovered || entity == m.editor.control || entity == m.terminalView.control {
+		if !access.B.Get().Hovered || entity == panes[0].control || entity == panes[1].control || entity == m.editor.control || entity == m.terminalView.control {
 			continue
 		}
 		control, _ := world.Get[htmlui.Control](entity)

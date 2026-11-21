@@ -18,14 +18,18 @@ import (
 func sourceWait(t *testing.T, app *onix.App, m *workspaceModel) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
+	s := m.sourceState()
+	pending := func() bool {
+		return s.Done != nil || s.repositoryJobs[s.Snapshot.Repository.Root].Done != nil
+	}
 	for {
 		// A native notification can start another refresh during the final
 		// frame. Wait for that work too before asserting the visible snapshot.
-		if m.sourceState().Done == nil {
-			m.sourceState().RefreshStarted, m.sourceState().RefreshPending = true, false
+		if !pending() {
+			s.RefreshStarted, s.RefreshPending = true, false
 		}
 		languageInteractionStep(t, app)
-		if m.sourceState().Done == nil {
+		if !pending() {
 			break
 		}
 		if time.Now().After(deadline) {

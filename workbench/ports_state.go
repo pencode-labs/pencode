@@ -23,20 +23,30 @@ type pencodePortSpec struct {
 
 type pencodePortsState struct {
 	Forwards   []pencodePortSpec
-	Suppressed []string
+	Suppressed []pencodePortKey
 }
 
 func normalizePortHost(host string) string {
-	switch strings.ToLower(host) {
+	host = strings.ToLower(host)
+	switch host {
 	case "localhost", "127.0.0.1", "0.0.0.0", "::1", "::":
 		return "localhost"
 	default:
-		return strings.ToLower(host)
+		return host
 	}
 }
 
-func (s pencodePortSpec) key() string {
-	return net.JoinHostPort(normalizePortHost(s.Host), strconv.Itoa(int(s.Port)))
+type pencodePortKey struct {
+	host string
+	port uint16
+}
+
+func (s pencodePortSpec) key() pencodePortKey {
+	return pencodePortKey{normalizePortHost(s.Host), s.Port}
+}
+
+func (k pencodePortKey) String() string {
+	return net.JoinHostPort(k.host, strconv.Itoa(int(k.port)))
 }
 
 func parsePortAddress(value string) (protocol.Port, error) {

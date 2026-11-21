@@ -291,7 +291,7 @@ func TestPortsAutoForwardProcessConflictAndStopSuppression(t *testing.T) {
 	}
 	defer listener.Close()
 	number := uint16(listener.Addr().(*net.TCPAddr).Port)
-	key := (pencodePortSpec{Host: "localhost", Port: number}).key()
+	key := (pencodePortSpec{Host: "localhost", Port: number}).key().String()
 	p := startPorts(backend, pencodePortsOptions{resume: &initial}, nil)
 	defer func() { p.cancel(); <-p.done }()
 	hasPort := func(rows []pencodePortRow) bool {
@@ -315,7 +315,7 @@ func TestPortsAutoForwardProcessConflictAndStopSuppression(t *testing.T) {
 	defer second.Close()
 	secondNumber := uint16(second.Addr().(*net.TCPAddr).Port)
 	secondPresent := func(rows []pencodePortRow) bool {
-		return slices.ContainsFunc(rows, func(row pencodePortRow) bool { return row.port == secondNumber })
+		return slices.ContainsFunc(rows, func(row pencodePortRow) bool { return row.address.port == secondNumber })
 	}
 	portTestCommand(t, p, pencodePortCommand{op: "refresh"})
 	if !secondPresent(portRows(t, p)) {
@@ -353,6 +353,28 @@ func TestPortsStateLivesOnlyInSession(t *testing.T) {
 	portTestCommand(t, p, pencodePortCommand{op: "refresh"})
 	if portPresent(portRows(t, p), "service.internal:3000") {
 		t.Fatal("new session restored forwards from a previous session")
+	}
+}
+
+func TestListeningPortsRefresh(t *testing.T) {
+	ports := []protocol.Port{
+		{Host: "::1", Number: 3000},
+		{Host: "127.0.0.1", Number: 3000, Process: "first", PID: 12},
+		{Host: "localhost", Number: 3000, Process: "second", PID: 13},
+		{Host: "service.internal", Number: 3000, Process: "other"},
+	}
+	present := make(pencodeListeningPorts)
+	key := pencodePortKey{"localhost", 3000}
+	present.update(ports)
+	if len(present) != 2 || present[key].PID != 12 || present[key].Host != "localhost" {
+		t.Fatalf("listeners after normalization: %+v", present)
+	}
+	present.update(ports[3:])
+	if _, stale := present[key]; stale || len(present) != 1 {
+		t.Fatalf("stale listeners after refresh: %+v", present)
+	}
+	if n := testing.AllocsPerRun(100, func() { present.update(ports) }); n != 0 {
+		t.Fatalf("warm refresh allocated %g times", n)
 	}
 }
 

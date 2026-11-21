@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/terminal"
@@ -17,7 +18,7 @@ func (s *services) process(ctx context.Context, op protocol.Operation, root stri
 		var logs *os.File
 		var err error
 		cols, rows := int(d.U32()), int(d.U32())
-		name := d.String()
+		target := d.String()
 		count := d.U32()
 		if count > 4096 {
 			return protocol.ErrProtocol
@@ -45,12 +46,18 @@ func (s *services) process(ctx context.Context, op protocol.Operation, root stri
 			return &protocol.Error{Code: protocol.Busy, Message: "process budget exceeded"}
 		}
 		if op == protocol.TerminalOpen {
-			p, err = terminal.OpenProcess(root, cols, rows)
+			cwd := target
+			if cwd == "" {
+				cwd = root
+			} else if !filepath.IsAbs(cwd) {
+				cwd = filepath.Join(root, cwd)
+			}
+			p, err = terminal.OpenProcess(cwd, cols, rows)
 		} else {
 			var childErr *os.File
 			logs, childErr, err = os.Pipe()
 			if err == nil {
-				p, err = transport.StartWithOutput(root, name, childErr, args...)
+				p, err = transport.StartWithOutput(root, target, childErr, args...)
 				childErr.Close()
 			}
 		}

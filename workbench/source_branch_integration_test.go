@@ -64,8 +64,17 @@ func TestSourceControlBranchIntegration(t *testing.T) {
 				}
 				sourceTestGit(t, r, "merge-base", "--is-ancestor", topic, "HEAD")
 				parents := strings.Fields(sourceTestGit(t, r, "show", "-s", "--format=%P", "HEAD"))
-				if operation == "merge" && (len(parents) != 2 || parents[0] != before || parents[1] != topic) {
-					t.Fatalf("unexpected merge parents: %v", parents)
+				if operation == "merge" {
+					if len(parents) != 2 || parents[0] != before || parents[1] != topic {
+						t.Fatalf("unexpected merge parents: %v", parents)
+					}
+					want := "Merge branch 'topic' into main"
+					if remote {
+						want = "Merge remote-tracking branch 'origin/topic' into main"
+					}
+					if got := sourceTestGit(t, r, "show", "-s", "--format=%s", "HEAD"); got != want {
+						t.Fatalf("merge subject = %q, want %q", got, want)
+					}
 				}
 				if operation == "rebase" && (len(parents) != 1 || parents[0] != topic) {
 					t.Fatalf("current branch was not rebased onto the selected branch: %v", parents)

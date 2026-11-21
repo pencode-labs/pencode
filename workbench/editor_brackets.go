@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/onix-engine/onix/graphics"
 	"github.com/onix-engine/onix/scene"
 	"github.com/onix-engine/onix/syntax"
 	"github.com/onix-engine/onix/text/piecetree"
@@ -29,8 +30,10 @@ type pencodeOverlayKey struct {
 	source             piecetree.Snapshot
 	count              int
 	paint, semantic    uint64
+	diagnostics        uint64
 	start, end         int
 	linkStart, linkEnd int
+	unusedForeground   graphics.ColorRGBA
 	linked             bool
 }
 

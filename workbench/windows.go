@@ -176,6 +176,7 @@ func (w *pencodeWindow) fingerprint(m *workspaceModel) uint64 {
 	}
 	for _, p := range m.projects {
 		windowHash(&h, p.Path)
+		windowHash(&h, p != m.activeProjectState() && p.terminals != nil && p.terminals.visible)
 		windowHash(&h, p.Loose)
 		windowHash(&h, p.sidebarCollapsed)
 		windowHash(&h, p.ActivePath)

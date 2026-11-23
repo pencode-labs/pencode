@@ -16,19 +16,110 @@ import (
 )
 
 type terminalInputProcess struct {
+	output io.ReadCloser
 	closed chan struct{}
 	writes chan string
 	once   sync.Once
 }
 
-func (p *terminalInputProcess) Read([]byte) (int, error) { <-p.closed; return 0, io.EOF }
+func (p *terminalInputProcess) Read(buffer []byte) (int, error) {
+	if p.output != nil {
+		return p.output.Read(buffer)
+	}
+	<-p.closed
+	return 0, io.EOF
+}
 func (p *terminalInputProcess) Write(value []byte) (int, error) {
 	p.writes <- string(value)
 	return len(value), nil
 }
-func (p *terminalInputProcess) Close() error        { p.once.Do(func() { close(p.closed) }); return nil }
+func (p *terminalInputProcess) Close() error {
+	p.once.Do(func() {
+		if p.output != nil {
+			_ = p.output.Close()
+		}
+		close(p.closed)
+	})
+	return nil
+}
 func (p *terminalInputProcess) Wait() error         { <-p.closed; return nil }
 func (*terminalInputProcess) Resize(int, int) error { return nil }
+
+func TestPencodeTerminalProjectIsolation(t *testing.T) {
+	app, model, _, state := languageInteractionFixture(t)
+	first := model.activeProjectState()
+	open := func() (*pencodeTerminal, *io.PipeWriter) {
+		reader, writer := io.Pipe()
+		process := &terminalInputProcess{output: reader, closed: make(chan struct{}), writes: make(chan string, 16)}
+		session := terminal.Attach(80, 12, nil, func() (terminal.Process, error) { return process, nil })
+		t.Cleanup(func() { _ = writer.Close() })
+		project := model.activeProjectState()
+		item := model.addTerminal(project, project.Path, "", session)
+		model.bottom.active = pencodePanelTerminal
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		languageInteractionStep(t, app)
+		return item, writer
+	}
+	wait := func(check func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			languageInteractionStep(t, app)
+			if check() {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatal("timed out waiting for terminal")
+	}
+	firstTab, output := open()
+	otherTab, _ := open()
+	editorContextClick(t, app, model, state, firstTab.selectRef)
+	if err := loadProjectAndWait(t, model, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	second := model.activeProjectState()
+	if model.terminals != nil || model.bottom.active != pencodePanelClosed {
+		t.Fatal("new project inherited open terminals")
+	}
+	secondTab, _ := open()
+	secondTab.screen.Feed([]byte("second project"))
+	revision := firstTab.screen.Revision
+	if _, err := io.WriteString(output, "first project background output"); err != nil {
+		t.Fatal(err)
+	}
+	wait(func() bool {
+		return strings.Contains(model.terminalView.value, "second project") && firstTab.screen.Revision > revision
+	})
+	if strings.Contains(model.terminalView.value, "first project") || firstTab.selectRef == secondTab.selectRef {
+		t.Fatal("terminals shared output or tab IDs across projects")
+	}
+	editorContextClick(t, app, model, state, "project-tab-select:"+first.Path)
+	wait(func() bool { return strings.Contains(model.terminalView.value, "first project background output") })
+	if model.terminals.active != firstTab || len(model.terminals.items) != 2 || model.terminals.items[1] != otherTab {
+		t.Fatal("switching back did not restore the project's tabs and selection")
+	}
+	if n := testing.AllocsPerRun(100, func() { model.pollTerminals() }); n != 0 {
+		t.Fatalf("idle terminal polling allocated %g times across projects", n)
+	}
+	editorContextClick(t, app, model, state, "status-terminal")
+	editorContextClick(t, app, model, state, "project-tab-select:"+second.Path)
+	if model.bottom.active != pencodePanelTerminal || model.terminals.active != secondTab {
+		t.Fatal("second project lost its open terminal")
+	}
+	editorContextClick(t, app, model, state, "project-tab-select:"+first.Path)
+	if model.bottom.active != pencodePanelClosed || model.terminals.active != firstTab {
+		t.Fatal("switching back reopened a hidden terminal")
+	}
+	model.closeProject(second)
+	select {
+	case <-secondTab.session.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("closing an inactive project leaked its terminal session")
+	}
+	if _, exited, err := firstTab.session.Status(); exited || err != nil {
+		t.Fatalf("closing another project stopped the current terminal: exited=%v err=%v", exited, err)
+	}
+}
 
 func TestPencodeTerminalRepeatedKeys(t *testing.T) {
 	app, model, _, state := languageInteractionFixture(t)

@@ -331,18 +331,13 @@ func (m *workspaceModel) pollDebugger(world *module.Content) bool {
 					_ = event.stream.Close()
 					continue
 				}
-				t := m.terminalState()
-				t.nextID++
-				id := strconv.FormatUint(t.nextID, 10)
 				label := event.title
 				if label == "" {
 					label = "Debug Terminal"
 				}
-				item := &pencodeTerminal{id: id, root: event.project.Path, label: label, selectRef: "terminal-tab:" + id, closeRef: "terminal-close:" + id, screen: terminal.NewScreen(80, 12)}
 				stream := event.stream
-				item.session = terminal.Attach(80, 12, m.backgroundWake(), func() (terminal.Process, error) { return stream, nil })
-				t.items = append(t.items, item)
-				t.active = item
+				session := terminal.Attach(80, 12, m.backgroundWake(), func() (terminal.Process, error) { return stream, nil })
+				m.addTerminal(event.project, event.project.Path, label, session)
 				continue
 			}
 			if event.project != u.configProject || event.ctx != nil && event.ctx.Err() != nil {

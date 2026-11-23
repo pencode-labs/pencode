@@ -90,6 +90,13 @@ func (m *workspaceModel) captureProjectState(p *pencodeProject) pencodeProjectSt
 		SourceChangesWidth: m.sourceChangesWidthStyle, Panel: m.bottom.active, OutputFilter: m.bottom.filter,
 		SourceRepositoriesWidth: p.sourceControl.RepositoriesWidthStyle, SourceRepositoriesCollapsed: p.sourceControl.RepositoriesCollapsed,
 	}
+	if p != m.activeProjectState() {
+		if p.terminals != nil && p.terminals.visible {
+			state.Panel = pencodePanelTerminal
+		} else if state.Panel == pencodePanelTerminal {
+			state.Panel = pencodePanelClosed
+		}
+	}
 	if m.bottom.source != nil {
 		state.OutputSource = m.bottom.source.Name
 	}

@@ -28,18 +28,92 @@ type pencodeTerminal struct {
 	ready, exited       bool
 }
 type pencodeTerminals struct {
-	active *pencodeTerminal
-	items  []*pencodeTerminal
-	nextID uint64
-	focus  bool
+	active         *pencodeTerminal
+	items          []*pencodeTerminal
+	nextID         uint64
+	focus, visible bool
+}
+
+func (m *workspaceModel) terminalSlot(project *pencodeProject) **pencodeTerminals {
+	if project != nil {
+		return &project.terminals
+	}
+	return &m.standaloneTerminals
 }
 
 func (m *workspaceModel) terminalState() *pencodeTerminals {
-	if m.terminals == nil {
-		m.terminals = &pencodeTerminals{}
+	if m.terminals != nil {
+		return m.terminals
 	}
-	return m.terminals
+	return m.ensureTerminalGroup(m.activeProjectState())
 }
+
+func (m *workspaceModel) ensureTerminalGroup(project *pencodeProject) *pencodeTerminals {
+	slot := m.terminalSlot(project)
+	if *slot == nil {
+		*slot = &pencodeTerminals{}
+	}
+	if project == m.activeProjectState() {
+		m.terminals = *slot
+	}
+	return *slot
+}
+
+func (m *workspaceModel) switchTerminalProject(project *pencodeProject) {
+	visible := m.bottom.active == pencodePanelTerminal
+	if t := m.terminals; t != nil {
+		t.visible, t.focus = visible, false
+		if t.active != nil {
+			t.active.selection.dragging = false
+		}
+	}
+	m.terminals = *m.terminalSlot(project)
+	v := &m.terminalView
+	v.context = pencodeTerminalContext{}
+	v.ime = terminalIMEAnchor{}
+	v.keys = v.keys[:0]
+	v.repeatKey = 0
+	v.tabScroll = pencodeTabScroll{}
+	if t := m.terminals; t != nil && t.visible && t.active != nil {
+		m.bottom.active = pencodePanelTerminal
+		t.focus = true
+	} else if visible {
+		m.bottom.active = pencodePanelClosed
+		if m.fontResources != nil {
+			m.fontResources.Focus(m.editor.control)
+		}
+	}
+}
+
+func (m *workspaceModel) terminalGroups(yield func(*pencodeProject, *pencodeTerminals) bool) {
+	active := m.activeProjectState()
+	if m.terminals != nil && !yield(active, m.terminals) {
+		return
+	}
+	if t := m.standaloneTerminals; active != nil && t != nil && !yield(nil, t) {
+		return
+	}
+	for _, project := range m.projects {
+		if t := project.terminals; project != active && t != nil && !yield(project, t) {
+			return
+		}
+	}
+}
+
+func (m *workspaceModel) addTerminal(project *pencodeProject, root, label string, session *terminal.Session) *pencodeTerminal {
+	t := m.ensureTerminalGroup(project)
+	t.nextID++
+	m.nextTerminalID++
+	id := strconv.FormatUint(m.nextTerminalID, 10)
+	if label == "" {
+		label = t.nextLabel()
+	}
+	item := &pencodeTerminal{id: id, root: root, label: label, selectRef: "terminal-tab:" + id, closeRef: "terminal-close:" + id, screen: terminal.NewScreen(80, 12), session: session}
+	t.items = append(t.items, item)
+	t.active = item
+	return item
+}
+
 func (m *workspaceModel) newTerminal() *pencodeTerminal {
 	return m.openTerminal("")
 }
@@ -60,9 +134,7 @@ func (m *workspaceModel) openTerminal(cwd string) *pencodeTerminal {
 		m.setActiveStatus(m.tr("工作区服务未连接，请等待连接恢复"))
 		return nil
 	}
-	t := m.terminalState()
 	m.terminalView.context.open = false
-	t.nextID++
 	root := m.projectPath
 	if root == "" {
 		root = defaultDirectory()
@@ -70,10 +142,8 @@ func (m *workspaceModel) openTerminal(cwd string) *pencodeTerminal {
 			root = "~"
 		}
 	}
-	id := strconv.FormatUint(t.nextID, 10)
-	item := &pencodeTerminal{id: id, root: root, label: t.nextLabel(), selectRef: "terminal-tab:" + id, closeRef: "terminal-close:" + id, screen: terminal.NewScreen(80, 12)}
 	backend := m.backend
-	item.session = terminal.Attach(80, 12, m.backgroundWake(), func() (terminal.Process, error) {
+	session := terminal.Attach(80, 12, m.backgroundWake(), func() (terminal.Process, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		workspace, err := backend.OpenWorkspace(ctx, root)
@@ -82,34 +152,30 @@ func (m *workspaceModel) openTerminal(cwd string) *pencodeTerminal {
 		}
 		return backend.OpenTerminal(ctx, workspace.Path, cwd, 80, 12)
 	})
-	t.items = append(t.items, item)
-	t.active = item
-	t.focus = true
+	item := m.addTerminal(m.activeProjectState(), root, "", session)
+	m.terminals.focus = true
 	m.bottom.active = pencodePanelTerminal
 	return item
 }
-func (m *workspaceModel) closeTerminal(root string) {
-	t := m.terminals
+func (t *pencodeTerminals) close() {
 	if t == nil {
 		return
 	}
-	kept := t.items[:0]
 	for _, item := range t.items {
-		if root == "" || item.root == root {
-			item.session.Close()
-			if t.active == item {
-				t.active = nil
-				m.terminalView.context.open = false
-			}
-		} else {
-			kept = append(kept, item)
-		}
+		item.session.Close()
 	}
-	clear(t.items[len(kept):])
-	t.items = kept
-	if t.active == nil && len(kept) > 0 {
-		t.active = kept[len(kept)-1]
-		t.focus = true
+	clear(t.items)
+	t.items, t.active = t.items[:0], nil
+	t.focus, t.visible = false, false
+}
+
+func (m *workspaceModel) closeTerminal(root string) {
+	if root == "" {
+		for _, t := range m.terminalGroups {
+			t.close()
+		}
+	} else if index := m.projectIndex(root); index >= 0 {
+		m.projects[index].terminals.close()
 	}
 	m.closeEmptyTerminalPanel()
 }
@@ -152,7 +218,7 @@ func (m *workspaceModel) removeTerminal(index int) {
 }
 
 func (m *workspaceModel) closeEmptyTerminalPanel() bool {
-	if len(m.terminals.items) != 0 || m.bottom.active != pencodePanelTerminal {
+	if m.terminals == nil || len(m.terminals.items) != 0 || m.bottom.active != pencodePanelTerminal {
 		return false
 	}
 	m.bottom.active = pencodePanelClosed
@@ -189,7 +255,10 @@ func (m *workspaceModel) terminalEvent(ref string) bool {
 				return false
 			}
 		}
-		for i, item := range m.terminalState().items {
+		if m.terminals == nil {
+			return true
+		}
+		for i, item := range m.terminals.items {
 			if item.id != id {
 				continue
 			}
@@ -205,41 +274,48 @@ func (m *workspaceModel) terminalEvent(ref string) bool {
 	return true
 }
 func (m *workspaceModel) pollTerminals() bool {
-	if m.terminals == nil {
-		return false
-	}
 	changed := false
-	t := m.terminals
+	var buffer [32768]byte
+	for project, t := range m.terminalGroups {
+		updated := m.pollTerminalGroup(project, t, buffer[:])
+		changed = changed || t == m.terminals && updated
+	}
+	return m.closeEmptyTerminalPanel() || changed && m.bottom.active == pencodePanelTerminal
+}
+
+func (m *workspaceModel) pollTerminalGroup(project *pencodeProject, t *pencodeTerminals, buffer []byte) bool {
+	changed := false
 	kept := t.items[:0]
 	nextActive := 0
-	var buffer [32768]byte
-	for _, item := range m.terminals.items {
+	for _, item := range t.items {
 		// A retired connection leaves a read-only screen until its tab is closed.
 		if item.exited {
 			kept = append(kept, item)
 			continue
 		}
-		if n := item.session.ReadOutput(buffer[:]); n > 0 {
+		if n := item.session.ReadOutput(buffer); n > 0 {
 			oldHistory := item.screen.Scrolled
 			item.screen.Feed(buffer[:n])
 			if item.scroll > 0 {
 				item.scroll += int(item.screen.Scrolled - oldHistory)
 			}
 			if reply := item.screen.Replies(); len(reply) > 0 {
-				m.writeTerminal(item, reply)
+				m.writeProjectTerminal(project, item, reply)
 			}
-			changed = changed || item == m.terminals.active
+			changed = changed || item == t.active
 		}
 		ready, exited, err := item.session.Status()
 		if exited {
 			if err != nil {
-				m.setActiveStatus(err.Error())
+				m.setProjectStatus(project, err.Error())
 			}
 			item.session.Close()
 			if t.active == item {
 				t.active = nil
 				nextActive = len(kept)
-				m.terminalView.context.open = false
+				if t == m.terminals {
+					m.terminalView.context.open = false
+				}
 			}
 			changed = true
 			continue
@@ -255,14 +331,21 @@ func (m *workspaceModel) pollTerminals() bool {
 	if t.active == nil && len(kept) > 0 {
 		t.active, t.focus = kept[min(nextActive, len(kept)-1)], true
 	}
-	return m.closeEmptyTerminalPanel() || changed && m.bottom.active == pencodePanelTerminal
+	if len(kept) == 0 {
+		t.visible = false
+	}
+	return changed
 }
 func (m *workspaceModel) writeTerminal(item *pencodeTerminal, data []byte) {
+	m.writeProjectTerminal(m.activeProjectState(), item, data)
+}
+
+func (m *workspaceModel) writeProjectTerminal(project *pencodeProject, item *pencodeTerminal, data []byte) {
 	if item.exited {
 		return
 	}
 	if _, err := item.session.Write(data); err != nil {
-		m.setActiveStatus(err.Error())
+		m.setProjectStatus(project, err.Error())
 	}
 	item.scroll = 0
 }

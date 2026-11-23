@@ -194,8 +194,8 @@ func (model *workspaceModel) retireConnection(closeBackend bool) {
 		view.model.closeHoverWorker()
 		view.model.closeReferenceWorker()
 	}
-	if model.terminals != nil {
-		for _, item := range model.terminals.items {
+	for _, terminals := range model.terminalGroups {
+		for _, item := range terminals.items {
 			item.session.Close()
 			if !item.exited {
 				item.label += model.tr("（连接已断开）")

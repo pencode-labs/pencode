@@ -98,6 +98,7 @@ type pencodeEdit struct {
 
 type pencodeProject struct {
 	restoring               *pencodeProjectState
+	terminals               *pencodeTerminals
 	debugBreakpoints        map[string][]pencodeBreakpoint
 	watch                   *pencodeProjectWatch
 	Files                   map[string]*openFile
@@ -135,7 +136,8 @@ type workspaceModel struct {
 	syntaxMemoryDue                     time.Time
 	lastFileClickAt                     time.Time
 	syntaxDefinitions                   *syntax.Definitions
-	terminals                           *pencodeTerminals
+	terminals                           *pencodeTerminals // active project's terminal state
+	standaloneTerminals                 *pencodeTerminals
 	extensionImages                     map[string]pencodeExtensionImage
 	hoverCancel                         context.CancelFunc
 	hoverWorker                         *latestWorker[pencodeHoverJob, pencodeHoverResult]
@@ -252,6 +254,7 @@ type workspaceModel struct {
 	sourceControl                       pencodeSourceControl
 	characterCount                      int
 	activeProjectIndex                  int
+	nextTerminalID                      uint64
 	findRevision                        uint64
 	surface                             ecs.Entity
 	editorGeneration                    uint64
@@ -1557,6 +1560,9 @@ func (model *workspaceModel) syncActiveProjectFields() {
 	previous := model.projectPath
 	project := model.activeProjectState()
 	if project == nil {
+		if previous != "" {
+			model.switchTerminalProject(nil)
+		}
 		model.revealProject, model.revealPath = nil, ""
 		model.projectPath = ""
 		model.projectName = ""
@@ -1570,6 +1576,7 @@ func (model *workspaceModel) syncActiveProjectFields() {
 		return
 	}
 	if previous != project.Path {
+		model.switchTerminalProject(project)
 		// Inactive projects only load Git status; activation also needs history.
 		project.sourceControl.RefreshPending = true
 	}

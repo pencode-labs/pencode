@@ -2,6 +2,13 @@
   "id": "de",
   "label": "Deutsch",
   "messages": {
+    "正在安装 %s…": "%s wird installiert…",
+    "已安装 %s": "%s wurde installiert",
+    "正在更新 %s…": "%s wird aktualisiert…",
+    "已更新 %s": "%s wurde aktualisiert",
+    "正在卸载 %s…": "%s wird deinstalliert…",
+    "已卸载 %s": "%s wurde deinstalliert",
+    "请先安装 %s 再激活。": "Installieren Sie %s vor der Aktivierung.",
     "语言服务器": "Sprachserver",
     "重新检测": "Erneut erkennen",
     "正在检测语言服务器…": "Sprachserver werden erkannt…",

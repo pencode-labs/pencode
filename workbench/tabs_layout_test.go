@@ -45,6 +45,7 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 <button id="project" class="pencode-project-tab-select"><span class="pencode-project-tab-icon"><span id="project-icon">P</span></span><span id="project-name" class="pencode-project-tab-name">Pencode 项目</span></button>
 <div id="tabs" class="pencode-tabs"><div class="pencode-tab active"><button class="pencode-tab-select"><img class="pencode-tab-icon"><span id="tab-name" class="pencode-tab-name">app_ecs.go</span></button><button class="pencode-tab-close"></button></div></div>
 <button class="pencode-lsp-result pencode-lsp-reference-location"><span id="reference-label" class="pencode-lsp-result-label"><span>func (b *Bundle) </span><mark id="reference-match">ValidateSceneFeatures</mark><span>(id SceneID)</span></span></button>
+<div class="pencode-language-list" style="position:absolute;width:440px"><div class="pencode-language-tool"><div class="pencode-language-summary"><span id="tool-status" class="pencode-setting-description">未安装 · go · golang.org/x/tools/gopls</span></div></div></div>
 </div></body></html>`)
 					if err != nil {
 						t.Fatal(err)
@@ -68,6 +69,25 @@ func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 						}
 					}
 					visit(root)
+					status := boxes["tool-status"]
+					if status == nil || len(status.TextFragments) == 0 {
+						t.Fatal("missing language tool status")
+					}
+					bounds := status.BorderBox()
+					for _, fragment := range status.TextFragments {
+						for _, glyph := range fragment.Glyphs {
+							glyphFace, id := face.ResolveGlyph(glyph.Rune)
+							ink, err := glyphFace.GlyphBounds(id)
+							if err != nil {
+								t.Fatal(err)
+							}
+							scale := fragment.Style.FontSize.LengthPx / float64(glyphFace.Head.UnitsPerEm)
+							top, bottom := glyph.Y-float64(ink.YMax)*scale, glyph.Y-float64(ink.YMin)*scale
+							if top < bounds.Y || bottom > bounds.Y+bounds.Height {
+								t.Fatalf("status glyph %q spans %.2f..%.2f outside %+v", glyph.Rune, top, bottom, bounds)
+							}
+						}
+					}
 					for _, pair := range [][2]string{{"project-icon", "project"}, {"project-name", "project"}, {"tab-name", "tabs"}} {
 						label, row := boxes[pair[0]], boxes[pair[1]]
 						if label == nil || row == nil || len(label.TextFragments) == 0 {

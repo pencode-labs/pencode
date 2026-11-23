@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -13,17 +14,31 @@ import (
 )
 
 type pencodeBuiltinTools struct {
-	items    map[string]languagetool.Installation
-	results  chan pencodeToolResult
-	cancel   context.CancelFunc
-	changing string
-	feedback string
-	selected int
+	items      map[string]languagetool.Installation
+	results    chan pencodeToolResult
+	cancel     context.CancelFunc
+	expanded   *languagetool.Language
+	changing   string
+	feedback   string
+	feedbackID string
+	action     string
 }
 
 type pencodeToolResult struct {
 	err   error
 	items map[string]languagetool.Installation
+}
+
+var languageToolActions = map[string]struct{ label, pending, done string }{
+	"install":   {"安装", "正在安装 %s…", "已安装 %s"},
+	"update":    {"更新", "正在更新 %s…", "已更新 %s"},
+	"uninstall": {"卸载", "正在卸载 %s…", "已卸载 %s"},
+}
+
+func (m *workspaceModel) reportLanguageTool(id, level, message string) {
+	state := m.builtinTools
+	state.feedbackID, state.feedback = id, message
+	m.logOutput("pencode", level+" "+message)
 }
 
 func (m *workspaceModel) startBuiltinTools(action, id string) {
@@ -40,9 +55,11 @@ func (m *workspaceModel) startBuiltinTools(action, id string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 11*time.Minute)
 	state.cancel = cancel
-	state.feedback = m.tr("正在检测语言服务器…")
+	state.action = action
 	if action != "" {
-		state.feedback = m.tr("正在处理语言服务器…") + " " + languagetool.Find(id).Label
+		m.reportLanguageTool(id, "[Info]", fmt.Sprintf(m.tr(languageToolActions[action].pending), languagetool.Find(id).Label))
+	} else {
+		state.feedbackID, state.feedback = "", m.tr("正在检测语言服务器…")
 	}
 	var stopped []<-chan struct{}
 	// Windows keeps running executables open. Release the managed process
@@ -92,11 +109,21 @@ func (m *workspaceModel) pollBuiltinTools() bool {
 		state.cancel()
 		state.cancel = nil
 		state.changing = ""
-		if result.err != nil {
+		if action := state.action; action != "" {
+			state.action = ""
+			id := state.feedbackID
+			name, labels := languagetool.Find(id).Label, languageToolActions[action]
+			if result.err != nil {
+				m.reportLanguageTool(id, "[Error]", name+" · "+m.tr(labels.label)+" · "+fmt.Sprintf(m.tr("操作失败：%v"), result.err))
+				return true
+			}
+			m.reportLanguageTool(id, "[Info]", fmt.Sprintf(m.tr(labels.done), name))
+		} else if result.err != nil {
 			state.feedback = result.err.Error()
 			return true
+		} else {
+			state.feedback = ""
 		}
-		state.feedback = ""
 		state.items = result.items
 		m.applyBuiltinTools()
 		return true

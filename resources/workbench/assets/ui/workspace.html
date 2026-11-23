@@ -142,6 +142,7 @@
       <div id="settings-main" class="pencode-settings-main">
         <header class="pencode-settings-main-header">
           <h3 data-ref="settings-page-title">外观</h3>
+          <button data-ref="language-tools-refresh" class="pencode-settings-reset" type="button" hidden>重新检测</button>
           <button data-ref="reset-extension-settings" class="pencode-settings-reset" type="button" hidden>恢复扩展默认设置</button>
           <button id="reset-shortcuts" data-ref="reset-shortcuts" class="pencode-settings-reset" type="button" hidden>恢复默认快捷键</button>
         </header>
@@ -199,9 +200,8 @@
           </div>
         </section>
         <section id="settings-language-servers-pane" data-ref="settings-language-servers-pane" hidden>
-          <div data-ref="language-choices" class="pencode-language-choices"></div>
-          <div class="pencode-language-actions"><button data-ref="language-tools-refresh" class="pencode-settings-reset" type="button">重新检测</button><span data-ref="language-tools-feedback" role="status" aria-live="polite"></span></div>
-          <div data-ref="language-tool-list"></div>
+          <div data-ref="language-tools-feedback" role="status" aria-live="polite"></div>
+          <div data-ref="language-list" class="pencode-language-list"></div>
         </section>
         <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
           <div class="pencode-settings-row pencode-setting-toggle-row">

@@ -1626,7 +1626,7 @@ textarea:focus {
     margin-right: 4px;
 }
 
-.pencode-settings-nav-item[aria-expanded="true"] .pencode-settings-toggle {
+[aria-expanded="true"] .pencode-settings-toggle {
     transform: rotate(90deg);
 }
 
@@ -1639,32 +1639,81 @@ textarea:focus {
 .pencode-setting-input:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .pencode-extension-setting .pencode-settings-select { max-width: 50%; }
 
-.pencode-language-choices, .pencode-language-actions {
+.pencode-language-list {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    padding-top: 8px;
 }
-.pencode-language-choices { margin-bottom: 12px; }
 .pencode-language-choice {
+    width: 100%;
+    min-height: 34px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    justify-content: flex-start;
+    gap: 6px;
     padding: 4px 8px;
-    border: 1px solid var(--vscode-widget-border);
-    border-radius: 4px;
-    background: var(--vscode-editorWidget-background);
+    border-bottom: 1px solid var(--vscode-settings-headerBorder);
     color: var(--vscode-foreground);
-    font: inherit;
+    font-size: calc(12rem / 14);
 }
-.pencode-language-choice.active {
-    border-color: var(--vscode-focusBorder);
+.pencode-language-choice:hover {
+    background: var(--vscode-list-hoverBackground);
+    color: var(--vscode-list-hoverForeground);
+}
+.pencode-language-choice[aria-expanded="true"] {
     background: var(--vscode-list-activeSelectionBackground);
     color: var(--vscode-list-activeSelectionForeground);
 }
-.pencode-language-choice img { width: 18px; height: 18px; }
-.pencode-language-tool { padding: 12px 0; }
-.pencode-language-tool .pencode-setting-description { overflow-wrap: anywhere; }
+.pencode-language-icon { width: 18px; height: 18px; }
+.pencode-language-active {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.pencode-language-tool {
+    border-bottom: 1px solid var(--vscode-settings-headerBorder);
+    font-size: calc(12rem / 14);
+}
+.pencode-language-summary {
+    min-height: 31px;
+    padding: 0 6px 0 24px;
+    cursor: pointer;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+.pencode-language-details {
+    display: flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 28px;
+    padding: 0 4px;
+    color: inherit;
+    font: inherit;
+}
+.pencode-language-feedback {
+    padding: 2px 6px 6px 44px;
+    max-height: 72px;
+    overflow: auto;
+    overflow-wrap: anywhere;
+    color: var(--vscode-foreground);
+}
+.pencode-language-summary .pencode-setting-description {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    text-box-trim: none;
+    overflow-x: clip;
+    overflow-y: visible;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.pencode-language-path { display: flex; align-items: center; gap: 8px; padding: 0 6px 6px 44px; }
+.pencode-language-path .pencode-setting-input { flex: 1; }
 
 .pencode-settings-main {
     flex: 1;

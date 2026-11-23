@@ -227,6 +227,9 @@ func (model *workspaceModel) revealEditorCaret(world *module.Content, caret int)
 	if text == nil || textarea == nil {
 		return
 	}
+	if file := model.activeFile(); file != nil && file.folds != nil && file.folds.source == content {
+		file.folds.reveal(file.snapshotBuffer(), caret)
+	}
 	x, y, width, height, ok := scene.TextCaretRect2D(text, content, caret)
 	if !ok {
 		return

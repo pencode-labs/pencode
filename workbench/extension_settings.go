@@ -74,7 +74,9 @@ func extensionOwner(id string) string {
 }
 
 func (m *workspaceModel) rebuildExtensionSettings(group *pencodeExtensionSettings) {
+	previous := group.values
 	group.values = peb.ResolveSettings(group.schema, m.settings.Extensions[group.id])
+	m.refreshLanguageSettings(group.id, previous, group.values)
 	group.rows = make([]pencodeSettingProps, len(group.schema))
 	for i, setting := range group.schema {
 		value := strings.TrimSpace(string(group.values[setting.ID]))
@@ -165,7 +167,7 @@ func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencod
 		HandleEvent: func(c *module.ContentEventContext[pencodeSettingNavProps, struct{}]) {
 			m := c.Props.Model
 			m.settingsExtensions, m.settingsShortcuts, m.capturingShortcut = true, false, false
-			m.settingsAbout = false
+			m.settingsAbout, m.settingsLanguageServers = false, false
 			m.settingsExtension, m.settingsFeedback = c.Props.Group.id, ""
 			markPencodeRootDirtyByModel(c.World, m)
 		},

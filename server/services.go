@@ -83,6 +83,11 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 		}
 	}
 	switch op {
+	case protocol.LanguageTools:
+		if root != "" {
+			return protocol.ErrProtocol
+		}
+		return s.languageTools(ctx, &d, e)
 	case protocol.PortList, protocol.PortConnect:
 		if root != "" {
 			return protocol.ErrProtocol

@@ -236,17 +236,7 @@ my-extension/
 
 扩展通过 `peb.Contributions.LanguageServers` 注册语言服务，宿主负责按项目启动进程、能力协商、文档同步、诊断和退出。代码区右键菜单提供补全、悬浮信息、参数提示、定义/引用跳转、重命名、格式化、代码操作、符号和层级等入口，不支持的操作会禁用；语义 token 自动覆盖代码前景色。
 
-构建安装 [Go/gopls 示例](../extensions/go/main.go)：
-
-```sh
-# 先确保 gopls 已安装且在 PATH 中
-pencode_extension_dir="$HOME/.pencode/extensions/go"
-mkdir -p "$pencode_extension_dir/bin"
-cp -R extensions/go/resources "$pencode_extension_dir/"
-(cd extensions/go && GOWORK=off go build -p 1 -o "$pencode_extension_dir/bin/go" .)
-```
-
-在扩展市场刷新后打开 Go 文件即可激活。输入标识符时自动弹出补全，语言服务器声明的触发字符（例如 `.`、`(`、`,`）会触发对应的补全或参数提示。补全支持方向键选择、Enter/Tab 接受和分页；普通鼠标悬停显示符号说明，Ctrl（macOS 使用 Cmd）悬停显示可用导航链接下划线。Ctrl+左键（macOS 使用 Cmd+左键）在变量、方法等定义位置查找引用，在符号使用位置转到定义；`Shift+F12` 始终查找引用。补全、悬停、参数提示、引用和命令结果均在代码区域的浮层显示，Esc 关闭。鼠标命中使用实际文字排版，支持缩放、Tab、中文和折行，移动光标、修改文档或切换文件会取消过期请求。
+在「设置 → 语言服务器 → Go」检测或安装 gopls，打开 Go 文件即可激活。输入标识符时自动弹出补全，语言服务器声明的触发字符（例如 `.`、`(`、`,`）会触发对应的补全或参数提示。补全支持方向键选择、Enter/Tab 接受和分页；普通鼠标悬停显示符号说明，Ctrl（macOS 使用 Cmd）悬停显示可用导航链接下划线。Ctrl+左键（macOS 使用 Cmd+左键）在变量、方法等定义位置查找引用，在符号使用位置转到定义；`Shift+F12` 始终查找引用。补全、悬停、参数提示、引用和命令结果均在代码区域的浮层显示，Esc 关闭。鼠标命中使用实际文字排版，支持缩放、Tab、中文和折行，移动光标、修改文档或切换文件会取消过期请求。
 
 快捷键：`Ctrl+Space` 补全、`Ctrl+Shift+Space` / macOS `Cmd+Shift+Space` 参数提示、`F12` 定义、`Shift+F12` 引用、`Ctrl+F12` / macOS `Cmd+F12` 实现、`F2` 重命名、`Alt+Shift+F` 格式化、`Ctrl+.` / macOS `Cmd+.` 代码操作。选择结果按钮应用补全或跳转；重命名在输入框输入新名称后确认。编辑结果使用现有撤销和保存流程。
 

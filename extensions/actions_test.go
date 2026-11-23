@@ -28,9 +28,10 @@ func TestActionHelperProcess(t *testing.T) {
 	}
 	contributions := peb.Contributions{Actions: []peb.Action{action}}
 	if slices.Contains(os.Args, "peb-relative-language") {
+		contributions.Settings = []peb.Setting{{ID: "argument", Label: "Argument", Default: []byte(`"default argument"`)}}
 		contributions.LanguageServers = []peb.LanguageServer{{
 			ID: "relative", Label: "Relative", LanguageID: "fixture", Command: "bin/helper" + filepath.Ext(os.Args[0]),
-			Args:      []string{"-test.run=^TestRemoteLanguageHelperProcess$", "--", "pencode-language-helper"},
+			Args:      []string{"-test.run=^TestRemoteLanguageHelperProcess$", "--", "${setting:argument}", "pencode-language-helper"},
 			Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".fixture"}},
 		}}
 	}

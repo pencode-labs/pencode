@@ -143,7 +143,8 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 	if m.model.pollSettingsWrites() {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
-	if m.model.pollConnection() {
+	connectionChanged := m.model.pollConnection()
+	if m.session.pollRemoteProjects(m.model) || connectionChanged {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	if m.model.pollPorts() {
@@ -193,7 +194,8 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 	if m.model.pollExtensions(m.session.extensions) {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
-	if m.model.pollLanguageServers(c.Content()) {
+	catalogChanged := m.model.pollBuiltinTools()
+	if m.model.pollLanguageServers(c.Content()) || catalogChanged {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	if m.model.pollDebugger(c.Content()) {

@@ -294,22 +294,26 @@ func (model *workspaceModel) projectPickerEvent(ref, value string) {
 		if !p.selected() {
 			return
 		}
+		if model.focusOpenProject(p.profile, p.path) {
+			p.open, c.open = false, false
+			return
+		}
+		if model.needsProjectWindow(p.profile) {
+			profile := p.profile
+			profile.Directory = p.path
+			if err := model.session.openWindowWithProfile(nil, profile); err != nil {
+				p.message, p.failed = model.tr("新建窗口失败：")+err.Error(), true
+				return
+			}
+			p.open, c.open = false, false
+			return
+		}
 		if !model.connectionConnected(p.profile) {
 			p.message, p.failed = model.tr("远程服务已断开，请重新连接后选择项目"), true
 			return
 		}
 		backend := c.links[p.profile.Endpoint()].backend
-		if model.session.backend != backend {
-			if len(model.projects) != 0 {
-				profile := p.profile
-				profile.Directory = p.path
-				if err := model.session.openWindowWithProfile(nil, profile); err != nil {
-					p.message, p.failed = model.tr("新建窗口失败：")+err.Error(), true
-					return
-				}
-				p.open, c.open = false, false
-				return
-			}
+		if model.session.backend != backend && !c.workspaceProfile.SameHost(p.profile) {
 			if p.configuration == nil || p.configurationBackend != backend {
 				p.message, p.failed = model.tr("尚未读取远程配置，请重新选择目录"), true
 				return

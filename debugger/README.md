@@ -7,11 +7,8 @@ debugger for a remote project.
 
 ## Go quick start
 
-Enable the Go extension to detect/install gopls and Delve automatically. Without
-the extension, install `dlv` in the workspace server’s PATH. Select **Debug** in the
-status bar and click **添加启动器**, then choose a registered Go project or package
-test template. Pencode writes it to `.pencode/debug.json` and opens the JSON for
-edits. Save any changes to refresh the debug configurations automatically.
+Install `dlv` in the workspace server’s PATH and add a Delve configuration to
+`.pencode/debug.json` using the example below. Save any changes to refresh the debug configurations automatically.
 Choose the configured package or its tests, set a breakpoint by clicking the
 left edge of the gutter or pressing F9, and press F5.
 
@@ -81,11 +78,9 @@ machine to an existing adapter. `request` accepts `launch` or `attach`; stopping
 an attach session sends `disconnect` with `terminateDebuggee: false`.
 
 Extensions register optional JSON templates with `peb.DebugAdapter.Templates`.
-The Go extension provides project and package test templates; PHP provides
-current-file launch and Xdebug listener templates.
 
 Extensions can also contribute named stdio adapters. Set `adapter` to the
-contributed ID, such as `Xdebug` from the [PHP extension](../extensions/php/README.md),
+contributed ID, such as `Xdebug`,
 and omit `command`/`args` to use its launcher. An explicit `command` overrides the
 launcher. Missing providers and duplicate adapter IDs report an error at startup.
 
@@ -94,8 +89,7 @@ the first 100 stack frames, lazy variable expansion, expression evaluation, and
 integrated terminals launched directly from argv. Breakpoints remain in the
 project model when a tab closes and follow edits and undo/redo. They are not yet
 persisted across application restarts. Source navigation currently covers files
-inside the session's project. The Go extension manages tool installation and
-contributes the Delve launcher.
+inside the session's project.
 Watch expressions, conditional breakpoint UI, and memory/disassembly views are
 not included.
 

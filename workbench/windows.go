@@ -172,7 +172,7 @@ func (w *pencodeWindow) fingerprint(m *workspaceModel) uint64 {
 		windowHash(&h, m.bottom.source.Name)
 	}
 	if c := m.session.connection; c != nil {
-		windowHash(&h, c.workspaceProfile)
+		windowHash(&h, m.session.windowProfile())
 	}
 	for _, p := range m.projects {
 		windowHash(&h, p.Path)
@@ -227,7 +227,7 @@ func (s *Session) checkpointWindow(m *workspaceModel) {
 	}
 	state := pencodeWindowState{Active: m.activeProjectIndex, Width: int(m.viewportWidth), Height: int(m.viewportHeight)}
 	if c := s.connection; c != nil {
-		state.Profile = c.workspaceProfile
+		state.Profile = s.windowProfile()
 	}
 	for _, p := range m.projects {
 		state.Projects = append(state.Projects, pencodeWindowProject{Path: p.Path, Loose: p.Loose, State: m.captureProjectState(p)})

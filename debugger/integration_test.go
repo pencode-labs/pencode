@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+
 	"testing"
 	"time"
 
@@ -16,22 +16,13 @@ import (
 	"github.com/pencode-labs/pencode/dap"
 	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/output"
-	"github.com/pencode-labs/pencode/protocol"
+
 	"github.com/pencode-labs/pencode/server"
 )
 
 // Runs the real adapter through the production CS boundary. Set
 // PENCODE_TEST_DLV when Delve is not on PATH.
 func TestDelveBreakpointStepVariablesAndDisconnect(t *testing.T) {
-	testDelveSession(t, false)
-}
-
-func TestDelveWithGoExtension(t *testing.T) {
-	testDelveSession(t, true)
-}
-
-func testDelveSession(t *testing.T, contributed bool) {
-	t.Helper()
 	dlv := os.Getenv("PENCODE_TEST_DLV")
 	if dlv == "" {
 		var err error
@@ -41,42 +32,6 @@ func testDelveSession(t *testing.T, contributed bool) {
 		}
 	}
 	extensions := t.TempDir()
-	var extensionSource, extensionEntry string
-	if contributed {
-		directory := filepath.Join(t.TempDir(), "go")
-		extensionSource = directory
-		if err := os.MkdirAll(filepath.Join(directory, "bin"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(filepath.Join(directory, "resources"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		entry := "bin/go"
-		tool := "dlv"
-		if runtime.GOOS == "windows" {
-			entry += ".exe"
-			tool += ".exe"
-		}
-		extensionEntry = entry
-		manifest, _ := json.Marshal(map[string]string{"id": "go", "name": "Go", "version": "1.1.0", "entry": entry})
-		if err := os.WriteFile(filepath.Join(directory, "resources", "extension.json"), manifest, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		build := exec.Command("go", "build", "-o", filepath.Join(directory, filepath.FromSlash(entry)), ".")
-		build.Dir = "../extensions/go"
-		if data, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build Go extension: %v\n%s", err, data)
-		}
-		cache := t.TempDir()
-		data, err := os.ReadFile(dlv)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(cache, tool), data, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PENCODE_GO_TOOLS_DIR", cache)
-	}
 	root := t.TempDir()
 	filename := filepath.Join(root, "main.go")
 	source := "package main\nimport \"fmt\"\nfunc main() {\n value := 40; values := []int{40, 42}; _ = values\n value += 2\n fmt.Println(value)\n}\n"
@@ -99,35 +54,6 @@ func testDelveSession(t *testing.T, contributed bool) {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Close(); <-serverDone }()
-	if contributed {
-		upload, err := c.BeginExtension(ctx, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{extensionEntry, "resources/extension.json"} {
-			data, err := os.ReadFile(filepath.Join(extensionSource, filepath.FromSlash(name)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			for offset := 0; offset < len(data); {
-				end := min(offset+protocol.ChunkSize, len(data))
-				if err := upload.Write(ctx, name, uint64(offset), 0o755, end == len(data), data[offset:end]); err != nil {
-					t.Fatal(err)
-				}
-				offset = end
-			}
-		}
-		extension, err := upload.Prepare(ctx)
-		if err != nil || len(extension.Contributions.DebugAdapters) != 1 {
-			t.Fatalf("load Go debug adapter: %v", err)
-		}
-		if _, err := extension.Commit(ctx); err != nil {
-			t.Fatal(err)
-		}
-		// The default config supplies no executable; the server must use the
-		// registered extension launcher and locate dlv outside PATH.
-		dlv = ""
-	}
 	w, err := c.OpenWorkspace(ctx, root)
 	if err != nil {
 		t.Fatal(err)

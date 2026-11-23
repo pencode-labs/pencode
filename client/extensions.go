@@ -164,14 +164,14 @@ func (x *Extension) ReadResources(ctx context.Context, names []string, limit int
 }
 
 func (x *Extension) OpenProcess(ctx context.Context, root string) (*Process, error) {
-	return x.openProcess(ctx, root, "")
+	return x.openProcess(ctx, root, "", nil)
 }
 
-func (x *Extension) OpenLanguageServer(ctx context.Context, root, id string) (*Process, error) {
-	return x.openProcess(ctx, root, id)
+func (x *Extension) OpenLanguageServer(ctx context.Context, root, id string, values peb.SettingValues) (*Process, error) {
+	return x.openProcess(ctx, root, id, values)
 }
 
-func (x *Extension) openProcess(ctx context.Context, root, language string) (*Process, error) {
+func (x *Extension) openProcess(ctx context.Context, root, language string, values peb.SettingValues) (*Process, error) {
 	op := protocol.ExtensionProcess
 	if language != "" {
 		op = protocol.ExtensionLanguageProcess
@@ -180,6 +180,11 @@ func (x *Extension) openProcess(ctx context.Context, root, language string) (*Pr
 	e.U64(x.Handle)
 	if language != "" {
 		e.String(language)
+		data, err := peb.EncodeSettingValues(nil, values)
+		if err != nil {
+			return nil, err
+		}
+		e.Bytes(data)
 	}
 	d, err := x.client.execute(ctx, &e)
 	if err != nil {

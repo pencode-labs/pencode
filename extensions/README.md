@@ -42,11 +42,9 @@ on the remote server for a remote workspace.
 | --- | --- | --- |
 | Codex Agent | [Releases](https://github.com/pencode-labs/codex/releases) | Codex CLI and its configured account |
 | Docker | [Releases](https://github.com/pencode-labs/docker/releases) | Docker CLI and an accessible Docker daemon |
-| Go | [Releases](https://github.com/pencode-labs/go/releases) | Go toolchain; gopls and Delve install automatically |
 | Markdown Preview | [Releases](https://github.com/pencode-labs/markdown-preview/releases) | No additional runtime |
 | Material Icons | [Releases](https://github.com/pencode-labs/material-icons/releases) | No additional runtime |
 | Office Viewer | [Releases](https://github.com/pencode-labs/office-viewer/releases) | Node.js 22+ or Bun |
-| PHP | [Releases](https://github.com/pencode-labs/php/releases) | Selected language server/debugger prerequisites; see its README |
 | UI Demo | [Releases](https://github.com/pencode-labs/ui-demo/releases) | No additional runtime |
 
 Release packages target Pencode's PEB v20 SDK (Pencode `v0.1.0-rc.5`). Go modules

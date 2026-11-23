@@ -32,7 +32,7 @@ func (paint *pencodeFindPaint) sync(world *module.Content, m *workspaceModel) {
 	stack, _ := world.Get[scene.UIStackIndex](m.editor.text)
 	colors := m.workbenchTheme.findColors
 	key := pencodeDiagnosticPaintKey{
-		layout: pencodeGutterLayoutKey{value: text.Text(), font: text.Font, fontSize: text.FontSize, dpi: text.DPI, wrapWidth: text.WrapWidth, tabWidth: text.TabWidth, wrapMode: text.WrapMode},
+		layout: gutterLayoutKey(text),
 		file:   m.activeFile(), revision: m.findRevision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight, ink: text.InkOffsetY, stack: stack, color: colors[0],
 	}

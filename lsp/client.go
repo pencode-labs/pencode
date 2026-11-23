@@ -129,6 +129,7 @@ func defaultCapabilities() map[string]any {
 		"window":    map[string]any{"workDoneProgress": true},
 		"textDocument": map[string]any{
 			"semanticTokens":  map[string]any{"requests": map[string]any{"range": true, "full": map[string]bool{"delta": true}}, "tokenTypes": SemanticTokenTypes, "tokenModifiers": SemanticTokenModifiers, "formats": []string{"relative"}, "overlappingTokenSupport": false, "multilineTokenSupport": false},
+			"foldingRange":    map[string]bool{"lineFoldingOnly": true},
 			"synchronization": map[string]any{"willSave": true, "didSave": true},
 			"completion": map[string]any{
 				"completionItem":     map[string]any{"snippetSupport": false, "documentationFormat": []string{"plaintext"}, "resolveSupport": map[string]any{"properties": []string{"detail", "documentation", "additionalTextEdits", "command"}}},

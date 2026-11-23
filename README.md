@@ -44,7 +44,7 @@ File changes use native FSEvents on macOS, recursive `ReadDirectoryChangesW` on 
 - Go **1.27.0 or newer**.
 - An Onix checkout next to this repository, named `onix`. The current `go.mod` uses `replace github.com/onix-engine/onix => ../onix`.
 - The native development libraries required by Onix for desktop builds; see `docs/desktop-builds.md` in the Onix checkout.
-- System `git` for source control and OpenSSH `ssh` for SSH connections. The Go extension installs its tools automatically; other language servers depend on their extensions.
+- System `git` for source control and OpenSSH `ssh` for SSH connections. Manage workspace language servers in **Settings → Language Servers**. Pencode detects executables on the workspace host and uses the active server’s semantic highlighting automatically.
 - Text fonts installed on the GUI host. Pencode bundles Symbols Nerd Font Mono as a fallback for shell prompt icons.
 - Image paste on Linux requires `wl-paste` (from `wl-clipboard`) on Wayland or `xclip` on X11. Windows and macOS use native clipboard APIs.
 
@@ -165,20 +165,18 @@ Bundled extensions include the following; see each extension for its license and
 
 - [Codex Agent](https://github.com/pencode-labs/codex): editor chat, streaming replies, approvals, and project conversations through the Codex CLI.
 - [Docker](https://github.com/pencode-labs/docker): container lists, start/stop/restart controls, and automatically refreshed logs from the title bar.
-- [Go language tools](https://github.com/pencode-labs/go): provides Go language and debug support, automatically installing `gopls` and Delve when missing.
 - [Office Viewer](extensions/office-viewer/README.md): a TypeScript extension for local read-only Word `.docx`, Excel `.xlsx`, and PowerPoint `.pptx` previews.
 - [Markdown preview](https://github.com/pencode-labs/markdown-preview): read-only preview with native source editing and optional split layout.
 - [Material file icons](https://github.com/pencode-labs/material-icons): a file icon theme.
-- [PHP](https://github.com/pencode-labs/php): PHP/Blade language servers with automatic installation and an Xdebug adapter, ported from the Zed PHP extension.
 - [Extension UI](https://github.com/pencode-labs/ui-demo): actions, dialogs, menus, popups, and panels.
 
-For an existing checkout, initialize the submodules with `git submodule update --init --recursive`. Go extensions have independent Go modules; TypeScript extensions have independent npm packages. Each directory includes build instructions. For example, build Go language tools from the repository root with:
+For an existing checkout, initialize the submodules with `git submodule update --init --recursive`. Go extensions have independent Go modules; TypeScript extensions have independent npm packages. Each directory includes build instructions. For example, build the Docker extension from the repository root with:
 
 ```sh
-(cd extensions/go && go build -o bin/go .)
+(cd extensions/docker && go build -o bin/docker .)
 ```
 
-The current extension protocol is peb v20 (CS v11). Older extensions must be rebuilt with the current SDK.
+The current extension protocol is peb v20 (CS v20). Older extensions must be rebuilt with the current SDK.
 
 The workspace host recognizes `.js`, `.mjs`, and `.cjs` entries and launches them with Node.js from its PATH, falling back to Bun. Runtime loading never invokes a package manager; compile TypeScript and bundle dependencies first. See the [TypeScript SDK](peb/ts/README.md). `make install-extensions` uses npm (or Bun) with the lockfile, runs the package build, and installs its output directory, resources and package.json. The package metadata preserves ESM/CJS behavior for `.js`; JavaScript entries keep the same name on every platform.
 

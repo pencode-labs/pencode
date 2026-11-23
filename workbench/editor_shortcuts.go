@@ -46,6 +46,9 @@ func (m *workspaceModel) editorKeyHandled(state *input.State) bool {
 	if state.Composing() {
 		return false
 	}
+	if m.moveAcrossFold(state) {
+		return true
+	}
 	for _, key := range [...]input.KeyCode{input.KeyA, input.KeyC, input.KeyV, input.KeyX} {
 		if state.KeyPressed(key) && state.KeyModifiers(key)&(input.ModifierControl|input.ModifierSuper) != 0 {
 			return true

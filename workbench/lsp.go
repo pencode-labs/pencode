@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/extensions"
 	"github.com/pencode-labs/pencode/lsp"
+	"github.com/pencode-labs/pencode/peb"
 )
 
 type pencodeLanguageKey struct {
@@ -33,6 +35,7 @@ type pencodeLanguageDocument struct {
 	tab         *sourceTab
 	file        *openFile
 	project     *pencodeProject
+	foldSession *pencodeLanguageSession
 	semantic    *pencodeSemanticTokens
 	servers     map[*pencodeLanguageSession]pencodeLanguageSynced
 	diagnostics map[*pencodeLanguageSession][]lsp.Diagnostic
@@ -41,7 +44,9 @@ type pencodeLanguageDocument struct {
 	root        string
 	uri         lsp.URI
 	pane        int
+	foldVersion int
 	version     int
+	foldPending bool
 	seen        bool
 }
 type pencodeLanguageSynced struct {
@@ -109,6 +114,7 @@ type pencodeLanguageJob struct {
 	notify      bool
 	willSave    bool
 	semantic    bool
+	folding     bool
 	hover       bool
 	automatic   bool
 }
@@ -152,20 +158,52 @@ func (model *workspaceModel) removeLanguageServers(prefix string) {
 	}
 	clear(state.servers[len(kept):])
 	state.servers = kept
+	model.stopLanguageSessions(func(key pencodeLanguageKey, _ *extensions.LanguageServer) bool {
+		return strings.HasPrefix(key.id, prefix)
+	})
+}
+
+func (model *workspaceModel) refreshLanguageSettings(id string, previous, current peb.SettingValues) {
+	if model.languages == nil {
+		return
+	}
+	model.stopLanguageSessions(func(_ pencodeLanguageKey, server *extensions.LanguageServer) bool {
+		if extensionOwner(server.ID) == id {
+			for _, arg := range server.Args {
+				if setting, ok := peb.LaunchSetting(arg); ok && !bytes.Equal(previous[setting], current[setting]) {
+					return true
+				}
+			}
+		}
+		return false
+	})
+}
+
+func (model *workspaceModel) stopLanguageSessions(match func(pencodeLanguageKey, *extensions.LanguageServer) bool) {
+	state := model.languages
+	stopped := false
 	for key, session := range state.sessions {
-		if !strings.HasPrefix(key.id, prefix) {
+		if !match(key, session.server) {
 			continue
 		}
+		stopped = true
 		session.cancel()
 		delete(state.sessions, key)
 		model.clearSessionProblems(session)
 		for _, doc := range state.documents {
 			delete(doc.servers, session)
 			delete(doc.diagnostics, session)
+			if doc.foldSession == session {
+				doc.resetFoldProvider()
+			}
 			if doc.semantic != nil && doc.semantic.session == session {
 				doc.semantic = nil
+				model.semanticPaintRevision++
 			}
 		}
+	}
+	if !stopped {
+		return
 	}
 	model.dismissLanguagePanel()
 	model.cancelLanguageAutomatic()
@@ -174,6 +212,10 @@ func (model *workspaceModel) removeLanguageServers(prefix string) {
 	state.panel = pencodeLanguagePanel{}
 }
 func (model *workspaceModel) closeLanguageServers() {
+	if model.builtinTools != nil && model.builtinTools.cancel != nil {
+		model.builtinTools.cancel()
+	}
+	model.builtinTools = nil
 	model.closeReferenceWorker()
 	model.closeHoverWorker()
 	model.cancelLanguageAutomatic()
@@ -181,6 +223,9 @@ func (model *workspaceModel) closeLanguageServers() {
 	model.dismissLanguageContext()
 	if state := model.languages; state != nil {
 		model.dismissLanguagePanel()
+		for _, doc := range state.documents {
+			doc.resetFoldProvider()
+		}
 		for _, session := range state.sessions {
 			session.cancel()
 		}
@@ -199,6 +244,18 @@ func (model *workspaceModel) startLanguageSession(key pencodeLanguageKey, server
 	session := &pencodeLanguageSession{key: key, server: server, jobs: make(chan pencodeLanguageJob, 64), cancel: cancel, done: make(chan struct{})}
 	state.sessions[key] = session
 	wake := model.backgroundWake()
+	var values peb.SettingValues
+	for _, arg := range server.Args {
+		if setting, ok := peb.LaunchSetting(arg); ok {
+			if values == nil {
+				values = make(peb.SettingValues)
+			}
+			if value := model.extensionSettingValues(extensionOwner(server.ID))[setting]; value != nil {
+				values[setting] = value
+			}
+		}
+	}
+	backend := model.backend
 	go func() {
 		defer close(session.done)
 		publish := func(event pencodeLanguageEvent) bool {
@@ -239,7 +296,7 @@ func (model *workspaceModel) startLanguageSession(key pencodeLanguageKey, server
 		}
 		// Extension launchers can install their language tools on first use.
 		startup, stop := context.WithTimeout(ctx, 10*time.Minute)
-		client, err := server.Start(startup, key.root, handler)
+		client, err := server.Start(startup, backend, key.root, values, handler)
 		stop()
 		if err != nil {
 			publish(pencodeLanguageEvent{method: "failed", err: err})
@@ -376,18 +433,18 @@ func (model *workspaceModel) syncLanguageDocuments() {
 		if !file.text() || file.page.Paged {
 			return
 		}
+		var server *extensions.LanguageServer
+		for _, candidate := range state.servers {
+			if candidate.Match(file.Name) {
+				server = candidate
+				break
+			}
+		}
+		if server == nil {
+			return
+		}
 		doc := state.documents[file]
 		if doc == nil {
-			matched := false
-			for _, server := range state.servers {
-				if server.Match(file.Name) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				return
-			}
 			doc = &pencodeLanguageDocument{file: file, tab: tab, pane: pane, project: project, root: root, uri: lsp.FileURI(filepath.Join(directory, filepath.FromSlash(file.Path))), content: file.snapshot(), saved: file.savedContent, version: 1, servers: make(map[*pencodeLanguageSession]pencodeLanguageSynced), diagnostics: make(map[*pencodeLanguageSession][]lsp.Diagnostic)}
 			state.documents[file] = doc
 		}
@@ -401,32 +458,30 @@ func (model *workspaceModel) syncLanguageDocuments() {
 			clear(doc.diagnostics)
 		}
 		doc.saved = file.savedContent
-		for _, server := range state.servers {
-			if !server.Match(file.Name) {
-				continue
-			}
-			session := model.startLanguageSession(pencodeLanguageKey{root, server.ID, pane}, server)
-			if session.client == nil || session.failed {
-				continue
-			}
-			synced, exists := doc.servers[session]
-			if exists && synced.version == doc.version && synced.saveRevision == file.saveRevision {
-				continue
-			}
-			job := pencodeLanguageJob{document: doc, uri: doc.uri, content: doc.content, version: doc.version, save: exists && synced.saveRevision != file.saveRevision, saved: doc.saved}
-			if synced.update.replace(job) {
-				doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: synced.update}
-				continue
-			}
-			if len(session.jobs) == cap(session.jobs) {
-				continue
-			}
-			update := &pencodeLanguageUpdate{job: job}
-			select {
-			case session.jobs <- pencodeLanguageJob{update: update}:
-				doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: update}
-			default:
-			}
+		if tools := model.builtinTools; tools != nil && tools.changing != "" && tools.changing == server.LocalID && strings.HasPrefix(server.ID, "builtin/") {
+			return
+		}
+		session := model.startLanguageSession(pencodeLanguageKey{root, server.ID, pane}, server)
+		if session.client == nil || session.failed {
+			return
+		}
+		synced, exists := doc.servers[session]
+		if exists && synced.version == doc.version && synced.saveRevision == file.saveRevision {
+			return
+		}
+		job := pencodeLanguageJob{document: doc, uri: doc.uri, content: doc.content, version: doc.version, save: exists && synced.saveRevision != file.saveRevision, saved: doc.saved}
+		if synced.update.replace(job) {
+			doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: synced.update}
+			return
+		}
+		if len(session.jobs) == cap(session.jobs) {
+			return
+		}
+		update := &pencodeLanguageUpdate{job: job}
+		select {
+		case session.jobs <- pencodeLanguageJob{update: update}:
+			doc.servers[session] = pencodeLanguageSynced{version: doc.version, saveRevision: file.saveRevision, update: update}
+		default:
 		}
 	}
 	if len(model.projects) > 0 {
@@ -514,7 +569,7 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 			if state.sessions[event.session.key] != event.session {
 				continue
 			}
-			if event.method != "textDocument/publishDiagnostics" && event.method != "workspace/semanticTokens/refresh" && event.method != "window/logMessage" && event.method != "window/showMessage" && !(event.method == "result" && event.job.semantic) {
+			if event.method != "textDocument/publishDiagnostics" && event.method != "workspace/semanticTokens/refresh" && event.method != "window/logMessage" && event.method != "window/showMessage" && !(event.method == "result" && (event.job.semantic || event.job.folding)) {
 				changed = true
 			}
 			switch event.method {
@@ -604,6 +659,10 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 					}
 				}
 			case "result":
+				if event.job.folding {
+					model.acceptLanguageFolds(event)
+					continue
+				}
 				if event.job.semantic {
 					model.acceptLanguageSemantic(event)
 					model.refreshRegion(world, pencodeRefreshEditor)
@@ -634,6 +693,7 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 			}
 		default:
 			model.scheduleLanguageSemantic()
+			model.scheduleLanguageFolds()
 			return changed
 		}
 	}

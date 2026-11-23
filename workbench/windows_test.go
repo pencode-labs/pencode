@@ -271,16 +271,106 @@ func TestWindowRequestsUseApplicationOpener(t *testing.T) {
 	if len(requests) != 1 || len(requests[0]) != 0 {
 		t.Fatal("new window did not use the owning application")
 	}
-	// Local drops must never create another window or replace remote edits.
+	// The whole batch goes to a local window.
 	profile := connection.Profile{SSH: remote.Target{Host: "remote-host"}}
 	s.connection = &pencodeConnection{workspaceProfile: profile}
 	p := &pencodeProject{Path: "/remote/project", Files: make(map[string]*openFile)}
 	m.projects, m.activeProjectIndex = []*pencodeProject{p}, 0
 	s.OpenPaths("/local/first.txt", "/local/second.txt")
-	if !s.pollExternalPaths(m) || len(requests) != 1 || m.status == "" {
-		t.Fatal("local drop opened another window or failed silently")
+	if !s.pollExternalPaths(m) || len(requests) != 2 || !slices.Equal(requests[1], []string{"/local/first.txt", "/local/second.txt"}) {
+		t.Fatal("local drop did not forward both paths to a local window")
 	}
 	if s.connection.workspaceProfile != profile || len(s.externalPaths) != 0 {
 		t.Fatal("opening another window modified the current connection")
+	}
+}
+
+func TestDuplicateProjectSelectsExistingTabOnItsHost(t *testing.T) {
+	owner, project := resourceTestModel(t)
+	s := newPencodeTestSession(t, project.backend)
+	owner.session, s.active = s, &Mod{model: owner}
+	remoteHost := connection.Profile{SSH: remote.Target{Host: "one", Port: 2222}}
+	s.ConfigureConnection(nil, connection.Profile{})
+	s.connection.workspaceProfile = remoteHost
+	t.Cleanup(s.Close)
+	resourceTestWrite(t, project, "dirty.go", "original")
+	openProjectFile(project, "dirty.go")
+	owner.syncActiveProjectFields()
+	owner.updateActiveContent("unsaved")
+	file, doc := owner.activeFile(), owner.activeFile().document
+	other := &pencodeProject{Path: "/other"}
+	owner.projects = append(owner.projects, other)
+	owner.activateProject(other)
+	source, m := externalTestSession(t)
+	source.SetProjectActivator(func(_ *Session, profile connection.Profile, path string) bool {
+		return s.ActivateProject(profile, path)
+	})
+	entry := pencodeRecentProject{Path: project.Path, Profile: remoteHost}
+	entry.Profile.Name = "renamed"
+	m.openRecentProject(entry)
+	if owner.activeProjectState() != project || owner.activeFile() != file || file.document != doc || file.content() != "unsaved" || !file.Dirty || m.fileIO != nil || owner.fileIO != nil {
+		t.Fatal("duplicate open did not select the original unsaved tab without I/O")
+	}
+	if allocations := testing.AllocsPerRun(100, func() { s.ActivateProject(remoteHost, project.Path) }); allocations != 0 {
+		t.Fatalf("activating current project allocated %g times", allocations)
+	}
+	for _, profile := range []connection.Profile{{}, {SSH: remote.Target{Host: "two", Port: 2222}}, {SSH: remote.Target{Host: "one", Port: 22}}} {
+		if s.ActivateProject(profile, project.Path) {
+			t.Fatal("matched an identical path on another host", profile)
+		}
+	}
+}
+
+func TestRemoteWindowRoutesAnotherHostAfterClosingLastTab(t *testing.T) {
+	s, m := externalTestSession(t)
+	first := connection.Profile{SSH: remote.Target{Host: "first"}}
+	second := connection.Profile{SSH: remote.Target{Host: "second"}}
+	s.ConfigureConnection(nil, connection.Profile{})
+	s.connection.workspaceProfile = first
+	backend := newPencodeBackend(t)
+	s.connection.links[second.Endpoint()] = &pencodeRemoteLink{backend: backend, profile: second}
+	t.Cleanup(s.Close)
+	var opened connection.Profile
+	s.SetWindowOpener(func(paths []string, profile connection.Profile) error {
+		if len(paths) != 0 {
+			t.Fatal("remote project received as a local path")
+		}
+		opened = profile
+		return nil
+	})
+	second.Directory = t.TempDir()
+	m.openRemoteProject(second)
+	waitProjectPicker(t, m)
+	m.projectPickerEvent("connection-project-open", "")
+	if !opened.SameHost(second) || opened.Directory != filepath.ToSlash(second.Directory) || s.windowProfile() != first || m.backend == backend {
+		t.Fatal("empty remote window was reassigned to the other host")
+	}
+}
+
+func TestRemoteWindowQueuesProjectsDuringLaunch(t *testing.T) {
+	s, m := externalTestSession(t)
+	profile := connection.Profile{SSH: remote.Target{Host: "dev"}, Directory: t.TempDir()}
+	backend := newPencodeBackend(t)
+	s.ConfigureConnection(func(context.Context, connection.Profile, func(string)) (*client.Client, error) { return backend, nil }, profile)
+	t.Cleanup(s.Close)
+	next := profile
+	next.Directory = t.TempDir()
+	if !s.ActivateProject(profile, profile.Directory) || !s.QueueRemoteProject(next) || !s.ActivateProject(next, next.Directory) || s.pollRemoteProjects(m) {
+		t.Fatal("remote window lost ownership of its pending projects")
+	}
+	m.pollConnection()
+	waitConnection(t, m)
+	waitProjectPicker(t, m)
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	if !s.pollRemoteProjects(m) {
+		t.Fatal("second project was left pending")
+	}
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.projects) != 2 || m.activeProjectState().Path != next.Directory || m.backend != backend {
+		t.Fatal("queued project did not open on its host")
 	}
 }

@@ -1,4 +1,6 @@
-# Pencode CS v18
+# Pencode CS v20
+
+v20 增加 LanguageTools，在工作区主机上检测、安装、更新或卸载内置语言服务器。GUI 与 server 必须同时更新。
 
 v18 为 TerminalOpen 增加工作目录。GUI 与 server 必须同时更新。
 

@@ -31,12 +31,14 @@ func runGit(ctx context.Context, root string, args []string, input []byte, outpu
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	argv := []string{"--no-optional-locks"}
+	argv := make([]string, 0, len(args)+8)
+	argv = append(argv, "--no-optional-locks")
 	if args[0] != "check-ignore" {
 		argv = append(argv, "--literal-pathspecs")
 	}
 	argv = append(argv, "-c", "core.quotePath=false", "-c", "color.ui=false", "-C", root)
-	cmd := exec.CommandContext(ctx, "git", append(argv, args...)...)
+	cmd := exec.CommandContext(ctx, gitExecutable(), append(argv, args...)...)
+	cmd.Args[0] = "git"
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)
 	}

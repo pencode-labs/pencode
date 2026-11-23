@@ -3,7 +3,8 @@ package server
 import (
 	"context"
 	"errors"
-	"io/fs"
+	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,42 +27,62 @@ func repositoryRoots(ctx context.Context, root string) ([]string, error) {
 		}
 	}
 	add(root) // A project can also be a directory inside a repository.
-	entries := 0
-	err := filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() {
+		return roots, err
+	}
+	// Only directory paths survive a batch. The order of entries in the
+	// filesystem is immaterial since the much smaller root list is sorted.
+	pending := []string{root}
+	entries := 1
+	for len(pending) != 0 {
+		directory := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		f, err := os.Open(directory)
 		if err != nil {
-			if name == root {
-				return err
+			if directory == root {
+				return nil, err
 			}
-			return nil // An unreadable sibling must not hide other repositories.
+			continue
 		}
-		entries++
-		if entries > 262144 {
-			return errors.New("repository scan exceeds 262144 entry budget")
-		}
-		if name == root {
-			return nil
-		}
-		switch entry.Name() {
-		case ".git":
-			if len(roots) >= 4096 {
-				return errors.New("repository count exceeds budget")
+		for {
+			children, readErr := f.ReadDir(128)
+			entries += len(children)
+			if entries > 262144 || ctx.Err() != nil {
+				f.Close()
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				return nil, errors.New("repository scan exceeds 262144 entry budget")
 			}
-			add(filepath.Dir(name)) // Includes .git files used by submodules/worktrees.
-			if entry.IsDir() {
-				return fs.SkipDir
+			for _, entry := range children {
+				switch entry.Name() {
+				case ".git":
+					if len(roots) >= 4096 {
+						f.Close()
+						return nil, errors.New("repository count exceeds budget")
+					}
+					if directory != root {
+						add(directory) // Includes submodule and worktree .git files.
+					}
+				case "node_modules", "dist":
+				default:
+					if entry.IsDir() {
+						pending = append(pending, filepath.Join(directory, entry.Name()))
+					}
+				}
 			}
-		case "node_modules", "dist":
-			if entry.IsDir() {
-				return fs.SkipDir
+			if readErr != nil {
+				f.Close()
+				if directory == root && readErr != io.EOF {
+					return nil, readErr
+				}
+				break
 			}
 		}
-		return nil
-	})
+	}
 	slices.Sort(roots)
-	return roots, err
+	return roots, ctx.Err()
 }
 
 func (s *services) gitRepositories(ctx context.Context, root string, d *protocol.Decoder, e *protocol.Encoder) error {

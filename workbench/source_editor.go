@@ -292,7 +292,9 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 			message = a.tr("从远程拉取并仅以 fast-forward 方式更新当前分支？")
 		}
 		b.text("p", "message", message, "id", "sc-prompt-message", "class", "pencode-close-message")
-		if s.Prompt != "delete-branch" && s.Prompt != "rename-branch" && len(s.PromptHash) >= 40 {
+		if s.Prompt == "discard-file" || s.Prompt == "discard-folder" {
+			b.text("code", "path", s.PromptHash)
+		} else if s.Prompt != "delete-branch" && s.Prompt != "rename-branch" && len(s.PromptHash) >= 40 {
 			b.text("code", "hash", s.PromptHash)
 		}
 		if s.Prompt == "branch" || s.Prompt == "tag" || s.Prompt == "rename-branch" {

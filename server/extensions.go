@@ -401,8 +401,14 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		return nil
 	case protocol.ExtensionProcess, protocol.ExtensionLanguageProcess:
 		language := ""
+		var values peb.SettingValues
 		if op == protocol.ExtensionLanguageProcess {
 			language = d.String()
+			var err error
+			values, err = peb.DecodeSettingValues(d.Bytes())
+			if err != nil {
+				return err
+			}
 		}
 		if err := d.Done(); err != nil {
 			return err
@@ -410,7 +416,7 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		if !entry.committed || entry.registration.Info.Disabled || entry.root == nil || op == protocol.ExtensionLanguageProcess && root == "" {
 			return fmt.Errorf("extension is not active")
 		}
-		return s.openProcess(ctx, id, entry, root, language, e)
+		return s.openProcess(ctx, id, entry, root, language, values, e)
 	}
 	return protocol.ErrProtocol
 }
@@ -436,7 +442,7 @@ func (s *extensionService) readResource(entry *extensionEntry, name string, limi
 	return data, nil
 }
 
-func (s *extensionService) openProcess(ctx context.Context, id uint64, entry *extensionEntry, root, language string, e *protocol.Encoder) error {
+func (s *extensionService) openProcess(ctx context.Context, id uint64, entry *extensionEntry, root, language string, values peb.SettingValues, e *protocol.Encoder) error {
 	s.owner.mu.Lock()
 	defer s.owner.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -499,7 +505,12 @@ func (s *extensionService) openProcess(ctx context.Context, id uint64, entry *ex
 			f.Close()
 			command = filepath.Join(entry.registration.Info.Path, command)
 		}
-		p, err = transport.StartWithOutput(root, command, childLogs, server.Args...)
+		args, settingsErr := server.LaunchArgs(entry.registration.Contributions.Settings, values)
+		if settingsErr != nil {
+			err = settingsErr
+			break
+		}
+		p, err = transport.StartWithOutput(root, command, childLogs, args...)
 		break
 	}
 	childLogs.Close()

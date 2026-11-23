@@ -193,7 +193,7 @@ func (paint *pencodeDiagnosticPaint) sync(world *module.Content, model *workspac
 	size, _ := world.Get[scene.Size2D](model.editor.control)
 	stack, _ := world.Get[scene.UIStackIndex](model.editor.text)
 	key := pencodeDiagnosticPaintKey{
-		layout: pencodeGutterLayoutKey{value: text.Text(), font: text.Font, fontSize: text.FontSize, dpi: text.DPI, wrapWidth: text.WrapWidth, tabWidth: text.TabWidth, wrapMode: text.WrapMode},
+		layout: gutterLayoutKey(text),
 		file:   file, revision: paint.revision, x: transform.Translation.X.Value, y: transform.Translation.Y.Value,
 		width: size.Width, height: size.Height, spacing: text.LetterSpacing, lineHeight: text.LineHeight,
 		ink: text.InkOffsetY, stack: stack, colors: model.workbenchTheme.diagnosticColors,

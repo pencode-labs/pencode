@@ -1,6 +1,7 @@
 package windowstate
 
 import (
+	"encoding/binary"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -22,4 +23,18 @@ func lock(name string, wait bool) (*os.File, error) {
 		return nil, err
 	}
 	return file, nil
+}
+
+var allowSetForegroundWindow = windows.NewLazySystemDLL("user32.dll").NewProc("AllowSetForegroundWindow")
+
+// The foreground process launching a second instance can pass its permission
+// to activate a window to the GUI. The dispatch lock protects the owner's PID.
+func desktopForeground(guard *os.File, owner bool) {
+	var data [4]byte
+	if owner {
+		binary.LittleEndian.PutUint32(data[:], uint32(os.Getpid()))
+		_, _ = guard.WriteAt(data[:], 0)
+	} else if _, err := guard.ReadAt(data[:], 0); err == nil {
+		allowSetForegroundWindow.Call(uintptr(binary.LittleEndian.Uint32(data[:])))
+	}
 }

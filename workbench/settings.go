@@ -89,20 +89,22 @@ var pencodeShortcutDefinitions = [...]pencodeShortcutDefinition{
 }
 
 type pencodeSettings struct {
-	Pprof       *bool                                   `json:"pprof,omitempty"`
-	Bindings    map[string]pencodeKeybinding            `json:"bindings"`
-	Keymaps     map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
-	Extensions  map[string]peb.SettingValues            `json:"extensions,omitempty"`
-	CodeFont    string                                  `json:"codeFont"`
-	UIFont      string                                  `json:"uiFont"`
-	Language    string                                  `json:"language"`
-	Theme       string                                  `json:"theme"`
-	IconTheme   string                                  `json:"iconTheme"`
-	Keymap      string                                  `json:"keymap"`
-	FontSize    int                                     `json:"fontSize"`
-	UIFontSize  int                                     `json:"uiFontSize"`
-	EditorWidth int                                     `json:"editorWidth"`
-	Zoom        int                                     `json:"zoom"`
+	LanguageServers map[string]string                       `json:"languageServers,omitempty"`
+	ServerPaths     map[string]string                       `json:"languageServerPaths,omitempty"`
+	Pprof           *bool                                   `json:"pprof,omitempty"`
+	Bindings        map[string]pencodeKeybinding            `json:"bindings"`
+	Keymaps         map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
+	Extensions      map[string]peb.SettingValues            `json:"extensions,omitempty"`
+	CodeFont        string                                  `json:"codeFont"`
+	UIFont          string                                  `json:"uiFont"`
+	Language        string                                  `json:"language"`
+	Theme           string                                  `json:"theme"`
+	IconTheme       string                                  `json:"iconTheme"`
+	Keymap          string                                  `json:"keymap"`
+	FontSize        int                                     `json:"fontSize"`
+	UIFontSize      int                                     `json:"uiFontSize"`
+	EditorWidth     int                                     `json:"editorWidth"`
+	Zoom            int                                     `json:"zoom"`
 }
 
 func defaultPencodeSettings() pencodeSettings {
@@ -183,6 +185,7 @@ func parsePencodeSettings(data []byte) pencodeSettings {
 	if saved.Language != "" {
 		settings.Language = saved.Language
 	}
+	settings.LanguageServers, settings.ServerPaths = saved.LanguageServers, saved.ServerPaths
 	settings.Extensions = saved.Extensions
 	settings.Pprof = saved.Pprof
 	settings.IconTheme = saved.IconTheme
@@ -442,6 +445,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		if context.Ref == definition.ref {
 			model.settingsOpen = true
 			model.settingsShortcuts = true
+			model.settingsLanguageServers = false
 			model.settingsAbout = false
 			model.settingsExtensions = false
 			model.capturingShortcut = true
@@ -472,6 +476,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		model.capturingShortcut = false
 		return true
 	case "settings-extensions-nav":
+		model.settingsLanguageServers = false
 		model.settingsAbout = false
 		model.settingsExtensionsExpanded = !model.settingsExtensionsExpanded
 		model.settingsExtensions, model.settingsShortcuts, model.capturingShortcut = true, false, false
@@ -480,7 +485,14 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 	case "reset-extension-settings":
 		model.resetExtensionSettings()
 		return true
-	case "settings-appearance-nav", "settings-shortcuts-nav", "settings-about-nav":
+	case "language-tools-refresh":
+		model.startBuiltinTools("", "")
+		return true
+	case "settings-appearance-nav", "settings-shortcuts-nav", "settings-about-nav", "settings-language-servers-nav":
+		model.settingsLanguageServers = context.Ref == "settings-language-servers-nav"
+		if model.settingsLanguageServers {
+			model.startBuiltinTools("", "")
+		}
 		model.settingsExtensions = false
 		model.settingsShortcuts = context.Ref == "settings-shortcuts-nav"
 		model.settingsAbout = context.Ref == "settings-about-nav"

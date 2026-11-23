@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,17 @@ func (m *workspaceModel) newTerminal() *pencodeTerminal {
 	return m.openTerminal("")
 }
 
+func (t *pencodeTerminals) nextLabel() string {
+	for number := 1; ; number++ {
+		suffix := strconv.Itoa(number)
+		if !slices.ContainsFunc(t.items, func(item *pencodeTerminal) bool {
+			return item.label == "Terminal "+suffix
+		}) {
+			return "Terminal " + suffix
+		}
+	}
+}
+
 func (m *workspaceModel) openTerminal(cwd string) *pencodeTerminal {
 	if !m.backendConnected() {
 		m.setActiveStatus(m.tr("工作区服务未连接，请等待连接恢复"))
@@ -59,7 +71,7 @@ func (m *workspaceModel) openTerminal(cwd string) *pencodeTerminal {
 		}
 	}
 	id := strconv.FormatUint(t.nextID, 10)
-	item := &pencodeTerminal{id: id, root: root, label: "Terminal " + id, selectRef: "terminal-tab:" + id, closeRef: "terminal-close:" + id, screen: terminal.NewScreen(80, 12)}
+	item := &pencodeTerminal{id: id, root: root, label: t.nextLabel(), selectRef: "terminal-tab:" + id, closeRef: "terminal-close:" + id, screen: terminal.NewScreen(80, 12)}
 	backend := m.backend
 	item.session = terminal.Attach(80, 12, m.backgroundWake(), func() (terminal.Process, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -116,7 +128,7 @@ func (m *workspaceModel) openExtensionSettings(id string) {
 	m.ensureSettings()
 	m.settingsOpen = true
 	m.settingsShortcuts = false
-	m.settingsAbout = false
+	m.settingsAbout, m.settingsLanguageServers = false, false
 	m.settingsExtensions = true
 	m.settingsExtensionsExpanded = true
 	m.settingsExtension = id

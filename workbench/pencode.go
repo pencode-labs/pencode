@@ -67,6 +67,7 @@ type treeEntry struct {
 func (e treeEntry) Name() string { return e.Path[strings.LastIndexByte(e.Path, '/')+1:] }
 
 type openFile struct {
+	folds           *editorFolds
 	document        *client.Document
 	customEditor    *extensions.Editor
 	savedContent    piecetree.Snapshot
@@ -126,6 +127,7 @@ type pencodeProject struct {
 }
 
 type workspaceModel struct {
+	builtinTools                        *pencodeBuiltinTools
 	locale                              localization.Pack
 	languagePacks                       []pencodeLanguagePack
 	languageOptions                     []htmlui.VNode
@@ -281,6 +283,7 @@ type workspaceModel struct {
 	allDirectoriesCollapsed             bool
 	replaceOpen                         bool
 	findNeedsFocus                      bool
+	settingsLanguageServers             bool
 	settingsShortcuts                   bool
 	settingsAbout                       bool
 	highlighted                         bool
@@ -613,6 +616,14 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	languageChoice, err := newLanguageChoiceDefinition(content)
+	if err != nil {
+		return nil, err
+	}
+	languageTool, err := newLanguageToolDefinition(content)
+	if err != nil {
+		return nil, err
+	}
 	settingNav, err := newSettingNavDefinition(content)
 	if err != nil {
 		return nil, err
@@ -675,6 +686,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					context.Props.Model.renderExtensionSettings(view, settingNav, settingRow)
 					context.Props.Model.renderShortcutSettings(view, shortcutRow)
 					context.Props.Model.renderUpdates(view)
+					context.Props.Model.renderLanguageSettings(view, languageChoice, languageTool)
 				}
 				if context.Props != nil && context.Props.Model != nil {
 					context.Props.Model.renderInputContext(view, inputContextDefinition)
@@ -1413,8 +1425,8 @@ func setPencodeEditorValue(world *module.Content, page ecs.Entity, value string)
 }
 
 func (model *workspaceModel) chooseProject() {
-	if model != nil && model.session != nil && model.session.connection != nil && model.session.connection.workspaceProfile.Remote() {
-		model.openRemoteProject(model.session.connection.workspaceProfile)
+	if model != nil && model.session.windowProfile().Remote() {
+		model.openProjectHost(model.session.windowProfile())
 		return
 	}
 	model.chooseLocalProject()
@@ -1431,7 +1443,7 @@ func (model *workspaceModel) chooseLocalProject() {
 		}
 		return
 	}
-	remoteWorkspace := model.session != nil && model.session.connection != nil && model.session.connection.workspaceProfile.Remote()
+	remoteWorkspace := model.session.windowProfile().Remote()
 	defaultPath := model.lastDirectory
 	if remoteWorkspace {
 		defaultPath = ""
@@ -1444,6 +1456,7 @@ func (model *workspaceModel) chooseLocalProject() {
 	if directory == "" {
 		return
 	}
+	directory = LocalOpenPath(directory)
 	if remoteWorkspace {
 		if err := model.session.OpenWindow([]string{directory}); err != nil {
 			model.setActiveStatus(model.tr("打开本地窗口失败：") + err.Error())
@@ -1459,6 +1472,9 @@ func (model *workspaceModel) chooseLocalProject() {
 func (model *workspaceModel) loadProject(directory string) error {
 	if model == nil {
 		return fmt.Errorf("%s", model.tr("项目工作区不可用"))
+	}
+	if model.focusOpenProject(model.session.windowProfile(), directory) {
+		return nil
 	}
 	if model.backend == nil {
 		return fmt.Errorf("%s", model.tr("工作区服务未连接"))
@@ -2250,6 +2266,9 @@ func (model *workspaceModel) applyFileSnapshot(file *openFile, project *pencodeP
 	if file.page.Paged {
 		file.page.Size = file.page.Size - uint64(file.snapshot().Len()) + uint64(value.Len())
 	}
+	if file.folds != nil && file.folds.source == file.snapshot() {
+		file.folds.edit(value, start, oldSuffix, &file.buffer)
+	}
 	file.contentSnapshot = value
 	file.updatePageLabel()
 	model.rebaseDebugBreakpoints(project, file, value, start, oldSuffix, newSuffix)
@@ -2481,6 +2500,7 @@ func updatePencodeShortcuts(context *module.ContentSystemContext, model *workspa
 	model.updateFilePageWheel(context.World, state)
 	model.updateImagePointer(context.World, state)
 	changed := model.updateWorkbenchResize(context.World, state)
+	model.updateFoldPointer(context.World, state)
 	if model.updateDebugPointer(context.World, state) {
 		changed = true
 	}

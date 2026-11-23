@@ -132,6 +132,43 @@ func TestSourceControlStageAndUnstageAll(t *testing.T) {
 	}
 }
 
+func TestSourceControlDiscardPromptPath(t *testing.T) {
+	for _, tc := range []struct{ action, path, file string }{
+		{"sc-discard", "演示文稿.pptx", "演示文稿.pptx"},
+		{"sc-discard", "a.go", "a.go"},
+		{"sc-discard-folder", "资料/第 1 版+%20", "资料/第 1 版+%20/test.go"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			r := sourceTestRepository(t)
+			sourceTestWrite(t, r, tc.file, "changed\n")
+			sourceTestWrite(t, r, "keep.go", "unrelated\n")
+			m := &workspaceModel{}
+			s := m.sourceState()
+			t.Cleanup(s.stop)
+			s.Snapshot = sourceTestSnapshot(t, r)
+			m.sourceAction(tc.action + ":changes:" + url.PathEscape(tc.path))
+			var view sourceVNodeView
+			view.reset()
+			m.renderSourcePrompt(&view)
+			if !slices.ContainsFunc(view.groups[:view.used], func(g sourceVNodeGroup) bool { return g.node.Text == tc.path }) {
+				t.Fatalf("discard prompt did not display %q", tc.path)
+			}
+			m.sourceAction("sc-prompt-confirm")
+			select {
+			case result := <-s.Done:
+				if result.Err != nil {
+					t.Fatal(result.Err)
+				}
+				if files := result.Snapshot.Groups[2]; len(files) != 1 || files[0].Path != "keep.go" {
+					t.Fatalf("unexpected remaining changes: %+v", files)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("discard timed out")
+			}
+		})
+	}
+}
+
 func TestSourceControlDiscardAll(t *testing.T) {
 	for _, dirty := range []bool{false, true} {
 		t.Run(strconv.FormatBool(dirty), func(t *testing.T) {

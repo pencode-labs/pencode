@@ -133,6 +133,7 @@
       <nav id="settings-category-nav" class="pencode-settings-nav" aria-label="设置分类">
         <button id="settings-appearance-nav" data-ref="settings-appearance-nav" class="pencode-settings-nav-item active" type="button" aria-current="page">外观</button>
         <button id="settings-shortcuts-nav" data-ref="settings-shortcuts-nav" class="pencode-settings-nav-item" type="button">快捷键</button>
+        <button id="settings-language-servers-nav" data-ref="settings-language-servers-nav" class="pencode-settings-nav-item" type="button">语言服务器</button>
         <button id="settings-extensions-nav" data-ref="settings-extensions-nav" class="pencode-settings-nav-item" type="button" aria-expanded="false" aria-controls="settings-extension-list"><img data-ref="settings-extensions-toggle" class="pencode-settings-toggle" src="icons/chevron-right.svg" alt="">扩展</button>
         <div id="settings-extension-list" data-ref="settings-extension-list"></div>
         <button id="settings-about-nav" data-ref="settings-about-nav" class="pencode-settings-nav-item" type="button">关于</button>
@@ -195,6 +196,11 @@
               <button data-ref="zoom-increase" type="button" title="放大界面" aria-label="放大界面">+</button>
             </div>
           </div>
+        </section>
+        <section id="settings-language-servers-pane" data-ref="settings-language-servers-pane" hidden>
+          <div data-ref="language-choices" class="pencode-language-choices"></div>
+          <div class="pencode-language-actions"><button data-ref="language-tools-refresh" class="pencode-settings-reset" type="button">重新检测</button><span data-ref="language-tools-feedback" role="status" aria-live="polite"></span></div>
+          <div data-ref="language-tool-list"></div>
         </section>
         <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
           <div class="pencode-settings-row pencode-setting-toggle-row">

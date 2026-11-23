@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/onix-engine/onix/input"
+	"github.com/pencode-labs/pencode/connection"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
@@ -39,19 +40,14 @@ func (s *Session) pollExternalPaths(m *workspaceModel) bool {
 	if len(s.externalPaths) == 0 {
 		return false
 	}
-	if c := s.connection; c != nil {
-		if c.busy || c.launch {
-			return false
-		}
-		if c.workspaceProfile.Remote() {
-			if len(m.projects) == 0 && m.beginLocalConnection() {
-				return true
-			}
-			m.setActiveStatus(m.tr("请先关闭当前项目，再打开其他设备的项目"))
-			clear(s.externalPaths)
-			s.externalPaths = nil
-			return true
-		}
+	if s.windowProfile().Remote() {
+		m.setWindowOpenError(s.OpenWindow(s.externalPaths))
+		clear(s.externalPaths)
+		s.externalPaths = nil
+		return true
+	}
+	if c := s.connection; c != nil && c.busy {
+		return false
 	}
 	name, err := filepath.Abs(s.externalPaths[0])
 	s.externalPaths[0] = ""
@@ -63,6 +59,9 @@ func (s *Session) pollExternalPaths(m *workspaceModel) bool {
 		m.app.RequestRender()
 	}
 	if err == nil {
+		if m.focusOpenProject(connection.Profile{}, name) {
+			return true
+		}
 		job := &fileIOJob{kind: fileOpenExternal, relative: name}
 		// Prefer the deepest open workspace containing the requested file.
 		for _, p := range m.projects {
@@ -143,6 +142,12 @@ func (m *workspaceModel) acceptExternalOpen(r *fileIOResult) {
 	}
 	// A file's parent is only an editing workspace, not an opened project.
 	if r.destination == "" {
+		if m.focusOpenProject(connection.Profile{}, r.workspace.Path) {
+			if m.projectIndex(r.workspace.Path) < 0 {
+				m.queueWorkspaceRelease(r.job.backend, r.workspace.ID)
+			}
+			return
+		}
 		m.rememberRecentProject(r.workspace)
 	}
 	m.acceptWorkspace(r.job.backend, r.workspace, r.destination != "")

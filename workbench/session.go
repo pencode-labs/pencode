@@ -20,23 +20,25 @@ import (
 // Session keeps the foreground model available while preloaded views own their
 // HTML, editor entities and resource readers independently.
 type Session struct {
-	externalJob     *fileIOJob
-	updates         *pencodeUpdates
-	quickHistory    *pencodeQuickHistory
-	localBackend    *client.Client
-	connection      *pencodeConnection
-	active          *Mod
-	extensions      *extensions.Host
-	views           map[*Mod]struct{}
-	market          *pencodeMarketplace
-	backend         *client.Client
-	recentProjects  *pencodeRecentProjects
-	fonts           map[string]pencodeFont
-	settingsWriters map[*client.Client]*pencodeSettingsWriter
-	window          *pencodeWindow
-	openWindow      func([]string, connection.Profile) error
-	externalPaths   []string
-	stateDirectory  string
+	externalJob       *fileIOJob
+	updates           *pencodeUpdates
+	quickHistory      *pencodeQuickHistory
+	localBackend      *client.Client
+	connection        *pencodeConnection
+	active            *Mod
+	extensions        *extensions.Host
+	views             map[*Mod]struct{}
+	market            *pencodeMarketplace
+	backend           *client.Client
+	recentProjects    *pencodeRecentProjects
+	fonts             map[string]pencodeFont
+	settingsWriters   map[*client.Client]*pencodeSettingsWriter
+	window            *pencodeWindow
+	focusOtherProject func(*Session, connection.Profile, string) bool
+	openWindow        func([]string, connection.Profile) error
+	remoteProjects    []string
+	externalPaths     []string
+	stateDirectory    string
 	// Actions accepts native registrations before or after the session starts.
 	Actions actions.Registry
 	Output  output.Store
@@ -120,7 +122,7 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 		System: func(context *ecs.SystemContext) error {
 			state, _ := context.World.GetResource[*input.State]()
 			previousRevision := state.TextInputConfig().Revision
-			changed := s.syncLayout()
+			changed := s.syncLayout(state)
 			if s.active != nil && s.active.model.syncImagePreview(s.active.model.fontResources) {
 				if err := s.active.model.fontResources.SyncHTML(); err != nil {
 					return err
@@ -157,7 +159,7 @@ func (s *Session) LayoutSystem() ecs.SystemConfig {
 	}
 }
 
-func (s *Session) syncLayout() (scrollChanged bool) {
+func (s *Session) syncLayout(state *input.State) (scrollChanged bool) {
 	if s.active == nil {
 		return
 	}
@@ -200,7 +202,7 @@ func (s *Session) syncLayout() (scrollChanged bool) {
 	model.focusFolderSearch(model.fontResources)
 	model.constrainFileContext(model.fontResources)
 	model.focusLanguageControls(model.fontResources)
-	model.restoreEditorFocus(model.fontResources)
+	model.restoreEditorFocus(model.fontResources, state)
 	model.editor.syncCaretStatus(model.fontResources, model.surface, model)
 	model.editor.syncGutter(model.fontResources, model.surface, model)
 	model.editor.syncWidthGuide(model.fontResources, model.settings.EditorWidth, model.workbenchTheme.guide)

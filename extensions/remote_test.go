@@ -195,7 +195,8 @@ func TestRemoteLanguageHelperProcess(t *testing.T) {
 	if err != nil {
 		os.Exit(1)
 	}
-	fmt.Fprint(os.Stdout, directory)
+	fmt.Fprintln(os.Stdout, directory)
+	fmt.Fprint(os.Stdout, os.Args[len(os.Args)-2])
 	os.Exit(0)
 }
 
@@ -222,7 +223,7 @@ func TestRemoteExtensionRelativeLanguageProcessAfterPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	process, err := bundle.LanguageServers[0].remote.OpenLanguageServer(t.Context(), workspace.Path, "relative")
+	process, err := bundle.LanguageServers[0].remote.OpenLanguageServer(t.Context(), workspace.Path, "relative", peb.SettingValues{"argument": json.RawMessage(`"argument with spaces"`)})
 	if err != nil {
 		t.Fatal("relative executable did not resolve after staging rename", err)
 	}
@@ -231,7 +232,7 @@ func TestRemoteExtensionRelativeLanguageProcessAfterPublish(t *testing.T) {
 	go func() { defer close(done); _, _ = io.Copy(io.Discard, process.Stderr()) }()
 	data, err := io.ReadAll(process)
 	<-done
-	if err != nil || string(data) != workspace.Path {
+	if err != nil || string(data) != workspace.Path+"\nargument with spaces" {
 		t.Fatal("language process did not use the server workspace", string(data), err)
 	}
 	if err := process.Wait(); err != nil {

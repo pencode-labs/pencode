@@ -25,3 +25,5 @@ func lock(name string, wait bool) (*os.File, error) {
 	}
 	return file, nil
 }
+
+func desktopForeground(*os.File, bool) {}

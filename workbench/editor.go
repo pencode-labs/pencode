@@ -6,6 +6,7 @@ import (
 
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
 	"github.com/onix-engine/onix/text"
@@ -15,6 +16,11 @@ import (
 )
 
 type pencodeEditor struct {
+	foldPreedit                         piecetree.Snapshot
+	compositionFolds                    scene.TextLineLayout2D
+	foldWorker                          *latestWorker[indentFoldJob, indentFoldResult]
+	foldJob                             indentFoldJob
+	foldIcons                           []ecs.Entity
 	file                                *openFile
 	compositionSource, compositionValue piecetree.Snapshot
 	caretContent                        piecetree.Snapshot
@@ -47,6 +53,7 @@ type pencodeGutterLayoutKey struct {
 	value               piecetree.Snapshot
 	fontSize, dpi       float64
 	wrapWidth, tabWidth float32
+	foldRevision        uint64
 	wrapMode            scene.TextWrapMode
 }
 
@@ -56,7 +63,7 @@ type pencodeEditorView struct {
 }
 
 // Return focus after native input and layout settle, preserving the editor view.
-func (model *workspaceModel) restoreEditorFocus(world *module.Content) {
+func (model *workspaceModel) restoreEditorFocus(world *module.Content, state *input.State) {
 	editor := &model.editor
 	if !editor.restoreFocus {
 		return
@@ -69,6 +76,7 @@ func (model *workspaceModel) restoreEditorFocus(world *module.Content) {
 	if ok && world.Focus(editor.control) {
 		current := world.Mut[engineui.TextField](editor.control)
 		current.Caret, current.Anchor = field.Caret, field.Anchor
+		state.SetTextInputSelection(min(field.Caret, field.Anchor), max(field.Caret, field.Anchor))
 		if textarea := world.Mut[engineui.Textarea](editor.control); textarea != nil {
 			textarea.RestoreScroll(textarea.ScrollX, textarea.ScrollY)
 		}
@@ -223,6 +231,7 @@ func (editor *pencodeEditor) syncText(world *module.Content, surface ecs.Entity,
 	}
 	field, _ = world.Get[engineui.TextField](editor.control)
 	editor.syncHighlight(valueText, field, model)
+	editor.syncFolds(model, valueText, file, field.Caret, field.Anchor, field.Composition != "")
 	editor.syncCaretStatus(world, surface, model)
 }
 
@@ -264,7 +273,10 @@ func (editor *pencodeEditor) syncCaretStatus(world *module.Content, surface ecs.
 func (editor *pencodeEditor) syncHighlight(valueText *scene.Text2D, field engineui.TextField, model *workspaceModel) {
 	var spans []scene.TextSpan2D
 	if model.highlightedContent == field.Text() {
-		spans = model.languageHighlight(model.highlightScratch)
+		spans = model.highlightScratch
+	}
+	if file := model.activeFile(); file != nil && file.snapshot() == field.Text() {
+		spans = model.languageHighlight(spans)
 	}
 	spans = editor.languageLinkSpans(model, field, spans, model.activeFile(), model.highlightPaintRevision)
 	spans = editor.brackets.highlight(field, model, spans)
@@ -371,7 +383,7 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	numbers.InkOffsetY = valueText.InkOffsetY
 	model.ensureSyntaxTheme()
 	numbers.Color = pencodeSyntaxColor(model.syntaxTheme.Color("editorLineNumber.foreground"))
-	numbers.TextAlignment, numbers.WrapWidth = scene.TextAlignRight, float32(bounds.Width)-23
+	numbers.TextAlignment, numbers.WrapWidth = scene.TextAlignRight, float32(bounds.Width)-23-foldIconSize
 	lineHeight := numbers.LineHeight
 	if lineHeight <= 0 {
 		return
@@ -380,7 +392,7 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	originY := valueTransform.Translation.Y.Value
 	first := max(0, int(math.Floor(float64(-originY/lineHeight))))
 	count := scene.TextLineCount2D(valueText)
-	key := pencodeGutterLayoutKey{value: valueText.Text(), font: valueText.Font, fontSize: valueText.FontSize, dpi: valueText.DPI, wrapWidth: valueText.WrapWidth, tabWidth: valueText.TabWidth, wrapMode: valueText.WrapMode}
+	key := gutterLayoutKey(valueText)
 	first = min(first, count)
 	last := min(count, max(first, int(math.Ceil(float64(bounds.Height-originY)/float64(lineHeight)))))
 	if key != editor.layoutKey || first != editor.firstLine || last != editor.lastLine {
@@ -419,6 +431,7 @@ func (editor *pencodeEditor) syncGutter(world *module.Content, surface ecs.Entit
 	editor.firstLine, editor.lastLine = first, last
 	numberTransform := world.Mut[scene.UITransform](editor.numbers)
 	numberTransform.Translation.Y.Value = originY + float32(first)*lineHeight
+	editor.paintFoldIcons(world, model, bounds, originY, lineHeight, stack)
 }
 
 func (editor *pencodeEditor) syncWidthGuide(world *module.Content, widthPercent int, color graphics.ColorRGBA) {
@@ -460,6 +473,12 @@ func (editor *pencodeEditor) syncWidthGuide(world *module.Content, widthPercent 
 }
 
 func (editor *pencodeEditor) dispose(world *module.Content) {
+	if editor.foldWorker != nil {
+		editor.foldWorker.close()
+	}
+	for _, icon := range editor.foldIcons {
+		world.Despawn(icon)
+	}
 	editor.debugPaint.dispose(world)
 	editor.diagnostics.dispose(world)
 	editor.findPaint.dispose(world)

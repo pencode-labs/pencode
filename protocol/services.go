@@ -49,6 +49,7 @@ const (
 	WorkspaceWatch
 	GitCheckIgnore
 	GitRebasing
+	LanguageTools
 )
 
 type WorkspaceChange uint32

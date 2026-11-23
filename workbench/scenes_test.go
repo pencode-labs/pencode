@@ -105,7 +105,7 @@ func testRetainedWorkspace(t *testing.T, preload bool) {
 		if err := content.SyncUI(); err != nil {
 			t.Fatal(err)
 		}
-		session.syncLayout()
+		session.syncLayout(nil)
 	}
 	if err := loadProjectAndWait(t, launcher.model, dir); err != nil {
 		t.Fatal(err)

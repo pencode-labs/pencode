@@ -66,6 +66,7 @@ type pencodeConnection struct {
 	progress            chan string
 	results             chan pencodeConnectionResult
 	links               map[connection.Endpoint]*pencodeRemoteLink
+	launchProfile       connection.Profile
 	workspaceProfile    connection.Profile
 	profile, form       connection.Profile
 	message             string
@@ -102,10 +103,13 @@ func (s *Session) ConfigureConnection(dial func(context.Context, connection.Prof
 	if initial.Remote() {
 		form = initial
 	}
-	s.connection = &pencodeConnection{dial: dial, form: form, profiles: profiles, edit: -1, menu: -1, launch: initial.Remote(),
+	s.connection = &pencodeConnection{dial: dial, launchProfile: initial, form: form, profiles: profiles, edit: -1, menu: -1, launch: initial.Remote(),
 		webSocket: initial.WebSocket.Address != "",
 		results:   make(chan pencodeConnectionResult, 1), progress: make(chan string, 1),
 		links: make(map[connection.Endpoint]*pencodeRemoteLink), passwords: make(chan *pencodeAuthenticationRequest, 1)}
+	if s.window != nil && s.window.restore != nil {
+		s.connection.launchProfile = s.window.restore.Profile
+	}
 	if form.SSH.Port != 0 {
 		s.connection.port = strconv.Itoa(int(form.SSH.Port))
 	}
@@ -552,6 +556,7 @@ func (model *workspaceModel) acceptConnection(result pencodeConnectionResult) {
 		model.startProjectWatch(project)
 		model.startProjectScan(project, false)
 	}
+	c.launchProfile = connection.Profile{}
 	c.workspaceProfile, c.namespace = result.profile, result.profile.Namespace()
 	if !result.profile.Remote() {
 		s.localBackend = backend

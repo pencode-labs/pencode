@@ -13,8 +13,8 @@ import (
 	"github.com/pencode-labs/pencode/peb"
 )
 
-// LanguageServer is a validated contribution. A workspace activates one process
-// per contribution and root, shared by all matching open documents.
+// LanguageServer describes a workspace-hosted stdio server. Built-ins open a
+// normal workspace process. Extension launchers use their registration handle.
 type LanguageServer struct {
 	Output  *output.Channel
 	remote  *client.Extension
@@ -37,7 +37,7 @@ func (s *LanguageServer) DocumentLanguage(name string) string {
 	}
 	return ""
 }
-func (s *LanguageServer) Start(ctx context.Context, root string, handler lsp.Handler) (*lsp.Client, error) {
+func (s *LanguageServer) Start(ctx context.Context, backend *client.Client, root string, values peb.SettingValues, handler lsp.Handler) (*lsp.Client, error) {
 	options := lsp.Options{
 		Root:                  root,
 		InitializationOptions: json.RawMessage(s.InitializationOptions), Configuration: json.RawMessage(s.Configuration), Handler: handler,
@@ -52,7 +52,13 @@ func (s *LanguageServer) Start(ctx context.Context, root string, handler lsp.Han
 			},
 		},
 	}
-	stream, err := s.remote.OpenLanguageServer(ctx, root, s.LocalID)
+	var stream *client.Process
+	var err error
+	if s.remote != nil {
+		stream, err = s.remote.OpenLanguageServer(ctx, root, s.LocalID, values)
+	} else {
+		stream, err = backend.OpenProcess(ctx, root, s.Command, s.Args...)
+	}
 	if err != nil {
 		return nil, err
 	}

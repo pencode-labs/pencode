@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/onix-engine/onix/project"
 	"github.com/pencode-labs/pencode/connection"
@@ -14,9 +15,11 @@ import (
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/internal/updater"
 	"github.com/pencode-labs/pencode/internal/version"
+	"github.com/pencode-labs/pencode/internal/windowstate"
 	"github.com/pencode-labs/pencode/remote"
 	"github.com/pencode-labs/pencode/server"
 	"github.com/pencode-labs/pencode/transport"
+	"github.com/pencode-labs/pencode/workbench"
 )
 
 func main() {
@@ -76,6 +79,35 @@ func main() {
 		os.Exit(2)
 	}
 	initial.SSH.Port = uint16(port)
+	request := pencodeWindowRequest{Paths: flag.Args(), Profile: initial, RestoreID: restoreWindow, NewWindow: newWindow, Restore: !newWindow && flag.NArg() == 0 && !initial.Remote()}
+	for i, path := range request.Paths {
+		request.Paths[i] = workbench.LocalOpenPath(path)
+	}
+	for _, path := range []*string{&serverDirectory, &request.Profile.SSH.ConfigFile, &request.Profile.SSH.IdentityFile, &request.Profile.SSH.ServerBinary} {
+		if *path != "" && !filepath.IsAbs(*path) {
+			absolute, err := filepath.Abs(*path)
+			if err != nil {
+				panic(err)
+			}
+			*path = absolute
+		}
+	}
+	request.ServerDirectory = serverDirectory
+	application := &pencodeApplication{serverDirectory: serverDirectory}
+	directory, err := os.UserConfigDir()
+	if err != nil {
+		panic(err)
+	}
+	application.inbox, err = windowstate.ForwardLaunch(filepath.Join(directory, "pencode", "launches"), request, func() {
+		application.wakeWindow.Load().RequestRender()
+	})
+	if err != nil {
+		panic(err)
+	}
+	if application.inbox == nil {
+		return
+	}
+	defer application.inbox.Close()
 	recorder, err := profiling.Start("gui")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Pencode profiling:", err)
@@ -89,13 +121,16 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	application := &pencodeApplication{plan: plan, source: source, executable: executable, serverDirectory: serverDirectory, recorder: recorder}
+	application.plan, application.source, application.executable, application.recorder = plan, source, executable, recorder
 	defer application.native.Close()
 	// Finder events are delivered to the active window of this application.
 	desktopopen.Configure(application.openPath)
-	_, err = application.open(pencodeWindowRequest{restoreID: restoreWindow, restore: !newWindow && flag.NArg() == 0 && !initial.Remote(), profile: initial, paths: flag.Args()})
+	others, err := application.open(request)
 	if err != nil {
 		panic(err)
+	}
+	for _, id := range others {
+		application.pending = append(application.pending, pencodeWindowRequest{RestoreID: id})
 	}
 	application.native.BetweenFrames = application.openPending
 	if err := application.native.Run(); err != nil {

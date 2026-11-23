@@ -113,13 +113,13 @@ func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 					shape = scene.OutlinedRoundedRectShape2D(graphics.ColorRGBA{}, color, 4, 1.5)
 				}
 			}
-			entity := paint.entity(world, &paint.dots, &used, m.editor.gutter, stack)
+			entity := editorSpriteEntity(world, &paint.dots, &used, m.editor.gutter, stack)
 			paint.sprite(world, entity, 5, y+(text.LineHeight-8)/2, 8, 8, shape)
 		}
 		if line == executionLine {
 			if !world.IsAlive(paint.execution) {
 				pool, count := []ecs.Entity(nil), 0
-				paint.execution = paint.entity(world, &pool, &count, m.editor.control, stack-1)
+				paint.execution = editorSpriteEntity(world, &pool, &count, m.editor.control, stack-1)
 			}
 			size, _ := world.Get[scene.Size2D](m.editor.control)
 			background := m.workbenchTheme.diagnosticColors[2]
@@ -130,7 +130,7 @@ func (paint *pencodeDebugPaint) sync(world *module.Content, m *workspaceModel) {
 	}
 }
 
-func (paint *pencodeDebugPaint) entity(world *module.Content, pool *[]ecs.Entity, used *int, parent ecs.Entity, stack scene.UIStackIndex) ecs.Entity {
+func editorSpriteEntity(world *module.Content, pool *[]ecs.Entity, used *int, parent ecs.Entity, stack scene.UIStackIndex) ecs.Entity {
 	if *used == len(*pool) {
 		bundle := ecs.NewBundle(8)
 		bundle.Put(scene.UITransformFromXY(0, 0))

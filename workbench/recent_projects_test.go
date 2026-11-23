@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	htmlui "github.com/onix-engine/onix/ui/html"
@@ -166,16 +167,12 @@ func TestRecentProjectsReconnectsSSHBeforeOpening(t *testing.T) {
 	}
 	m = session.active.model
 	backend := newPencodeBackend(t)
-	localBackend := newPencodeBackend(t)
 	profile := connection.Profile{Name: "测试设备", SSH: remote.Target{Host: "recent-device"}}
 	entry := pencodeRecentProject{Path: filepath.ToSlash(t.TempDir()), Profile: profile}
 	entry.prepare()
 	calls := 0
 	session.ConfigureConnection(func(_ context.Context, got connection.Profile, _ func(string)) (*client.Client, error) {
 		calls++
-		if !got.Remote() {
-			return localBackend, nil
-		}
 		if got.SSH != profile.SSH {
 			return nil, fmt.Errorf("unexpected SSH profile: %+v", got)
 		}
@@ -196,13 +193,16 @@ func TestRecentProjectsReconnectsSSHBeforeOpening(t *testing.T) {
 	}
 	m.discardProject(m.activeProjectState())
 	local := pencodeRecentProject{Path: filepath.ToSlash(t.TempDir())}
+	var opened []string
+	session.SetWindowOpener(func(paths []string, target connection.Profile) error {
+		if target.Remote() {
+			t.Fatal("local history requested a remote window")
+		}
+		opened = paths
+		return nil
+	})
 	m.openRecentProject(local)
-	waitConnection(t, m)
-	if err := awaitFileIO(t, m); err != nil {
-		t.Fatal(err)
-	}
-	m.pollConnection()
-	if calls != 2 || m.backend != localBackend || m.projectPath != local.Path || session.connection.busy {
-		t.Fatal("opening local history did not switch back or restarted the retired SSH connection")
+	if calls != 1 || m.backend != backend || !slices.Equal(opened, []string{local.Path}) || len(m.projects) != 0 {
+		t.Fatal("opening local history in an empty remote window did not dispatch to a local window")
 	}
 }

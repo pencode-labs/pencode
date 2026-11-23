@@ -364,6 +364,9 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 
 	editorContextClick(t, app, model, state, "terminal-new")
 	third := model.terminals.active
+	if third.label != "Terminal 2" {
+		t.Fatalf("reopened terminal label = %q, want Terminal 2", third.label)
+	}
 	waitFor(func() bool { return third.ready })
 	editorContextClick(t, app, model, state, "terminal-new")
 	fourth := model.terminals.active
@@ -379,6 +382,12 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	if model.terminals.active != third {
 		t.Fatal("inactive shell exit changed active tab")
 	}
+	editorContextClick(t, app, model, state, "terminal-new")
+	replacement := model.terminals.active
+	if replacement.label != "Terminal 1" || third.label != "Terminal 2" {
+		t.Fatalf("after filling the gap, terminal labels = %q and %q", third.label, replacement.label)
+	}
+	editorContextClick(t, app, model, state, replacement.closeRef)
 	model.writeTerminal(third, []byte("exit\r"))
 	waitFor(func() bool { return len(model.terminals.items) == 0 })
 	if model.terminals.active != nil || model.terminalView.value != "" {
@@ -390,6 +399,9 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	editorContextClick(t, app, model, state, "status-terminal")
 	if model.terminals.active == nil || len(model.terminals.items) != 1 {
 		t.Fatal("could not create a terminal after the last tab exited")
+	}
+	if got := model.terminals.active.label; got != "Terminal 1" {
+		t.Fatalf("first terminal after all tabs exited = %q, want Terminal 1", got)
 	}
 	editorContextClick(t, app, model, state, model.terminals.active.closeRef)
 	if model.bottom.active != pencodePanelClosed || len(model.terminals.items) != 0 {

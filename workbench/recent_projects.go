@@ -203,7 +203,22 @@ func (m *workspaceModel) renderRecentProjects(view *htmlui.View, definition *htm
 }
 
 func (m *workspaceModel) openRecentProject(entry pencodeRecentProject) {
+	if m.focusOpenProject(entry.Profile, entry.Path) {
+		return
+	}
 	c := m.session.connection
+	if entry.Profile.Remote() && c != nil {
+		entry.Profile = c.savedProfile(entry.Profile)
+	}
+	if m.needsProjectWindow(entry.Profile) {
+		if entry.Profile.Remote() {
+			entry.Profile.Directory = entry.Path
+			m.setWindowOpenError(m.session.openWindowWithProfile(nil, entry.Profile))
+		} else {
+			m.setWindowOpenError(m.session.OpenWindow([]string{entry.Path}))
+		}
+		return
+	}
 	if c != nil && c.busy {
 		m.status = m.tr("正在连接，请稍后打开项目")
 		return
@@ -213,14 +228,11 @@ func (m *workspaceModel) openRecentProject(entry pencodeRecentProject) {
 			m.status = m.tr("远程连接不可用")
 			return
 		}
-		// Saved credentials may have changed since this project was last opened.
-		for _, profile := range c.profiles {
-			if profile.SameHost(entry.Profile) {
-				entry.Profile = profile
-				break
+		if c.workspaceProfile.SameHost(entry.Profile) && m.backendConnected() {
+			if err := m.loadProject(entry.Path); err != nil {
+				m.status = err.Error()
 			}
-		}
-		if m.connectionConnected(entry.Profile) {
+		} else if m.connectionConnected(entry.Profile) {
 			m.openRecentRemoteProject(entry.Profile, entry.Path)
 		} else {
 			c.open = true
@@ -231,31 +243,18 @@ func (m *workspaceModel) openRecentProject(entry pencodeRecentProject) {
 		}
 		return
 	}
-	if c != nil && c.workspaceProfile.Remote() {
-		if m.beginLocalConnection() {
-			c.recentProject = entry.Path
-		}
-		return
-	}
 	if err := m.loadProject(entry.Path); err != nil {
 		m.status = err.Error()
 	}
 }
 
-func (m *workspaceModel) beginLocalConnection() bool {
-	c := m.session.connection
-	c.open = true
-	m.beginConnection(connection.Profile{}, false)
-	if c.busy {
-		if link := c.links[c.workspaceProfile.Endpoint()]; link != nil {
-			link.lostHandled = true
-		}
-		if local := m.session.localBackend; local != nil && local != m.backend {
-			_ = local.Close()
-			m.session.closeSettingsWriter(local)
+func (c *pencodeConnection) savedProfile(requested connection.Profile) connection.Profile {
+	for _, profile := range c.profiles {
+		if profile.SameHost(requested) {
+			return profile
 		}
 	}
-	return c.busy
+	return requested
 }
 
 func (m *workspaceModel) openRecentRemoteProject(profile connection.Profile, directory string) {

@@ -2,9 +2,12 @@ package desktopopen
 
 /*
 #cgo LDFLAGS: -framework AppKit
+#include <stdint.h>
 void pencode_configure_document_events(void);
+void pencode_focus_window(uintptr_t handle);
 */
 import "C"
+import "github.com/onix-engine/onix/window"
 
 var openPath func(string)
 
@@ -19,4 +22,8 @@ func pencode_open_document(path *C.char) {
 	if openPath != nil && path != nil {
 		openPath(C.GoString(path))
 	}
+}
+
+func Focus(context *window.Context) {
+	C.pencode_focus_window(C.uintptr_t(context.NativeHandle()))
 }

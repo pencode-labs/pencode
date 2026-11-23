@@ -270,19 +270,31 @@ func (a *workspaceModel) sourceAction(id string) {
 			s.Context, s.Cancel = context.WithCancel(context.Background())
 		}
 		backend, project, ctx, knownRoots := a.backend, a.projectPath, s.Context, s.Repositories
+		owner := a.activeProjectState()
+		reuseRoots := owner != nil && owner.watch != nil && s.RepositoriesLoaded
 		a.sourceJob(sourceQuery, func() sourceResult {
-			roots, err := backend.GitRepositories(ctx, project)
-			if err != nil {
-				return sourceResult{Err: err}
+			var roots []string
+			root := sourceRepositoryForPath(knownRoots, name)
+			if reuseRoots && root != "" {
+				// A nested repository can appear before its watch event arrives.
+				data, err := backend.Git(ctx, project, "-C", path.Dir(name), "rev-parse", "--show-toplevel")
+				reuseRoots = err == nil && strings.TrimSuffix(string(data), "\n") == root
 			}
-			root := sourceRepositoryForPath(roots, name)
+			if !reuseRoots || root == "" {
+				var err error
+				roots, err = backend.GitRepositories(ctx, project)
+				if err != nil {
+					return sourceResult{Err: err}
+				}
+				root = sourceRepositoryForPath(roots, name)
+			}
 			if root == "" {
 				return sourceResult{Err: fmt.Errorf("文件不在 Git 仓库中：%s", name)}
 			}
 			repository := sourceRepository{Root: root, Backend: backend, Context: ctx}
 			snapshot, err := repository.refreshSnapshot(true)
 			result := sourceResult{Repositories: roots, Snapshot: &snapshot, DiffPath: name, Err: err, StatusOnly: true}
-			if !slices.Equal(knownRoots, roots) {
+			if roots != nil && !slices.Equal(knownRoots, roots) {
 				result.RepositoryRefs, result.RepositorySync = repository.repositoryHeads(roots, &snapshot)
 			}
 			return result
@@ -348,7 +360,11 @@ func (a *workspaceModel) sourceAction(id string) {
 		if !ok || kind != "changes" {
 			return
 		}
-		s.Prompt, s.PromptHash = op, kind+":"+encoded
+		name, err := url.PathUnescape(encoded)
+		if err != nil || name == "" {
+			return
+		}
+		s.Prompt, s.PromptHash = op, name
 	case strings.HasPrefix(id, "sc-stage:"), strings.HasPrefix(id, "sc-stage-folder:"), strings.HasPrefix(id, "sc-unstage:"), strings.HasPrefix(id, "sc-unstage-folder:"), id == "sc-stage-all", id == "sc-unstage-all":
 		unstage := strings.HasPrefix(id, "sc-unstage")
 		all := id == "sc-stage-all" || id == "sc-unstage-all"
@@ -677,18 +693,10 @@ func (a *workspaceModel) confirmSourceOperation() {
 	})
 }
 
-func (a *workspaceModel) discardSourceChanges(op, key string) {
+func (a *workspaceModel) discardSourceChanges(op, name string) {
 	s := a.sourceState()
 	files := s.Snapshot.Groups[2]
 	if op != "discard-all" {
-		_, encoded, ok := strings.Cut(key, ":")
-		if !ok {
-			return
-		}
-		name, err := url.PathUnescape(encoded)
-		if err != nil {
-			return
-		}
 		folder := op == "discard-folder"
 		files = nil
 		for _, f := range s.Snapshot.Groups[2] {

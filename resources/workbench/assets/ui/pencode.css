@@ -1046,7 +1046,7 @@ textarea:focus {
     top: 0;
     bottom: 0;
     left: 0;
-    width: 58px;
+    width: 74px;
     border-right: 1px solid var(--vscode-editorGroup-border);
     background: var(--vscode-editorGutter-background);
     overflow: hidden;
@@ -1096,7 +1096,7 @@ textarea:focus {
     top: 0;
     right: 0;
     bottom: 0;
-    left: 58px;
+    left: 74px;
     width: auto;
     height: 100%;
     min-width: 0;
@@ -1639,6 +1639,33 @@ textarea:focus {
 .pencode-setting-input:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .pencode-extension-setting .pencode-settings-select { max-width: 50%; }
 
+.pencode-language-choices, .pencode-language-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.pencode-language-choices { margin-bottom: 12px; }
+.pencode-language-choice {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    font: inherit;
+}
+.pencode-language-choice.active {
+    border-color: var(--vscode-focusBorder);
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+.pencode-language-choice img { width: 18px; height: 18px; }
+.pencode-language-tool { padding: 12px 0; }
+.pencode-language-tool .pencode-setting-description { overflow-wrap: anywhere; }
+
 .pencode-settings-main {
     flex: 1;
     min-width: 0;
@@ -1974,7 +2001,7 @@ textarea:focus {
     position: absolute;
     top: 46px;
     right: 18px;
-    width: 740px;
+    width: 880px;
     max-width: calc(100% - 36px);
     height: 480px;
     max-height: calc(100% - 64px);
@@ -2080,8 +2107,8 @@ textarea:focus {
 .pencode-market-sidebar {
     display: flex;
     flex-direction: column;
-    width: 230px;
-    flex: 0 0 230px;
+    width: 330px;
+    flex: 0 0 330px;
     padding: 12px 8px;
     min-height: 0;
     overflow-x: hidden;
@@ -2235,8 +2262,8 @@ textarea:focus {
 
 @media (max-width: 620px) {
     .pencode-market-sidebar {
-        width: 150px;
-        flex-basis: 150px;
+        width: 42%;
+        flex-basis: 42%;
     }
     .pencode-market-toolbar {
         flex-wrap: wrap;

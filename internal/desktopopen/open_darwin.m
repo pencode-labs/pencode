@@ -15,18 +15,22 @@ extern void pencode_open_document(const char *path);
 }
 
 - (void)openDocuments:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)reply {
-    NSWindow *target = NSApp.keyWindow ?: NSApp.mainWindow;
     NSAppleEventDescriptor *files = [event paramDescriptorForKeyword:keyDirectObject];
     for (NSInteger i = 1; i <= files.numberOfItems; i++) {
         NSURL *url = [files descriptorAtIndex:i].fileURLValue;
         if (url.isFileURL) pencode_open_document(url.path.fileSystemRepresentation);
     }
-    [NSApp unhide:nil];
-    if (target == nil) target = NSApp.windows.firstObject;
-    if (target.isMiniaturized) [target deminiaturize:nil];
-    [target makeKeyAndOrderFront:nil];
 }
 @end
+
+void pencode_focus_window(uintptr_t handle) {
+    NSWindow *target = (NSWindow *)handle;
+    if (!target) return;
+    [NSApp unhide:nil];
+    if (target.isMiniaturized) [target deminiaturize:nil];
+    [target makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+}
 
 void pencode_configure_document_events(void) {
     @autoreleasepool {

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/module"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
@@ -127,8 +128,10 @@ func (m *workspaceModel) updateExtensionSetting(group *pencodeExtensionSettings,
 func (m *workspaceModel) publishExtensionSettings(group *pencodeExtensionSettings) {
 	m.rebuildExtensionSettings(group)
 	m.saveSettings()
-	if process := m.actions.sessions[group.id]; process != nil {
-		process.SubmitSettings(group.values)
+	for _, g := range m.actionGroups {
+		if process := g.sessions[group.id]; process != nil {
+			process.SubmitSettings(group.values)
+		}
 	}
 	for _, document := range m.customDocuments {
 		if document.provider != nil && extensionOwner(document.provider.ID) == group.id {
@@ -148,7 +151,13 @@ func (m *workspaceModel) resetExtensionSettings() {
 }
 
 func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencodeSettingNavProps, struct{}], error) {
-	return content.Define[pencodeSettingNavProps, struct{}](htmlui.NewTemplate(`<button data-ref="select" class="pencode-settings-nav-item pencode-settings-extension-nav" type="button"></button>`), "", module.ContentBehavior[pencodeSettingNavProps, struct{}]{
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Element("button", "data-ref", "select", "class", "pencode-settings-nav-item pencode-settings-extension-nav", "type", "button")
+	})
+	if err != nil {
+		return nil, err
+	}
+	return content.Define[pencodeSettingNavProps, struct{}](template, "", module.ContentBehavior[pencodeSettingNavProps, struct{}]{
 		Render: func(c module.ContentRenderContext[pencodeSettingNavProps, struct{}], view *htmlui.View) {
 			p := c.Props
 			view.Event("select", htmlui.EventClick)
@@ -167,7 +176,7 @@ func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencod
 		HandleEvent: func(c *module.ContentEventContext[pencodeSettingNavProps, struct{}]) {
 			m := c.Props.Model
 			m.settingsExtensions, m.settingsShortcuts, m.capturingShortcut = true, false, false
-			m.settingsAbout, m.settingsLanguageServers = false, false
+			m.settingsAbout, m.settingsToolPage = false, noToolSettings
 			m.settingsExtension, m.settingsFeedback = c.Props.Group.id, ""
 			markPencodeRootDirtyByModel(c.World, m)
 		},
@@ -175,7 +184,21 @@ func newSettingNavDefinition(content *module.Content) (*htmlui.Definition[pencod
 }
 
 func newSettingDefinition(content *module.Content) (*htmlui.Definition[pencodeSettingProps, struct{}], error) {
-	return content.Define[pencodeSettingProps, struct{}](htmlui.NewTemplate(`<div data-ref="row" class="pencode-settings-row pencode-extension-setting"><div class="pencode-setting-copy"><label data-ref="label"></label><p data-ref="description" class="pencode-setting-description"></p></div><input data-ref="input" class="pencode-setting-input" type="text"><input data-ref="boolean" type="checkbox" hidden><select data-ref="select" class="pencode-settings-select" hidden></select></div>`), "", module.ContentBehavior[pencodeSettingProps, struct{}]{
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "data-ref", "row", "class", "pencode-settings-row pencode-extension-setting")
+		b.Open("div", "class", "pencode-setting-copy")
+		b.Element("label", "data-ref", "label")
+		b.Element("p", "data-ref", "description", "class", "pencode-setting-description")
+		b.End()
+		b.Element("input", "data-ref", "input", "class", "pencode-setting-input", "type", "text")
+		b.Element("input", "data-ref", "boolean", "type", "checkbox", "hidden", "")
+		b.Element("select", "data-ref", "select", "class", "pencode-settings-select", "hidden", "")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return content.Define[pencodeSettingProps, struct{}](template, "", module.ContentBehavior[pencodeSettingProps, struct{}]{
 		Render: renderExtensionSetting,
 		HandleEvent: func(c *module.ContentEventContext[pencodeSettingProps, struct{}]) {
 			p := c.Props

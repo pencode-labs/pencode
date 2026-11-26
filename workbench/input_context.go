@@ -4,6 +4,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
@@ -35,15 +36,20 @@ type pencodeInputContextProps struct {
 }
 
 func newInputContextDefinition() (*htmlui.Definition[pencodeInputContextProps, struct{}], error) {
-	return htmlui.Define(htmlui.NewTemplate(`
-<div id="input-context" data-ref="input-context" class="pencode-editor-context pencode-input-context" role="menu" aria-label="文本操作" hidden>
-  <button id="input-context-cut" data-ref="input-context-cut" type="button" role="menuitem" tabindex="-1">剪切</button>
-  <button id="input-context-copy" data-ref="input-context-copy" type="button" role="menuitem" tabindex="-1">复制</button>
-  <button id="input-context-paste" data-ref="input-context-paste" type="button" role="menuitem" tabindex="-1">粘贴</button>
-  <button id="input-context-delete" data-ref="input-context-delete" type="button" role="menuitem" tabindex="-1">删除</button>
-  <div class="pencode-context-separator" role="separator"></div>
-  <button id="input-context-select-all" data-ref="input-context-select-all" type="button" role="menuitem" tabindex="-1">全选</button>
-</div>`), "", htmlui.Behavior[pencodeInputContextProps, struct{}]{
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "id", "input-context", "data-ref", "input-context", "class", "pencode-editor-context pencode-input-context", "role", "menu", "aria-label", "文本操作", "hidden", "")
+		b.TextElement("button", "剪切", "id", "input-context-cut", "data-ref", "input-context-cut", "type", "button", "role", "menuitem", "tabindex", "-1")
+		b.TextElement("button", "复制", "id", "input-context-copy", "data-ref", "input-context-copy", "type", "button", "role", "menuitem", "tabindex", "-1")
+		b.TextElement("button", "粘贴", "id", "input-context-paste", "data-ref", "input-context-paste", "type", "button", "role", "menuitem", "tabindex", "-1")
+		b.TextElement("button", "删除", "id", "input-context-delete", "data-ref", "input-context-delete", "type", "button", "role", "menuitem", "tabindex", "-1")
+		b.Element("div", "class", "pencode-context-separator", "role", "separator")
+		b.TextElement("button", "全选", "id", "input-context-select-all", "data-ref", "input-context-select-all", "type", "button", "role", "menuitem", "tabindex", "-1")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return htmlui.Define(template, "", htmlui.Behavior[pencodeInputContextProps, struct{}]{
 		Render: func(c htmlui.RenderContext[pencodeInputContextProps, struct{}], view *htmlui.View) {
 			p := c.Props
 			if !p.Open {

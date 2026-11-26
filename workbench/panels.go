@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/module"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/lsp"
@@ -90,7 +91,7 @@ type pencodeBottomPanel struct {
 	heightStyle                      string
 	problems                         []pencodeProblem
 	problemGroups                    []*pencodeProblemGroup
-	channels                         []*output.Channel
+	channels, windowChannels         []*output.Channel
 	options                          []htmlui.VNode
 	outputRevision, storeRevision    uint64
 	problemRevision                  uint64
@@ -101,6 +102,17 @@ type pencodeBottomPanel struct {
 }
 
 func (model *workspaceModel) outputStore() *output.Store {
+	return model.projectOutput(model.activeProjectState())
+}
+func (model *workspaceModel) projectOutput(project *pencodeProject) *output.Store {
+	if project != nil {
+		if project.output == nil {
+			project.output = &output.Store{}
+			project.output.SetWake(model.backgroundWake())
+		}
+		return project.output
+	}
+
 	if model.output == nil {
 		model.output = &output.Store{}
 	}
@@ -108,10 +120,13 @@ func (model *workspaceModel) outputStore() *output.Store {
 }
 
 func (model *workspaceModel) logOutput(source, message string) {
+	model.logProjectOutput(model.activeProjectState(), source, message)
+}
+func (model *workspaceModel) logProjectOutput(project *pencodeProject, source, message string) {
 	if message == "" {
 		return
 	}
-	c := model.outputStore().Channel(source)
+	c := model.projectOutput(project).Channel(source)
 	_, _ = c.Write([]byte(message + "\n"))
 }
 
@@ -125,10 +140,13 @@ func (model *workspaceModel) captureOutputStatus() {
 
 func (model *workspaceModel) pollOutput() bool {
 	model.captureOutputStatus()
-	if model.output == nil {
-		return false
+	var revision uint64
+	if model.output != nil {
+		revision = model.output.Revision()
 	}
-	revision := model.output.Revision()
+	if p := model.activeProjectState(); p != nil && p.output != nil {
+		revision += p.output.Revision()
+	}
 	if model.bottom.storeRevision == revision {
 		return false
 	}
@@ -204,6 +222,9 @@ func (model *workspaceModel) syncProblems() {
 	clear(p.errorFiles)
 	p.problems = p.problems[:0]
 	for key, items := range p.diagnostics {
+		if model.projectPath != "" && key.session.key.root != model.projectPath {
+			continue
+		}
 		path := string(key.uri)
 		if absolute, err := key.uri.Path(); err == nil {
 			path = absolute
@@ -292,8 +313,22 @@ func newProblemGroupDefinition(content *module.Content) (*htmlui.Definition[penc
 	if err != nil {
 		return nil, err
 	}
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "class", "pencode-problem-group", "role", "listitem")
+		b.Open("button", "data-ref", "toggle", "type", "button", "class", "pencode-problem-row pencode-problem-group-toggle")
+		b.Element("img", "data-ref", "arrow", "class", "pencode-problem-group-arrow", "alt", "")
+		b.Element("img", "data-ref", "icon", "class", "pencode-problem-file-icon", "alt", "")
+		b.Element("span", "data-ref", "path")
+		b.Element("span", "data-ref", "count", "class", "pencode-problem-count")
+		b.End()
+		b.Element("div", "data-ref", "items", "class", "pencode-problem-group-items", "role", "list")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeProblemGroupProps, pencodeProblemGroupState](
-		htmlui.NewTemplate(`<div class="pencode-problem-group" role="listitem"><button data-ref="toggle" type="button" class="pencode-problem-row pencode-problem-group-toggle"><img data-ref="arrow" class="pencode-problem-group-arrow" alt=""><img data-ref="icon" class="pencode-problem-file-icon" alt=""><span data-ref="path"></span><span data-ref="count" class="pencode-problem-count"></span></button><div data-ref="items" class="pencode-problem-group-items" role="list"></div></div>`), "",
+		template, "",
 		module.ContentBehavior[pencodeProblemGroupProps, pencodeProblemGroupState]{
 			Render: func(c module.ContentRenderContext[pencodeProblemGroupProps, pencodeProblemGroupState], view *htmlui.View) {
 				// Navigation can redraw the workbench without changing this file's problems.
@@ -346,8 +381,19 @@ func handleProblemGroupEvent(c *module.ContentEventContext[pencodeProblemGroupPr
 }
 
 func newProblemDefinition(content *module.Content) (*htmlui.Definition[pencodeProblemProps, struct{}], error) {
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "class", "pencode-problem-item", "role", "listitem")
+		b.Open("button", "data-ref", "problem", "type", "button", "class", "pencode-problem-row")
+		b.Element("img", "data-ref", "severity", "class", "pencode-problem-severity-icon")
+		b.Element("span", "data-ref", "label")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeProblemProps, struct{}](
-		htmlui.NewTemplate(`<div class="pencode-problem-item" role="listitem"><button data-ref="problem" type="button" class="pencode-problem-row"><img data-ref="severity" class="pencode-problem-severity-icon"><span data-ref="label"></span></button></div>`), "",
+		template, "",
 		module.ContentBehavior[pencodeProblemProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProblemProps, struct{}], view *htmlui.View) {
 				severity := pencodeProblemSeverities[c.Props.Problem.severity]
@@ -400,7 +446,7 @@ func (model *workspaceModel) renderBottomPanel(view *htmlui.View, definition *ht
 	setPanelVisible(view, "output-pane", out)
 	setPanelVisible(view, "output-tools", out)
 	setPanelVisible(view, "source-pane", source)
-	setPanelVisible(view, "source-tools", source)
+	setPanelVisible(view, "panel-toolbar", !source)
 	setPanelVisible(view, "problems-empty", len(p.problems) == 0)
 	if problems {
 		if !p.problemGroupsInitialized && len(p.problemGroups) > 0 {
@@ -427,13 +473,26 @@ func setPanelVisible(view *htmlui.View, ref string, visible bool) {
 	}
 }
 
-func (model *workspaceModel) syncOutput() {
+func (model *workspaceModel) syncOutputChannels() {
 	p := &model.bottom
 	store := model.outputStore()
 	store.Channel("pencode")
 	p.channels = store.Channels(p.channels)
+	if model.output != nil && model.output != store {
+		p.windowChannels = model.output.Channels(p.windowChannels)
+		for _, channel := range p.windowChannels {
+			if !slices.ContainsFunc(p.channels, func(c *output.Channel) bool { return c.Name == channel.Name }) {
+				p.channels = append(p.channels, channel)
+			}
+		}
+	}
+}
+
+func (model *workspaceModel) syncOutput() {
+	p := &model.bottom
+	model.syncOutputChannels()
 	if p.source == nil {
-		p.source = store.Channel("pencode")
+		p.source = model.outputStore().Channel("pencode")
 	}
 	if len(p.options) != len(p.channels) {
 		p.options = p.options[:0]

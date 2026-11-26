@@ -21,8 +21,8 @@ const (
 
 // Action is a complete button description. Updates replace the description;
 // empty fields clear their previous values. Icon is an SVG resource path.
-// OpenWith actions use Selectors to match documents and Default to opt into
-// automatic activation. Their view is served by Handlers.Editor, not Action.
+// OpenWith actions open matching documents automatically. Default gives an
+// action priority among equally specific matches. Handlers.Editor serves the view.
 type Action struct {
 	ID, Text, Tooltip, Icon, Color, IconColor, IconStyle string
 	// Shortcut is a single chord, e.g. "Primary+Shift+B"; empty disables it.

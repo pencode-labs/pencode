@@ -11,6 +11,7 @@ import (
 
 	"github.com/pencode-labs/pencode/internal/filewatch"
 	"github.com/pencode-labs/pencode/protocol"
+	"github.com/pencode-labs/pencode/server/workspace"
 )
 
 func testWorkspaceWatcher(t *testing.T, root string) *workspaceWatch {
@@ -234,5 +235,44 @@ func TestWorkspaceWatchFailureCanBeReinstalled(t *testing.T) {
 	}
 	if s.watches[root] == old {
 		t.Fatal("failed native watcher remained cached")
+	}
+}
+
+func TestWorkspaceWatchDoesNotArchiveExternalWrites(t *testing.T) {
+	config := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("APPDATA", config)
+	root := t.TempDir()
+	w := testWorkspaceWatcher(t, root)
+	ready := w.journal.changed
+	ctx, cancel := context.WithCancel(t.Context())
+	go w.run(ctx, root)
+	t.Cleanup(func() { cancel(); <-w.done })
+	select {
+	case <-ready:
+	case <-w.done:
+		t.Fatal(w.err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch did not start")
+	}
+	w.journal.mu.Lock()
+	changed := w.journal.changed
+	w.journal.mu.Unlock()
+	if err := os.WriteFile(filepath.Join(root, "external.txt"), []byte("generated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changed:
+	case <-w.done:
+		t.Fatal(w.err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("external write was not published")
+	}
+	archive, err := workspace.HistoryDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(archive); !os.IsNotExist(err) {
+		t.Fatalf("external write created history: %v", err)
 	}
 }

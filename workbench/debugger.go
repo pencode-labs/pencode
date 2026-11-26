@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/text/piecetree"
@@ -76,7 +77,17 @@ type pencodeDebugRowProps struct {
 }
 
 func newDebugRowDefinition(content *module.Content) (*htmlui.Definition[pencodeDebugRowProps, struct{}], error) {
-	return content.Define[pencodeDebugRowProps, struct{}](htmlui.NewTemplate(`<button data-ref="row" class="pencode-debug-row" type="button"><img data-ref="toggle" class="pencode-debug-toggle" src="icons/chevron-right.svg" alt=""><span data-ref="label" class="pencode-debug-label"></span><span data-ref="detail" class="pencode-debug-detail"></span></button>`), "", module.ContentBehavior[pencodeDebugRowProps, struct{}]{
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "row", "class", "pencode-debug-row", "type", "button")
+		b.Element("img", "data-ref", "toggle", "class", "pencode-debug-toggle", "src", "icons/chevron-right.svg", "alt", "")
+		b.Element("span", "data-ref", "label", "class", "pencode-debug-label")
+		b.Element("span", "data-ref", "detail", "class", "pencode-debug-detail")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return content.Define[pencodeDebugRowProps, struct{}](template, "", module.ContentBehavior[pencodeDebugRowProps, struct{}]{
 		Render: func(c module.ContentRenderContext[pencodeDebugRowProps, struct{}], view *htmlui.View) {
 			r := c.Props.Row
 			if r.slot == "debug-template-menu" {
@@ -218,7 +229,7 @@ func (m *workspaceModel) startDebug() {
 	}
 	p := u.configProject
 	for _, f := range p.Files {
-		if f.Dirty {
+		if f.Dirty && !f.untitled() {
 			u.message = m.tr("请先保存项目中的更改，再启动调试")
 			return
 		}
@@ -228,7 +239,7 @@ func (m *workspaceModel) startDebug() {
 	}
 	config := u.configs[min(u.selected, len(u.configs)-1)]
 	filename := ""
-	if file := m.activeFile(); file != nil {
+	if file := m.activeFile(); file != nil && !file.untitled() {
 		filename = path.Join(strings.ReplaceAll(p.Path, "\\", "/"), file.Path)
 	}
 	config, err := config.ResolveFile(filename)
@@ -243,8 +254,9 @@ func (m *workspaceModel) startDebug() {
 	channel := m.outputStore().Channel("Debugger")
 	channel.Clear()
 	backend, root, events, wake := p.backend, p.Path, m.debugEvents(), m.backgroundWake()
+	launch := config.AdapterCommand(m.settings.DebugAdapterPaths[config.Adapter])
 	open := func(ctx context.Context) (io.ReadWriteCloser, error) {
-		stream, err := backend.OpenDebugAdapter(ctx, root, config.Adapter, config.Command, config.Address, config.Args)
+		stream, err := backend.OpenDebugAdapter(ctx, root, launch)
 		if err == nil {
 			go func() { _, _ = io.Copy(channel, stream.Stderr()) }()
 		}
@@ -285,8 +297,9 @@ func (m *workspaceModel) startDebug() {
 	u.view = u.session.Snapshot()
 }
 
-func (m *workspaceModel) closeDebugger() {
-	u := &m.debug
+func (m *workspaceModel) closeDebugger() { m.debug.close() }
+
+func (u *pencodeDebugState) close() {
 	if u.cancel != nil {
 		u.cancel()
 		u.cancel = nil
@@ -575,20 +588,28 @@ func (m *workspaceModel) debugBreakpointSnapshot(p *pencodeProject) map[string][
 	return result
 }
 
+func (m *workspaceModel) projectDebugger(p *pencodeProject) *pencodeDebugState {
+	if p == m.activeProjectState() {
+		return &m.debug
+	}
+	return &m.storedView(p).debug
+}
+
 func (m *workspaceModel) syncDebugBreakpoints(p *pencodeProject, file *openFile) {
-	if p == nil || file == nil || m.debug.session == nil || m.debug.project != p || file.Dirty || file.page.Paged {
+	u := m.projectDebugger(p)
+	if p == nil || file == nil || u.session == nil || u.project != p || file.Dirty || file.page.Paged {
 		return
 	}
 	list := make([]dap.SourceBreakpoint, 0, len(p.debugBreakpoints[file.Path]))
 	for _, bp := range p.debugBreakpoints[file.Path] {
 		list = append(list, dap.SourceBreakpoint{Line: bp.line})
 	}
-	m.debug.session.SetBreakpoints(path.Join(p.Path, file.Path), list)
+	u.session.SetBreakpoints(path.Join(p.Path, file.Path), list)
 }
 
 func (m *workspaceModel) toggleDebugBreakpoint(world *module.Content, line int) {
 	p, f := m.activeProjectState(), m.activeFile()
-	if p == nil || f == nil || f.page.Paged || !m.textEditorActive() {
+	if p == nil || f == nil || f.untitled() || f.page.Paged || !m.textEditorActive() {
 		return
 	}
 	if line <= 0 {
@@ -660,8 +681,8 @@ func (m *workspaceModel) relocateDebugBreakpoints(source, target *pencodeProject
 		}
 		delete(source.debugBreakpoints, name)
 		source.debugBreakpointRevision++
-		if m.debug.session != nil && m.debug.project == source {
-			m.debug.session.SetBreakpoints(path.Join(source.Path, name), nil)
+		if u := m.projectDebugger(source); u.session != nil && u.project == source {
+			u.session.SetBreakpoints(path.Join(source.Path, name), nil)
 		}
 		if target == nil {
 			continue
@@ -672,12 +693,12 @@ func (m *workspaceModel) relocateDebugBreakpoints(source, target *pencodeProject
 		}
 		target.debugBreakpoints[updated] = bps
 		target.debugBreakpointRevision++
-		if m.debug.session != nil && m.debug.project == target {
+		if u := m.projectDebugger(target); u.session != nil && u.project == target {
 			list := make([]dap.SourceBreakpoint, 0, len(bps))
 			for _, bp := range bps {
 				list = append(list, dap.SourceBreakpoint{Line: bp.line})
 			}
-			m.debug.session.SetBreakpoints(path.Join(target.Path, updated), list)
+			u.session.SetBreakpoints(path.Join(target.Path, updated), list)
 		}
 	}
 }

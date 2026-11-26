@@ -12,6 +12,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/pencode-labs/pencode/internal/ripgrep"
 )
 
 // Reuse the engine's packaged output, retaining its binary catalog, resource
@@ -64,6 +66,9 @@ func stageDistribution(destination, artifact, project, version string) error {
 		}
 	}
 	if err := addFile(filepath.Join(project, "workbench", "fonts", "NERD-FONTS-LICENSE.txt"), "Pencode/licenses/NERD-FONTS-LICENSE.txt", add); err != nil {
+		return err
+	}
+	if err := add(&tar.Header{Name: "Pencode/licenses/RIPGREP-LICENSE.txt", Mode: 0644, Size: int64(len(ripgrep.License))}, strings.NewReader(ripgrep.License)); err != nil {
 		return err
 	}
 	return addFile(filepath.Join(project, "..", "onix", "LICENSE"), "Pencode/licenses/ONIX-LICENSE.txt", add)

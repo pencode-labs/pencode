@@ -28,6 +28,25 @@ func resourceTestWrite(t *testing.T, project *pencodeProject, relative, content 
 	}
 }
 
+func TestProjectDeleteDuringWatchReload(t *testing.T) {
+	model, project := resourceTestModel(t)
+	const name = "created.txt"
+	resourceTestWrite(t, project, name, "created")
+	openProjectFileAndWait(t, model, project, name)
+	project.Files[name].externalChanged = true
+	model.reloadExternalFiles(project)
+	if len(model.fileIO.pending) != 1 {
+		t.Fatal("expected an outstanding watch reload")
+	}
+	model.fileContext = pencodeFileContext{project: project, dialog: "delete", paths: []string{name}}
+	if err := fileDialogAndWait(t, model); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(project.Path, name)); !os.IsNotExist(err) || project.Files[name] != nil || len(project.Tabs) != 0 {
+		t.Fatalf("delete after reload left file or tab: stat=%v tabs=%v", err, project.Tabs)
+	}
+}
+
 func TestProjectResourcesRenameDirectoryPreservesBuffersAndHistory(t *testing.T) {
 	model, project := resourceTestModel(t)
 	resourceTestWrite(t, project, "src/nested/main.go", "package saved\n")

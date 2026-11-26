@@ -27,7 +27,7 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 		t.Helper()
 		app.World.InsertResource(scene.ViewportSize{Width: float32(width), Height: float32(height), ScaleFactor: 1})
 		err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Title: key, Kind: peb.EditorTab, View: &peb.EditorView{
-			HTML: `<main id="pencode-extension-codex-workspace" class="codex-workspace" data-pencode-layout="fill"><section id="pencode-extension-codex-chat-pane" class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-scroll="end" data-pencode-scroll-key="` + key + `"><article class="codex-chat">` + strings.Repeat(`<p>streamed output</p>`, lines) + `</article></div><section class="codex-composer"><form id="pencode-extension-codex-input-card" class="codex-input-card"><textarea data-ref="prompt" class="codex-prompt">draft</textarea><div class="codex-input-footer"><button type="button">+</button><button type="button">请批准</button><span class="codex-input-spacer"></span><button type="button">默认</button><button type="button">发送</button></div></form></section></section><aside id="pencode-extension-codex-sidebar" class="codex-sidebar"><section class="codex-history"><div class="codex-history-header"><h3>当前项目的会话</h3><button id="pencode-extension-codex-refresh" class="codex-icon-button" type="button" title="刷新会话" aria-label="刷新会话"><img src="resources/icons/refresh-cw.svg" alt=""></button></div><div class="codex-history-list" data-ref="history-list" data-pencode-scroll="preserve" data-pencode-scroll-key="project">` + strings.Repeat(`<button class="codex-history-row" type="button">Saved conversation</button>`, 60) + `</div></section></aside></main>`,
+			HTML: `<main id="pencode-extension-codex-workspace" class="codex-workspace" data-pencode-layout="fill"><section id="pencode-extension-codex-chat-pane" class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-scroll="end" data-pencode-scroll-key="` + key + `"><article class="codex-chat"><p id="pencode-extension-codex-first-message">streamed output</p>` + strings.Repeat(`<p>streamed output</p>`, lines-1) + `</article></div><section class="codex-composer"><form id="pencode-extension-codex-input-card" class="codex-input-card"><textarea data-ref="prompt" class="codex-prompt">draft</textarea><div class="codex-input-footer"><button type="button">+</button><button type="button">请批准</button><span class="codex-input-spacer"></span><button type="button">默认</button><button type="button">发送</button></div></form></section></section><aside id="pencode-extension-codex-sidebar" class="codex-sidebar"><section class="codex-history"><div class="codex-history-header"><h3>当前项目的会话</h3><button id="pencode-extension-codex-refresh" class="codex-icon-button" type="button" title="刷新会话" aria-label="刷新会话"><img src="resources/icons/refresh-cw.svg" alt=""></button></div><div class="codex-history-list" data-ref="history-list" data-pencode-scroll="preserve" data-pencode-scroll-key="project">` + strings.Repeat(`<button class="codex-history-row" type="button">Saved conversation</button>`, 60) + `</div></section></aside></main>`,
 			CSS:  string(css), Events: []peb.EditorBinding{{Ref: "prompt", Kind: "input"}},
 		}})
 		if err != nil {
@@ -126,7 +126,7 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 	if len(m.actions.ui.surfaces) != 1 || m.actions.ui.panel != nil || m.bottom.active == pencodePanelExtension {
 		t.Fatal("chat created an extra tab or bottom panel")
 	}
-	for _, size := range [][2]int{{1440, 900}, {1024, 768}, {800, 600}, {640, 800}} {
+	for _, size := range [][2]int{{1920, 1080}, {1440, 900}, {1024, 768}, {800, 600}, {640, 800}} {
 		width, height = size[0], size[1]
 		show("second task", 160)
 		workspace := editorContextBounds(t, m, "pencode-extension-codex-workspace")
@@ -135,8 +135,16 @@ func TestCodexWorkspaceColumnsRetainInputAndFollowTranscript(t *testing.T) {
 		prompt := editorContextBounds(t, m, promptID)
 		chatPane := editorContextBounds(t, m, "pencode-extension-codex-chat-pane")
 		card := editorContextBounds(t, m, "pencode-extension-codex-input-card")
-		if math.Abs(float64(card.X-chatPane.X-8)) > 1 || math.Abs(float64(chatPane.X+chatPane.Width-card.X-card.Width-8)) > 1 {
-			t.Fatalf("composer side spacing is not 8px at %dx%d: card=%+v pane=%+v", width, height, card, chatPane)
+		message := editorContextBounds(t, m, "pencode-extension-codex-first-message")
+		gutter := float32(40)
+		if width <= 720 {
+			gutter = 20
+		}
+		if want := min(chatPane.Width, 860) - 2*gutter; math.Abs(float64(message.Width-want)) > 1 {
+			t.Fatalf("message width at %dx%d: got %v, want %v", width, height, message.Width, want)
+		}
+		if math.Abs(float64(card.X-message.X)) > 1 || math.Abs(float64(card.Width-message.Width)) > 1 {
+			t.Fatalf("composer and messages are misaligned at %dx%d: card=%+v message=%+v", width, height, card, message)
 		}
 		if width <= 720 {
 			if math.Abs(float64(workspace.X-transcript.X)) > 1 || math.Abs(float64(chatPane.Y+chatPane.Height-sidebar.Y)) > 1 || sidebar.Width < workspace.Width-1 {

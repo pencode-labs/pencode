@@ -3,7 +3,6 @@ package workbench
 import (
 	"context"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -59,7 +58,7 @@ func (m *workspaceModel) startBuiltinTools(action, id string) {
 	if action != "" {
 		m.reportLanguageTool(id, "[Info]", fmt.Sprintf(m.tr(languageToolActions[action].pending), languagetool.Find(id).Label))
 	} else {
-		state.feedbackID, state.feedback = "", m.tr("正在检测语言服务器…")
+		state.feedbackID, state.feedback = "", m.tr("正在检测语言工具…")
 	}
 	var stopped []<-chan struct{}
 	// Windows keeps running executables open. Release the managed process
@@ -74,10 +73,12 @@ func (m *workspaceModel) startBuiltinTools(action, id string) {
 			return true
 		})
 	}
-	backend, paths, wake := m.backend, maps.Clone(m.settings.ServerPaths), m.backgroundWake()
-	for id := range paths {
-		if languagetool.Find(id) == nil {
-			delete(paths, id)
+	backend, wake := m.backend, m.backgroundWake()
+	paths := make(map[string]string, len(m.settings.ServerPaths)+len(m.settings.DebugAdapterPaths))
+	for i := range languagetool.Tools {
+		id := languagetool.Tools[i].ID
+		if path := (*m.toolPaths(id))[id]; path != "" {
+			paths[id] = path
 		}
 	}
 	go func() {

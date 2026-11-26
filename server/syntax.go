@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/onix-engine/onix/syntax"
@@ -38,7 +39,7 @@ func (s *services) analyze(ctx context.Context, op protocol.Operation, d *protoc
 			return err
 		}
 		if p := s.syntax[id]; p != nil {
-			p.document.Close()
+			p.document.CloseKeepingGrammar(15 * time.Second)
 			delete(s.syntax, id)
 		}
 		return nil

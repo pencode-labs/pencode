@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -205,9 +206,14 @@ func (r *Recorder) Close() error {
 }
 
 // RecordGraphics receives a value snapshot from the rendering thread. No file
-// I/O, profiling, or allocation occurs on that thread.
+// I/O occurs here. Unchanged target inventories share an immutable snapshot.
 func (r *Recorder) RecordGraphics(value Graphics) {
 	r.mu.Lock()
+	if slices.Equal(value.RenderTargets, r.graphics.RenderTargets) {
+		value.RenderTargets = r.graphics.RenderTargets
+	} else {
+		value.RenderTargets = slices.Clone(value.RenderTargets)
+	}
 	r.graphics = value
 	r.mu.Unlock()
 }
@@ -216,6 +222,9 @@ func (r *Recorder) run() {
 	defer close(r.done)
 	defer func() {
 		r.err = errors.Join(r.err, r.finishCPU(), r.snapshot("final"), r.metrics.Close())
+		if r.err == nil && r.options.profileInterval == 0 {
+			r.err = os.WriteFile(filepath.Join(r.directory, ".complete"), nil, 0600)
+		}
 		if r.err != nil {
 			fmt.Fprintln(os.Stderr, "Pencode profiling:", r.err)
 		}

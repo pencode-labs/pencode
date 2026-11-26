@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"maps"
 	"slices"
 	"strconv"
 	"unicode"
@@ -85,11 +86,23 @@ type Screen struct {
 }
 
 func NewScreen(cols, rows int) *Screen {
-	s := &Screen{HistoryLimit: 2000, CursorVisible: true, autowrap: true, DefaultForeground: 0xe5e5e5, DefaultBackground: 0x1e1e1e}
-	s.style = Cell{Foreground: Default, Background: Default}
-	s.saved.style = s.style
-	s.Resize(cols, rows)
+	s := new(Screen)
+	s.Reset(cols, rows)
 	return s
+}
+
+// Reset starts a fresh VT stream, retaining cell storage for repeated snapshots.
+func (s *Screen) Reset(cols, rows int) {
+	cols, rows = max(2, min(cols, 1000)), max(1, min(rows, 500))
+	cells := slices.Grow(s.Cells[:0], cols*rows)[:cols*rows]
+	clear(s.historyCombining)
+	*s = Screen{Cells: cells, History: s.History[:0], historyRow: s.historyRow[:0], historyCombining: s.historyCombining,
+		Cols: cols, Rows: rows, bottom: rows - 1, HistoryLimit: 2000, CursorVisible: true, autowrap: true,
+		DefaultForeground: 0xe5e5e5, DefaultBackground: 0x1e1e1e, Revision: s.Revision + 1,
+		style: Cell{Foreground: Default, Background: Default},
+	}
+	s.saved.style = s.style
+	s.fill(s.Cells)
 }
 
 // HistoryRow borrows a decoded chronological row until the next HistoryRow or
@@ -197,6 +210,21 @@ func (s *Screen) clearHistory() {
 		clear(s.historyCombining)
 	}
 	s.historyHead = 0
+}
+
+// TrimHistory releases oversized storage after replaying a shorter snapshot.
+// Keep the physical row order so the ring head and combining indices stay valid.
+func (s *Screen) TrimHistory() {
+	if cap(s.History) <= 8<<10 || len(s.History) > cap(s.History)/4 {
+		return
+	}
+	s.History = slices.Clone(s.History)
+	previous := s.historyCombining
+	s.historyCombining = nil
+	if len(previous) != 0 {
+		s.historyCombining = make(map[int][3]rune, len(previous))
+		maps.Copy(s.historyCombining, previous)
+	}
 }
 
 func (s *Screen) appendHistory(line []Cell) {

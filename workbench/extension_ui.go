@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/onix-engine/onix/ecs"
-	"github.com/onix-engine/onix/html/parse"
+	"github.com/onix-engine/onix/html/markup"
+
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
@@ -71,7 +72,14 @@ type pencodeExtensionScroll struct {
 	position             [2]float32
 	follow, restore, end bool
 }
+type pencodeExtensionInput struct {
+	id, value, authored string
+	anchor, caret       int
+}
+
 type pencodeExtensionSurface struct {
+	savedInputs                    []pencodeExtensionInput
+	project                        *pencodeProject
 	expiresAt                      time.Time
 	tree                           *uinode.Node
 	model                          *workspaceModel
@@ -86,13 +94,14 @@ type pencodeExtensionSurface struct {
 	links                          map[string]string
 	theme                          *pencodeTheme
 	contentID                      string
-	inputID, inputValue            string
 	owner                          string
-	scrollKey                      string
+	scrollKey, renderedScrollKey   string
 	prefix, rootID, closeID, style string
 	pointerFocus                   string
 	copiedRef                      string
+	draft                          pencodeExtensionInput
 	invocation                     pencodeExtensionInvocation
+	outer                          pencodeExtensionMarkup
 	regionSplitter                 peb.ViewRegionSplitter
 	regions                        []pencodeExtensionRegion
 	bindings                       []peb.EditorBinding
@@ -101,12 +110,13 @@ type pencodeExtensionSurface struct {
 	focusTargets                   []pencodeExtensionFocusTarget
 	focus                          []pencodeExtensionFocus
 	expanded                       []pencodeExtensionExpanded
+	terminals                      []extensionTerminalBinding
 	selectables                    []pencodeExtensionSelectable
 	submitEdits                    []input.TextEdit
 	ui                             peb.UI
 	focused                        int
-	inputAnchor, inputCaret        int
 	revision                       uint64
+	tabOrder                       uint64
 	x, y                           float32
 	fill                           bool
 	needsFocus, visible            bool
@@ -128,10 +138,14 @@ func (model *workspaceModel) captureExtensionAction(world *module.Content, c peb
 			invocation.x, invocation.y = bounds.X, bounds.Y+bounds.Height
 		}
 	}
-	if model.actions.ui.invocations == nil {
-		model.actions.ui.invocations = make(map[string]pencodeExtensionInvocation)
+	group := &model.actions.pencodeProjectActions
+	if i := model.projectIndex(c.ProjectPath); i >= 0 {
+		group = model.projectActions(model.projects[i])
 	}
-	model.actions.ui.invocations[owner] = invocation
+	if group.ui.invocations == nil {
+		group.ui.invocations = make(map[string]pencodeExtensionInvocation)
+	}
+	group.ui.invocations[owner] = invocation
 }
 
 // Native control transforms include scrolling and CSS transforms. Convert back
@@ -153,13 +167,19 @@ func (model *workspaceModel) extensionAnchorBounds(world *module.Content, id str
 
 func (s *pencodeExtensionSurface) send(event peb.EditorEvent, reason string) {
 	if !s.session.SubmitUI(peb.UIEvent{ID: s.ui.ID, Reason: reason, Context: s.invocation.context, Event: event}) {
-		s.model.extensionFeedback = "扩展 UI 事件队列已满或进程已停止"
-		s.model.logOutput("Extension: "+s.owner, s.model.extensionFeedback)
+		const message = "扩展 UI 事件队列已满或进程已停止"
+		s.model.projectInteraction(s.project).extensionFeedback = message
+		s.model.logProjectOutput(s.project, "Extension: "+s.owner, message)
 	}
 }
 
 func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.ActionSession, ui peb.UI) error {
-	state := &model.actions.ui
+	return model.applyProjectExtensionUI(model.activeProjectState(), owner, session, ui)
+}
+
+func (model *workspaceModel) applyProjectExtensionUI(project *pencodeProject, owner string, session *extensions.ActionSession, ui peb.UI) error {
+	state := &model.projectActions(project).ui
+	active := project == model.activeProjectState()
 	var surface *pencodeExtensionSurface
 	for _, candidate := range state.surfaces {
 		if candidate.owner == owner && candidate.ui.ID == ui.ID {
@@ -173,7 +193,7 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 		}
 		return nil
 	}
-	anchor, err := model.extensionUIAnchor(owner, ui.Anchor)
+	anchor, err := model.extensionUIAnchor(state, owner, ui.Anchor)
 	if err != nil {
 		return err
 	}
@@ -182,8 +202,12 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 		if len(state.surfaces) >= maxExtensionSurfaces && (ui.Kind == peb.Panel || ui.Kind == peb.Notification || ui.Kind == peb.EditorTab || state.overlay == nil) {
 			return fmt.Errorf(model.tr("扩展 UI 数量超过 %d"), maxExtensionSurfaces)
 		}
-		prefix := "pencode-extension-ui/" + owner + "/" + ui.ID + "/"
-		surface = &pencodeExtensionSurface{model: model, session: session, owner: owner, ui: peb.UI{Kind: ui.Kind}, prefix: prefix, rootID: prefix + "surface", closeID: prefix + "close", contentID: prefix + "content", focused: -1}
+		scope := ""
+		if project != nil {
+			scope = strconv.FormatUint(componentKey(project.Path), 16) + "/"
+		}
+		prefix := "pencode-extension-ui/" + scope + owner + "/" + ui.ID + "/"
+		surface = &pencodeExtensionSurface{project: project, model: model, session: session, owner: owner, ui: peb.UI{Kind: ui.Kind}, prefix: prefix, rootID: prefix + "surface", closeID: prefix + "close", contentID: prefix + "content", focused: -1}
 	} else if surface.ui.Kind != ui.Kind {
 		return fmt.Errorf("%s", model.tr("更新 UI 不能改变 Kind"))
 	}
@@ -205,6 +229,7 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 	surface.ui.View = nil // The compiled template owns the retained view.
 	surface.revision++
 	if fresh {
+		surface.needsFocus = ui.Kind != peb.Notification && ui.Kind != peb.EditorTab
 		surface.invocation = state.invocations[owner]
 		surface.x, surface.y = surface.invocation.x, surface.invocation.y
 		state.surfaces = append(state.surfaces, surface)
@@ -231,40 +256,57 @@ func (model *workspaceModel) applyExtensionUI(owner string, session *extensions.
 			}
 		}
 	} else if ui.Kind == peb.EditorTab {
+		if fresh {
+			surface.tabOrder = editorTabSequence.Add(1)
+		}
 		if fresh || ui.View == nil {
-			model.selectExtensionTab(surface)
+			if active {
+				model.selectExtensionTab(surface)
+			} else {
+				state.editor = surface
+				if project != nil {
+					project.sourceControl.Active = ""
+				}
+			}
 		}
 	} else if ui.Kind == peb.Panel {
-		state.panel = surface
-		model.bottom.active = pencodePanelExtension
+		// Background publications can arrive while another panel's input is active.
+		if world := model.fontResources; fresh || !active || world == nil || !world.Has[engineui.TextField](world.FocusedControl()) {
+			state.panel = surface
+			*model.projectPanel(project) = pencodePanelExtension
+		}
 	} else {
 		if state.overlay != nil && state.overlay != surface {
 			model.closeExtensionSurface(state.overlay, "replace", false)
 		}
 		state.overlay = surface
-		model.fileContext.open = false
-		model.quickOpen, model.settingsOpen = false, false
-		if model.market != nil {
-			model.market.open = false
+		if fresh && active {
+			model.fileContext.open = false
+			model.quickOpen, model.settingsOpen = false, false
+			if model.market != nil {
+				model.market.open = false
+			}
+			model.dismissLanguageContext()
 		}
-		model.dismissLanguageContext()
 	}
-	surface.needsFocus = ui.Kind != peb.Notification && ui.Kind != peb.EditorTab && (fresh || ui.View != nil)
 	if fresh {
 		surface.visible = true
 		surface.send(peb.EditorEvent{Kind: "open"}, "")
+		if !active {
+			surface.setVisible(false)
+		}
 	}
 	return nil
 }
 
-func (model *workspaceModel) extensionUIAnchor(owner, anchor string) (string, error) {
+func (model *workspaceModel) extensionUIAnchor(state *pencodeExtensionUIState, owner, anchor string) (string, error) {
 	if anchor == "" {
 		return "", nil
 	}
 	if target, ok := strings.CutPrefix(anchor, "ui:"); ok {
 		id, ref, valid := strings.Cut(target, "#")
 		if valid && ref != "" {
-			for _, s := range model.actions.ui.surfaces {
+			for _, s := range state.surfaces {
 				if s.owner == owner && s.ui.ID == id {
 					for _, f := range s.focus {
 						if f.ref == ref {
@@ -280,62 +322,40 @@ func (model *workspaceModel) extensionUIAnchor(owner, anchor string) (string, er
 }
 
 func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
-	template, expanded, err := splitExtensionExpanded(view.HTML)
+	source, parts, err := s.regionSplitter.Split(view.HTML)
 	if err != nil {
 		return err
 	}
-	template, parts, err := s.regionSplitter.Split(template)
+	outer, err := extensionMarkup(source, &s.outer, false)
 	if err != nil {
 		return err
 	}
 	scratch := pencodeExtensionScratches.Get().(*pencodeExtensionScratch)
 	defer scratch.release()
 	regions := scratch.resizeRegions(len(parts))
-	for i, part := range parts {
-		regions[i] = pencodeExtensionRegion{ref: part.Ref, html: part.HTML}
-	}
 	previous, trees := scratch.previous, scratch.trees
 	for i := range s.regions {
 		previous[s.regions[i].ref] = &s.regions[i]
 	}
-	for i := range regions {
-		r := &regions[i]
-		if old := previous[r.ref]; old != nil && old.html == r.html {
-			r.tree = old.tree
+	expanded := append([]pencodeExtensionExpanded(nil), outer.expanded...)
+	for i, part := range parts {
+		var prior *pencodeExtensionMarkup
+		if old := previous[part.Ref]; old != nil {
+			prior = &old.pencodeExtensionMarkup
 		}
-		if r.tree == nil {
-			r.tree, err = parse.Parse(r.html)
-			if err != nil {
-				return err
-			}
-		}
-		trees[r.ref] = r.tree
-	}
-	tree := s.tree
-	if tree == nil || s.definition.Template.Source != template {
-		tree, err = parse.Parse(template)
+		content, err := extensionMarkup(part.HTML, prior, len(part.HTML) < len(view.HTML)/2)
 		if err != nil {
 			return err
 		}
+		regions[i] = pencodeExtensionRegion{ref: part.Ref, pencodeExtensionMarkup: content}
+		trees[part.Ref] = content.tree
+		expanded = append(expanded, content.expanded...)
 	}
-	replace := s.definition == nil || s.definition.Template.Source != template || s.view.CSS != view.CSS || s.theme != s.model.workbenchTheme
-	if replace && s.ui.Kind == peb.EditorTab && s.live() && s.model.fontResources != nil {
-
-		world := s.model.fontResources
-		for _, f := range s.focus {
-			control, ok := world.HTMLControl(s.model.surface, f.id)
-			if !ok || world.FocusedControl() != control {
-				continue
-			}
-			if field, ok := world.Get[engineui.TextField](control); ok {
-				s.inputID, s.inputValue = f.id, field.Value
-				s.inputAnchor, s.inputCaret = field.Anchor, field.Caret
-			}
-			break
-		}
-	}
+	tree := outer.tree
+	replace := s.definition == nil || s.tree != tree || s.view.CSS != view.CSS || s.theme != s.model.workbenchTheme
 	focus := make([]pencodeExtensionFocus, 0, len(view.Events))
 	var focusTargets []pencodeExtensionFocusTarget
+	var terminals []extensionTerminalBinding
 	var selectables []pencodeExtensionSelectable
 	var icons []pencodeExtensionIcon
 	var links map[string]string
@@ -377,6 +397,10 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			} else {
 				foreground := "icon.foreground"
 				for parent := node.Parent; parent != nil; parent = parent.Parent {
+					if _, disabled := parent.Attr("disabled"); parent.Data == "button" && disabled {
+						foreground = "descriptionForeground"
+						break
+					}
 					role, _ := parent.Attr("role")
 					if parent.Data == "a" || role == "link" {
 						foreground = "textLink.foreground"
@@ -420,6 +444,19 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 			if target, _ := node.Attr("data-pencode-focus"); target != "" && !hidden {
 				focusTargets = append(focusTargets, pencodeExtensionFocusTarget{ref: ref, target: target})
 			}
+			key, terminalOutput := node.Attr("data-pencode-terminal-output")
+			_, readonly := node.Attr("readonly")
+			if !hidden && terminalOutput && readonly && node.Data == "textarea" {
+				id, _ := node.Attr("id")
+				if id == "" {
+					id = s.prefix + "control-" + ref
+				}
+				source := ""
+				if len(node.Children) > 0 {
+					source = node.Children[0].Data
+				}
+				terminals = append(terminals, extensionTerminalBinding{ref: ref, id: id, key: key, source: source})
+			}
 			_, disabled := node.Attr("disabled")
 			tabindex, hasTabindex := node.Attr("tabindex")
 			typ, _ := node.Attr("type")
@@ -439,7 +476,7 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				}
 				openExtensionSettings := node.Data == "button" && action == "open-extension-settings"
 				if showOutput {
-					channel = s.model.outputStore().Channel("Extension: " + s.owner)
+					channel = s.model.projectOutput(s.project).Channel("Extension: " + s.owner)
 				}
 				_, autosize := node.Attr("data-pencode-autosize")
 				style, _ := node.Attr("style")
@@ -515,6 +552,10 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 				if scroll.ref != "" {
 					target.Attr(scroll.ref, "id", scroll.id)
 				}
+			}
+			for _, output := range surface.terminals {
+				target.Attr(output.ref, "id", output.id)
+				target.Text(output.ref, output.paint.value)
 			}
 			for _, f := range surface.focus {
 				target.Attr(f.ref, "id", f.id)
@@ -629,11 +670,11 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	}
 	for i := range regions {
 		region := &regions[i]
-		if old := previous[region.ref]; old != nil && old.html == region.html && s.theme == s.model.workbenchTheme && s.view.CSS == view.CSS {
+		if old := previous[region.ref]; old != nil && old.tree == region.tree && s.theme == s.model.workbenchTheme && s.view.CSS == view.CSS {
 			region.definition = old.definition
 		}
 		if region.definition == nil {
-			region.definition, err = styles.DefineScopedChild(htmlui.NewTemplate(strings.Clone(region.html)), behavior)
+			region.definition, err = styles.DefineScopedChild(region.template, behavior)
 			if err != nil {
 				return err
 			}
@@ -641,32 +682,23 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	}
 	definition := s.definition
 	if replace {
-		outer := behavior
-		outer.Render = func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], target *htmlui.View) {
+		behaviorWithRegions := behavior
+		behaviorWithRegions.Render = func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], target *htmlui.View) {
 			behavior.Render(c, target)
 			for _, region := range c.Props.Surface.regions {
 				target.AppendComponentChild(region.ref, componentKey(region.ref), region.definition, *c.Props, struct{}{})
 			}
 		}
-		definition, err = styles.DefineScopedChild(htmlui.NewTemplate(template), outer)
+		definition, err = styles.DefineScopedChild(outer.template, behaviorWithRegions)
 		if err != nil {
 			return err
 		}
 	}
-	if s.scrollKey != scrollKey {
-		s.inputID = ""
-	}
+	s.setTerminals(terminals)
 	s.scrolls, s.scrollKey, s.fill = scrolls, scrollKey, fill
-	keepInput := false
-	for _, f := range focus {
-		keepInput = keepInput || f.id == s.inputID
-	}
-	if !keepInput {
-		s.inputID, s.inputValue = "", ""
-	}
 	s.definition, s.bindings, s.focus = definition, view.Events, focus
 	s.regions, scratch.regions = regions, s.regions
-	s.tree = tree
+	s.tree, s.outer = tree, outer
 	s.expanded = expanded
 	s.styles = styles
 	s.focusTargets, s.icons = focusTargets, icons
@@ -675,15 +707,61 @@ func (s *pencodeExtensionSurface) setView(view *peb.EditorView) error {
 	s.copies = copies
 	s.view, s.theme = view, s.model.workbenchTheme
 	s.output = channel
-	s.focused = -1
 	return nil
+}
+
+// Native reconciliation migrates focus and IME. A replacement can still have
+// the authored text if the extension hasn't echoed the user's last edit.
+func (draft *pencodeExtensionInput) captureFocused(world *module.Content, controls []pencodeExtensionFocus, closeID string) int {
+	*draft = pencodeExtensionInput{}
+	entity := world.FocusedControl()
+	target := world.Ref[htmlui.Focusable](entity)
+	if target == nil || target.ID == "" {
+		return -1
+	}
+	if target.ID == closeID {
+		return len(controls)
+	}
+	for i, f := range controls {
+		if f.id != target.ID {
+			continue
+		}
+		field := world.Ref[engineui.TextField](entity)
+		control := world.Ref[htmlui.Control](entity)
+		if field != nil && control != nil && field.Value != control.DefaultValue {
+			*draft = pencodeExtensionInput{f.id, field.Value, control.DefaultValue, field.Anchor, field.Caret}
+		}
+		return i
+	}
+	return -1
+}
+
+func (draft *pencodeExtensionInput) restoreFocused(world *module.Content) bool {
+	if draft.id == "" {
+		return false
+	}
+	saved := *draft
+	*draft = pencodeExtensionInput{}
+	entity := world.FocusedControl()
+	control := world.Ref[htmlui.Control](entity)
+	field := world.Mut[engineui.TextField](entity)
+	if field == nil || control == nil || control.ID != saved.id || control.DefaultValue != saved.authored || field.Value != saved.authored {
+		return false
+	}
+	composition := field.Composition
+	world.SetControlValue(entity, saved.value)
+	field.Composition, field.Anchor, field.Caret = composition, saved.anchor, saved.caret
+	return true
 }
 
 func (s *pencodeExtensionSurface) captureScroll(ref, id, key string, follow bool) pencodeExtensionScroll {
 	state := pencodeExtensionScroll{ref: ref, id: id, key: key, follow: follow, end: follow}
 	for _, previous := range s.scrolls {
-		if previous.ref != ref || previous.key != key || s.model.fontResources == nil {
+		if previous.ref != ref || previous.key != key {
 			continue
+		}
+		if !s.live() || s.model.fontResources == nil {
+			return previous
 		}
 		if node, ok := s.model.fontResources.HTMLNode(s.model.surface, previous.id); ok {
 			if area, ok := node.ScrollContainer(); ok {
@@ -730,6 +808,52 @@ func (s *pencodeExtensionSurface) saveScrollPositions() {
 	}
 }
 
+// A tab can hold local edits that its extension has not echoed into the view.
+func (s *pencodeExtensionSurface) saveProjectInputs() {
+	w := s.model.fontResources
+	if w == nil {
+		return
+	}
+	if _, ok := w.HTMLNode(s.model.surface, s.rootID); !ok {
+		return
+	}
+	clear(s.savedInputs)
+	s.savedInputs = s.savedInputs[:0]
+	for _, f := range s.focus {
+		control, ok := w.HTMLControl(s.model.surface, f.id)
+		if !ok {
+			continue
+		}
+		field := w.Ref[engineui.TextField](control)
+		authored := w.Ref[htmlui.Control](control)
+		if field == nil || authored == nil {
+			continue
+		}
+		value := field.Text().String()
+		if value != authored.DefaultValue || field.Caret != 0 || field.Anchor != 0 {
+			s.savedInputs = append(s.savedInputs, pencodeExtensionInput{f.id, value, authored.DefaultValue, field.Anchor, field.Caret})
+		}
+	}
+}
+func (s *pencodeExtensionSurface) restoreProjectInputs(w *module.Content) {
+	for _, saved := range s.savedInputs {
+		control, ok := w.HTMLControl(s.model.surface, saved.id)
+		if !ok {
+			continue
+		}
+		authored := w.Ref[htmlui.Control](control)
+		if authored == nil || authored.DefaultValue != saved.authored {
+			continue
+		}
+		if field := w.Mut[engineui.TextField](control); field != nil {
+			w.SetControlValue(control, saved.value)
+			field.Anchor, field.Caret = saved.anchor, saved.caret
+		}
+	}
+	clear(s.savedInputs)
+	s.savedInputs = s.savedInputs[:0]
+}
+
 func (s *pencodeExtensionSurface) scrollTarget() string {
 	for _, state := range s.scrolls {
 		if state.follow {
@@ -760,9 +884,31 @@ func (s *pencodeExtensionSurface) live() bool {
 }
 
 func newExtensionSurfaceDefinition() (*htmlui.Definition[pencodeExtensionSurfaceProps, struct{}], error) {
-	return htmlui.DefineScoped(htmlui.NewTemplate(`<section data-ref="surface"><header data-ref="header" class="pencode-extension-header"><img data-ref="severity-icon" class="pencode-notification-icon" alt=""><strong data-ref="title"></strong><button data-ref="close" class="pencode-icon-button" type="button" title="关闭" aria-label="关闭"><img data-ref="close-icon" class="pencode-close-icon" alt=""></button></header><div data-ref="content" class="pencode-extension-content"></div></section>`), "", htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("section", "data-ref", "surface")
+		b.Open("header", "data-ref", "header", "class", "pencode-extension-header")
+		b.Element("img", "data-ref", "severity-icon", "class", "pencode-notification-icon", "alt", "")
+		b.Element("strong", "data-ref", "title")
+		b.Open("button", "data-ref", "close", "class", "pencode-icon-button", "type", "button", "title", "关闭", "aria-label", "关闭")
+		b.Element("img", "data-ref", "close-icon", "class", "pencode-close-icon", "alt", "")
+		b.End()
+		b.End()
+		b.Element("div", "data-ref", "content", "class", "pencode-extension-content")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return htmlui.DefineScoped(template, "", htmlui.Behavior[pencodeExtensionSurfaceProps, struct{}]{
 		Render: func(c htmlui.RenderContext[pencodeExtensionSurfaceProps, struct{}], view *htmlui.View) {
 			s := c.Props.Surface
+			if c.Props.Visible {
+				s.focused = s.draft.captureFocused(s.model.fontResources, s.focus, s.closeID)
+				if s.scrollKey != s.renderedScrollKey {
+					s.draft = pencodeExtensionInput{}
+				}
+				s.renderedScrollKey = s.scrollKey
+			}
 			view.Attr("surface", "id", s.rootID)
 			view.Attr("content", "id", s.contentID)
 			if s.fill && (s.ui.Kind == peb.EditorTab || s.ui.Kind == peb.Panel) {
@@ -897,13 +1043,26 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 		s.send(peb.EditorEvent{Kind: "closerequest"}, reason)
 		return
 	}
-	state := &model.actions.ui
+	state := &model.projectActions(s.project).ui
 	wasLive := s.live()
-	if restore && (s.ui.Kind == peb.Popup || s.ui.Kind == peb.Notification) && model.fontResources != nil {
+	if restore && (s.ui.Kind == peb.Popup || s.ui.Kind == peb.Notification || s.ui.Kind == peb.Panel && reason == "extension") && model.fontResources != nil {
 		restore = s.ownsFocus(model.fontResources)
 	}
 	if state.editor == s {
-		model.selectEditorTabNeighbor(pencodeEditorTab{surface: s})
+		if wasLive {
+			state.editor = nil
+			model.selectEditorTabNeighbor(pencodeEditorTab{surface: s})
+			// A neighboring loose file can activate another project.
+			state = &model.projectActions(s.project).ui
+		} else {
+			state.editor = nil
+			for _, other := range state.surfaces {
+				if other != s && other.ui.Kind == peb.EditorTab {
+					state.editor = other
+					break
+				}
+			}
+		}
 	}
 	for i, candidate := range state.surfaces {
 		if candidate == s {
@@ -918,13 +1077,14 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 	}
 	if state.panel == s {
 		state.panel = nil
-		if model.bottom.active == pencodePanelExtension {
-			model.bottom.active = pencodePanelClosed
+		if panel := model.projectPanel(s.project); *panel == pencodePanelExtension {
+			*panel = pencodePanelClosed
 		}
 	}
+	s.setTerminals(nil)
 	s.images = model.replaceExtensionImages(s.images, nil)
 	s.send(peb.EditorEvent{Kind: "close"}, reason)
-	if restore && wasLive && state.overlay == nil && model.fontResources != nil {
+	if restore && wasLive && s.project == model.activeProjectState() && state.overlay == nil && model.fontResources != nil {
 		if control, ok := model.fontResources.HTMLControl(model.surface, s.invocation.anchor); ok && model.fontResources.Focus(control) {
 			return
 		}
@@ -933,13 +1093,19 @@ func (model *workspaceModel) closeExtensionSurface(s *pencodeExtensionSurface, r
 }
 
 func (model *workspaceModel) clearExtensionUI(owner string) {
-	state := &model.actions.ui
+	for project, group := range model.actionGroups {
+		model.clearProjectExtensionUI(project, &group.ui, owner)
+	}
+}
+
+func (model *workspaceModel) clearProjectExtensionUI(project *pencodeProject, state *pencodeExtensionUIState, owner string) {
 	retained := state.surfaces[:0]
 	for _, s := range state.surfaces {
 		if owner != "" && s.owner != owner {
 			retained = append(retained, s)
 			continue
 		}
+		s.setTerminals(nil)
 		s.images = model.replaceExtensionImages(s.images, nil)
 		// No lifecycle RPC after unload/disconnect.
 		if state.overlay == s {
@@ -950,8 +1116,8 @@ func (model *workspaceModel) clearExtensionUI(owner string) {
 		}
 		if state.panel == s {
 			state.panel = nil
-			if model.bottom.active == pencodePanelExtension {
-				model.bottom.active = pencodePanelClosed
+			if panel := model.projectPanel(project); *panel == pencodePanelExtension {
+				*panel = pencodePanelClosed
 			}
 		}
 	}
@@ -978,24 +1144,43 @@ func (s *pencodeExtensionSurface) updateStyle() {
 // timers or goroutines. Re-arm after early wakes (for example after an update).
 func (model *workspaceModel) expireExtensionNotifications(now time.Time) (changed bool) {
 	var next time.Time
-	for i := 0; i < len(model.actions.ui.surfaces); {
-		s := model.actions.ui.surfaces[i]
-		if !s.expiresAt.IsZero() {
-			if !now.Before(s.expiresAt) {
-				model.closeExtensionSurface(s, "timeout", true)
-				changed = true
-				continue
+	for project, group := range model.actionGroups {
+		for i := 0; i < len(group.ui.surfaces); {
+			s := group.ui.surfaces[i]
+			if !s.expiresAt.IsZero() {
+				if !now.Before(s.expiresAt) {
+					model.closeExtensionSurface(s, "timeout", true)
+					changed = changed || project == model.activeProjectState()
+					continue
+				}
+				if next.IsZero() || s.expiresAt.Before(next) {
+					next = s.expiresAt
+				}
 			}
-			if next.IsZero() || s.expiresAt.Before(next) {
-				next = s.expiresAt
-			}
+			i++
 		}
-		i++
 	}
 	if !next.IsZero() && model.app != nil && model.app.WakeAt != nil {
 		model.app.WakeAt(next)
 	}
 	return changed
+}
+
+func (s *pencodeExtensionSurface) setVisible(visible bool) {
+	if visible != s.visible {
+		if !visible {
+			for _, output := range s.terminals {
+				output.paint.capture(s.model.fontResources)
+				output.paint.unbind(s.model.fontResources)
+			}
+		}
+		s.visible = visible
+		value := "hidden"
+		if visible {
+			value = "visible"
+		}
+		s.send(peb.EditorEvent{Kind: "visibilitychange", Value: value}, "")
+	}
 }
 
 // Called after layout: position overlays inside the viewport and focus new surfaces.
@@ -1020,17 +1205,19 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 	}
 	for _, s := range state.surfaces {
 		visible := s.live()
-		if visible != s.visible {
-			s.visible = visible
-			value := "hidden"
-			if visible {
-				value = "visible"
+		s.setVisible(visible)
+		if len(s.savedInputs) > 0 {
+			if _, mounted := world.HTMLNode(model.surface, s.rootID); mounted {
+				s.restoreProjectInputs(world)
 			}
-			s.send(peb.EditorEvent{Kind: "visibilitychange", Value: value}, "")
 		}
 		if !visible {
 			continue
 		}
+		for _, output := range s.terminals {
+			scrollChanged = output.paint.sync(world, model, output.id) || scrollChanged
+		}
+		inputLayoutChanged = s.draft.restoreFocused(world) || inputLayoutChanged
 		if s.syncInputLinks(world) {
 			scrollChanged = true
 			// Complete newly mounted native controls before autosizing and
@@ -1090,20 +1277,6 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 			}
 			s.pointerFocus = ""
 		}
-		if s.inputID != "" {
-			if control, ok := world.HTMLControl(model.surface, s.inputID); ok {
-				if field := world.Mut[engineui.TextField](control); field != nil {
-					if state.overlay == nil && world.Focus(control) {
-						field.Focused = true
-						if field.Value == s.inputValue {
-							field.Anchor, field.Caret = s.inputAnchor, s.inputCaret
-						}
-						inputLayoutChanged = true
-					}
-					s.inputID, s.inputValue = "", ""
-				}
-			}
-		}
 		for i := range s.focus {
 			f := &s.focus[i]
 			if !f.placeCaret {
@@ -1116,11 +1289,11 @@ func (model *workspaceModel) syncExtensionUI(world *module.Content) (scrollChang
 					position, _, _ := strings.Cut(f.caret, ":")
 					if caret, err := strconv.Atoi(position); err == nil {
 						caret = max(0, min(caret, field.Text().Runes()))
-						field.Anchor, field.Caret = caret, caret
-						inputLayoutChanged = true
-						if state.overlay == nil || state.overlay == s {
+						if (state.overlay == nil || state.overlay == s) && !world.Has[engineui.TextField](world.FocusedControl()) {
 							world.Focus(control)
 						}
+						field.Anchor, field.Caret = caret, caret
+						inputLayoutChanged = true
 					}
 					f.placeCaret = false
 				}

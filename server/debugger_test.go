@@ -43,6 +43,7 @@ func TestContributedDebugAdapterUsesStdioAndIsRevoked(t *testing.T) {
 	request.String("Xdebug")
 	request.String("")
 	request.String("")
+	request.String("")
 	request.U32(1)
 	request.String("user argument")
 	d := protocol.Decoder{Buffer: request.Buffer}
@@ -106,6 +107,7 @@ func TestDisablingExtensionCancelsAdapterStartup(t *testing.T) {
 	}}
 	var request protocol.Encoder
 	request.String("Delve")
+	request.String("")
 	request.String("")
 	request.String("")
 	request.U32(0)

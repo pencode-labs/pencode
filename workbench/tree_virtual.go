@@ -163,8 +163,12 @@ func (project *pencodeProject) treeRange(world *module.Content, model *workspace
 		height, position = scroll.ViewportSize.Y(), scroll.Position.Y()
 	}
 	if project.tree.restore && project.scan == nil {
-		position = min(0, max(project.tree.position, -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)))
+		position = project.tree.position
 	}
+	// Layout clamps the native scrollbar to the refreshed content height.
+	// Mount the rows at that position even while it still reports the old extent.
+	minPosition := -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)
+	position = min(0, max(position, minPosition))
 	c := &model.fileContext
 	editing := c.project == project && c.inline() && c.needsFocus
 	if (model.revealProject == project || editing) && (project.scan == nil || project.scan.staged) {
@@ -179,7 +183,7 @@ func (project *pencodeProject) treeRange(world *module.Content, model *workspace
 			}
 			top := float32(5 + i*pencodeTreeRowHeight)
 			if !editing || creating || top+position < 5 || top+position+pencodeTreeRowHeight > height-13 {
-				position = min(0, max(height/2-top-pencodeTreeRowHeight/2, -max(0, float32(len(rows)*pencodeTreeRowHeight+18)-height)))
+				position = min(0, max(height/2-top-pencodeTreeRowHeight/2, minPosition))
 			}
 			if scroll := world.Mut[scene.UIScroll](project.tree.area); scroll != nil {
 				scroll.Position[1] = position
@@ -216,15 +220,18 @@ func renderPencodeTree(context module.ContentRenderContext[projectProps, struct{
 			continue
 		}
 		view.AppendComponentChild("tree-window", componentKey(entry.Path), definition,
-			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name(), Depth: int(entry.Depth), IsDir: entry.IsDir, Openable: entry.Openable, Ignored: entry.Ignored, GitStatus: project.treeGit.names[entry.Path], HasErrors: !entry.IsDir && model.fileHasErrors(project, entry.Path)}, treeRowState{})
+			treeProps{Model: model, Theme: props.Theme, Icons: props.Icons, Project: project, TreeID: props.TreeID, Path: entry.Path, Name: entry.Name(), Depth: int(entry.Depth), IsDir: entry.IsDir, Openable: entry.Openable, Decoration: model.fileNameDecoration(project, entry)}, treeRowState{})
 	}
 }
 
-// Runs after scrolling and before component reconciliation, including scrollbar drags.
-func (model *workspaceModel) syncTreeScroll(world *module.Content) {
+// Synchronize the mounted project tree after input or after layout restores
+// its scrollbar. A change after layout also needs a native scroll update.
+func (model *workspaceModel) syncTreeScroll(world *module.Content) bool {
 	if world == nil || model.sidebarHidden() {
-		return
+		return false
 	}
+	var dirty ecs.Entity
+	moved := false
 	for entity, access := range world.Query[htmlui.Component[projectProps, struct{}]]() {
 		props := access.Get().Props
 		if props.Model != model || props.Project == nil {
@@ -234,11 +241,15 @@ func (model *workspaceModel) syncTreeScroll(world *module.Content) {
 		if node, ok := world.HTMLNode(model.surface, props.TreeID); ok {
 			project.tree.area, _ = node.ScrollContainer()
 		}
-		if scroll := world.Mut[scene.UIScroll](project.tree.area); scroll != nil {
+		scroll := world.Ref[scene.UIScroll](project.tree.area)
+		var previous float32
+		if scroll != nil {
+			previous = scroll.Position.Y()
 			if project.tree.restore {
 				// Wait for indexing and layout before the scroll system can clamp
 				// the saved position against the complete content height.
 				if project.scan == nil && scroll.ViewportSize.Y() > 0 && scroll.ContentSize.Y() >= float32(len(project.visibleTreeRows(model))*pencodeTreeRowHeight) {
+					scroll = world.Mut[scene.UIScroll](project.tree.area)
 					scroll.Position[1] = min(0, max(project.tree.position, -max(0, scroll.ContentSize.Y()-scroll.ViewportSize.Y())))
 					scroll.Momentum[1] = 0
 					project.tree.restore = false
@@ -248,11 +259,25 @@ func (model *workspaceModel) syncTreeScroll(world *module.Content) {
 			}
 		}
 		first, end := project.treeRange(world, model)
-		if first != project.tree.first || end != project.tree.end {
-			world.UpdateState[projectProps, struct{}](entity, func(*struct{}) {})
-			if model.app != nil {
-				model.app.RequestRender()
-			}
+		if scroll != nil && scroll.Position.Y() != previous {
+			moved = true
 		}
+		if first != project.tree.first || end != project.tree.end {
+			dirty = entity
+		}
+		break
 	}
+	if dirty == 0 {
+		return moved
+	}
+	// Reconcile the scroll clip before replacing keyed rows. Newly mounted
+	// labels otherwise inherit the previous viewport's paint bounds.
+	if err := world.SyncHTML(); err != nil {
+		model.setActiveStatus(err.Error())
+	}
+	world.UpdateState[projectProps, struct{}](dirty, func(*struct{}) {})
+	if model.app != nil {
+		model.app.RequestRender()
+	}
+	return true
 }

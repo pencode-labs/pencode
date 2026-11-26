@@ -9,10 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pencode-labs/pencode/internal/ripgrep/download"
+	"github.com/pencode-labs/pencode/internal/systemproxy"
 	"github.com/pencode-labs/pencode/internal/version"
 )
 
 func main() {
+	systemproxy.Configure()
 	platforms := flag.String("platforms", "linux/amd64,linux/arm64,darwin/amd64,darwin/arm64", "Comma-separated SSH server platforms")
 	output := flag.String("output", "resources/servers", "Artifact directory")
 	releaseVersion := flag.String("version", "dev", "Server release version or tag")
@@ -39,6 +42,9 @@ func build(platforms, output, releaseVersion string) error {
 		if !ok || goos != "linux" && goos != "darwin" || arch != "amd64" && arch != "arm64" {
 			return fmt.Errorf("unsupported platform %q", platform)
 		}
+		if err := download.Prepare(filepath.Join("internal", "ripgrep"), goos, arch); err != nil {
+			return err
+		}
 		directory := filepath.Join(output, goos+"-"+arch)
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
@@ -48,7 +54,7 @@ func build(platforms, output, releaseVersion string) error {
 			return err
 		}
 		binary := filepath.Join(stage, "pencode-server")
-		cmd := exec.Command("go", "build", "-p", "1", "-trimpath", "-ldflags=-s -w -buildid= -X "+version.Symbol+"="+releaseVersion, "-o", binary, "./cmd/pencode-server")
+		cmd := exec.Command("go", "build", "-p", "1", "-trimpath", "-tags=pencode_ripgrep", "-ldflags=-s -w -buildid= -X "+version.Symbol+"="+releaseVersion, "-o", binary, "./cmd/pencode-server")
 		cmd.Env = append(baseEnv[:len(baseEnv):len(baseEnv)], "GOOS="+goos, "GOARCH="+arch, "CGO_ENABLED=0")
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		fmt.Println("Building", platform)

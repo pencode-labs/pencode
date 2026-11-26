@@ -66,6 +66,9 @@ type EditorReply struct {
 // matches; selection/copy retains data offsets when cells are unmounted. Copy
 // emits TSV data without row/column headings. Use .pencode-grid-cell and
 // .pencode-grid-header CSS to style cells/headings. The outer editor scrolls.
+// In a searchable/selectable grid, data-pencode-highlight-cells highlights the
+// clicked cell and data-pencode-highlight-rows highlights a row when its header
+// is clicked. Highlighted cells expose aria-selected="true".
 // An optional grid source string defers cell transfer. The host sends internal
 // EditorEvent{Kind:"grid",Ref:source,Value:JSON} requests with integer request,
 // offset (UTF-8 bytes), firstRow/endRow and firstColumn/endColumn (half-open,

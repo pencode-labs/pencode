@@ -28,10 +28,11 @@ ifeq ($(OS),Windows_NT)
 else
 	rm -rf -- "$(HOME)/.pencode/profiles"
 endif
-	$(GO) run -ldflags "-X github.com/pencode-labs/pencode/internal/version.Value=$(VERSION)" . $(ARGS)
+	$(GO) run -tags=pencode_ripgrep -ldflags "-X github.com/pencode-labs/pencode/internal/version.Value=$(VERSION)" . $(ARGS)
 
 install-server:
-	$(GO) build -ldflags "-X github.com/pencode-labs/pencode/internal/version.Value=$(VERSION)" -o "$(SERVER_DIR)/pencode-server$(EXE)" ./cmd/pencode-server
+	$(GO) generate ./internal/ripgrep
+	$(GO) build -tags=pencode_ripgrep -ldflags "-X github.com/pencode-labs/pencode/internal/version.Value=$(VERSION)" -o "$(SERVER_DIR)/pencode-server$(EXE)" ./cmd/pencode-server
 
 install-extensions:
 	$(GO) run ./cmd/pencode-install-extensions -go "$(GO)" -directory "$(EXTENSIONS_DIR)"

@@ -13,9 +13,11 @@ import (
 	"github.com/pencode-labs/pencode/protocol"
 )
 
+const maxRepositoryRoots = 4096
+
 // Discover on the backend so local and remote projects use the same filesystem.
 // Git metadata and dependency/build trees are never traversed, nor are symlinks.
-func repositoryRoots(ctx context.Context, root string) ([]string, error) {
+func repositoryRoots(ctx context.Context, root string, candidates []string) ([]string, error) {
 	var roots []string
 	add := func(directory string) {
 		data, err := command(ctx, directory, []string{"rev-parse", "--show-toplevel"})
@@ -30,6 +32,32 @@ func repositoryRoots(ctx context.Context, root string) ([]string, error) {
 	info, err := os.Lstat(root)
 	if err != nil || !info.IsDir() {
 		return roots, err
+	}
+	if candidates != nil {
+		if len(candidates) == 0 {
+			return roots, ctx.Err()
+		}
+		tree, err := os.OpenRoot(root)
+		if err != nil {
+			return nil, err
+		}
+		defer tree.Close()
+		for _, directory := range candidates {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if len(roots) >= maxRepositoryRoots {
+				return nil, errors.New("repository count exceeds budget")
+			}
+			// A directory may have moved since the snapshot. Recheck the
+			// marker within the workspace before invoking Git at that path.
+			directory = filepath.FromSlash(directory)
+			if _, err := tree.Lstat(filepath.Join(directory, ".git")); err == nil {
+				add(filepath.Join(root, directory))
+			}
+		}
+		slices.Sort(roots)
+		return roots, ctx.Err()
 	}
 	// Only directory paths survive a batch. The order of entries in the
 	// filesystem is immaterial since the much smaller root list is sorted.
@@ -58,7 +86,7 @@ func repositoryRoots(ctx context.Context, root string) ([]string, error) {
 			for _, entry := range children {
 				switch entry.Name() {
 				case ".git":
-					if len(roots) >= 4096 {
+					if len(roots) >= maxRepositoryRoots {
 						f.Close()
 						return nil, errors.New("repository count exceeds budget")
 					}
@@ -86,12 +114,39 @@ func repositoryRoots(ctx context.Context, root string) ([]string, error) {
 }
 
 func (s *services) gitRepositories(ctx context.Context, root string, d *protocol.Decoder, e *protocol.Encoder) error {
+	id := d.U64()
 	if err := d.Done(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	roots, err := repositoryRoots(ctx, root)
+	var candidates []string
+	if id != 0 {
+		s.mu.Lock()
+		index := s.indexes[id]
+		s.mu.Unlock()
+		if index == nil || index.root != root {
+			return &protocol.Error{Code: protocol.NotFound, Message: "workspace index is closed"}
+		}
+		for {
+			index.mu.Lock()
+			if index.done {
+				if index.err == nil {
+					candidates = index.gitDirs
+				}
+				index.mu.Unlock()
+				break
+			}
+			changed := index.changed
+			index.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-changed:
+			}
+		}
+	}
+	roots, err := repositoryRoots(ctx, root, candidates)
 	if err != nil {
 		return err
 	}

@@ -155,7 +155,7 @@ func TestCloseFindPreservesEditorView(t *testing.T) {
 
 func TestFindCacheAndLargeReplace(t *testing.T) {
 	f := &openFile{Path: "file.txt", Name: "file.txt", contentSnapshot: snapshotText(strings.Repeat("a ", pencodeFindMatchLimit+7))}
-	m := &workspaceModel{files: map[string]*openFile{f.Path: f}, activePath: f.Path, findOpen: true, findQuery: "a", replaceQuery: "b", findOptions: textsearch.Options{CaseSensitive: true}}
+	m := &workspaceModel{files: map[string]*openFile{f.Path: f}, activePath: f.Path, pencodeProjectInteraction: pencodeProjectInteraction{findOpen: true, findQuery: "a", replaceQuery: "b", findOptions: textsearch.Options{CaseSensitive: true}}}
 	m.refreshFindMatches()
 	if len(m.findMatches) != pencodeFindMatchLimit {
 		t.Fatal(len(m.findMatches))
@@ -171,7 +171,7 @@ func TestFindCacheAndLargeReplace(t *testing.T) {
 
 func TestFindSelectionRebasesThroughReplaceAndUndo(t *testing.T) {
 	f := &openFile{Path: "file.txt", Name: "file.txt", contentSnapshot: snapshotText("foo\nfoo foo\nfoo")}
-	m := &workspaceModel{files: map[string]*openFile{f.Path: f}, activePath: f.Path, findOpen: true, findQuery: "foo", replaceQuery: "long", findSelection: true, findScope: pencodeFindScope{f, 4, 11}}
+	m := &workspaceModel{files: map[string]*openFile{f.Path: f}, activePath: f.Path, pencodeProjectInteraction: pencodeProjectInteraction{findOpen: true, findQuery: "foo", replaceQuery: "long", findSelection: true, findScope: pencodeFindScope{f, 4, 11}}}
 	m.refreshFindMatches()
 	if len(m.findMatches) != 2 {
 		t.Fatal("selection scope", m.findMatches)

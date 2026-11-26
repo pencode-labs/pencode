@@ -54,6 +54,7 @@ const (
 	pencodeShortcutZoomOut
 	pencodeShortcutZoomReset
 	pencodeShortcutSettings
+	pencodeShortcutNewUntitled
 	pencodeShortcutCount
 )
 
@@ -86,30 +87,34 @@ var pencodeShortcutDefinitions = [...]pencodeShortcutDefinition{
 	{"zoom-out", "shortcut-zoom-out", "缩小界面", pencodeKeybinding{Key: input.KeyMinus, Primary: true}},
 	{"zoom-reset", "shortcut-zoom-reset", "重置缩放", pencodeKeybinding{Key: input.KeyNum0, Primary: true}},
 	{"settings", "shortcut-settings", "打开设置", pencodeKeybinding{Key: input.KeyComma, Primary: true}},
+	{"new-untitled", "shortcut-new-untitled", "新建临时文本文件", pencodeKeybinding{Key: input.KeyN, Primary: true}},
 }
 
 type pencodeSettings struct {
-	LanguageServers map[string]string                       `json:"languageServers,omitempty"`
-	ServerPaths     map[string]string                       `json:"languageServerPaths,omitempty"`
-	Pprof           *bool                                   `json:"pprof,omitempty"`
-	Bindings        map[string]pencodeKeybinding            `json:"bindings"`
-	Keymaps         map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
-	Extensions      map[string]peb.SettingValues            `json:"extensions,omitempty"`
-	CodeFont        string                                  `json:"codeFont"`
-	UIFont          string                                  `json:"uiFont"`
-	Language        string                                  `json:"language"`
-	Theme           string                                  `json:"theme"`
-	IconTheme       string                                  `json:"iconTheme"`
-	Keymap          string                                  `json:"keymap"`
-	FontSize        int                                     `json:"fontSize"`
-	UIFontSize      int                                     `json:"uiFontSize"`
-	EditorWidth     int                                     `json:"editorWidth"`
-	Zoom            int                                     `json:"zoom"`
+	DebugAdapterPaths map[string]string                       `json:"debugAdapterPaths,omitempty"`
+	LanguageServers   map[string]string                       `json:"languageServers,omitempty"`
+	ServerPaths       map[string]string                       `json:"languageServerPaths,omitempty"`
+	Pprof             *bool                                   `json:"pprof,omitempty"`
+	Bindings          map[string]pencodeKeybinding            `json:"bindings"`
+	Keymaps           map[string]map[string]pencodeKeybinding `json:"keymaps,omitempty"`
+	Extensions        map[string]peb.SettingValues            `json:"extensions,omitempty"`
+	CodeFont          string                                  `json:"codeFont"`
+	UIFont            string                                  `json:"uiFont"`
+	Language          string                                  `json:"language"`
+	Theme             string                                  `json:"theme"`
+	IconTheme         string                                  `json:"iconTheme"`
+	Keymap            string                                  `json:"keymap"`
+	configuration.LocalHistorySettings
+	FontSize    int `json:"fontSize"`
+	UIFontSize  int `json:"uiFontSize"`
+	EditorWidth int `json:"editorWidth"`
+	Zoom        int `json:"zoom"`
 }
 
 func defaultPencodeSettings() pencodeSettings {
 	settings := pencodeSettings{
-		FontSize: pencodeDefaultFontSize, UIFontSize: pencodeDefaultUIFontSize,
+		LocalHistorySettings: configuration.DefaultLocalHistory(),
+		FontSize:             pencodeDefaultFontSize, UIFontSize: pencodeDefaultUIFontSize,
 		EditorWidth: pencodeDefaultEditorWidth,
 		CodeFont:    defaultPencodeFont(runtime.GOOS), UIFont: defaultUIFontSelection(), Zoom: pencodeDefaultZoom,
 		Theme: "monokai", Keymap: "default", Language: "zh-CN",
@@ -157,7 +162,7 @@ func loadPencodeSettings() (pencodeSettings, string) {
 
 func parsePencodeSettings(data []byte) pencodeSettings {
 	settings := defaultPencodeSettings()
-	var saved pencodeSettings
+	saved := pencodeSettings{LocalHistorySettings: settings.LocalHistorySettings}
 	if json.Unmarshal(data, &saved) != nil {
 		return settings
 	}
@@ -185,6 +190,9 @@ func parsePencodeSettings(data []byte) pencodeSettings {
 	if saved.Language != "" {
 		settings.Language = saved.Language
 	}
+	saved.LocalHistorySettings.Validate()
+	settings.LocalHistorySettings = saved.LocalHistorySettings
+	settings.DebugAdapterPaths = saved.DebugAdapterPaths
 	settings.LanguageServers, settings.ServerPaths = saved.LanguageServers, saved.ServerPaths
 	settings.Extensions = saved.Extensions
 	settings.Pprof = saved.Pprof
@@ -434,7 +442,7 @@ func (model *workspaceModel) syncZoom(world *module.Content) {
 }
 
 func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventContext[appProps, appState]) bool {
-	if model.handleUpdateEvent(context.Ref) {
+	if model.handleUpdateEvent(context.Ref) || model.handleStorage(context.Ref, context.Event.Checked) {
 		return true
 	}
 	model.ensureSettings()
@@ -445,7 +453,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		if context.Ref == definition.ref {
 			model.settingsOpen = true
 			model.settingsShortcuts = true
-			model.settingsLanguageServers = false
+			model.settingsToolPage = noToolSettings
 			model.settingsAbout = false
 			model.settingsExtensions = false
 			model.capturingShortcut = true
@@ -476,7 +484,7 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 		model.capturingShortcut = false
 		return true
 	case "settings-extensions-nav":
-		model.settingsLanguageServers = false
+		model.settingsToolPage = noToolSettings
 		model.settingsAbout = false
 		model.settingsExtensionsExpanded = !model.settingsExtensionsExpanded
 		model.settingsExtensions, model.settingsShortcuts, model.capturingShortcut = true, false, false
@@ -488,9 +496,18 @@ func (model *workspaceModel) handleSettingsEvent(context *module.ContentEventCon
 	case "language-tools-refresh":
 		model.startBuiltinTools("", "")
 		return true
-	case "settings-appearance-nav", "settings-shortcuts-nav", "settings-about-nav", "settings-language-servers-nav":
-		model.settingsLanguageServers = context.Ref == "settings-language-servers-nav"
-		if model.settingsLanguageServers {
+	case "settings-appearance-nav", "settings-storage-nav", "settings-shortcuts-nav", "settings-about-nav", "settings-language-servers-nav", "settings-debug-adapters-nav":
+		switch context.Ref {
+		case "settings-storage-nav":
+			model.settingsToolPage = diskStorageSettings
+		case "settings-debug-adapters-nav":
+			model.settingsToolPage = debugAdapterSettings
+		case "settings-language-servers-nav":
+			model.settingsToolPage = languageServerSettings
+		default:
+			model.settingsToolPage = noToolSettings
+		}
+		if model.settingsToolPage == languageServerSettings || model.settingsToolPage == debugAdapterSettings {
 			model.startBuiltinTools("", "")
 		}
 		model.settingsExtensions = false
@@ -681,6 +698,10 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 		return model.folderSearchKeys(world, state)
 	}
 	if model.closing.action != pencodeCloseNone {
+		if model.namingUntitled() && model.uiKey(state, input.KeyEnter) && pencodeControlFocused(world, model.surface, "save-as-path") {
+			model.resolveClose(true)
+			return true
+		}
 		if model.uiKey(state, input.KeyEscape) {
 			model.clearCloseRequest()
 			return true
@@ -790,8 +811,14 @@ func (model *workspaceModel) runShortcut(world *module.Content, action pencodeSh
 	}
 	model.lastFileClick = 0
 	switch action {
+	case pencodeShortcutNewUntitled:
+		model.newUntitled()
 	case pencodeShortcutSave:
 		model.saveActiveFile()
+		if model.namingUntitled() {
+			markPencodeRootDirtyByModel(world, model)
+			return
+		}
 		model.refreshRegion(world, pencodeRefreshSave)
 	case pencodeShortcutUndo:
 		model.undoActiveContent(world)
@@ -843,29 +870,18 @@ func (model *workspaceModel) setZoom(world *module.Content, zoom int) {
 }
 
 func (model *workspaceModel) switchEditorTab(world *module.Content, step int) {
-	count, active := 0, -1
-	for tab := range model.editorTabs() {
-		if tab.surface != nil || tab.source != nil {
-			continue
-		}
-		if tab.project == model.activeProjectState() && tab.path == model.activePath {
-			active = count
-		}
-		count++
+	active := pencodeEditorTab{project: model.activeProjectState(), path: model.activePath}
+	if surface := model.actions.ui.editor; surface != nil {
+		active = pencodeEditorTab{surface: surface}
+	} else if source := model.sourceState().activeTab(); source != nil {
+		active.path, active.source = "", source
 	}
-	if count < 2 || active < 0 {
-		return
+	left, next := model.editorTabNeighbors(active, true)
+	if step < 0 {
+		next = left
 	}
-	next := (active + step + count) % count
-	for tab := range model.editorTabs() {
-		if tab.surface != nil || tab.source != nil {
-			continue
-		}
-		if next == 0 {
-			model.selectProjectTab(tab.project, tab.path)
-			setPencodeEditorValue(world, model.surface, model.activeContent())
-			return
-		}
-		next--
+	if next != active && next != (pencodeEditorTab{}) {
+		model.selectEditorTab(next)
+		setPencodeEditorValue(world, model.surface, model.activeContent())
 	}
 }

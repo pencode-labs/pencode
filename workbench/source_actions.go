@@ -88,6 +88,16 @@ func (a *workspaceModel) sourceAction(id string) {
 	if s.Prompt != "" && id != "sc-prompt-confirm" {
 		return
 	}
+	if strings.HasPrefix(id, "sc-local-") {
+		a.localHistoryAction(id)
+		a.sourceChanged()
+		return
+	}
+	if id == "sc-panel-close" && a.bottom.active == pencodePanelSourceControl {
+		a.handleBottomPanelEvent(a.fontResources, "panel-close", "")
+		a.sourceChanged()
+		return
+	}
 	if id == "sc-toggle" {
 		if a.projectPath == "" {
 			return
@@ -242,6 +252,7 @@ func (a *workspaceModel) sourceAction(id string) {
 	case id == "sc-branches":
 		a.toggleSourceBranches(id)
 	case id == "sc-refresh":
+		s.history.refresh = s.history.expanded
 		s.RepositoriesLoaded = false
 		a.refreshSourceControl()
 	case id == "sc-more":
@@ -299,6 +310,8 @@ func (a *workspaceModel) sourceAction(id string) {
 			}
 			return result
 		})
+	case strings.HasPrefix(id, localHistoryOpenPrefix):
+		a.openLocalHistoryDiff(id)
 	case strings.HasPrefix(id, "sc-open:"):
 		parts := strings.SplitN(strings.TrimPrefix(id, "sc-open:"), ":", 2)
 		if len(parts) != 2 {
@@ -724,6 +737,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 		return
 	}
 	key := sourcePanelKey{
+		HistoryRevision: s.history.revision, Locale: a.locale.ID,
 		Theme: a.workbenchTheme, Icons: a.fileIcons, Files: sourceFirst(s.Snapshot.Files), CommitFiles: sourceFirst(s.CommitFiles), Commits: sourceFirst(s.Snapshot.Commits),
 		FileCount: len(s.Snapshot.Files), CommitCount: len(s.Snapshot.Commits), CommitFileCount: len(s.CommitFiles),
 		First: s.GraphFirst, Visible: s.GraphVisible, Changes: s.changeRanges(), TreeRevision: s.TreeRevision,
@@ -741,16 +755,23 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	s.panelKey = key
 	b.reset()
 	b.open("section", "source", "id", "sc-panel", "class", "sc-panel", "aria-label", "Source Control")
-	if s.RepositoryError != "" {
-		b.text("p", "repository-error", a.tr("当前文件夹未检测到 Git 仓库。"), "id", "sc-repository-error", "class", "muted", "role", "status", "title", s.RepositoryError)
-		b.close()
-		return
-	}
 	b.open("fieldset", "controls", "class", "sc-content-frame")
 	if s.modal() {
 		b.attr("disabled", "")
 	}
+	b.open("div", "columns", "class", "sc-body")
+	a.renderLocalHistory(b)
 	b.open("div", "body", "id", "sc-body", "class", "sc-body")
+	if s.RepositoryError != "" {
+		b.open("div", "unavailable", "class", "sc-panel")
+		a.renderSourceGraphHeader(b)
+		b.close()
+		b.close()
+		b.close()
+		b.close()
+		b.close()
+		return
+	}
 	a.renderSourceRepositories(b, key.Repositories)
 	b.open("div", "main", "id", "sc-main", "class", "sc-main")
 	b.open("aside", "changes", "id", "sc-changes", "class", "sc-changes", "aria-label", "Repository changes")
@@ -828,7 +849,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	}
 	b.text("div", "changes-resize", "", "id", "sc-changes-resize", "class", resizeClass, "role", "separator", "aria-orientation", "vertical", "aria-label", a.tr("拖动调整改动列表宽度"), "aria-controls", "sc-changes")
 	b.open("section", "history", "id", "sc-history", "class", "sc-history", "aria-label", "Source Control Graph")
-	b.text("h2", "title", "Source Control Graph", "class", "sc-heading")
+	a.renderSourceGraphHeader(b)
 	b.open("div", "graph", "id", "sc-graph", "class", "sc-graph")
 	if len(s.Snapshot.Commits) == 0 {
 		b.text("p", "empty", "No commits yet. Commit changes to create your first commit.", "class", "muted")
@@ -864,6 +885,7 @@ func (a *workspaceModel) renderSourceControl(b *sourceVNodeView) {
 	if s.Snapshot.HasMore {
 		sourceButton(b, "sc-more", "Load more commits", s.busy())
 	}
+	b.close()
 	b.close()
 	b.close()
 	b.close()
@@ -1008,6 +1030,19 @@ func (a *workspaceModel) sourceFileTreeRow(b *sourceVNodeView, kind string, row 
 	b.close()
 }
 
+func (a *workspaceModel) renderSourceGraphHeader(b *sourceVNodeView) {
+	s := a.sourceState()
+	b.open("header", "graph-header", "class", "sc-graph-header")
+	if s.RepositoryError == "" {
+		b.text("h2", "title", "Source Control Graph", "class", "sc-heading")
+	} else {
+		b.text("p", "repository-error", a.tr("当前文件夹未检测到 Git 仓库。"), "id", "sc-repository-error", "class", "muted", "role", "status", "title", s.RepositoryError)
+	}
+	a.renderSourceToolbar(&s.toolsView)
+	b.append(s.toolsView.nodes())
+	b.close()
+}
+
 func (a *workspaceModel) renderSourceToolbar(b *sourceVNodeView) {
 	s := a.sourceState()
 	key := sourceToolsKey{Theme: a.workbenchTheme, Busy: s.busy(), Unavailable: s.RepositoryError != "", Rebasing: s.Snapshot.Rebasing}
@@ -1027,8 +1062,9 @@ func (a *workspaceModel) renderSourceToolbar(b *sourceVNodeView) {
 		if item.ID == "sc-op:abort" && key.Rebasing {
 			item.Label = "Abort Rebase"
 		}
-		a.sourceIconButton(b, item.ID, item.Label, item.Icon, s.busy() || key.Unavailable && item.ID != "sc-refresh", "")
+		a.sourceIconButton(b, item.ID, item.Label, item.Icon, key.Busy || key.Unavailable && item.ID != "sc-refresh", "")
 	}
+	a.sourceIconButton(b, "sc-panel-close", a.tr("收起面板"), "close", false, "")
 }
 func (a *workspaceModel) sourceFileIcon(b *sourceVNodeView, key, name string, directory, expanded bool) {
 	source := a.fileIcons.source(name, directory)

@@ -2,21 +2,7 @@ package workbench
 
 import (
 	htmlui "github.com/onix-engine/onix/ui/html"
-	"github.com/pencode-labs/pencode/peb"
 )
-
-func (model *workspaceModel) syncExtensionProject(previous string) {
-	if previous == model.projectPath {
-		return
-	}
-	for _, surface := range model.actions.ui.surfaces {
-		if surface.ui.Kind != peb.EditorTab {
-			continue
-		}
-		surface.invocation.context = peb.ActionContext{ID: surface.invocation.context.ID, ProjectPath: model.projectPath}
-		surface.send(peb.EditorEvent{Kind: "projectchange"}, "")
-	}
-}
 
 func (model *workspaceModel) selectExtensionTab(surface *pencodeExtensionSurface) {
 	if model.closing.action != pencodeCloseNone {
@@ -31,29 +17,34 @@ func (model *workspaceModel) selectExtensionTab(surface *pencodeExtensionSurface
 	model.screen = pencodeWorkspace
 }
 
-func (model *workspaceModel) selectFirstExtensionTab() {
-	for _, surface := range model.actions.ui.surfaces {
-		if surface.ui.Kind == peb.EditorTab {
-			model.selectExtensionTab(surface)
-			return
+func (model *workspaceModel) renderEditorTabs(view *htmlui.View, definition *htmlui.Definition[tabProps, struct{}]) {
+	for tab := range model.editorTabs() {
+		if tab.source != nil {
+			break // Comparisons are rendered in the adjacent source-tabs container.
 		}
-	}
-}
-
-func (model *workspaceModel) renderExtensionTabs(view *htmlui.View, definition *htmlui.Definition[tabProps, struct{}]) {
-	for _, surface := range model.actions.ui.surfaces {
-		if surface.ui.Kind != peb.EditorTab {
-			continue
-		}
-		icon := ""
-		for _, action := range model.actions.rows {
-			if action.Ref == surface.invocation.anchor {
-				icon = action.Action.Icon
-				break
+		props := tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons}
+		var key uint64
+		if surface := tab.surface; surface != nil {
+			props.Surface, props.Path, props.Name = surface, surface.rootID, surface.ui.Title
+			props.Active, props.Busy, props.Unread = surface.live(), surface.ui.Busy, surface.ui.Unread
+			for _, action := range model.actions.rows {
+				if action.Ref == surface.invocation.anchor {
+					props.Icon = action.Action.Icon
+					break
+				}
+			}
+			key = componentKey(surface.rootID)
+		} else {
+			file := tab.file(model)
+			props.Project, props.Path, props.Name = tab.project, file.Path, file.Name
+			props.Active = tab.project == model.activeProjectState() && model.actions.ui.editor == nil && !model.sourceState().visible() && model.activePath == tab.path
+			props.Preview, props.Dirty = file.Preview, file.Dirty
+			key = componentKey(file.Path)
+			if project := tab.project; project != nil {
+				props.Decoration = model.fileNameDecoration(project, file.treeEntry(project.Entries))
+				key ^= componentKey(project.Path) * 1099511628211
 			}
 		}
-		view.AppendComponentChild("file-tabs", componentKey(surface.rootID), definition,
-			tabProps{Model: model, Surface: surface, Theme: model.workbenchTheme, Icons: model.fileIcons,
-				Path: surface.rootID, Name: surface.ui.Title, Icon: icon, Active: surface.live(), Busy: surface.ui.Busy, Unread: surface.ui.Unread}, struct{}{})
+		view.AppendComponentChild("file-tabs", key, definition, props, struct{}{})
 	}
 }

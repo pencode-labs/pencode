@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/pencode-labs/pencode/client"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -12,10 +11,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/onix-engine/onix/scene"
+	"github.com/pencode-labs/pencode/client"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 const (
-	sourceTextLimit       = 2 << 20
 	sourceHistoryPageSize = 32
 	sourceGraphRowHeight  = 32
 )
@@ -161,7 +161,7 @@ func parseSourceStatus(data []byte) ([]sourceFile, error) {
 
 func (r sourceRepository) statusSnapshot() (sourceSnapshot, error) {
 	s := sourceSnapshot{Repository: r}
-	data, err := r.command("status", "--porcelain=v1", "-z", "--untracked-files=all")
+	data, err := r.snapshotStatus()
 	if err != nil {
 		return s, err
 	}
@@ -472,7 +472,7 @@ func (r sourceRepository) workFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	data, err := r.Backend.WorkFile(r.baseContext(), r.Root, path)
-	if len(data) > sourceTextLimit {
+	if len(data) > protocol.FileComparisonLimit {
 		return nil, errors.New("file exceeds the 2 MiB text comparison limit")
 	}
 	return data, err
@@ -489,7 +489,7 @@ func (r sourceRepository) objectFile(revision, path string) ([]byte, error) {
 		return nil, nil
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(string(size)))
-	if err != nil || n > sourceTextLimit {
+	if err != nil || n > protocol.FileComparisonLimit {
 		return nil, errors.New("file exceeds the 2 MiB text comparison limit")
 	}
 	return r.command("cat-file", "blob", object)
@@ -650,7 +650,6 @@ func (r sourceRepository) openDiff(file sourceFile, kind, revision string) (*sou
 			result, err = r.workFile(file.Path)
 			t.Result, t.Saved, t.Disk = string(result), string(result), string(result)
 		}
-		t.Local, t.Incoming = string(left), string(right)
 	case "history":
 		if file.Index != 'A' {
 			left, err = r.objectFile(revision+"^", oldPath)
@@ -676,16 +675,20 @@ func (r sourceRepository) openDiff(file sourceFile, kind, revision string) (*sou
 	if err != nil {
 		return nil, err
 	}
-	t.Binary = bytes.IndexByte(left, 0) >= 0 || bytes.IndexByte(right, 0) >= 0 || !utf8.Valid(left) || !utf8.Valid(right) || !utf8.ValidString(t.Result)
-	if !t.Binary {
-		t.Local, t.Incoming = string(left), string(right)
-		if t.editable() {
-			t.Result, t.Saved, t.Disk = t.Incoming, t.Incoming, t.Incoming
-		}
-		var diff sourceDiffView
-		diff, err = sourceDiffContext(r.baseContext(), r.Backend, t.Local, t.Incoming)
-		t.initializeDiffView(diff)
+	return r.compareFile(t, string(left), string(right))
+}
+
+func (r sourceRepository) compareFile(t *sourceTab, left, right string) (*sourceTab, error) {
+	t.Binary = strings.IndexByte(left, 0) >= 0 || strings.IndexByte(right, 0) >= 0 || !utf8.ValidString(left) || !utf8.ValidString(right) || !utf8.ValidString(t.Result)
+	if t.Binary {
+		return t, nil
 	}
+	t.Local, t.Incoming = left, right
+	if t.editable() {
+		t.Result, t.Saved, t.Disk = right, right, right
+	}
+	diff, err := sourceDiffContext(r.baseContext(), r.Backend, left, right)
+	t.initializeDiffView(diff)
 	return t, err
 }
 

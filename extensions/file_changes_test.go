@@ -20,7 +20,7 @@ func TestFileChangesReachActionAndEditorSDKHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := batch.Root + ":" + batch.Files[0].Path
-	actions := bundle.Actions.Start(nil, nil)
+	actions := bundle.Actions.Start("", nil, nil)
 	defer actions.Close()
 	actions.NotifyFiles(batch)
 	timer := time.After(5 * time.Second)

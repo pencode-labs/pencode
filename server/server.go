@@ -27,9 +27,9 @@ func Serve(parent context.Context, conn io.ReadWriteCloser, options Options) err
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 	defer conn.Close()
-	var store workspace.Store
-	defer store.Close()
 	services := newServices(ctx, options)
+	store := workspace.Store{History: services.history}
+	defer store.Close()
 	var workers sync.WaitGroup
 	var activeMu sync.Mutex
 	active := make(map[uint64]context.CancelFunc)
@@ -185,6 +185,17 @@ func dispatch(s *workspace.Store, f protocol.Frame, e *protocol.Encoder) error {
 			return err
 		}
 		return s.CloseProject(id)
+	case protocol.DocumentCreate:
+		id, name, content := d.U64(), d.String(), d.String()
+		if err := d.Done(); err != nil {
+			return err
+		}
+		doc, err := s.CreateDocument(id, name, content)
+		if err != nil {
+			return err
+		}
+		e.U64(doc.ID)
+		e.U64(doc.Version)
 	case protocol.DocumentOpen:
 		id, name, mode := d.U64(), d.String(), protocol.DocumentMode(d.U32())
 		if err := d.Done(); err != nil {

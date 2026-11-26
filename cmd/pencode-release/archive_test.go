@@ -122,7 +122,7 @@ func TestDistributionPreservesDesktopArtifacts(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{binary, catalog, data, "Pencode/pencode-version", "Pencode/LICENSE", "Pencode/README.md", "Pencode/README.zh-CN.md", "Pencode/licenses/CODICONS-LICENSE.txt", "Pencode/licenses/LUCIDE-LICENSE.txt", "Pencode/licenses/NERD-FONTS-LICENSE.txt", "Pencode/licenses/ONIX-LICENSE.txt"} {
+			for _, name := range []string{binary, catalog, data, "Pencode/pencode-version", "Pencode/LICENSE", "Pencode/README.md", "Pencode/README.zh-CN.md", "Pencode/licenses/CODICONS-LICENSE.txt", "Pencode/licenses/LUCIDE-LICENSE.txt", "Pencode/licenses/NERD-FONTS-LICENSE.txt", "Pencode/licenses/ONIX-LICENSE.txt", "Pencode/licenses/RIPGREP-LICENSE.txt"} {
 				if !seen[name] {
 					t.Errorf("missing %s", name)
 				}

@@ -42,7 +42,7 @@ var pencodeThemeIcons = [...]struct{ ref, source, foreground string }{
 	{"close-settings-icon", "icons/close.svg", "icon.foreground"},
 	{"keymap-create-icon", "icons/copy.svg", "icon.foreground"},
 	{"keymap-rename-icon", "icons/edit.svg", "icon.foreground"},
-	{"keymap-delete-icon", "icons/trash.svg", "icon.foreground"},
+	{"keymap-delete-icon", "icons/trash.svg", "errorForeground"},
 	{"settings-extensions-toggle", "icons/chevron-right.svg", "icon.foreground"},
 	{"open-project-icon", "icons/folder-opened.svg", "button.foreground"},
 	{"sidebar-collapse-icon", "icons/chevron-right.svg", "icon.foreground"},
@@ -290,7 +290,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 			return pencodeTheme{}, err
 		}
 	}
-	for _, name := range []string{"add", "remove", "edit", "ellipsis", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo", "repo-pull", "repo-push", "git-merge-abort", "check", "copy", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "globe", "code", "refresh-cw", "close", "discard", "debug-start", "debug-stop", "debug-pause"} {
+	for _, name := range []string{"add", "remove", "edit", "ellipsis", "list", "chevron-down", "git-commit", "git-branch", "git-fetch", "repo", "repo-pull", "repo-push", "git-merge-abort", "check", "copy", "circle-filled", "chevron-right", "arrow-right", "arrow-up", "folder", "file-text", "globe", "code", "refresh-cw", "close", "discard", "debug-start", "debug-stop", "debug-pause"} {
 		if err := addIcon(pencodeIconKey{"icons/" + name + ".svg", "icon.foreground"}); err != nil {
 			return pencodeTheme{}, err
 		}
@@ -305,6 +305,7 @@ func preparePencodeTheme(id string, theme *syntax.Theme, source string) (pencode
 		{"icons/refresh-cw.svg", "button.foreground"},
 		{"icons/arrow-right.svg", "button.foreground"},
 		{"icons/file-text.svg", "icon.foreground"},
+		{"icons/file-text.svg", "descriptionForeground"},
 		{"icons/file-text.svg", "textLink.foreground"},
 		{"icons/file-text.svg", "list.activeSelectionForeground"},
 		{"icons/file-text.svg", "tab.activeForeground"},

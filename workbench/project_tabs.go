@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/module"
 	htmlui "github.com/onix-engine/onix/ui/html"
 )
@@ -73,14 +74,24 @@ type pencodeProjectTabProps struct {
 }
 
 func newProjectTabDefinition(content *module.Content) (*htmlui.Definition[pencodeProjectTabProps, struct{}], error) {
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "data-ref", "tab", "class", "pencode-project-tab")
+		b.Open("button", "data-ref", "select", "class", "pencode-project-tab-select", "type", "button", "role", "tab")
+		b.Open("span", "data-ref", "icon", "class", "pencode-project-tab-icon", "aria-hidden", "true")
+		b.Element("span", "data-ref", "initial")
+		b.End()
+		b.Element("span", "data-ref", "name", "class", "pencode-project-tab-name")
+		b.End()
+		b.Open("button", "data-ref", "close", "class", "pencode-project-tab-close", "type", "button")
+		b.Element("img", "data-ref", "close-icon", "class", "pencode-close-icon", "src", "icons/close.svg", "alt", "")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeProjectTabProps, struct{}](
-		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-project-tab">
-  <button data-ref="select" class="pencode-project-tab-select" type="button" role="tab">
-    <span data-ref="icon" class="pencode-project-tab-icon" aria-hidden="true"><span data-ref="initial"></span></span>
-    <span data-ref="name" class="pencode-project-tab-name"></span>
-  </button>
-  <button data-ref="close" class="pencode-project-tab-close" type="button"><img data-ref="close-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button>
-</div>`), "",
+		template, "",
 		module.ContentBehavior[pencodeProjectTabProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProjectTabProps, struct{}], view *htmlui.View) {
 				p := c.Props

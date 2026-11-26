@@ -15,22 +15,28 @@ import (
 )
 
 type pencodeActionState struct {
-	theme     *pencodeTheme
-	local     *actions.Registry
-	sessions  map[string]*extensions.ActionSession
-	file      *openFile
-	owner     *workspaceModel
-	fileName  string
-	shortcuts []pencodeActionShortcut
-	rows      []pencodeActionProps
-	snapshot  []peb.Action
+	theme      *pencodeTheme
+	local      *actions.Registry
+	extensions map[string]*extensions.ActionExtension
+	baseline   map[string]pencodeActionBaseline
+	file       *openFile
+	owner      *workspaceModel
+	fileName   string
+	shortcuts  []pencodeActionShortcut
+	rows       []pencodeActionProps
+	snapshot   []peb.Action
 	// Context references include the existing built-in items and visible actions.
 	leftRefs, rightRefs []string
-	ui                  pencodeExtensionUIState
-	closeToken          uint64
-	openWithCount       int
-	revision            uint64
+	pencodeProjectActions
+	closeToken    uint64
+	openWithCount int
+	revision      uint64
 }
+type pencodeActionBaseline struct {
+	editor *extensions.Editor
+	action peb.Action
+}
+
 type pencodeActionProps struct {
 	Model            *workspaceModel
 	Ref, Icon, Style string
@@ -74,7 +80,7 @@ func (model *workspaceModel) syncActions() bool {
 			continue
 		}
 		if a.Location == peb.OpenWith {
-			if state.file == nil || state.file.page.Paged || editorMatch(&a, state.file.Name) == 0 {
+			if state.file == nil || state.file.untitled() || state.file.page.Paged || editorMatch(&a, state.file.Name) == 0 {
 				continue
 			}
 			state.openWithCount++
@@ -142,8 +148,10 @@ func (model *workspaceModel) renderActions(view *htmlui.View, definition *htmlui
 			props.Active = model.fileContext.index == left
 			left++
 		case peb.RightContextMenu:
- if model.sourceState().visible() { continue }
- props.Active = model.languageUI.contextGroup == 0 && model.languageUI.contextIndex == right
+			if model.sourceState().visible() {
+				continue
+			}
+			props.Active = model.languageUI.contextGroup == 0 && model.languageUI.contextIndex == right
 			right++
 		}
 		view.AppendComponentChild(pencodeActionSlots[props.Action.Location], componentKey(props.Action.ID), definition, props, struct{}{})
@@ -217,7 +225,7 @@ func (model *workspaceModel) runAction(world *module.Content, id string) {
 		return
 	}
 	c := peb.ActionContext{ID: id, ProjectPath: model.projectPath}
-	if model.activePath != "" {
+	if model.activePath != "" && !strings.HasPrefix(model.activePath, untitledPrefix) {
 		c.Path = path.Join(strings.ReplaceAll(model.projectPath, "\\", "/"), model.activePath)
 	}
 	if world != nil {
@@ -263,26 +271,58 @@ func (model *workspaceModel) importActions(extension *extensions.ActionExtension
 		return
 	}
 	state := &model.actions
-	if state.sessions == nil {
-		state.sessions = make(map[string]*extensions.ActionSession)
+	if state.extensions == nil {
+		state.extensions = make(map[string]*extensions.ActionExtension)
 	}
-	if state.sessions[extension.ID] != nil {
+	if state.extensions[extension.ID] != nil {
 		model.removeActions(extension.ID)
 	}
-	prefix := "extensions/" + extension.ID + "/"
-	extension.Output = model.outputStore().Channel("Extension: " + extension.ID)
-	session := extension.Start(model.extensionSettingValues(extension.ID), model.backgroundWake())
-	state.sessions[extension.ID] = session
+	state.extensions[extension.ID] = extension
+	model.startProjectActions(model.activeProjectState(), extension)
 	for _, a := range extension.Actions {
-		model.registerExtensionAction(a, session, prefix)
+		model.registerExtensionAction(a, extension.ID)
 	}
 }
-func (model *workspaceModel) registerExtensionAction(a peb.Action, session *extensions.ActionSession, prefix string) {
-	id := a.ID
+
+func (model *workspaceModel) startProjectActions(project *pencodeProject, extension *extensions.ActionExtension) *extensions.ActionSession {
+	group := model.projectActions(project)
+	if group.sessions == nil {
+		group.sessions = make(map[string]*extensions.ActionSession)
+	}
+	root := ""
+	if project != nil {
+		root = project.Path
+	}
+	scoped := *extension
+	scoped.Output = model.projectOutput(project).Channel("Extension: " + extension.ID)
+	session := scoped.Start(root, model.extensionSettingValues(extension.ID), model.backgroundWake())
+	group.sessions[extension.ID] = session
+	return session
+}
+
+func (model *workspaceModel) registerExtensionAction(a peb.Action, owner string) {
+	prefix := "extensions/" + owner + "/"
 	err := model.actionRegistry().Register(actions.Definition{Action: a, Run: func(c peb.ActionContext) error {
+		m := model
+		if model.session != nil && model.session.active != nil {
+			m = model.session.active.model
+		}
+		p := m.activeProjectState()
+		if c.ProjectPath != "" && (p == nil || p.Path != c.ProjectPath) {
+			index := m.projectIndex(c.ProjectPath)
+			if index < 0 {
+				return fmt.Errorf("项目已关闭：%s", c.ProjectPath)
+			}
+			p = m.projects[index]
+		}
+		group := m.projectActions(p)
+		session := group.sessions[owner]
+		if session == nil && m.actions.extensions[owner] != nil {
+			session = m.startProjectActions(p, m.actions.extensions[owner])
+		}
 		c.ID = strings.TrimPrefix(c.ID, prefix)
-		if !session.Submit(c) {
-			return fmt.Errorf("扩展 action 暂时无法执行：%s", id)
+		if session == nil || !session.Submit(c) {
+			return fmt.Errorf("扩展 action 暂时无法执行：%s", a.ID)
 		}
 		return nil
 	}})
@@ -293,44 +333,77 @@ func (model *workspaceModel) registerExtensionAction(a peb.Action, session *exte
 func (model *workspaceModel) removeActions(id string) {
 	model.removeEditors("extensions/" + id + "/")
 	model.clearExtensionUI(id)
-	if session := model.actions.sessions[id]; session != nil {
-		session.Close()
-		delete(model.actions.sessions, id)
+	for _, group := range model.actionGroups {
+		if session := group.sessions[id]; session != nil {
+			session.Close()
+			model.resolveExtensionClose(session, model.closing.lifecycleToken, peb.LifecycleReply{Message: model.tr("扩展 ") + id + model.tr(" 已断开，无法确认后台任务状态。")})
+		}
+		delete(group.sessions, id)
+		for key := range group.changes {
+			if extensionOwner(key) == id {
+				delete(group.changes, key)
+			}
+		}
 	}
+	for key := range model.actions.baseline {
+		if extensionOwner(key) == id {
+			delete(model.actions.baseline, key)
+		}
+	}
+	delete(model.actions.extensions, id)
 	model.actionRegistry().RemovePrefix("extensions/" + id + "/")
-	model.resolveExtensionClose(id, model.closing.lifecycleToken, peb.LifecycleReply{Message: model.tr("扩展 ") + id + model.tr(" 已断开，无法确认后台任务状态。")})
 }
 func (model *workspaceModel) closeActions() {
 	model.clearExtensionUI("")
-	for _, session := range model.actions.sessions {
-		session.Close()
+	for _, group := range model.actionGroups {
+		for _, session := range group.sessions {
+			session.Close()
+		}
+		clear(group.sessions)
+		clear(group.changes)
 	}
+	clear(model.actions.extensions)
+	clear(model.actions.baseline)
 	model.actionRegistry().RemovePrefix("extensions/")
-	clear(model.actions.sessions)
 	model.actionRegistry().SetWake(nil)
 }
 func (model *workspaceModel) pollActions() bool {
 	changed := false
-	for id, session := range model.actions.sessions {
+	for project, group := range model.actionGroups {
+		if model.pollProjectActions(project, group) {
+			changed = true
+		}
+	}
+	return model.syncActions() || changed
+}
+
+func (model *workspaceModel) pollProjectActions(project *pencodeProject, group *pencodeProjectActions) bool {
+	changed := false
+	active := project == model.activeProjectState()
+	for id, session := range group.sessions {
+		if session == nil {
+			continue
+		}
 		for range 16 {
 			select {
 			case result, ok := <-session.Results:
 				if !ok {
-					model.removeActions(id)
-					changed = true
+					model.disconnectProjectActions(project, group, id, session)
+					changed = active || changed
 					goto nextSession
 				}
 				if result.Lifecycle != nil {
-					model.resolveExtensionClose(id, result.Token, *result.Lifecycle)
-					changed = true
-					continue
+					model.resolveExtensionClose(session, result.Token, *result.Lifecycle)
+					// The reply may close this project and change the foreground group.
+					return true
 				}
 				if result.Err != nil {
 					changed = true
-					model.extensionFeedback = fmt.Sprintf(model.tr("扩展 %s action：%v"), id, result.Err)
-					model.logOutput("Extension: "+id, model.extensionFeedback)
+					message := fmt.Sprintf(model.tr("扩展 %s action：%v"), id, result.Err)
+					model.projectInteraction(project).extensionFeedback = message
+					model.logProjectOutput(project, "Extension: "+id, message)
 					if result.Fatal {
-						model.removeActions(id)
+						model.disconnectProjectActions(project, group, id, session)
 						goto nextSession
 					}
 					continue
@@ -345,48 +418,41 @@ func (model *workspaceModel) pollActions() bool {
 					var retained *pencodeExtensionSurface
 					ui := result.UI
 					if ui.Kind == peb.EditorTab && ui.View != nil && !ui.Close {
-						for _, surface := range model.actions.ui.surfaces {
+						for _, surface := range group.ui.surfaces {
 							if surface.owner == id && surface.ui.ID == ui.ID {
 								retained = surface
 								break
 							}
 						}
 					}
-					if err := model.applyExtensionUI(id, session, *result.UI); err != nil {
+					if err := model.applyProjectExtensionUI(project, id, session, *result.UI); err != nil {
 						changed = true
-						model.extensionFeedback = fmt.Sprintf(model.tr("扩展 %s UI：%v"), id, err)
-						model.logOutput("Extension: "+id, model.extensionFeedback)
+						message := fmt.Sprintf(model.tr("扩展 %s UI：%v"), id, err)
+						model.projectInteraction(project).extensionFeedback = message
+						model.logProjectOutput(project, "Extension: "+id, message)
 					} else {
 						if result.UI.View != nil && !result.UI.Close {
-							for _, surface := range model.actions.ui.surfaces {
+							for _, surface := range group.ui.surfaces {
 								if surface.owner == id && surface.ui.ID == ui.ID {
 									surface.images = model.replaceExtensionImages(surface.images, result.Assets)
 									break
 								}
 							}
 						}
-						if retained == nil || !model.refreshExtensionSurface(retained) {
+						if active && (retained == nil || !model.refreshExtensionSurface(retained)) {
 							changed = true
 						}
 					}
 					continue
 				}
-				changed = true
 				change := result.Change
-				// A live description may change its location or associations.
-				if change.Remove {
-					model.removeEditors(change.Action.ID)
-					model.actionRegistry().Remove(change.Action.ID)
-				} else if change.Action.Location == peb.OpenWith {
-					if !model.updateEditorAction(change.Action) {
-						model.actionRegistry().Remove(change.Action.ID)
-						model.importEditors([]extensions.Editor{session.Editor(change.Action)})
-					}
-				} else {
-					model.removeEditors(change.Action.ID)
-					if err := model.actionRegistry().Update(change.Action); err != nil {
-						model.registerExtensionAction(change.Action, session, "extensions/"+id+"/")
-					}
+				if group.changes == nil {
+					group.changes = make(map[string]peb.ActionChange)
+				}
+				group.changes[change.Action.ID] = change
+				if active {
+					model.applyActionChange(id, session, change)
+					changed = true
 				}
 			default:
 				goto nextSession
@@ -399,5 +465,98 @@ func (model *workspaceModel) pollActions() bool {
 		}
 	nextSession:
 	}
-	return model.syncActions() || changed
+	return changed
+}
+
+func (model *workspaceModel) applyActionChange(id string, session *extensions.ActionSession, change peb.ActionChange) {
+	if model.actions.baseline == nil {
+		model.actions.baseline = make(map[string]pencodeActionBaseline)
+	}
+	if _, exists := model.actions.baseline[change.Action.ID]; !exists {
+		var base pencodeActionBaseline
+		if extension := model.actions.extensions[id]; extension != nil {
+			for _, a := range extension.Actions {
+				if a.ID == change.Action.ID {
+					base.action = a
+					break
+				}
+			}
+		}
+		for _, editor := range model.customEditors {
+			if editor.ID == change.Action.ID {
+				base.action, base.editor = editor.Action, editor
+				break
+			}
+		}
+		model.actions.baseline[change.Action.ID] = base
+	}
+	// A live description may change its location or associations.
+	if change.Remove {
+		model.removeEditors(change.Action.ID)
+		model.actionRegistry().Remove(change.Action.ID)
+	} else if change.Action.Location == peb.OpenWith {
+		if !model.updateEditorAction(change.Action) {
+			model.actionRegistry().Remove(change.Action.ID)
+			if base := model.actions.baseline[change.Action.ID].editor; base != nil {
+				editor := *base
+				editor.Action = change.Action
+				model.importEditors([]extensions.Editor{editor})
+			} else if session != nil {
+				model.importEditors([]extensions.Editor{session.Editor(change.Action)})
+			}
+		}
+	} else {
+		model.removeEditors(change.Action.ID)
+		if err := model.actionRegistry().Update(change.Action); err != nil {
+			model.registerExtensionAction(change.Action, id)
+		}
+	}
+}
+
+func (m *workspaceModel) switchActionContributions(previous *pencodeProjectActions) {
+	for id, extension := range m.actions.extensions {
+		if _, started := m.actions.sessions[id]; !started {
+			m.startProjectActions(m.activeProjectState(), extension)
+		}
+	}
+	for key := range previous.changes {
+		if _, exists := m.actions.changes[key]; exists {
+			continue
+		}
+		base := m.actions.baseline[key].action
+		change := peb.ActionChange{Action: base}
+		if base.ID == "" {
+			change.Action.ID, change.Remove = key, true
+		}
+		owner := extensionOwner(key)
+		m.applyActionChange(owner, m.actions.sessions[owner], change)
+	}
+	for key, change := range m.actions.changes {
+		owner := extensionOwner(key)
+		m.applyActionChange(owner, m.actions.sessions[owner], change)
+	}
+}
+
+func (m *workspaceModel) disconnectProjectActions(p *pencodeProject, group *pencodeProjectActions, id string, session *extensions.ActionSession) {
+	m.clearProjectExtensionUI(p, &group.ui, id)
+	if group.changes == nil {
+		group.changes = make(map[string]peb.ActionChange)
+	}
+	// A disconnected service loses its contributions only in its own project.
+	if extension := m.actions.extensions[id]; extension != nil {
+		for _, a := range extension.Actions {
+			group.changes[a.ID] = peb.ActionChange{Action: a, Remove: true}
+		}
+	}
+	for key, change := range group.changes {
+		if extensionOwner(key) == id {
+			change.Remove = true
+			group.changes[key] = change
+			if p == m.activeProjectState() {
+				m.applyActionChange(id, session, change)
+			}
+		}
+	}
+	group.sessions[id] = nil
+	m.resolveExtensionClose(session, m.closing.lifecycleToken, peb.LifecycleReply{Message: m.tr("扩展 ") + id + m.tr(" 已断开，无法确认后台任务状态。")})
 }

@@ -11,7 +11,7 @@ import (
 func TestFindCacheReleasesClosedDocument(t *testing.T) {
 	for _, project := range []bool{false, true} {
 		file := &openFile{Path: "large.txt", contentSnapshot: snapshotText(strings.Repeat("word ", 1<<20))}
-		m := workspaceModel{files: map[string]*openFile{file.Path: file}, tabs: []string{file.Path}, activePath: file.Path, findQuery: "word", findOpen: true}
+		m := workspaceModel{files: map[string]*openFile{file.Path: file}, tabs: []string{file.Path}, activePath: file.Path, pencodeProjectInteraction: pencodeProjectInteraction{findQuery: "word", findOpen: true}}
 		m.refreshFindMatches()
 		if len(m.findMatches) != pencodeFindMatchLimit {
 			t.Fatal("fixture did not populate matches")
@@ -19,6 +19,7 @@ func TestFindCacheReleasesClosedDocument(t *testing.T) {
 		if project {
 			p := &pencodeProject{Files: m.files, Tabs: m.tabs, ActivePath: file.Path}
 			m.projects = []*pencodeProject{p}
+			m.viewProject = p
 			m.discardProjectTab(p, file.Path)
 		} else {
 			m.discardTab(file.Path)
@@ -64,7 +65,7 @@ func TestHighlightAndFindKeepSnapshotUnmaterialized(t *testing.T) {
 	if result.err != nil || len(result.spans) == 0 {
 		t.Fatal("snapshot highlighting failed", result.err)
 	}
-	m := workspaceModel{files: map[string]*openFile{file.Path: file}, activePath: file.Path, findQuery: "value"}
+	m := workspaceModel{files: map[string]*openFile{file.Path: file}, activePath: file.Path, pencodeProjectInteraction: pencodeProjectInteraction{findQuery: "value"}}
 	m.refreshFindMatches()
 	if len(m.findMatches) != pencodeFindMatchLimit || snapshot.Materialized() {
 		t.Fatal("highlight or find materialized the document")

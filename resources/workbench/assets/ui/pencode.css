@@ -186,6 +186,10 @@ textarea:focus {
     overflow: hidden;
 }
 
+.pencode-titlebar.native-controls .pencode-titlebar-search {
+    max-width: calc(100% - 536px);
+}
+
 .pencode-titlebar-search:hover,
 .pencode-titlebar-search:focus-within {
     border-color: var(--vscode-focusBorder);
@@ -614,31 +618,31 @@ textarea:focus {
     text-overflow: ellipsis;
 }
 
-.pencode-ignored-name {
+[data-file-decoration="ignored"] {
     color: var(--vscode-gitDecoration-ignoredResourceForeground);
 }
 
-.pencode-tree-name.git-added {
+[data-file-decoration="added"] {
     color: var(--vscode-gitDecoration-addedResourceForeground);
 }
 
-.pencode-tree-name.git-untracked {
+[data-file-decoration="untracked"] {
     color: var(--vscode-gitDecoration-untrackedResourceForeground);
 }
 
-.pencode-tree-name.git-modified {
+[data-file-decoration="modified"] {
     color: var(--vscode-gitDecoration-modifiedResourceForeground);
 }
 
-.pencode-tree-name.git-deleted {
+[data-file-decoration="deleted"] {
     color: var(--vscode-gitDecoration-deletedResourceForeground);
 }
 
-.pencode-tree-name.git-renamed {
+[data-file-decoration="renamed"] {
     color: var(--vscode-gitDecoration-renamedResourceForeground);
 }
 
-.pencode-tree-name.git-conflict {
+[data-file-decoration="conflict"] {
     color: var(--vscode-gitDecoration-conflictingResourceForeground);
 }
 
@@ -686,7 +690,8 @@ textarea:focus {
     font-size: 12px;
 }
 
-.pencode-error-name {
+.pencode-error-name,
+[data-file-decoration="error"] {
     color: var(--vscode-problemsErrorIcon-foreground);
 }
 
@@ -795,6 +800,33 @@ textarea:focus {
     flex: 0 0 auto;
     line-height: 1;
     white-space: nowrap;
+}
+
+.pencode-tab[data-extension="codex"] {
+    max-width: 240px;
+}
+
+.pencode-tab[data-extension="codex"] .pencode-tab-select,
+.pencode-tab[data-extension="codex"] .pencode-tab-name {
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+.pencode-tab[data-extension="codex"] .pencode-tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pencode-tab-name[data-file-decoration="clean"] {
+    color: var(--vscode-sideBar-foreground);
+}
+
+.pencode-tab-select:hover .pencode-tab-name[data-file-decoration="clean"] {
+    color: var(--vscode-list-hoverForeground);
+}
+
+.pencode-tab.active .pencode-tab-name[data-file-decoration="clean"] {
+    color: var(--vscode-list-activeSelectionForeground);
 }
 
 .pencode-tab-close {
@@ -1029,7 +1061,7 @@ textarea:focus {
 .pencode-folder-header { justify-content: space-between; font-weight: 600; }
 .pencode-folder-scope { margin: 0; color: var(--vscode-descriptionForeground); font-size: calc(12rem / 14); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .pencode-folder-status { flex: 1; min-width: 0; font-size: calc(12rem / 14); line-height: 1.5; color: var(--vscode-descriptionForeground); }
-.pencode-folder-results { display: flex; flex-direction: column; gap: 2px; min-height: 80px; max-height: 400px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+.pencode-folder-results { display: flex; flex-direction: column; gap: 2px; height: 400px; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
 .pencode-folder-result { display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; width: 100%; min-height: 46px; padding: 4px 10px; gap: 2px; text-align: left; border: 1px solid transparent; border-radius: 8px; }
 .pencode-folder-result:hover { background: var(--vscode-list-hoverBackground); }
 .pencode-folder-result.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
@@ -1285,6 +1317,15 @@ textarea:focus {
 .pencode-context-hint {
     color: var(--vscode-descriptionForeground);
     font-size: calc(11rem / 14);
+}
+
+#file-context-delete,
+#file-context-delete-shortcut,
+#input-context-delete,
+#sc-branch-delete,
+.pencode-editor-context button.danger,
+.pencode-close-actions button.danger {
+    color: var(--vscode-errorForeground);
 }
 
 .pencode-context-separator {
@@ -1754,6 +1795,24 @@ textarea:focus {
     font-size: calc(12rem / 14);
 }
 
+.pencode-storage-choice, .pencode-storage-actions { display: flex; align-items: center; gap: 8px; }
+
+.pencode-storage-choice input {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--vscode-settings-dropdownBorder);
+    border-radius: 3px;
+    background: var(--vscode-settings-dropdownBackground);
+    color: var(--vscode-button-foreground);
+    cursor: pointer;
+}
+
+.pencode-storage-choice input:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 .pencode-settings-row.pencode-setting-stacked {
     flex-direction: column;
     align-items: stretch;
@@ -1802,19 +1861,23 @@ textarea:focus {
     cursor: pointer;
 }
 
+.pencode-storage-choice input:hover:enabled,
 .pencode-setting-switch input:hover {
     background: var(--vscode-button-secondaryHoverBackground);
 }
 
+.pencode-storage-choice input:checked,
 .pencode-setting-switch input:checked {
     border-color: var(--vscode-button-background);
     background: var(--vscode-button-background);
 }
 
+.pencode-storage-choice input:checked:hover:enabled,
 .pencode-setting-switch input:checked:hover {
     background: var(--vscode-button-hoverBackground);
 }
 
+.pencode-storage-choice input:focus-visible,
 .pencode-setting-switch input:focus-visible {
     outline: 2px solid var(--vscode-focusBorder);
     outline-offset: 2px;
@@ -2687,7 +2750,10 @@ textarea:focus {
 .sc-repository-row { display: flex; align-items: stretch; min-height: 34px; min-width: 0; border-radius: 6px; }
 .sc-repository-row:hover { background: var(--vscode-list-hoverBackground); }
 .sc-repository-row[data-active="true"] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
-.sc-changes { display: flex; flex-direction: column; width: 65%; min-width: 190px; max-width: calc(100% - 206px); min-height: 0; flex: 0 0 auto; overflow: hidden; padding: 8px; border-right: 1px solid var(--vscode-editorGroup-border); background: var(--vscode-sideBar-background); }
+.sc-changes { display: flex; flex-direction: column; width: 65%; min-width: 190px; max-width: calc(100% - 206px); min-height: 0; flex: 0 0 auto; overflow: hidden; padding: 8px; border-right: 1px solid var(--vscode-editorGroup-border); }
+.sc-changes, .sc-panel .pencode-sidebar-resize { background: var(--vscode-sideBar-background); }
+.sc-panel .pencode-sidebar-resize:hover,
+.sc-panel .pencode-sidebar-resize.resizing { border-left: 1px solid var(--vscode-focusBorder); }
 .sc-changes-list { flex: 1; min-height: 0; overflow: auto; padding-right: 10px; }
 .sc-message { flex: 0 0 auto; width: 100%; height: 30px; min-height: 30px; padding: 6px; border: 1px solid var(--vscode-input-border); border-radius: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
 .sc-message-multiline { line-height: 20px; resize: vertical; }
@@ -2838,19 +2904,17 @@ textarea:focus {
     min-height: 0;
     overflow: hidden;
 }
-.sc-panel-tools {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    min-width: 0;
-}
+.sc-graph-header { display: flex; flex: 0 0 32px; align-items: center; gap: 2px; padding: 0 5px; }
+.sc-graph-header > .sc-heading, .sc-graph-header > .muted { flex: 1; min-width: 0; margin: 0; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-graph-header > .pencode-icon-button { flex-shrink: 0; }
+@container (max-width: 320px) { .sc-graph-header > .pencode-icon-button { width: 24px; height: 24px; min-height: 24px; } }
+.sc-graph-header button:disabled { opacity: .45; cursor: default; }
 .sc-branch {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.sc-panel-pane .sc-history > .sc-heading { min-height: 32px; }
 .sc-graph-height { position: relative; min-width: 100%; }
 .sc-graph-window { position: absolute; left: 0; right: 0; }
 .sc-icon {
@@ -3085,7 +3149,6 @@ textarea:focus {
 .pencode-connection-menu { z-index: 46; width: 164px; padding: 4px; }
 .pencode-connection-menu button { width: 100%; min-height: 30px; padding: 4px 10px; border-radius: 8px; text-align: left; color: var(--vscode-editorWidget-foreground); }
 .pencode-connection-menu button:hover { background: var(--vscode-list-hoverBackground); }
-.pencode-connection-menu button.danger { color: var(--vscode-errorForeground); }
 .pencode-connection-empty { margin: 0 16px; padding: 28px; border: 1px dashed var(--vscode-widget-border); border-radius: 8px; text-align: center; color: var(--vscode-descriptionForeground); }
 .pencode-connection-footer { min-height: 40px; justify-content: space-between; gap: 12px; margin-top: auto; padding: 4px 16px 12px; }
 .pencode-connection-feedback { min-width: 0; margin: 0; line-height: 20px; font-size: 12px; overflow-wrap: anywhere; }
@@ -3405,6 +3468,7 @@ textarea:focus {
     display: flex;
     align-items: center;
     flex: 0 0 auto;
+    width: 120px;
     min-width: 0;
     max-width: 100%;
     height: 26px;
@@ -3423,10 +3487,10 @@ textarea:focus {
 }
 
 .pencode-project-tab-select {
-    max-width: 140px;
     display: flex;
     align-items: center;
     gap: 4px;
+    flex: 1;
     min-width: 0;
     height: 26px;
     padding: 0 4px 0 0;
@@ -3478,7 +3542,72 @@ textarea:focus {
 
 @media (max-width: 800px) {
     .pencode-project-switcher { width: 206px; }
+}
+
+/* Keep 12px between the macOS switcher and the centered search. */
+@media (max-width: 910px) {
+    .pencode-titlebar.native-controls .pencode-project-switcher {
+        right: calc(100% - 256px);
+    }
+}
+
+@media (max-width: 622px) {
+    .pencode-titlebar.native-controls .pencode-project-switcher {
+        right: calc(50% + 48px);
+    }
+
+    .pencode-titlebar.native-controls .pencode-titlebar-search {
+        max-width: 72px;
+    }
+}
+
+@media (max-width: 526px) {
     .pencode-titlebar.native-controls .pencode-project-switcher {
         right: calc(100% - 208px);
     }
+
+    .pencode-titlebar.native-controls .pencode-titlebar-search {
+        max-width: calc(100% - 440px);
+    }
 }
+
+.sc-local-history {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    width: 25%;
+    max-width: 260px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--vscode-editorGroup-border);
+    background: var(--vscode-sideBar-background);
+}
+.sc-local-history[data-collapsed="true"] { width: 36px; }
+.sc-local-scope { padding: 0 8px 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sc-local-day { display: flex; margin: 0; }
+.sc-local-day > .sc-group-toggle { height: 26px; padding: 0 6px; font-size: calc(12rem / 14); color: var(--vscode-descriptionForeground); }
+.sc-local-version {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    height: 3rem;
+    padding: 0 6px;
+    overflow: hidden;
+    text-align: left;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+}
+.sc-local-version:hover { background: var(--vscode-list-hoverBackground); }
+.sc-local-version[aria-pressed="true"] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.sc-local-labels { display: flex; flex-direction: column; flex: 1; min-width: 0; pointer-events: none; }
+.sc-local-summary, .sc-local-path { flex: 0 0 1.25rem; line-height: 1.25rem; }
+.sc-local-summary { display: flex; align-items: center; gap: 4px; }
+.sc-local-summary > .sc-repository-name { flex: 1; }
+.sc-local-path, .sc-local-time { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: calc(12rem / 14); }
+.sc-local-time { flex: 0 0 auto; max-width: 68%; font-variant-numeric: tabular-nums; }
+.sc-local-version[aria-pressed="true"] .sc-local-path, .sc-local-version[aria-pressed="true"] .sc-local-time { color: inherit; }

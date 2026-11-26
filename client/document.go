@@ -56,10 +56,11 @@ type Document struct {
 	mu         sync.Mutex
 }
 
-func newDocument(c *Client, id, version uint64, content string) *Document {
+func newDocument[V piecetree.Value](c *Client, id, version uint64, value V) *Document {
+	content := piecetree.Text(value)
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &Document{client: c, id: id, version: version, latest: documentUpdate{content: piecetree.FromString(content)}, notify: make(chan struct{}), signal: make(chan struct{}, 1), done: make(chan struct{}), cancel: cancel, saves: make(chan documentSave, 8), pages: make(chan documentPageRequest, 1), closed: make(chan struct{}), operations: make(chan struct{}, 1)}
-	go d.run(ctx, version, piecetree.FromString(content))
+	d := &Document{client: c, id: id, version: version, latest: documentUpdate{content: content}, notify: make(chan struct{}), signal: make(chan struct{}, 1), done: make(chan struct{}), cancel: cancel, saves: make(chan documentSave, 8), pages: make(chan documentPageRequest, 1), closed: make(chan struct{}), operations: make(chan struct{}, 1)}
+	go d.run(ctx, version, content)
 	return d
 }
 

@@ -7,8 +7,10 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'cmd/pencode-release/**'
+      - 'cmd/pencode-build-servers/**'
       - 'cmd/pencode-server/**'
       - 'internal/version/**'
+      - 'internal/ripgrep/**'
       - 'packaging/**'
   workflow_dispatch:
 
@@ -105,8 +107,9 @@ jobs:
             echo 'Skipping tests as requested by the release commit.'
             exit 0
           fi
+          go generate -mod=readonly ./internal/ripgrep
           set +e
-          go test -v -mod=readonly ./cmd/pencode-release ./internal/updater ./internal/desktopopen 2>&1 | tee "$RUNNER_TEMP/packaging-tests.log"
+          go test -v -mod=readonly -tags=pencode_ripgrep ./cmd/pencode-release ./internal/updater ./internal/desktopopen ./internal/ripgrep/... 2>&1 | tee "$RUNNER_TEMP/packaging-tests.log"
           status=${PIPESTATUS[0]}
           set -e
           if [[ "$status" != 0 ]]; then
@@ -128,7 +131,7 @@ jobs:
         run: |
           $name = "pencode-server-$env:RELEASE_VERSION-${{ matrix.os }}-${{ matrix.arch }}"
           if ('${{ matrix.os }}' -eq 'windows') { $name += '.exe' }
-          go build -mod=readonly -trimpath "-ldflags=-s -w -buildid= -X github.com/pencode-labs/pencode/internal/version.Value=$env:RELEASE_VERSION" -o "dist/$name" ./cmd/pencode-server
+          go build -mod=readonly -trimpath -tags=pencode_ripgrep "-ldflags=-s -w -buildid= -X github.com/pencode-labs/pencode/internal/version.Value=$env:RELEASE_VERSION" -o "dist/$name" ./cmd/pencode-server
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $digest = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$digest  $name`n" | Set-Content -LiteralPath "dist/$name.sha256" -NoNewline -Encoding utf8

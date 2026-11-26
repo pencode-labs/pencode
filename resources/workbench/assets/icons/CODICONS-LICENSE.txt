@@ -17,6 +17,7 @@ refresh-cw.svg: codicon:refresh
 settings.svg: codicon:settings
 
 Additional Codicons retrieved with better-icons through Iconify:
+list.svg: codicon:list-unordered
 copy.svg: codicon:copy
 edit.svg: codicon:edit
 globe.svg: codicon:globe

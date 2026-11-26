@@ -86,6 +86,20 @@ func TestPencodeWorkbenchThemeColors(t *testing.T) {
 					t.Fatalf("%s inline difference has no background", kind)
 				}
 			}
+			sourcePanel := pencodeComputedTheme(t, prepared, `<section class="sc-panel">
+				<div id="sc-repositories-resize" class="pencode-sidebar-resize resizing" data-ref="repositories-divider"></div>
+				<aside class="sc-changes" data-ref="changes"></aside>
+				<div id="sc-changes-resize" class="pencode-sidebar-resize resizing" data-ref="changes-divider"></div>
+			</section>`)
+			for _, ref := range []string{"repositories-divider", "changes-divider"} {
+				divider := sourcePanel[ref]
+				if got, want := divider.BackgroundColor.Color, sourcePanel["changes"].BackgroundColor.Color; got != want || want.A == 0 {
+					t.Fatalf("%s background = %v, changes pane = %v", ref, got, want)
+				}
+				if divider.BorderWidth.Left != style.LengthPx(1) || divider.BorderColor.Left.Color != style.Color(theme.Color("focusBorder")) {
+					t.Fatalf("%s is missing the theme's 1px drag indicator", ref)
+				}
+			}
 			connections := pencodeComputedTheme(t, prepared, `<div class="pencode-connection-feedback error" data-ref="error"></div><div class="pencode-connection-row connected" data-ref="connected"></div><span class="pencode-connection-dot connected" data-ref="connected-base"></span>`)
 			for _, test := range []struct {
 				ref                string
@@ -119,6 +133,15 @@ func TestPencodeWorkbenchThemeColors(t *testing.T) {
 			if link == nil || prepared.link != pencodeSyntaxColor(syntax.Color(link.BackgroundColor.Color)) {
 				t.Fatal("Ctrl hover text and underline use different theme colors")
 			}
+			choices := pencodeComputedTheme(t, prepared, `<label class="pencode-storage-choice"><input type="checkbox" data-ref="checked" checked><input type="checkbox" data-ref="disabled" disabled></label>`)
+			if checked := choices["checked"]; checked.BackgroundColor.Color != style.Color(theme.Color("button.background")) ||
+				checked.Color.Color != style.Color(theme.Color("button.foreground")) || checked.Appearance == style.Keyword("none") {
+				t.Fatal("selected storage checkbox did not use the theme's button colors and native checkmark")
+			}
+			if disabled := choices["disabled"]; disabled.BackgroundColor.Color != style.Color(theme.Color("settings.dropdownBackground")) ||
+				disabled.Opacity.Number <= 0 || disabled.Opacity.Number >= 1 {
+				t.Fatal("disabled storage checkbox did not use the dimmed theme background")
+			}
 			for _, pageName := range []string{"launcher.html", "workspace.html"} {
 				page, err := os.ReadFile("../resources/workbench/assets/ui/" + pageName)
 				if err != nil {
@@ -128,9 +151,15 @@ func TestPencodeWorkbenchThemeColors(t *testing.T) {
 				pairs := []struct{ ref, key string }{
 					{"root", "editor.background"},
 					{"settings-panel", "editorWidget.background"}, {"theme-select", "settings.dropdownBackground"},
+					{"storage-large", "settings.dropdownBackground"},
 					{"quick-open", "quickInput.background"},
 				}
 				if pageName == "workspace.html" {
+					for _, ref := range []string{"file-context-delete", "file-context-delete-shortcut"} {
+						if computed[ref].Color.Color != style.Color(theme.Color("errorForeground")) {
+							t.Fatalf("%s did not use the theme's error foreground", ref)
+						}
+					}
 					completion := computed["lsp-completion"]
 					if completion == nil || completion.ScrollbarWidth != style.Keyword("thin") || completion.ScrollbarThumbColor != style.ColorValue(style.Color(theme.Color("scrollbarSlider.background"))) || completion.ScrollbarTrackColor != style.ColorValue(style.Color{}) {
 						t.Fatal("completion scrollbar did not follow the workbench theme")
@@ -194,8 +223,8 @@ func TestPencodeCustomWorkbenchThemeAndLightDefaults(t *testing.T) {
   <select data-ref="theme-select" class="pencode-settings-select"></select>
   <span data-ref="graph-main" class="sc-graph-color-0"></span>
   <span data-ref="graph-branch" class="sc-graph-color-1"></span>
-  <button class="pencode-tree-row directory"><span data-ref="ignored-directory" class="pencode-tree-name pencode-ignored-name">cache</span></button>
-  <button class="pencode-tree-row active"><span data-ref="ignored-active" class="pencode-tree-name pencode-ignored-name">debug.log</span></button>
+  <button class="pencode-tree-row directory"><span data-ref="ignored-directory" class="pencode-tree-name" data-file-decoration="ignored">cache</span></button>
+  <button class="pencode-tree-row active"><span data-ref="ignored-active" class="pencode-tree-name" data-file-decoration="ignored">debug.log</span></button>
  </div>`
 	computed := pencodeComputedTheme(t, prepared, fixture)
 	for _, ref := range []string{"ignored-directory", "ignored-active"} {

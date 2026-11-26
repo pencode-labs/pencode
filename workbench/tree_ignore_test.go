@@ -79,7 +79,7 @@ func TestTreeGitIgnoreScanAndLiveRefresh(t *testing.T) {
 	}
 }
 
-func TestIgnoredTreeNamesRenderWithThemeColor(t *testing.T) {
+func TestIgnoredTreeAndTabNamesRenderWithThemeColor(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
 	p := m.activeProjectState()
@@ -89,8 +89,12 @@ func TestIgnoredTreeNamesRenderWithThemeColor(t *testing.T) {
 		{Path: "main.go", Openable: true},
 	}
 	p.tree.entriesChanged()
-	computed := pencodeComputedTheme(t, *m.workbenchTheme, `<span data-ref="ignored" class="pencode-ignored-name"></span>`)
+	p.Files["ign.tmp"] = &openFile{Path: "ign.tmp", Name: "ign.tmp"}
+	p.Tabs = append(p.Tabs, "ign.tmp")
+	computed := pencodeComputedTheme(t, *m.workbenchTheme, `<span data-ref="ignored" data-file-decoration="ignored"></span><span data-ref="error" class="pencode-error-name"></span>`)
 	ignoredColor := pencodeSyntaxColor(syntax.Color(computed["ignored"].Color.Color))
+	m.bottom.errorFiles = map[pencodeProblemFile]bool{{p.Path, "ign.tmp"}: true}
+	errorColor := pencodeSyntaxColor(syntax.Color(computed["error"].Color.Color))
 	for _, ignored := range []bool{true, false} {
 		p.Entries[0].Ignored, p.Entries[1].Ignored = ignored, ignored
 		markPencodeRootDirtyByModel(m.fontResources, m)
@@ -104,13 +108,17 @@ func TestIgnoredTreeNamesRenderWithThemeColor(t *testing.T) {
 			text := access.Ref()
 			if name := text.Text().String(); name == "igndir" || name == "ign.tmp" {
 				found++
-				if text.Color != want {
-					t.Errorf("%s ignored=%v color=%v, want %v", name, ignored, text.Color, want)
+				color := want
+				if name == "ign.tmp" && !ignored {
+					color = errorColor
+				}
+				if text.Color != color {
+					t.Errorf("%s ignored=%v color=%v, want %v", name, ignored, text.Color, color)
 				}
 			}
 		}
-		if found != 2 {
-			t.Fatalf("rendered %d ignored names, want 2", found)
+		if found != 3 {
+			t.Fatalf("rendered %d ignored names, want 3", found)
 		}
 	}
 }

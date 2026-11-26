@@ -102,7 +102,7 @@ func (s *ActionSession) Close() {
 		s.cancel()
 	}
 }
-func (extension *ActionExtension) Start(values peb.SettingValues, wake func()) *ActionSession {
+func (extension *ActionExtension) Start(root string, values peb.SettingValues, wake func()) *ActionSession {
 	ctx, cancel := context.WithCancel(context.Background())
 	results, done := make(chan ActionResult, 16), make(chan struct{})
 	s := &ActionSession{Results: results, Done: done, settings: make(chan peb.SettingValues, 1), requests: make(chan actionRequest, 64), cancel: cancel, remote: extension.remote, output: extension.Output}
@@ -121,7 +121,7 @@ func (extension *ActionExtension) Start(values peb.SettingValues, wake func()) *
 			case <-ctx.Done():
 			}
 		}
-		if err := extension.run(ctx, values, s.settings, s.requests, &s.files, publish); err != nil && ctx.Err() == nil {
+		if err := extension.run(ctx, root, values, s.settings, s.requests, &s.files, publish); err != nil && ctx.Err() == nil {
 			publish(ActionResult{Err: err, Fatal: true})
 		}
 	}()
@@ -161,10 +161,10 @@ func loadAction(files *resourceFiles, extensionID string, a peb.Action, icons ma
 	return a, nil
 }
 
-func (extension *ActionExtension) run(parent context.Context, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan actionRequest, fileEvents *fileChangeMailbox, publish func(ActionResult)) (err error) {
+func (extension *ActionExtension) run(parent context.Context, root string, values peb.SettingValues, settings <-chan peb.SettingValues, requests <-chan actionRequest, fileEvents *fileChangeMailbox, publish func(ActionResult)) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	stream, stderr, closeProcess, err := openExtensionProcess(ctx, extension.remote, "", extension.Output)
+	stream, stderr, closeProcess, err := openExtensionProcess(ctx, extension.remote, root, extension.Output)
 	if err != nil {
 		return err
 	}

@@ -14,10 +14,10 @@ func (f *openFile) openMode() protocol.DocumentMode {
 	if f.forcedText || f.editorID == pencodeTextEditor {
 		return protocol.DocumentTextForced
 	}
-	if f.text() {
+	if f.Name == "" {
 		return protocol.DocumentText
 	}
-	return protocol.DocumentFile
+	return protocol.FileMode(f.Name)
 }
 
 func restoredFileMode(tab pencodeTabState) protocol.DocumentMode {

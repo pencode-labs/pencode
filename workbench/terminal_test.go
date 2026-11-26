@@ -371,10 +371,16 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	editorContextClick(t, app, model, state, "terminal-new")
 	fourth := model.terminals.active
 	waitFor(func() bool { return fourth.ready })
+	if !world.Focus(model.editor.control) {
+		t.Fatal("cannot focus the editor while the shell is running")
+	}
 	model.writeTerminal(fourth, []byte("exit\r"))
 	waitFor(func() bool { return len(model.terminals.items) == 2 })
 	if model.terminals.active != third {
 		t.Fatal("active shell exit did not select the adjacent tab")
+	}
+	if !pencodeControlFocused(world, model.surface, "editor") {
+		t.Fatal("selecting the next shell on exit took focus from the editor")
 	}
 	// Exiting an inactive shell must remove only its own tab.
 	model.writeTerminal(first, []byte("exit\r"))
@@ -388,6 +394,9 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 		t.Fatalf("after filling the gap, terminal labels = %q and %q", third.label, replacement.label)
 	}
 	editorContextClick(t, app, model, state, replacement.closeRef)
+	model.openFind(false)
+	markPencodeRootDirtyByModel(world, model)
+	waitFor(func() bool { return pencodeControlFocused(world, model.surface, "find-query") })
 	model.writeTerminal(third, []byte("exit\r"))
 	waitFor(func() bool { return len(model.terminals.items) == 0 })
 	if model.terminals.active != nil || model.terminalView.value != "" {
@@ -395,6 +404,9 @@ func TestPencodeTerminalTabsContextAndExit(t *testing.T) {
 	}
 	if model.bottom.active != pencodePanelClosed {
 		t.Fatal("last shell exit left the terminal panel open")
+	}
+	if !pencodeControlFocused(world, model.surface, "find-query") {
+		t.Fatal("closing the empty terminal panel took focus from Find")
 	}
 	editorContextClick(t, app, model, state, "status-terminal")
 	if model.terminals.active == nil || len(model.terminals.items) != 1 {

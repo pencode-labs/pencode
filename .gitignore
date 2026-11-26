@@ -1,5 +1,6 @@
 # Generated build output and resource caches
 /dist/
+/internal/ripgrep/bundle/
 .oni-resource-cache/
 
 # Local environment and editor settings

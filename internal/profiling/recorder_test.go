@@ -157,11 +157,11 @@ func TestMetricsOnlyRecorder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 2 {
+	if len(files) != 3 {
 		t.Fatalf("metrics-only recording created profile files: %v", files)
 	}
 	for _, file := range files {
-		if file.Name() != "session.json" && file.Name() != "metrics-000000.jsonl" {
+		if file.Name() != ".complete" && file.Name() != "session.json" && file.Name() != "metrics-000000.jsonl" {
 			t.Fatalf("unexpected metrics-only file: %s", file.Name())
 		}
 	}
@@ -376,5 +376,24 @@ func TestCPUWriteFailureDoesNotPublishProfile(t *testing.T) {
 	files, err := os.ReadDir(r.Directory())
 	if err != nil || len(files) != 0 {
 		t.Fatalf("failed CPU profile was retained: %v, %v", files, err)
+	}
+}
+
+func TestRenderTargetSnapshotsOwnDimensions(t *testing.T) {
+	var r Recorder
+	targets := []RenderTargetSize{{Kind: "window", Width: 1280, Height: 800}, {Kind: "offscreen", ID: 3, Width: 200, Height: 120}}
+	r.RecordGraphics(Graphics{RenderTargets: targets})
+	before := r.sample().Graphics.RenderTargets
+	targets[1].Width = 300
+	r.RecordGraphics(Graphics{RenderTargets: targets})
+	if before[1].Width != 200 || r.graphics.RenderTargets[1].Width != 300 {
+		t.Fatal("resize overwrote a published sample")
+	}
+	if n := testing.AllocsPerRun(100, func() { r.RecordGraphics(Graphics{RenderTargets: targets}) }); n != 0 {
+		t.Fatalf("unchanged target inventory allocated %g times", n)
+	}
+	r.RecordGraphics(Graphics{})
+	if len(r.graphics.RenderTargets) != 0 || before[1].Width != 200 {
+		t.Fatal("closed targets survived or overwrote an older sample")
 	}
 }

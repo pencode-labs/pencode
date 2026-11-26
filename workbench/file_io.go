@@ -9,6 +9,7 @@ import (
 	"github.com/onix-engine/onix/text/piecetree"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/lsp"
+	"github.com/pencode-labs/pencode/peb"
 	"github.com/pencode-labs/pencode/protocol"
 )
 
@@ -19,10 +20,13 @@ const (
 	fileOpen
 	fileSave
 	fileCreate
+	fileSaveUntitled
 	fileRemove
 	fileRename
 	fileTransfer
 	fileImport
+	fileHistoryRestore
+	fileHistoryList
 	fileReload
 	fileCloseWorkspace
 	fileLanguageEdit
@@ -32,6 +36,7 @@ const (
 	fileReadPage
 	fileOpenExternal
 	fileImagePreview
+	fileUntitledWorkspace
 )
 const fileIOCapacity = 32
 
@@ -63,11 +68,12 @@ type fileIOJob struct {
 	language                                   *languageEditPlan
 	searchReplace                              *folderReplacePlan
 	cancel                                     context.CancelFunc
-	project, target                            *pencodeProject
+	project, target, initiator                 *pencodeProject
 	navigation                                 *fileNavigation
 	file                                       *openFile
 	imageDocument                              *pencodeCustomDocument
 	document                                   *client.Document
+	version                                    protocol.FileVersion
 	text, baseline                             piecetree.Snapshot
 	root, relative, destination, content       string
 	resources                                  []fileResource
@@ -106,10 +112,12 @@ type fileIOResult struct {
 	moveErrors           map[*client.Document]error
 	workspace            protocol.Workspace
 	content, destination string
+	versions             []protocol.FileVersion
 	reload               []fileReloadResult
 	completed            []string
 	page                 protocol.DocumentPage
 	importIndex          int
+	historyMore          bool
 	external             bool
 }
 
@@ -193,6 +201,10 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		return
 	}
 	switch j.kind {
+	case fileHistoryList:
+		r.versions, r.historyMore, r.err = j.backend.FileHistory(j.ctx, j.root, j.relative, j.directory, j.version)
+	case fileHistoryRestore:
+		r.err = j.backend.RestoreFileHistory(j.ctx, j.root, j.version)
 	case fileImagePreview:
 		r.image, r.err = executeImagePreview(j)
 	case fileOpenExternal:
@@ -201,7 +213,7 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 		ctx, cancel := context.WithTimeout(j.ctx, time.Second)
 		defer cancel()
 		r.err = j.backend.CloseWorkspace(ctx, j.workspace)
-	case fileOpenWorkspace:
+	case fileOpenWorkspace, fileUntitledWorkspace:
 		r.workspace, r.err = j.backend.OpenWorkspace(j.ctx, j.root)
 	case fileOpen, fileReopenText:
 		workspace := j.workspace
@@ -240,6 +252,8 @@ func executeFileIO(j *fileIOJob) (r fileIOResult) {
 			document.Update(piecetree.Snapshot{}, j.text, -1, 0, 0)
 		}
 		r.err = document.SaveSnapshot(j.ctx, j.text)
+	case fileSaveUntitled:
+		r.document, r.err = j.backend.CreateDocument(j.ctx, j.workspace, j.destination, j.text)
 	case fileCreate:
 		r.err = j.backend.Create(j.ctx, j.workspace, j.destination, j.directory)
 	case fileRemove, fileRename, fileTransfer:
@@ -340,6 +354,7 @@ func (m *workspaceModel) submitFileIO(j *fileIOJob) error {
 	q.next++
 	j.id = q.next
 	j.backend = m.backend
+	j.initiator = m.activeProjectState()
 	q.pending[j.id] = j
 	q.jobs <- j // pending includes queued, running and unaccepted results; capacity is reserved above.
 	return nil
@@ -349,6 +364,10 @@ func (m *workspaceModel) stopFileIO() {
 	if m.fileIO != nil {
 		m.fileIO.cancel()
 		for _, j := range m.fileIO.pending {
+			if j.kind == fileHistoryList && j.project.sourceControl.history.loading == j {
+				j.project.sourceControl.history.loading = nil
+				j.project.sourceControl.history.refresh = true
+			}
 			if j.language != nil {
 				j.language.finish(fmt.Errorf("%s", m.tr("文件任务已取消，编辑未应用")))
 			}
@@ -370,7 +389,7 @@ func (m *workspaceModel) cancelProjectFileIO(p *pencodeProject) {
 func (m *workspaceModel) fileIOMutating(p *pencodeProject) bool {
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
-			if (j.project == p || j.target == p) && (j.kind >= fileCreate && j.kind <= fileImport || j.kind == fileSearchReplace) {
+			if (j.project == p || j.target == p) && (j.kind >= fileCreate && j.kind <= fileHistoryRestore || j.kind == fileSearchReplace) {
 				return true
 			}
 		}
@@ -449,9 +468,14 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 		m.acceptFolderReplace(r)
 		return
 	}
-	if j.kind == fileOpenWorkspace {
+	if j.kind == fileOpenWorkspace || j.kind == fileUntitledWorkspace {
 		if r.err != nil {
 			m.setActiveStatus(m.tr("打开项目失败：") + r.err.Error())
+			return
+		}
+		if j.kind == fileUntitledWorkspace {
+			m.acceptWorkspace(j.backend, r.workspace, true)
+			m.newUntitled()
 			return
 		}
 		m.rememberRecentProject(r.workspace)
@@ -469,6 +493,8 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 		return
 	}
 	switch j.kind {
+	case fileHistoryList, fileHistoryRestore:
+		m.acceptLocalHistory(r)
 	case fileImagePreview:
 		m.acceptImagePreview(r)
 	case fileOpen:
@@ -477,7 +503,7 @@ func (m *workspaceModel) acceptFileIO(r *fileIOResult) {
 		m.acceptFilePage(r)
 	case fileReopenText:
 		m.acceptTextEditor(r)
-	case fileSave:
+	case fileSave, fileSaveUntitled:
 		m.acceptFileSave(r)
 	case fileReload:
 		m.acceptFileReload(r)
@@ -508,7 +534,7 @@ func (m *workspaceModel) requestFileOpen(p *pencodeProject, relative string, pre
 		if p != nil {
 			selectProjectFile(p, relative, preview)
 			if reveal {
-				m.queueProjectFileReveal(p)
+				m.selectAndRevealProjectFile(p)
 			}
 			m.syncActiveProjectFields()
 		} else {
@@ -548,7 +574,7 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 		if p.Files[j.relative] != nil {
 			selectProjectFile(p, j.relative, j.preview)
 			if j.reveal {
-				m.queueProjectFileReveal(p)
+				m.selectAndRevealProjectFile(p)
 			}
 			m.syncActiveProjectFields()
 			m.finishFileNavigation(p, p.Files[j.relative], j.navigation)
@@ -561,7 +587,7 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 		m.highlightCache.restorePreview(p.Files[j.relative])
 		r.document = nil
 		if j.reveal {
-			m.queueProjectFileReveal(p)
+			m.selectAndRevealProjectFile(p)
 		}
 		m.syncActiveProjectFields()
 		if !j.reveal {
@@ -579,7 +605,7 @@ func (m *workspaceModel) acceptFileOpen(r *fileIOResult) {
 		f.initPage()
 		r.document = nil
 		m.files[j.relative] = f
-		m.tabs = append(m.tabs, j.relative)
+		m.tabs = appendFileTab(m.tabs, f)
 		m.activePath = j.relative
 		m.finishFileNavigation(nil, f, j.navigation)
 	}
@@ -592,10 +618,21 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 	m.actions.ui.editor = nil
 	if n.restore {
 		h := &m.navigation
-		if n.origin.path != "" {
-			h.entries[h.index] = n.origin
+		if n.origin.project != p {
+			// The destination keeps its own history indices.
+			for i := len(h.entries) - 1; i >= 0; i-- {
+				entry := h.entries[i]
+				if entry.project == p && entry.path == f.Path && entry.view == n.view {
+					h.index = i
+					break
+				}
+			}
+		} else {
+			if n.origin.path != "" {
+				h.entries[h.index] = n.origin
+			}
+			h.index = n.navigationIndex
 		}
-		h.index = n.navigationIndex
 		f.editorView = n.view
 		m.editor.navigationPaint.mark(f, n.view.caret, n.view.caret)
 		m.quickFocusEditor, m.quickTargetLine = false, 0
@@ -647,15 +684,18 @@ func (m *workspaceModel) finishFileNavigation(p *pencodeProject, f *openFile, n 
 			m.languages.panel.endOffset = end
 		}
 		view := pencodeEditorView{caret: f.snapshotBuffer().RuneOffset(offset), anchor: f.snapshotBuffer().RuneOffset(end)}
-		m.navigation.record(n.origin, pencodeNavigationLocation{p, f.Path, view})
+		m.recordNavigation(n.origin, pencodeNavigationLocation{p, f.Path, view})
 	} else if n.line > 0 {
 		caret := pencodeLineCaret(f.content(), n.line)
-		m.navigation.record(n.origin, pencodeNavigationLocation{p, f.Path, pencodeEditorView{caret: caret, anchor: caret}})
+		m.recordNavigation(n.origin, pencodeNavigationLocation{p, f.Path, pencodeEditorView{caret: caret, anchor: caret}})
 	}
 }
 func (m *workspaceModel) requestFileSave(p *pencodeProject, f *openFile) (*fileIOJob, error) {
 	if f == nil {
 		return nil, fmt.Errorf("%s", m.tr("没有打开的文件"))
+	}
+	if f.untitled() {
+		return nil, fmt.Errorf("%s", m.tr("请输入文件路径"))
 	}
 	if f.pageLoading {
 		return nil, fmt.Errorf("%s", m.tr("请等待分段加载完成"))
@@ -701,6 +741,9 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 	}
 	f := j.file
 	if r.err == nil {
+		if j.kind == fileSaveUntitled {
+			m.nameUntitled(j)
+		}
 		if r.document != nil {
 			if f.document == nil {
 				f.document = r.document
@@ -712,8 +755,11 @@ func (m *workspaceModel) acceptFileSave(r *fileIOResult) {
 		f.savedContent = j.text
 		f.Dirty = !f.snapshot().Equal(j.text)
 		f.saveRevision++
+		if j.project != nil {
+			j.project.sourceControl.history.invalidate([]protocol.FileEvent{{Path: f.Path}}, false)
+		}
 		m.syncDebugBreakpoints(j.project, f)
-		if j.relative == pencodeDebugConfigPath && j.project == m.activeProjectState() {
+		if f.Path == pencodeDebugConfigPath && j.project == m.activeProjectState() {
 			m.loadDebugConfigs()
 		}
 		m.setProjectStatus(j.project, m.tr("已保存 ")+f.Name)
@@ -747,7 +793,12 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		if f.document == item.previous {
 			f.document = nil
 		}
-		if f.content() != item.before || r.external && f.Dirty {
+		document := m.customDocuments[f]
+		if r.external && (f.Dirty || document != nil && document.busy()) {
+			f.externalChanged = true
+			continue
+		}
+		if f.content() != item.before {
 			m.setProjectStatus(p, m.tr("重新加载期间内容已改变，保留当前编辑"))
 			continue
 		}
@@ -761,9 +812,18 @@ func (m *workspaceModel) acceptFileReload(r *fileIOResult) {
 		f.unsupported = item.document == nil
 		f.editorGeneration = 0
 		item.document = nil
-		if document := m.customDocuments[f]; document != nil && document.provider == &pencodeImageEditor {
-			document.close()
-			delete(m.customDocuments, f)
+		if document != nil {
+			if document.provider == &pencodeImageEditor {
+				// An unchanged SVG can keep its current zoom and pan.
+				if !r.external || !f.text() || item.content != document.content {
+					document.close()
+					delete(m.customDocuments, f)
+				}
+			} else if !f.text() && document.process != nil {
+				// Path-based viewers have no host text to compare for changes.
+				document.enqueue(peb.EditorEvent{Kind: "documentchange"})
+				document.dispatch()
+			}
 		}
 		if r.external && f.content() == item.content {
 			continue
@@ -824,7 +884,7 @@ func (m *workspaceModel) queueWorkspaceRelease(backend *client.Client, workspace
 func (m *workspaceModel) fileCloseBlocked(action pencodeCloseAction, p *pencodeProject) bool {
 	if m.fileIO != nil {
 		for _, j := range m.fileIO.pending {
-			if j.kind >= fileCreate && j.kind <= fileImport && (action == pencodeCloseWindow || j.project == p || j.target == p) {
+			if j.kind >= fileCreate && j.kind <= fileHistoryRestore && (action == pencodeCloseWindow || j.project == p || j.target == p) {
 				return true
 			}
 		}
@@ -869,7 +929,7 @@ func (m *workspaceModel) requestFileReload(p *pencodeProject, cleanOnly bool) er
 	}
 	job := &fileIOJob{kind: fileReload, project: p, workspace: p.workspace.ID}
 	for _, relative := range p.Tabs {
-		if f := p.Files[relative]; f != nil && (!cleanOnly || !f.Dirty) {
+		if f := p.Files[relative]; f != nil && !f.untitled() && (!cleanOnly || !f.Dirty) {
 			job.reload = append(job.reload, fileReloadResult{file: f, relative: relative, before: f.content(), previous: f.document, mode: f.openMode()})
 		}
 	}

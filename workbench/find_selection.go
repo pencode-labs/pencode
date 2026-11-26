@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"context"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/text/piecetree"
 	engineui "github.com/onix-engine/onix/ui"
@@ -25,13 +26,19 @@ func (m *workspaceModel) captureFindScope(world *module.Content) {
 
 func (m *workspaceModel) scopedFindMatches[V piecetree.Value](value V, dst []textsearch.Match, limit int) []textsearch.Match {
 	content := piecetree.Text(value)
-	if !m.findSelection {
-		return m.findPattern.FindSnapshot(content, dst, 0, content.Len(), limit)
+	start, end := 0, content.Len()
+	if m.findSelection {
+		if m.findScope.file != m.activeFile() {
+			return dst[:0]
+		}
+		start, end = m.findScope.start, m.findScope.end
 	}
-	if m.findScope.file != m.activeFile() {
+	matches, err := m.findPattern.SearchSnapshot(context.Background(), content, dst, start, end, limit)
+	if err != nil {
+		m.findError = err.Error()
 		return dst[:0]
 	}
-	return m.findPattern.FindSnapshot(content, dst, m.findScope.start, m.findScope.end, limit)
+	return matches
 }
 
 func (m *workspaceModel) rebaseFindScope(file *openFile, start, oldEnd, newEnd int) {

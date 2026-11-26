@@ -38,15 +38,26 @@ func TestCachedSelectionRetainsTreeNodes(t *testing.T) {
 	if !ok {
 		t.Fatal("missing unchanged row")
 	}
+	p.tree.selection.set("other.go")
+	p.tree.selection.toggle("unchanged.go")
+	markPencodeRootDirtyByModel(w, m)
+	languageInteractionStep(t, app)
 	for _, name := range []string{"main.go", "other.go", "main.go"} {
 		m.selectProjectTab(p, name)
 		if m.fullRefresh || m.refresh&pencodeRefreshSelection == 0 {
 			t.Fatal("cached selection requested full refresh")
 		}
 		languageInteractionStep(t, app)
+		languageInteractionStep(t, app) // Render the child rows invalidated by the selection patch.
 		// Layout may resynchronize geometry; the retained tree control must survive.
 		if next, ok := w.HTMLControl(m.surface, m.projectTreeRowID(p, "unchanged.go")); !ok || next != row {
 			t.Fatalf("unrelated tree control replaced on %s", name)
+		}
+		for _, v := range w.Query[htmlui.Component[treeProps, treeRowState]]() {
+			row := v.Ref()
+			if row.Props.Project == p && row.State.selected != (row.Props.Path == name) {
+				t.Fatalf("switch to %s left tree row %s selected=%v", name, row.Props.Path, row.State.selected)
+			}
 		}
 		active := 0
 		for _, v := range w.Query[htmlui.Component[tabProps, struct{}]]() {

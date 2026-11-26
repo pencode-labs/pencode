@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	engineui "github.com/onix-engine/onix/ui"
@@ -45,8 +46,20 @@ type pencodeProjectHostProps struct {
 }
 
 func newProjectHostDefinition(content *module.Content) (*htmlui.Definition[pencodeProjectHostProps, struct{}], error) {
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "host", "class", "pencode-project-menu-item", "type", "button", "role", "menuitem")
+		b.Element("img", "data-ref", "icon", "alt", "")
+		b.Open("span", "class", "pencode-project-menu-copy")
+		b.Element("span", "data-ref", "name")
+		b.Element("span", "data-ref", "address", "class", "pencode-project-menu-address")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeProjectHostProps, struct{}](
-		htmlui.NewTemplate(`<button data-ref="host" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="icon" alt=""><span class="pencode-project-menu-copy"><span data-ref="name"></span><span data-ref="address" class="pencode-project-menu-address"></span></span></button>`), "",
+		template, "",
 		module.ContentBehavior[pencodeProjectHostProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProjectHostProps, struct{}], view *htmlui.View) {
 				p := c.Props
@@ -78,8 +91,20 @@ type pencodeProjectMenuRecentProps struct {
 }
 
 func newProjectMenuRecentDefinition(content *module.Content) (*htmlui.Definition[pencodeProjectMenuRecentProps, struct{}], error) {
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "project", "class", "pencode-project-menu-item", "type", "button", "role", "menuitem")
+		b.Element("img", "data-ref", "icon", "alt", "")
+		b.Open("span", "class", "pencode-project-menu-copy")
+		b.Element("span", "data-ref", "name")
+		b.Element("span", "data-ref", "path", "class", "pencode-project-menu-address")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeProjectMenuRecentProps, struct{}](
-		htmlui.NewTemplate(`<button data-ref="project" class="pencode-project-menu-item" type="button" role="menuitem"><img data-ref="icon" alt=""><span class="pencode-project-menu-copy"><span data-ref="name"></span><span data-ref="path" class="pencode-project-menu-address"></span></span></button>`), "",
+		template, "",
 		module.ContentBehavior[pencodeProjectMenuRecentProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProjectMenuRecentProps, struct{}], view *htmlui.View) {
 				p := c.Props

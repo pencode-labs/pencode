@@ -183,8 +183,13 @@ func (s *Session) syncLayout(state *input.State) (scrollChanged bool) {
 	scrollChanged = model.syncTerminalSelection(model.fontResources) || scrollChanged
 	model.focusPorts(model.fontResources)
 	model.syncTabScroll(model.fontResources)
-	model.centerRevealedTreeRow(model.fontResources)
-	model.syncTreeScroll(model.fontResources)
+	centered := model.centerRevealedTreeRow(model.fontResources)
+	if model.syncTreeScroll(model.fontResources) || centered {
+		if err := model.fontResources.SyncHTML(); err != nil {
+			model.setActiveStatus(err.Error())
+		}
+		scrollChanged = true
+	}
 	model.syncFileDragPreview(model.fontResources)
 	// HTML/native reconciliation may replace text spans after FrameUpdate.
 	// Publish paint against the final field value, including asynchronous results.
@@ -192,6 +197,9 @@ func (s *Session) syncLayout(state *input.State) (scrollChanged bool) {
 		if value := model.fontResources.Mut[scene.Text2D](model.editor.text); value != nil {
 			model.editor.syncHighlight(value, field, model)
 		}
+	}
+	if doc := model.customDocuments[model.activeFile()]; doc != nil {
+		scrollChanged = doc.draft.restoreFocused(model.fontResources) || scrollChanged
 	}
 	scrollChanged = model.syncExtensionUI(model.fontResources) || scrollChanged
 	scrollChanged = model.actions.ui.selection.sync(model.fontResources, model) || scrollChanged

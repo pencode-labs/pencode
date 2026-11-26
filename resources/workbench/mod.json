@@ -12,6 +12,10 @@
     "pencode-css": {
       "kind": "data",
       "path": "assets/ui/pencode.css"
+    },
+    "diagnostic-underline": {
+      "kind": "data",
+      "path": "assets/ui/squiggly.svg"
     }
   },
   "name": "pencode",

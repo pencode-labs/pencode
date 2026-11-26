@@ -22,10 +22,10 @@ import (
 type pencodeExtensionSelectable struct{ ref, id string }
 
 type pencodeExtensionTextSpan struct {
-	value          string
-	offset, order  int
-	entity, scroll ecs.Entity
-	x, y, height   float32
+	value               string
+	offset, order       int
+	entity, scroll      ecs.Entity
+	x, y, right, height float32
 }
 
 type pencodeExtensionTextPoint struct{ span, rune int }
@@ -277,7 +277,11 @@ func (s *pencodeExtensionTextSelection) collectText(world *module.Content, surfa
 		}
 		size, _ := world.Get[scene.Size2D](entity)
 		order, _ := world.Get[scene.UIStackIndex](entity)
-		s.spans = append(s.spans, pencodeExtensionTextSpan{entity: entity, scroll: scroll, order: int(order), value: text.Value, x: transform.Matrix[12], y: transform.Matrix[13], height: size.Height * transform.Matrix[5]})
+		x, y := transform.Matrix[12], transform.Matrix[13]
+		s.spans = append(s.spans, pencodeExtensionTextSpan{
+			entity: entity, scroll: scroll, order: int(order), value: text.Value,
+			x: x, y: y, right: x + size.Width*transform.Matrix[0], height: size.Height * transform.Matrix[5],
+		})
 	}
 	// Paint stack values group runs by HTML block; their relative values can
 	// also include z-index and positioning. Order the blocks geometrically,
@@ -289,7 +293,10 @@ func (s *pencodeExtensionTextSelection) collectText(world *module.Content, surfa
 		end := start + 1
 		block := s.spans[start]
 		for end < len(s.spans) && s.spans[end].order == block.order {
-			block.x = min(block.x, s.spans[end].x)
+			span := s.spans[end]
+			block.x = min(block.x, span.x)
+			block.right = max(block.right, span.right)
+			block.height = max(block.height, span.y-block.y+span.height)
 			end++
 		}
 		block.offset, block.order = start, end
@@ -299,19 +306,29 @@ func (s *pencodeExtensionTextSelection) collectText(world *module.Content, surfa
 	slices.SortFunc(s.blocks, func(a, b pencodeExtensionTextSpan) int {
 		return extensionTextOrder(world, s.area, a, b)
 	})
-	// Different inline fonts can also shift the first line of adjacent cells.
+	// Inline boxes paint separately from the text that surrounds them. Within
+	// a vertical band, overlapping horizontal extents share reading order.
+	// Disjoint columns (such as wrapped table cells) remain contiguous.
 	for start := 0; start < len(s.blocks); {
 		end := start + 1
-		for end < len(s.blocks) && s.blocks[end].scroll == s.blocks[start].scroll && s.blocks[end].y < s.blocks[start].y+s.blocks[start].height*.6 {
+		bottom := s.blocks[start].y + s.blocks[start].height
+		for end < len(s.blocks) && s.blocks[end].scroll == s.blocks[start].scroll && s.blocks[end].y < bottom {
+			bottom = max(bottom, s.blocks[end].y+s.blocks[end].height)
 			end++
 		}
-		slices.SortFunc(s.blocks[start:end], func(a, b pencodeExtensionTextSpan) int { return cmp.Compare(a.x, b.x) })
-		start = end
-	}
-	for order, block := range s.blocks {
-		for i := block.offset; i < block.order; i++ {
-			s.spans[i].order = order
+		band := s.blocks[start:end]
+		slices.SortFunc(band, func(a, b pencodeExtensionTextSpan) int { return cmp.Compare(a.x, b.x) })
+		order, right := start, band[0].right
+		for i, block := range band {
+			if block.x >= right {
+				order = start + i
+			}
+			right = max(right, block.right)
+			for j := block.offset; j < block.order; j++ {
+				s.spans[j].order = order
+			}
 		}
+		start = end
 	}
 	clear(s.blocks)
 	s.blocks = s.blocks[:0]
@@ -444,6 +461,9 @@ func (s *pencodeExtensionTextSelection) refresh(world *module.Content) bool {
 			return false
 		}
 		s.area = area
+		if s.grid.highlightedRow > 0 && !s.dragging && !s.all && !s.selected() {
+			return true
+		}
 		ref, _ := s.surface.document.find.tree.Attr("data-ref")
 		s.collect(world, s.surface, ref)
 		return true
@@ -628,6 +648,15 @@ func (s *pencodeExtensionTextSelection) begin(world *module.Content, surface *pe
 		}
 		s.area, s.region = area, region.id
 		s.collect(world, surface, region.ref)
+		if s.grid != nil {
+			s.grid.highlightAt(world, x, y)
+			if s.grid.highlightedRow > 0 && (s.grid.highlightedColumn == 0 || len(s.spans) == 0) {
+				s.surface = surface
+				s.anchorOffset, s.caretOffset = 0, 0
+				s.all, s.lastClick = false, time.Time{}
+				return true
+			}
+		}
 		point, ok := s.hit(world, x, y, false)
 		if !ok {
 			continue

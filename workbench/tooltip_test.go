@@ -146,11 +146,17 @@ func TestIconTooltipExtensionActionUpdates(t *testing.T) {
 }
 
 func TestTooltipTemplateAnonymousExtensionButtons(t *testing.T) {
-	template := tooltipTemplate(`<button data-ref="send" title="发送 &amp; 保存"><img alt=""></button><button aria-label="刷新"><img alt=""></button><button id="authored">Keep</button>`, "pencode-extension-test/")
-	for _, want := range []string{`id="pencode-extension-test/send"`, `id="pencode-extension-test/button-1"`, `id="authored"`, `title="发送 &amp; 保存"`} {
-		if !strings.Contains(template.Source, want) {
-			t.Fatalf("missing %s in %s", want, template.Source)
+	tree, _, err := localizedPencodeTemplate(`<button data-ref="send" title="发送 &amp; 保存"><img alt=""></button><button aria-label="刷新"><img alt=""></button><button id="authored">Keep</button>`, "pencode-extension-test/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, id := range []string{"pencode-extension-test/send", "pencode-extension-test/locale-1", "authored"} {
+		if tree.Children[i].AttrValue("id") != id {
+			t.Fatalf("button %d: %v", i, tree.Children[i])
 		}
+	}
+	if tree.Children[0].AttrValue("title") != "发送 & 保存" {
+		t.Fatal(tree.Children[0])
 	}
 	app, model, _, state := languageInteractionFixture(t)
 	if err := model.applyExtensionUI("test", &extensions.ActionSession{}, peb.UI{ID: "tips", Title: "Tooltip test", Kind: peb.Panel, View: &peb.EditorView{HTML: `<button data-ref="send" title="发送任务"><img src="icons/add.svg" alt=""></button>`, CSS: `button { width:32px; height:32px; }`}}); err != nil {

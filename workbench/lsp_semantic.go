@@ -2,6 +2,9 @@ package workbench
 
 import (
 	"encoding/json"
+	"io"
+	"strings"
+	"text/scanner"
 	"time"
 
 	"github.com/onix-engine/onix/graphics"
@@ -255,11 +258,31 @@ func (model *workspaceModel) documentLanguageHighlight(doc *pencodeLanguageDocum
 		var provider pencodeSemanticProvider
 		_ = json.Unmarshal(semantic.session.client.Capabilities["semanticTokensProvider"], &provider)
 		colors := make([]graphics.ColorRGBA, len(provider.Legend.TokenTypes))
+		goNamespace := -1
 		for i, name := range provider.Legend.TokenTypes {
 			colors[i] = pencodeSyntaxColor(model.syntaxTheme.Resolve(semanticScope(name)).Foreground)
+			if name == "namespace" && strings.HasSuffix(doc.file.Path, ".go") {
+				goNamespace = i
+			}
 		}
+		var header *scanner.Scanner
+		if goNamespace >= 0 {
+			header = new(scanner.Scanner).Init(io.NewSectionReader(doc.content, 0, int64(doc.content.Len())))
+			header.Error = func(*scanner.Scanner, string) {} // Incomplete source is normal while editing.
+		}
+		pathStart, pathEnd := 0, 0
 		semantic.spans = semantic.spans[:0]
 		for _, token := range semantic.tokens {
+			// gopls identifies package names inside import strings. Keep the
+			// lexical path color while retaining the token for navigation.
+			if int(token.Type) == goNamespace {
+				for pathEnd >= 0 && pathEnd <= token.Start {
+					pathStart, pathEnd = nextGoImportPath(header)
+				}
+				if pathStart < token.Start && token.End < pathEnd {
+					continue
+				}
+			}
 			semantic.spans = appendPencodeSpan(semantic.spans, scene.TextSpan2D{Start: token.Start, End: token.End, Color: colors[token.Type]})
 		}
 	}
@@ -268,6 +291,25 @@ func (model *workspaceModel) documentLanguageHighlight(doc *pencodeLanguageDocum
 	semantic.baseSource = doc.content
 	semantic.baseRevision = revision
 	return semantic.merged
+}
+
+// Only import declarations can contain string literals before the first Go
+// type, variable, constant or function declaration. Offsets include the quotes.
+func nextGoImportPath(header *scanner.Scanner) (int, int) {
+	for {
+		switch header.Scan() {
+		case scanner.String, scanner.RawString:
+			return header.Offset, header.Pos().Offset
+		case scanner.Ident:
+			switch header.TokenText() {
+			case "type", "var", "const", "func":
+				return 0, -1
+			}
+		case '(', ')', ';', '.':
+		default:
+			return 0, -1
+		}
+	}
 }
 
 // Both lists are sorted and disjoint. A single sweep splits syntax spans only

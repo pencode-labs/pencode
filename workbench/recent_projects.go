@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/module"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/connection"
@@ -157,8 +158,25 @@ type pencodeRecentProjectProps struct {
 }
 
 func newRecentProjectDefinition(content *module.Content) (*htmlui.Definition[pencodeRecentProjectProps, struct{}], error) {
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "class", "pencode-recent-row", "role", "listitem")
+		b.Open("button", "data-ref", "open", "class", "pencode-recent-open", "type", "button")
+		b.Element("img", "data-ref", "icon", "src", "icons/folder-opened.svg", "alt", "")
+		b.Open("span", "class", "pencode-recent-copy")
+		b.Element("span", "data-ref", "name", "class", "pencode-recent-name")
+		b.Element("span", "data-ref", "path", "class", "pencode-recent-path")
+		b.End()
+		b.End()
+		b.Open("button", "data-ref", "remove", "class", "pencode-icon-button", "type", "button", "title", "从最近打开中移除")
+		b.Element("img", "data-ref", "remove-icon", "class", "pencode-close-icon", "src", "icons/close.svg", "alt", "")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeRecentProjectProps, struct{}](
-		htmlui.NewTemplate(`<div class="pencode-recent-row" role="listitem"><button data-ref="open" class="pencode-recent-open" type="button"><img data-ref="icon" src="icons/folder-opened.svg" alt=""><span class="pencode-recent-copy"><span data-ref="name" class="pencode-recent-name"></span><span data-ref="path" class="pencode-recent-path"></span></span></button><button data-ref="remove" class="pencode-icon-button" type="button" title="从最近打开中移除"><img data-ref="remove-icon" class="pencode-close-icon" src="icons/close.svg" alt=""></button></div>`), "",
+		template, "",
 		module.ContentBehavior[pencodeRecentProjectProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeRecentProjectProps, struct{}], view *htmlui.View) {
 				m, entry := c.Props.Model, c.Props.Entry

@@ -69,3 +69,48 @@ func TestGitRepositoriesDiscoveryAndLifetime(t *testing.T) {
 		t.Fatal("last workspace retained nested repository access")
 	}
 }
+
+func TestIndexRepositoryDiscovery(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("Git unavailable")
+	}
+	c, workspace := peer(t, nil)
+	ctx, root := t.Context(), workspace.Path
+	initRepo := func(path string) {
+		t.Helper()
+		if _, err := c.Git(ctx, root, "init", path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open := func() uint64 {
+		t.Helper()
+		id, err := c.OpenIndex(ctx, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	check := func(id uint64, want ...string) {
+		t.Helper()
+		roots, err := c.IndexRepositories(ctx, root, id)
+		if err != nil || !slices.Equal(roots, want) {
+			t.Fatalf("repositories = %q, want %q, err %v", roots, want, err)
+		}
+	}
+	first := filepath.Join(root, "a")
+	initRepo(first)
+	id := open()
+	check(id, filepath.ToSlash(first))
+	second := filepath.Join(root, "b")
+	initRepo(second)
+	check(id, filepath.ToSlash(first))
+	check(0, filepath.ToSlash(first), filepath.ToSlash(second))
+	if err := os.RemoveAll(first); err != nil {
+		t.Fatal(err)
+	}
+	check(id)
+	// The index skips .DS_Store. Discovery still handles a directory with that name.
+	hidden := filepath.Join(root, ".DS_Store", "repo")
+	initRepo(hidden)
+	check(open(), filepath.ToSlash(hidden), filepath.ToSlash(second))
+}

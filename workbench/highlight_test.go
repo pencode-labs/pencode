@@ -29,6 +29,66 @@ func pencodeTestColour(spans []scene.TextSpan2D, offset int) graphics.ColorRGBA 
 	return graphics.ColorRGBA{}
 }
 
+func TestGoImportPathHighlight(t *testing.T) {
+	const ecs = "github.com/onix-engine/onix/ecs"
+	const physics = "github.com/onix-engine/onix/physics"
+	const source = `package demo
+import (
+	"github.com/onix-engine/onix/ecs"
+	"github.com/onix-engine/onix/physics"
+)
+import alias "example.org/pkg"
+` + "import /* versioned */ `example.org/codec/v2`\n" + `
+const label = "github.com/onix-engine/onix/ecs"
+var _ = alias.Value
+`
+	file := &openFile{Path: "main.go", contentSnapshot: snapshotText(source)}
+	semantic := &pencodeSemanticTokens{
+		session: &pencodeLanguageSession{client: &lsp.Client{Capabilities: lsp.ServerCapabilities{
+			"semanticTokensProvider": json.RawMessage(`{"legend":{"tokenTypes":["namespace"]}}`),
+		}}},
+		version: 1,
+	}
+	offset := 0
+	for _, name := range []string{"ecs", "physics", "alias", "codec", "alias"} {
+		start := offset + strings.Index(source[offset:], name)
+		semantic.tokens = append(semantic.tokens, lsp.SemanticToken{Start: start, End: start + len(name)})
+		offset = start + len(name)
+	}
+	doc := &pencodeLanguageDocument{file: file, content: file.snapshot(), version: 1, semantic: semantic}
+	model := workspaceModel{activePath: file.Path, files: map[string]*openFile{file.Path: file}}
+	defer model.closeHighlightWorker()
+	for _, id := range syntax.BuiltinThemeIDs {
+		model.syntaxTheme, _ = syntax.BuiltinTheme(id)
+		model.highlighted = false
+		settlePencodeHighlight(t, &model)
+		namespace := pencodeSyntaxColor(model.syntaxTheme.Resolve("entity.name.namespace").Foreground)
+		quoted := pencodeSyntaxColor(model.syntaxTheme.Resolve("string").Foreground)
+		merged := model.documentLanguageHighlight(doc, model.highlightScratch, model.highlightPaintRevision)
+		for _, spans := range [][]scene.TextSpan2D{model.highlightScratch, merged} {
+			for _, path := range []string{ecs, physics, "example.org/pkg", "example.org/codec/v2"} {
+				start := strings.Index(source, path)
+				for i := range len(path) {
+					if got := pencodeTestColour(spans, start+i); got != quoted {
+						t.Fatalf("%s: %q at byte %d has color %v, want %v", id, path, i, got, quoted)
+					}
+				}
+				if pencodeTestColour(spans, start-1) != quoted || pencodeTestColour(spans, start+len(path)) != quoted {
+					t.Fatalf("%s: import delimiters lost their string color", id)
+				}
+			}
+			if pencodeTestColour(spans, strings.LastIndex(source, ecs)) != quoted {
+				t.Fatalf("%s: ordinary string has import path color", id)
+			}
+		}
+		for _, offset := range []int{strings.Index(source, "alias"), strings.LastIndex(source, "alias")} {
+			if got := pencodeTestColour(merged, offset); got != namespace {
+				t.Fatalf("%s: package alias at %d has color %v, want %v", id, offset, got, namespace)
+			}
+		}
+	}
+}
+
 func TestPencodeRetypedMethodRestoresHighlight(t *testing.T) {
 	const prefix = "package demo\nfunc (app *App) Frame() error {\n\t_, err := app"
 	const suffix = "\n\treturn err\n}\n"

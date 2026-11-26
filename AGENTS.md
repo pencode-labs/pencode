@@ -2,3 +2,4 @@
 - Aim for zero allocations when adding features, especially on warm paths.
 - Apply a consistent theme style.
 - All struct type fields must be aligned.(use the `fieldalignment` tool to check).
+- Combine traversals when possible instead of repeating O(n) passes.

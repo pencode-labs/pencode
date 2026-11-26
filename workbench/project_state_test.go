@@ -269,3 +269,44 @@ func TestProjectStateRepositorySurvivesDiscovery(t *testing.T) {
 		}
 	}
 }
+
+func TestSwitchProjectsKeepsPanelLayoutSearchAndOutput(t *testing.T) {
+	m, first := resourceTestModel(t)
+	second := &pencodeProject{Path: t.TempDir(), Files: make(map[string]*openFile)}
+	m.projects = append(m.projects, second)
+	m.sidebarWidthStyle, m.bottom.heightStyle, m.sourceChangesWidthStyle = "width:300px", "height:250px", "width:200px"
+	m.bottom.active, m.bottom.filter = pencodePanelOutput, "first filter"
+	m.bottom.source = m.outputStore().Channel("Debugger")
+	_, _ = m.bottom.source.Write([]byte("first output"))
+	m.findOpen, m.findQuery = true, "first query"
+	m.debug.expression = "first expression"
+	m.market = &pencodeMarketplace{pencodeMarketplaceView: pencodeMarketplaceView{open: true, filter: "codex", selected: "codex"}}
+	m.activateProject(second)
+	if m.market.open || m.market.filter != "" || m.market.selected != "" {
+		t.Fatal("second project inherited the marketplace selection")
+	}
+	if m.findOpen || m.findQuery != "" || m.debug.expression != "" || m.bottom.active != pencodePanelClosed || m.bottom.filter != "" || m.sidebarWidthStyle != "" {
+		t.Fatal("fresh project inherited foreground UI state")
+	}
+	m.findQuery, m.debug.expression = "second query", "second expression"
+	m.bottom.active = pencodePanelProblems
+	secondChannel := m.outputStore().Channel("Debugger")
+	if logs, _ := secondChannel.Snapshot(); logs != "" {
+		t.Fatalf("second project inherited output %q", logs)
+	}
+	saved := m.captureProjectState(first)
+	if saved.Panel != pencodePanelOutput || saved.OutputFilter != "first filter" || saved.OutputSource != "Debugger" || saved.SidebarWidth != "width:300px" || saved.PanelHeight != "height:250px" || saved.SourceChangesWidth != "width:200px" {
+		t.Fatalf("background checkpoint used the wrong layout: %+v", saved)
+	}
+	m.activateProject(first)
+	if !m.market.open || m.market.filter != "codex" || m.market.selected != "codex" {
+		t.Fatal("first project lost the marketplace selection")
+	}
+	if logs, _ := m.bottom.source.Snapshot(); logs != "first output" || !m.findOpen || m.findQuery != "first query" || m.debug.expression != "first expression" {
+		t.Fatal("switch back lost first project's state")
+	}
+	m.activateProject(second)
+	if m.findOpen || m.findQuery != "second query" || m.debug.expression != "second expression" || m.bottom.active != pencodePanelProblems {
+		t.Fatal("switch back lost second project's state")
+	}
+}

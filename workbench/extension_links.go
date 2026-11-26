@@ -47,7 +47,7 @@ func (s *pencodeExtensionSurface) openLink(href string) {
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme {
 	case "http", "https", "mailto":
-		channel := s.model.outputStore().Channel("Extension: " + s.owner)
+		channel := s.model.projectOutput(s.project).Channel("Extension: " + s.owner)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

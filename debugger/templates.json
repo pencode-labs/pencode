@@ -1,0 +1,108 @@
+[
+  {
+    "label": "Go: 当前项目",
+    "adapter": "Delve",
+    "request": "launch",
+    "configuration": {
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}"
+    }
+  },
+  {
+    "label": "Go: 包测试",
+    "adapter": "Delve",
+    "request": "launch",
+    "configuration": {
+      "mode": "test",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}"
+    }
+  },
+  {
+    "label": "Go: 远程附加",
+    "adapter": "Delve",
+    "request": "attach",
+    "host": "127.0.0.1",
+    "port": 2345,
+    "configuration": {
+      "mode": "remote"
+    }
+  },
+  {
+    "label": "PHP: 当前文件",
+    "adapter": "Xdebug",
+    "request": "launch",
+    "configuration": {
+      "program": "${file}",
+      "cwd": "${fileDirname}",
+      "hostname": "127.0.0.1",
+      "port": 0,
+      "stopOnEntry": true,
+      "runtimeArgs": [
+        "-dxdebug.start_with_request=yes"
+      ],
+      "env": {
+        "XDEBUG_MODE": "debug",
+        "XDEBUG_CONFIG": "client_host=127.0.0.1 client_port=${port}"
+      }
+    }
+  },
+  {
+    "label": "PHP: 监听 Xdebug",
+    "adapter": "Xdebug",
+    "request": "launch",
+    "configuration": {
+      "port": 9003,
+      "cwd": "${workspaceFolder}"
+    }
+  },
+  {
+    "label": "Python: 当前文件",
+    "adapter": "debugpy",
+    "request": "launch",
+    "configuration": {
+      "program": "${file}",
+      "cwd": "${fileDirname}",
+      "console": "internalConsole",
+      "redirectOutput": true,
+      "subProcess": false
+    }
+  },
+  {
+    "label": "Dart: 当前文件",
+    "adapter": "dart-dap",
+    "request": "launch",
+    "configuration": {
+      "program": "${file}",
+      "cwd": "${workspaceFolder}"
+    }
+  },
+  {
+    "label": "C#: 启动程序集",
+    "adapter": "netcoredbg",
+    "request": "launch",
+    "configuration": {
+      "program": "${workspaceFolder}/path/to/application.dll",
+      "cwd": "${workspaceFolder}"
+    }
+  },
+  {
+    "label": "LLDB: 启动可执行文件",
+    "adapter": "lldb-dap",
+    "request": "launch",
+    "configuration": {
+      "program": "${workspaceFolder}/path/to/executable",
+      "cwd": "${workspaceFolder}",
+      "disableASLR": false
+    }
+  },
+  {
+    "label": "DAP: 远程附加",
+    "adapter": "tcp",
+    "request": "attach",
+    "host": "127.0.0.1",
+    "port": 5678,
+    "configuration": {}
+  }
+]

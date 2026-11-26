@@ -87,6 +87,35 @@ func TestFolderSearchReplaceBuffersDiskAndConflicts(t *testing.T) {
 	}
 }
 
+func TestFolderReplaceReturnsToInitiatingProject(t *testing.T) {
+	m, target, _, _ := delayedFileModel(t)
+	t.Cleanup(m.closeProjectWorkers)
+	resourceTestWrite(t, target, "match.txt", "before")
+	owner := &pencodeProject{Path: t.TempDir()}
+	m.projects = append(m.projects, owner)
+	m.activateProject(owner)
+	m.openFolderSearch(target, "", true)
+	m.folderSearch.query, m.folderSearch.replacement = "before", "after"
+	m.startFolderSearch()
+	settleFolderSearch(t, m)
+	m.replaceFolderSearch(true)
+
+	m.activateProject(target)
+	m.openFolderSearch(target, "", false)
+	message := m.folderSearch.message
+	if err := awaitFileIO(t, m); err != nil {
+		t.Fatal(err)
+	}
+	if m.folderSearch.message != message || target.Status != "" {
+		t.Fatal("background replacement changed the foreground search or status")
+	}
+	m.activateProject(owner)
+	settleFolderSearch(t, m)
+	if m.folderSearch.replacing || len(m.folderSearch.rows) != 0 || !strings.Contains(owner.Status, "1") {
+		t.Fatalf("replacement did not update the initiating search: %q, %d matches", owner.Status, len(m.folderSearch.rows))
+	}
+}
+
 func TestFolderSearchPopupFromContextAndNavigation(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)
 	p, world := m.activeProjectState(), m.fontResources
@@ -102,12 +131,16 @@ func TestFolderSearchPopupFromContextAndNavigation(t *testing.T) {
 		field, _ := world.Get[engineui.TextField](control)
 		t.Fatalf("context did not open/focus popup: open=%v focus=%v control=%v found=%v field=%+v context=%+v", m.folderSearch.open, m.folderSearch.needsFocus, control, ok, field, m.fileContext)
 	}
+	emptyPanel := editorContextBounds(t, m, "folder-search-panel")
 	m.handleFolderSearchEvent(world, "folder-search-query", "target")
 	settleFolderSearch(t, m)
 	markPencodeRootDirtyByModel(world, m)
 	languageInteractionStep(t, app)
 	if len(m.folderSearch.rows) != 2 {
 		t.Fatal(m.folderSearch.message)
+	}
+	if panel := editorContextBounds(t, m, "folder-search-panel"); panel != emptyPanel || panel.Width != 720 {
+		t.Fatalf("search results changed popup bounds: empty=%+v results=%+v", emptyPanel, panel)
 	}
 	m.handleFolderSearchEvent(world, "folder-search-toggle", "")
 	markPencodeRootDirtyByModel(world, m)

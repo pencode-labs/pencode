@@ -184,7 +184,7 @@ func TestProjectTitlebarFitsNativeControlsAndSearch(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = face.Close() })
 	for _, zoom := range []int{0, pencodeMinZoom, 90, pencodeDefaultZoom, pencodeMaxZoom} {
-		for _, width := range []float64{640, 800, 960, 1440} {
+		for _, width := range []float64{520, 560, 640, 800, 910, 960, 1440} {
 			t.Run(fmt.Sprintf("nativeZoom=%d/width=%g", zoom, width), func(t *testing.T) {
 				class := "pencode-titlebar"
 				inline := ""
@@ -231,6 +231,10 @@ func TestProjectTitlebarFitsNativeControlsAndSearch(t *testing.T) {
 				}
 				if tabs.Width <= 0 || add.X+add.Width > search.X-.1 || tab.Width > tabs.Width+.1 || close.X+close.Width > tabs.X+tabs.Width+.1 {
 					t.Fatalf("titlebar overlaps or clips controls: tabs=%+v tab=%+v close=%+v add=%+v search=%+v", tabs, tab, close, add, search)
+				}
+				wantWidth := min(120, boxes["switcher"].BorderBox().Width-add.Width-4)
+				if tab.Width < wantWidth-.1 || tab.Width > wantWidth+.1 {
+					t.Fatalf("project tab width = %g, want %g", tab.Width, wantWidth)
 				}
 				icon, name := boxes["icon"].BorderBox(), boxes["name"].BorderBox()
 				if icon.Width != 16 || icon.Height != 16 || icon.X+icon.Width > name.X || name.X+name.Width > close.X {

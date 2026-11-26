@@ -1,7 +1,6 @@
 package workbench
 
 import (
-	uinode "github.com/onix-engine/onix/scene/node"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/peb"
 )
@@ -10,9 +9,9 @@ import (
 // Each data-pencode-region element must have a data-ref; nested regions belong
 // to their outer region and are replaced with it.
 type pencodeExtensionRegion struct {
-	tree       *uinode.Node
 	definition *htmlui.Definition[pencodeExtensionSurfaceProps, struct{}]
-	ref, html  string
+	ref        string
+	pencodeExtensionMarkup
 }
 
 func splitExtensionRegions(source string) (string, []pencodeExtensionRegion, error) {
@@ -25,7 +24,7 @@ func splitExtensionRegions(source string) (string, []pencodeExtensionRegion, err
 		regions = make([]pencodeExtensionRegion, len(parts))
 	}
 	for i, part := range parts {
-		regions[i] = pencodeExtensionRegion{ref: part.Ref, html: part.HTML}
+		regions[i] = pencodeExtensionRegion{ref: part.Ref, pencodeExtensionMarkup: pencodeExtensionMarkup{html: part.HTML}}
 	}
 	return template, regions, nil
 }

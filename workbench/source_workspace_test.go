@@ -572,6 +572,7 @@ func TestSourceControlBottomPanelAndHistoryLoading(t *testing.T) {
 		return scroll
 	}
 	seen := make(map[string]bool)
+	refresh := editorContextBounds(t, m, "sc-refresh")
 	for _, want := range []int{64, 75} {
 		scroll := graphScroll()
 		scroll.Position[1] = -max(0, scroll.ContentSize.Y()-scroll.ViewportSize.Y())
@@ -581,6 +582,9 @@ func TestSourceControlBottomPanelAndHistoryLoading(t *testing.T) {
 			t.Fatal("scrolling to history end did not start an asynchronous page")
 		}
 		sourceWait(t, app, m)
+		if bounds := editorContextBounds(t, m, "sc-refresh"); bounds != refresh {
+			t.Fatalf("scrolling commit history moved the toolbar: before=%+v after=%+v", refresh, bounds)
+		}
 		if len(s.Snapshot.Commits) != want || s.Snapshot.HasMore != (want < 75) {
 			t.Fatalf("history batch: got %d commits, more=%t; want %d", len(s.Snapshot.Commits), s.Snapshot.HasMore, want)
 		}
@@ -630,5 +634,9 @@ func TestSourceControlBottomPanelAndHistoryLoading(t *testing.T) {
 	sourceWait(t, app, m)
 	if len(s.Snapshot.Commits) != sourceHistoryPageSize || !s.Snapshot.HasMore || s.GraphFirst != 0 || s.GraphScrollY != 0 {
 		t.Fatal("new refs did not reset history pagination to its newest page")
+	}
+	editorContextClick(t, app, m, state, "sc-panel-close")
+	if m.bottom.active != pencodePanelClosed {
+		t.Fatal("the close button in the graph header did not collapse the panel")
 	}
 }

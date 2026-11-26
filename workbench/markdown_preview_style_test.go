@@ -18,6 +18,69 @@ import (
 	"github.com/pencode-labs/pencode/peb"
 )
 
+func TestMarkdownPreviewImagesFitEditor(t *testing.T) {
+	previewCSS, err := os.ReadFile("../extensions/markdown-preview/resources/editor.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := parse.Parse(`<section id="pane"><article class="markdown-preview">
+		<p><a href="demo/"><img src="peb:hero" width="1280" height="800"></a></p>
+		<table><tr><td><img src="peb:hero" width="1280" height="800"></td><td>Demo</td></tr></table>
+		<p><img src="peb:badge" width="64" height="40"></p>
+	</article></section>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sheet, err := css.Parse(string(previewCSS) + `#pane { height: 300px; overflow: auto; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	computed, err := style.Compute(root, sheet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	face, err := font.LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = face.Close() })
+	cache := layout.Cache{ReserveScrollbarSpace: true}
+	for _, width := range []float64{1440, 480, 960} {
+		box, err := cache.Update(root, computed, face, nil, width, 600, nil, nil, false, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		images := 0
+		var check func(*layout.Box)
+		check = func(b *layout.Box) {
+			if b.Node.AttrValue("id") == "pane" && b.ScrollWidth > b.ScrollportBox().Width {
+				t.Errorf("editor width %g has horizontal overflow %g", width, b.ScrollWidth-b.ScrollportBox().Width)
+			}
+			if b.Node.Data == "article" && b.BorderBox().Width != b.Parent.Content.Width {
+				t.Errorf("preview width %g, available %g", b.BorderBox().Width, b.Parent.Content.Width)
+			}
+			for _, image := range b.ImageFragments {
+				images++
+				intrinsic := 1280.0
+				if image.Node.AttrValue("src") == "peb:badge" {
+					intrinsic = 64
+				}
+				want := min(intrinsic, b.Content.Width)
+				if want <= 0 || image.Rect.Width != want || math.Abs(image.Rect.Height-want*5/8) > .01 {
+					t.Errorf("editor width %g: image %s = %+v, want %g × %g", width, image.Node.AttrValue("src"), image.Rect, want, want*5/8)
+				}
+			}
+			for _, child := range b.Children {
+				check(child)
+			}
+		}
+		check(box)
+		if images != 3 {
+			t.Fatalf("editor width %g: found %d images, want 3", width, images)
+		}
+	}
+}
+
 func TestMarkdownPreviewCodeWhitespaceLayout(t *testing.T) {
 	previewCSS, err := os.ReadFile("../extensions/markdown-preview/resources/editor.css")
 	if err != nil {
@@ -87,7 +150,7 @@ func TestMarkdownPreviewStylesFollowWorkbenchTheme(t *testing.T) {
 	}
 	model := &workspaceModel{}
 	document := &pencodeCustomDocument{model: model}
-	view := &peb.EditorView{HTML: `<article class="markdown-preview"><a data-ref="link" href="https://example.com">Link</a><table data-ref="table"><thead><tr><th data-ref="header">Title</th></tr></thead><tbody><tr><td data-ref="cell">Body</td></tr></tbody></table><pre><code><span data-ref="syntax-keyword" class="tok-keyword">return</span> <span data-ref="syntax-string" class="tok-string">value</span> <span data-ref="syntax-number" class="tok-number">42</span><span data-ref="syntax-comment" class="tok-comment">comment</span><span data-ref="syntax-type" class="tok-type">Type</span><span data-ref="syntax-function" class="tok-function">fn</span><span data-ref="syntax-operator" class="tok-operator">+</span></code></pre><div class="mermaid"><div class="diagram" style="width:200px;height:100px"><div class="diagram-node" data-ref="diagram-node" style="left:10px;top:10px;width:80px;height:42px"></div><div class="diagram-node diagram-decision" data-ref="diagram-decision" style="left:110px;top:10px;width:80px;height:42px"></div><span class="diagram-label diagram-edge-label" data-ref="diagram-edge" style="left:100px;top:70px">是</span><span class="diagram-label" data-ref="diagram-label" style="left:100px;top:50px;transform:translateX(-50%);">中文标签</span></div></div></article>`, CSS: string(previewCSS)}
+	view := &peb.EditorView{HTML: `<article class="markdown-preview"><a data-ref="link" href="https://example.com">Link</a><table data-ref="table"><thead><tr><th data-ref="header">Title</th></tr></thead><tbody><tr><td data-ref="cell"><a href="shot.webp"><img data-ref="screenshot" src="peb:shot" width="400" height="250"></a></td></tr></tbody></table><pre><code><span data-ref="syntax-keyword" class="tok-keyword">return</span> <span data-ref="syntax-string" class="tok-string">value</span> <span data-ref="syntax-number" class="tok-number">42</span><span data-ref="syntax-comment" class="tok-comment">comment</span><span data-ref="syntax-type" class="tok-type">Type</span><span data-ref="syntax-function" class="tok-function">fn</span><span data-ref="syntax-operator" class="tok-operator">+</span></code></pre><div class="mermaid"><div class="diagram" style="width:200px;height:100px"><div class="diagram-node" data-ref="diagram-node" style="left:10px;top:10px;width:80px;height:42px"></div><div class="diagram-node diagram-decision" data-ref="diagram-decision" style="left:110px;top:10px;width:80px;height:42px"></div><span class="diagram-label diagram-edge-label" data-ref="diagram-edge" style="left:100px;top:70px">是</span><span class="diagram-label" data-ref="diagram-label" style="left:100px;top:50px;transform:translateX(-50%);">中文标签</span></div></div></article>`, CSS: string(previewCSS)}
 	headingScales := [...]float64{2, 1.75, 1.5, 1.25, 1.125, 1}
 	for i := range headingScales {
 		view.HTML = strings.Replace(view.HTML, "</article>", fmt.Sprintf(`<h%d data-ref="heading-%d">标题 <span data-ref="heading-%d-text">文字</span></h%d></article>`, i+1, i+1, i+1, i+1), 1)
@@ -184,6 +247,18 @@ func TestMarkdownPreviewStylesFollowWorkbenchTheme(t *testing.T) {
 					}
 					if value.BackgroundColor != style.ColorValue(background) {
 						t.Fatalf("%s background does not follow theme: %v, want %v", ref, value.BackgroundColor, background)
+					}
+				case "screenshot":
+					hovered, err := style.ComputeWithState(root, sheet, &css.State{Hovered: node})
+					if err != nil {
+						t.Fatal(err)
+					}
+					link := hovered[node.Parent]
+					if background := link.BackgroundColor.Color; background.A != 0 {
+						t.Errorf("hovering the linked screenshot paints a background over it: %v", background)
+					}
+					if link.Color == computed[node.Parent].Color {
+						t.Error("the preview link has no hover color feedback")
 					}
 				case "link":
 					linkColor := style.ColorValue(style.Color(theme.Color("textLink.foreground")))

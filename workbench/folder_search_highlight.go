@@ -103,8 +103,7 @@ func (m *workspaceModel) pollFolderSearchHighlight() bool {
 	return changed
 }
 
-func (m *workspaceModel) closeFolderSearchHighlight() {
-	h := &m.folderSearch.preview
+func (h *folderSearchHighlight) close() {
 	if h.worker != nil {
 		h.cancel()
 		h.worker.close()

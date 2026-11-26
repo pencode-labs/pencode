@@ -166,7 +166,7 @@ func (s *Session) watchConnection(wake func()) {
 // Retire all readers and handles before replacing a connection. The text,
 // piece trees, undo stacks, source drafts and terminal screens remain local.
 func (model *workspaceModel) retireConnection(closeBackend bool) {
-	model.closeDebugger()
+	model.closeProjectWorkers()
 	model.closePorts()
 	model.stopFileIO()
 	model.fileClose = pencodeCloseRequest{}
@@ -265,6 +265,9 @@ func (model *workspaceModel) beginConnection(profile connection.Profile, retry b
 			projects[i].Path = project.Path
 			identities[i].project = project
 			for _, file := range project.Files {
+				if file.untitled() {
+					continue
+				}
 				projects[i].Files = append(projects[i].Files, connection.File{Path: file.Path, Mode: file.openMode()})
 				identities[i].files = append(identities[i].files, file)
 			}

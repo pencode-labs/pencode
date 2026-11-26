@@ -22,14 +22,17 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 
 | 领域 | 已实现能力 |
 | --- | --- |
-| 代码编辑 | 标签页、撤销／重做、查找替换、快速打开、软换行和 piece tree 文本缓冲 |
+| 代码编辑 | 临时文本标签（Ctrl+N，macOS 为 ⌘N）、撤销／重做、查找替换、快速打开、软换行和 piece tree 文本缓冲 |
 | 语言工具 | 增量语法高亮，以及 LSP 补全、诊断、导航、重命名、格式化和代码操作，具体取决于语言服务器能力 |
 | 内置终端 | 多 shell 会话，Linux/macOS PTY、Windows ConPTY，Unicode、真彩色和滚屏历史 |
-| 调试 | DAP 会话、Go／Delve 快速启动、断点、单步、调用栈、变量和表达式求值，支持本地与 SSH 工作区 |
+| 调试 | Go、PHP、Python、Dart、C#、C、C++、Objective-C、Objective-C++、Rust、Zig 和 Swift 的 DAP 启动器，支持本地与 SSH 工作区的断点、单步、调用栈、变量和表达式求值 |
+| 本地历史 | 在文件树中右键文件或文件夹，选择“查看本地历史”。在 Source Control 中单击一个版本可与当前文件对比，包括尚未保存的编辑。右键选择“恢复此版本”可还原文件。外部工具直接改写文件时不会生成版本。默认记录在 pencode 中保存且不超过 256 KiB 的文件，同一来源在 10 秒内连续保存会合并，每个文件最多保留最近 50 个版本。移动文件或文件夹时，已有历史随之迁移。可在工作区主机的 `settings.json` 中设置 `workbench.localHistory.enabled`、`maxFileSize`（KiB）、`maxFileEntries`、`mergeWindow`（秒）和 `exclude`。这五项都使用 `workbench.localHistory.` 前缀，例如 `"workbench.localHistory.exclude": {"**/dist/**": true}`。 |
 | Git | 暂存、提交、分支与历史视图、文件比较和三方合并编辑器 |
 | 远程开发 | 使用系统 OpenSSH 或带 token 的 WebSocket 直连工作区，文件操作、终端、语言服务器和扩展在工作区所在设备运行 |
 | 个性化 | 系统字体、VS Code JSON/JSONC 格式颜色主题、文件图标主题和语法 capture 映射 |
 | 扩展 | 通过可执行程序提供自定义编辑器、语言服务、字体、主题、图标、按钮、弹窗、菜单和面板 |
+
+调试面板的 **添加启动器 → Go: 远程附加** 或 **DAP: 远程附加** 会在项目的 `.pencode/debug.json` 中添加模板。将 `host` 和 `port` 改为工作区主机可访问的 DAP 服务地址和端口，保存后按 F5。Xdebug 的监听端口等适配器参数写在 `configuration` 中。[远程调试配置示例](debugger/README.md#remote-debugging)
 
 扩展管理器目前支持从本地目录安装，尚无线上扩展源。Pencode 不运行 VS Code 扩展；主题文件兼容范围仅限于 Pencode 已实现的字段。
 
@@ -44,7 +47,7 @@ Pencode 将代码编辑、语言工具、终端、Git 和原生进程扩展整�
 - Go **1.27.0 或更新版本**。
 - 在本仓库旁准备名为 `onix` 的 Onix 源码目录。当前 `go.mod` 使用 `replace github.com/onix-engine/onix => ../onix`。
 - Onix 桌面构建所需的平台原生开发库，具体见 Onix 源码中的 `docs/desktop-builds.md`。
-- Git 功能需要系统 `git`，SSH 连接需要 OpenSSH `ssh`。在 **设置 → 语言服务器** 中管理工作区的语言工具。Pencode 自动检测工作区主机上的可执行文件，并应用已激活服务器提供的语义高亮。
+- Git 功能需要系统 `git`，SSH 连接需要 OpenSSH `ssh`。在 **设置 → 语言服务器** 和 **设置 → 调试器（DAP）** 中管理工作区工具。Pencode 自动检测工作区主机上的工具，并应用已激活服务器提供的语义高亮。 [语言服务器配置](lsp/README.md#内置语言服务器) · [调试器配置](debugger/README.md#adapter-settings)
 - GUI 所在设备需安装可用的文本字体。Pencode 内置 Symbols Nerd Font Mono，为 Shell 提示符图标提供字形回退。
 - Linux 图片粘贴需要 Wayland 下的 `wl-paste`（由 `wl-clipboard` 提供）或 X11 下的 `xclip`；Windows 和 macOS 使用原生剪贴板 API。
 
@@ -69,6 +72,8 @@ go mod tidy
 ```sh
 go build ./...
 ```
+
+直接用 Go 编译时，搜索会调用 `PATH` 中的 `rg`。通过 Makefile 或发布流程构建桌面程序和服务端时，会按目标平台下载 ripgrep 16.0.0，校验 SHA-256 后嵌入可执行文件。下载缓存位于 Git 忽略的 `internal/ripgrep/bundle/` 目录。
 
 编译安装 `pencode-server` 并重新安装仓库内的扩展后启动 Pencode：
 
@@ -147,7 +152,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 
 ## 扩展
 
-扩展是原生可执行程序或由 TypeScript 编译的 JavaScript，通过 stdin/stdout 上的二进制协议 **peb v20** 与服务端通信，同一窗口内每个扩展仅保留一个进程，工作台 action 与文档视图复用它；关闭视图只释放会话，连接关闭或扩展被撤销时回收进程。日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
+扩展是原生可执行程序或由 TypeScript 编译的 JavaScript，通过 stdin/stdout 上的二进制协议 **peb v20** 与服务端通信，同一项目的工作台 action 与文档视图复用该扩展的进程。关闭视图会释放会话，关闭项目、断开连接或撤销扩展会回收进程。日志写入 stderr。扩展以服务端用户权限运行，远程工作区的扩展也在远端执行。
 
 可从各扩展的 Release 下载预编译包，直接解压到工作区服务端的 `~/.pencode/extensions/` 目录，重启 Pencode 即可加载。包格式、多平台支持和下载链接见[扩展发布说明](extensions/README.md)。
 
@@ -167,7 +172,7 @@ GUI 管理交互文本缓冲、撤销历史、布局与渲染；服务端管理�
 (cd extensions/docker && go build -o bin/docker .)
 ```
 
-当前扩展协议为 peb v20（CS v20），旧扩展需要使用当前 SDK 重新构建。
+当前扩展协议为 peb v20（CS v26），旧扩展需要使用当前 SDK 重新构建。
 
 JavaScript 入口按 `.js`、`.mjs`、`.cjs` 后缀识别，自动使用工作区主机 PATH 中的 Node.js，没有时使用 Bun。运行时不调用包管理器；TS 需要先编译并打包依赖。参见 [TS SDK](peb/ts/README.md)。`make install-extensions` 使用 npm（没有时使用 Bun）按锁文件安装构建依赖、运行 build，并安装输出目录、资源和 package.json；`.js` 的 ESM/CJS 类型随 package.json 保留，各平台入口不添加 `.exe`。
 

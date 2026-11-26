@@ -20,18 +20,19 @@ const (
 )
 
 type workspaceWatch struct {
-	err         error // Published by closing done.
-	cancel      context.CancelFunc
-	done        chan struct{}
-	watcher     *filewatch.Watcher
-	directories map[string]bool // Value identifies Git metadata directories.
-	files       [128]protocol.FileEvent
-	tree        workspaceTreeChanges
-	journal     fileEventJournal
-	index       uint64 // Most recently started snapshot; guarded by services.mu.
-	fileCount   int
-	changes     protocol.WorkspaceChange // Owned by the native event loop.
-	reset       bool
+	err              error // Published by closing done.
+	cancel           context.CancelFunc
+	done             chan struct{}
+	watcher          *filewatch.Watcher
+	directories      map[string]bool // Value identifies Git metadata directories.
+	historyDirectory string
+	files            [128]protocol.FileEvent
+	tree             workspaceTreeChanges
+	journal          fileEventJournal
+	index            uint64 // Most recently started snapshot; guarded by services.mu.
+	fileCount        int
+	changes          protocol.WorkspaceChange // Owned by the native event loop.
+	reset            bool
 }
 
 // Keep bounded directory hints separately from notifications: consuming a watch
@@ -187,6 +188,9 @@ func (w *workspaceWatch) add(ctx context.Context, root string, metadata bool) er
 			}
 			return nil
 		}
+		if name == w.historyDirectory && entry.IsDir() {
+			return fs.SkipDir
+		}
 		if name != root && !metadata && entry.Name() == ".git" {
 			if err := w.addGit(ctx, name); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return err
@@ -224,7 +228,7 @@ func (w *workspaceWatch) event(ctx context.Context, event filewatch.Event) error
 	// Native event paths are already clean. Split without Dir's Windows
 	// volume concatenation, preserving drive, UNC and Unix roots.
 	parent, name := filepath.Split(event.Name)
-	if strings.HasPrefix(name, workspace.SaveTemporaryPrefix) {
+	if _, archived := watchRelativePath(w.historyDirectory, event.Name); archived || strings.HasPrefix(name, workspace.SaveTemporaryPrefix) || strings.HasPrefix(name, ".pencode-paste-") {
 		return nil
 	}
 	if len(parent) > len(filepath.VolumeName(parent))+1 {
@@ -340,6 +344,7 @@ func (w *workspaceWatch) run(ctx context.Context, root string) {
 			_ = w.watcher.Close()
 		}
 	}()
+	w.historyDirectory, _ = workspace.HistoryDirectory()
 	w.err = w.setup(ctx, root)
 	if w.err != nil {
 		return

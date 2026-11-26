@@ -99,9 +99,9 @@ func TestClosingExtensionRevealsAdjacentEditorTab(t *testing.T) {
 					m.projects = []*pencodeProject{{Tabs: m.tabs, ActivePath: m.activePath, Files: m.files}}
 					m.syncActiveProjectFields()
 				}
-				one := &pencodeExtensionSurface{model: m, session: &extensions.ActionSession{}, ui: peb.UI{Kind: peb.EditorTab}}
-				two := &pencodeExtensionSurface{model: m, session: &extensions.ActionSession{}, ui: peb.UI{Kind: peb.EditorTab}}
-				panel := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.Panel}}
+				one := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, session: &extensions.ActionSession{}, ui: peb.UI{Kind: peb.EditorTab}}
+				two := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, session: &extensions.ActionSession{}, ui: peb.UI{Kind: peb.EditorTab}}
+				panel := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.Panel}}
 				chats := []*pencodeExtensionSurface{one, two}
 				m.actions.ui.surfaces = []*pencodeExtensionSurface{one, panel}
 				if tc.wantChat >= 0 || tc.comparison {
@@ -153,9 +153,9 @@ func TestClosingFileSelectsAdjacentTab(t *testing.T) {
 					m.projects = []*pencodeProject{p}
 					m.syncActiveProjectFields()
 				}
-				panel := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.Panel}}
-				one := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.EditorTab}}
-				two := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.EditorTab}}
+				panel := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.Panel}}
+				one := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.EditorTab}}
+				two := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.EditorTab}}
 				m.actions.ui.surfaces = []*pencodeExtensionSurface{panel, one, two}
 				if tc.selected == 2 {
 					m.selectExtensionTab(two)
@@ -185,7 +185,7 @@ func TestClosingDirtyFileRevealsExtensionAfterDiscard(t *testing.T) {
 	}}
 	m := &workspaceModel{projects: []*pencodeProject{p}}
 	m.syncActiveProjectFields()
-	chat := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.EditorTab}}
+	chat := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.EditorTab}}
 	m.actions.ui.surfaces = []*pencodeExtensionSurface{chat}
 	m.closeTab("a.go")
 	if m.closing.action != pencodeCloseTab || m.actions.ui.editor != nil {
@@ -229,8 +229,8 @@ func TestClosingComparisonSelectsAdjacentEditorTab(t *testing.T) {
 					m.projects = []*pencodeProject{{Tabs: m.tabs, ActivePath: m.activePath, Files: m.files}}
 					m.syncActiveProjectFields()
 				}
-				panel := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.Panel}}
-				chat := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.EditorTab}}
+				panel := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.Panel}}
+				chat := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.EditorTab}}
 				m.actions.ui.surfaces = []*pencodeExtensionSurface{panel}
 				if tc.extension {
 					m.actions.ui.surfaces = append(m.actions.ui.surfaces, chat)

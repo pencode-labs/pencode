@@ -177,7 +177,7 @@ func (m *workspaceModel) closeTerminal(root string) {
 	} else if index := m.projectIndex(root); index >= 0 {
 		m.projects[index].terminals.close()
 	}
-	m.closeEmptyTerminalPanel()
+	m.closeEmptyTerminalPanel(false)
 }
 
 func (m *workspaceModel) runExtensionTerminalCommand(command, cwd string) {
@@ -194,7 +194,7 @@ func (m *workspaceModel) openExtensionSettings(id string) {
 	m.ensureSettings()
 	m.settingsOpen = true
 	m.settingsShortcuts = false
-	m.settingsAbout, m.settingsLanguageServers = false, false
+	m.settingsAbout, m.settingsToolPage = false, noToolSettings
 	m.settingsExtensions = true
 	m.settingsExtensionsExpanded = true
 	m.settingsExtension = id
@@ -214,20 +214,20 @@ func (m *workspaceModel) removeTerminal(index int) {
 		}
 		m.terminalView.context.open = false
 	}
-	m.closeEmptyTerminalPanel()
+	m.closeEmptyTerminalPanel(true)
 }
 
-func (m *workspaceModel) closeEmptyTerminalPanel() bool {
+func (m *workspaceModel) closeEmptyTerminalPanel(userClosed bool) bool {
 	if m.terminals == nil || len(m.terminals.items) != 0 || m.bottom.active != pencodePanelTerminal {
 		return false
+	}
+	if world := m.fontResources; world != nil && (userClosed || m.terminalFocused(world)) {
+		world.Focus(m.editor.control)
 	}
 	m.bottom.active = pencodePanelClosed
 	m.terminals.focus = false
 	m.terminalView.context = pencodeTerminalContext{}
 	m.prepareTerminalView()
-	if m.fontResources != nil {
-		m.fontResources.Focus(m.editor.control)
-	}
 	return true
 }
 
@@ -280,7 +280,7 @@ func (m *workspaceModel) pollTerminals() bool {
 		updated := m.pollTerminalGroup(project, t, buffer[:])
 		changed = changed || t == m.terminals && updated
 	}
-	return m.closeEmptyTerminalPanel() || changed && m.bottom.active == pencodePanelTerminal
+	return m.closeEmptyTerminalPanel(false) || changed && m.bottom.active == pencodePanelTerminal
 }
 
 func (m *workspaceModel) pollTerminalGroup(project *pencodeProject, t *pencodeTerminals, buffer []byte) bool {
@@ -329,7 +329,8 @@ func (m *workspaceModel) pollTerminalGroup(project *pencodeProject, t *pencodeTe
 	clear(t.items[len(kept):])
 	t.items = kept
 	if t.active == nil && len(kept) > 0 {
-		t.active, t.focus = kept[min(nextActive, len(kept)-1)], true
+		// The surviving session uses the same terminal input control.
+		t.active = kept[min(nextActive, len(kept)-1)]
 	}
 	if len(kept) == 0 {
 		t.visible = false

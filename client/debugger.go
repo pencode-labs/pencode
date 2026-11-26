@@ -8,13 +8,14 @@ import (
 
 // OpenDebugAdapter returns the same owned, flow-controlled stream for local
 // and SSH workspaces. Delve selects an ephemeral loopback port on the server.
-func (c *Client) OpenDebugAdapter(ctx context.Context, root, adapter, command, address string, args []string) (*Process, error) {
+func (c *Client) OpenDebugAdapter(ctx context.Context, root string, launch protocol.DebugAdapterCommand) (*Process, error) {
 	e := service(protocol.DebugAdapterOpen, root)
-	e.String(adapter)
-	e.String(command)
-	e.String(address)
-	e.U32(uint32(len(args)))
-	for _, arg := range args {
+	e.String(launch.Adapter)
+	e.String(launch.Command)
+	e.String(launch.Address)
+	e.String(launch.Override)
+	e.U32(uint32(len(launch.Args)))
+	for _, arg := range launch.Args {
 		e.String(arg)
 	}
 	d, err := c.execute(ctx, &e)

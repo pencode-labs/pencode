@@ -48,12 +48,18 @@ func TestProfilingSettingsControlAndPersistence(t *testing.T) {
 
 type pencodeProfileDriver struct {
 	render.Driver
-	samples int
+	samples       int
+	targetSamples int
 }
 
 func (d *pencodeProfileDriver) BufferMemoryStatistics() render.BufferMemoryStatistics {
 	d.samples++
 	return render.BufferMemoryStatistics{InstanceBytes: 1024}
+}
+
+func (d *pencodeProfileDriver) VisitRenderTargetSizes(visit func(string, uint32, uint32, uint32)) {
+	d.targetSamples++
+	visit("window", 0, 1200, 800)
 }
 
 func (*pencodeProfileDriver) RendererInfo() render.RendererInfo {
@@ -77,6 +83,9 @@ func TestProfilingSystemSamplesOnApplicationThread(t *testing.T) {
 	context := &ecs.SystemContext{World: world}
 	if err := system.System(context); err != nil || driver.samples != 1 {
 		t.Fatalf("initial graphics sample: %d, %v", driver.samples, err)
+	}
+	if (driver.targetSamples == 1) != profiling.DefaultEnabled() {
+		t.Fatalf("target sampling in this build: %d", driver.targetSamples)
 	}
 	if n := testing.AllocsPerRun(100, func() {
 		if err := system.System(context); err != nil {

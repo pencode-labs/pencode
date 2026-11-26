@@ -40,16 +40,21 @@ func prepareExtensionViewNode(node *uinode.Node, prefix string, index *int, text
 	}
 	_, searchable := node.Attr("data-pencode-searchable")
 	_, selectable := node.Attr("data-pencode-selectable")
-	_, referenced := node.Attr("data-ref")
+	ref, referenced := node.Attr("data-ref")
 	control := false
 	switch node.Data {
 	case "button", "input", "textarea", "select", "a":
 		control = true
 	}
 	needsID := node.Data == "button" || textView && (len(node.Children) > 0 || searchable || selectable || referenced || control)
-	if id, _ := node.Attr("id"); id == "" && needsID {
-		node.SetAttr("id", prefix+strconv.Itoa(*index))
-		*index++
+	if id, _ := node.Attr("id"); id == "" {
+		switch {
+		case control && ref != "":
+			node.SetAttr("id", prefix+"control-"+ref)
+		case needsID:
+			node.SetAttr("id", prefix+strconv.Itoa(*index))
+			*index++
+		}
 	}
 	if _, tabindex := node.Attr("tabindex"); (searchable || selectable) && !tabindex {
 		node.SetAttr("tabindex", "-1")

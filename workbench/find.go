@@ -174,11 +174,7 @@ func (model *workspaceModel) refreshFindMatches() {
 		clear(model.findMatches)
 		model.findMatches = model.findMatches[:0]
 	} else {
-		if preview != nil {
-			model.findMatches = model.findPattern.FindSnapshot(content, model.findMatches, 0, content.Len(), pencodeFindMatchLimit)
-		} else {
-			model.findMatches = model.scopedFindMatches(content, model.findMatches, pencodeFindMatchLimit)
-		}
+		model.findMatches = model.scopedFindMatches(content, model.findMatches, pencodeFindMatchLimit)
 	}
 	model.findRevision++
 	if len(model.findMatches) == 0 {

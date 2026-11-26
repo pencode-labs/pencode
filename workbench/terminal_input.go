@@ -42,7 +42,7 @@ func (m *workspaceModel) terminalKeys(state *input.State) bool {
 	shift := state.KeyHeld(input.KeyLeftShift) || state.KeyHeld(input.KeyRightShift)
 	super := state.KeyHeld(input.KeyLeftSuper) || state.KeyHeld(input.KeyRightSuper)
 	alt := state.KeyHeld(input.KeyLeftAlt) || state.KeyHeld(input.KeyRightAlt)
-	if m.terminalCommandCount("terminal-toggle", state) > 0 || m.terminalCommandCount("terminal-new", state) > 0 {
+	if m.terminalCommandCount("terminal-toggle", state) > 0 || m.terminalCommandCount("terminal-new", state) > 0 || m.terminalCommandCount("new-untitled", state) > 0 {
 		v.repeatKey = 0
 		return true
 	}
@@ -286,6 +286,10 @@ func (m *workspaceModel) terminalShortcut(world *module.Content, state *input.St
 		return true, true
 	}
 	if m.terminalFocused(world) {
+		if m.commandMatches("new-untitled", state, runtime.GOOS) {
+			m.newUntitled()
+			return true, true
+		}
 		return true, m.handleActionShortcuts(world, state, runtime.GOOS)
 	}
 	return false, false

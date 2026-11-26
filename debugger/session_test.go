@@ -345,6 +345,41 @@ func TestConfigAcceptsEmptyLauncherList(t *testing.T) {
 	}
 }
 
+func TestConfigRemoteEndpoint(t *testing.T) {
+	for _, tc := range []struct{ fields, address string }{
+		{`"port":1`, "127.0.0.1:1"},
+		{`"host":"debug.example","port":5678`, "debug.example:5678"},
+		{`"host":"::1","port":65535`, "[::1]:65535"},
+		{`"address":"127.0.0.1:2345"`, "127.0.0.1:2345"},
+		{`"port":0`, ""},
+		{`"port":65536`, ""},
+		{`"port":-1`, ""},
+		{`"port":"2345"`, ""},
+		{`"host":"debug.example"`, ""},
+		{`"host":"localhost:2345","port":2345`, ""},
+		{`"address":"localhost:2345","port":5678`, ""},
+		{`"command":"adapter","port":2345`, ""},
+	} {
+		t.Run(tc.fields, func(t *testing.T) {
+			data := `[{"label":"remote","adapter":"tcp","request":"attach","configuration":{},` + tc.fields + `}]`
+			configs, err := ParseConfigs([]byte(data), "/project")
+			if tc.address == "" {
+				if err == nil {
+					t.Fatal("accepted invalid endpoint")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := configs[0].AdapterCommand("")
+			if cmd.Adapter != "tcp" || cmd.Address != tc.address {
+				t.Fatalf("unexpected TCP endpoint: %+v", cmd)
+			}
+		})
+	}
+}
+
 func TestConfigAcceptsContributedAdapter(t *testing.T) {
 	configs, err := ParseConfigs([]byte(`[{"label":"Listen for Xdebug","adapter":"Xdebug","request":"launch","configuration":{"port":9003,"cwd":"${workspaceFolder}"}}]`), "/project")
 	if err != nil || len(configs) != 1 || configs[0].Adapter != "Xdebug" || configs[0].Command != "" || !strings.Contains(string(configs[0].Configuration), "/project") {

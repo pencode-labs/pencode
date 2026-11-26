@@ -6,6 +6,21 @@
 
 在「设置 → 语言服务器」选择语言即可查看候选服务器、工作区主机检测到的路径及安装状态。Pencode 按用户设置的可执行文件路径、托管副本、系统 PATH 的顺序查找工具。托管副本可在设置中安装、更新和卸载；安装所需的包管理器显示在候选项中。每种语言只运行选中的服务，支持 semantic tokens 的服务会自动为打开的文件提供语义高亮。远程项目的检测、安装、设置和进程均属于相应的工作区主机。
 
+| 语言 | 服务器 | 安装方式 |
+| --- | --- | --- |
+| C、C++、Objective-C、Objective-C++ | clangd | 在工作区主机安装 clangd。同一项目的四种语言共用一个进程，`.m` 和 `.mm` 分别以 Objective-C 和 Objective-C++ 打开。 |
+| Swift | SourceKit-LSP | 使用 Swift 工具链附带的 `sourcekit-lsp`，可直接打开包含 `Package.swift` 的项目。 [SourceKit-LSP](https://github.com/swiftlang/sourcekit-lsp) |
+| Dart | Dart Analysis Server | 将 Dart SDK 的 `dart` 加入 PATH，打开 `.dart` 文件即启动 `dart language-server`。 [Dart LSP 文档](https://github.com/dart-lang/sdk/blob/main/pkg/analysis_server/tool/lsp_spec/README.md) |
+| C# | csharp-ls | 在设置中通过 .NET SDK 安装托管副本，或使用 PATH 上的 `csharp-ls`。csharp-ls 0.29 使用 .NET 11。 [csharp-ls 0.29 项目配置](https://github.com/razzmatazz/csharp-language-server/blob/0.29.0/src/CSharpLanguageServer/CSharpLanguageServer.fsproj) |
+| Rust | rust-analyzer | 执行 `rustup component add rust-analyzer`，或使用独立可执行文件。 |
+| Lua | Lua Language Server | 在工作区主机安装 `lua-language-server`。 |
+| Zig | ZLS | 安装与项目 Zig 工具链匹配的 `zls`。 |
+| Ruby | Ruby LSP | 在项目所用的 Ruby 环境中安装 `ruby-lsp`。 |
+| CMake | neocmakelsp | 在设置中通过 Cargo 安装。 |
+| TOML | Taplo | 安装启用了 LSP 的 `taplo`。 [Taplo 文档](https://taplo.tamasfe.dev/cli/usage/language-server.html) |
+| SQL | sqls | 在设置中通过 Go 安装。按需配置数据库连接。 [sqls 文档](https://github.com/sqls-server/sqls#db-configuration) |
+| GraphQL | GraphQL Language Service | 在设置中通过 npm 安装，项目通过 GraphQL Config 指定 schema。 [GraphQL Language Service 文档](https://github.com/graphql/graphiql/blob/main/packages/graphql-language-service-server/README.md) |
+
 ## 扩展接入
 
 一个扩展可以贡献多个服务。每个服务提供 ID、展示名称、languageId、文件名/后缀 selector、启动程序和参数，以及可选的 initializationOptions / configuration。见 [peb 协议](../peb/README.md#语言服务扩展)。服务可使用服务端系统 PATH 内的程序，或扩展内附带的可执行文件。

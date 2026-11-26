@@ -1,7 +1,9 @@
 package workbench
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,6 +54,57 @@ func TestDebugConfigsRequireExplicitLaunchers(t *testing.T) {
 				t.Fatal("idle empty debugger allocated", allocs)
 			}
 		})
+	}
+}
+
+func TestDebugRemoteAttachFromProjectJSON(t *testing.T) {
+	m, p := resourceTestModel(t)
+	t.Cleanup(m.closeDebugger)
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	if err := listener.SetDeadline(deadline); err != nil {
+		t.Fatal(err)
+	}
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	resourceTestWrite(t, p, pencodeDebugConfigPath, `[{
+		"label":"remote", "adapter":"Example", "request":"attach", "host":"127.0.0.1", "port":`+port+`,
+		"configuration":{"port":9003,"target":9007199254740993}
+	}]`)
+	m.startDebug()
+	waitDebugConfigs(t, m)
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Fatalf("adapter connection: %v (%s)", err, m.debug.message)
+	}
+	requests := make(chan dap.Message, 2)
+	peer := dap.New(conn, nil, func(_ context.Context, command string, args json.RawMessage) (any, error) {
+		requests <- dap.Message{Command: command, Arguments: args}
+		return struct{}{}, nil
+	})
+	defer peer.Close()
+	for _, command := range []string{"initialize", "attach"} {
+		select {
+		case msg := <-requests:
+			if msg.Command != command {
+				t.Fatalf("received %q, want %q", msg.Command, command)
+			}
+			var args map[string]json.RawMessage
+			if err := json.Unmarshal(msg.Arguments, &args); err != nil {
+				t.Fatal(err)
+			}
+			if command == "initialize" && string(args["adapterID"]) != `"Example"` {
+				t.Fatalf("incorrect adapter identity: %s", msg.Arguments)
+			}
+			if command == "attach" && (len(args) != 2 || string(args["port"]) != "9003" || string(args["target"]) != "9007199254740993") {
+				t.Fatalf("incorrect attach arguments: %s", msg.Arguments)
+			}
+		case <-time.After(time.Until(deadline)):
+			t.Fatalf("timed out waiting for %s", command)
+		}
 	}
 }
 
@@ -137,7 +190,7 @@ func TestDebugProjectSwitchCancelsPendingLaunch(t *testing.T) {
 	m.activateProject(next)
 	m.pollDebugger(nil)
 	waitDebugConfigs(t, m)
-	if m.debug.configProject != next || len(m.debug.configs) != 0 || len(m.debug.options) != 0 || m.debug.startPending || m.debug.session != nil {
+	if m.bottom.active != pencodePanelClosed || m.debug.configProject != nil || len(m.debug.configs) != 0 || len(m.debug.options) != 0 || m.debug.startPending || m.debug.session != nil {
 		t.Fatalf("switching project retained a launcher or pending start: %+v", m.debug)
 	}
 }
@@ -541,8 +594,6 @@ func TestDebugTemplatesGenerateAndAppendProjectJSON(t *testing.T) {
 		t.Run(strconv.FormatBool(opened), func(t *testing.T) {
 			m, p := resourceTestModel(t)
 			t.Cleanup(m.closeDebugger)
-			const templates = `[{"label":"Go","adapter":"Delve","request":"launch","configuration":{"program":"${workspaceFolder}","args":["a b"],"stopOnEntry":true}}]`
-			m.importDebugTemplates("go", []peb.DebugAdapter{{ID: "Delve", Templates: templates}})
 			m.debugEvent(nil, "debug-add", "")
 			if !m.debug.adding {
 				t.Fatal("add did not offer registered templates")
@@ -603,15 +654,15 @@ func TestDebugTemplatesGenerateAndAppendProjectJSON(t *testing.T) {
 func TestDebugTemplatesInvalidConfigAndExtensionRemoval(t *testing.T) {
 	m, p := resourceTestModel(t)
 	t.Cleanup(m.closeDebugger)
-	adapter := peb.DebugAdapter{ID: "Delve", Templates: `[{"label":"Go","adapter":"Delve","request":"launch","configuration":{}}]`}
-	m.importDebugTemplates("go", []peb.DebugAdapter{adapter})
-	m.importDebugTemplates("go", []peb.DebugAdapter{adapter})
-	if len(m.debugTemplates) != 1 {
+	adapter := peb.DebugAdapter{ID: "Example", Templates: `[{"label":"Example","adapter":"Example","request":"launch","configuration":{}}]`}
+	m.importDebugTemplates("example", []peb.DebugAdapter{adapter})
+	m.importDebugTemplates("example", []peb.DebugAdapter{adapter})
+	if len(m.extensionDebugTemplates) != 1 {
 		t.Fatal("reimport duplicated templates")
 	}
 	resourceTestWrite(t, p, pencodeDebugConfigPath, "invalid json")
 	m.debugEvent(nil, "debug-add", "")
-	m.debugEvent(nil, "debug-template:0", "")
+	m.debugEvent(nil, "debug-template:"+strconv.Itoa(len(builtinDebugTemplates)), "")
 	waitDebugConfigs(t, m)
 	if err := awaitFileIO(t, m); err != nil {
 		t.Fatal(err)
@@ -620,8 +671,8 @@ func TestDebugTemplatesInvalidConfigAndExtensionRemoval(t *testing.T) {
 		t.Fatal("invalid file was replaced or was not editable")
 	}
 	m.debugEvent(nil, "debug-add", "")
-	m.removeDebugTemplates("extensions/go/")
-	if len(m.debugTemplates) != 0 || m.debug.adding {
+	m.removeDebugTemplates("extensions/example/")
+	if len(m.extensionDebugTemplates) != 0 || len(m.debugTemplateRows) != len(builtinDebugTemplates)+1 || m.debug.adding {
 		t.Fatal("unloaded extension retained templates")
 	}
 }
@@ -629,7 +680,6 @@ func TestDebugTemplatesInvalidConfigAndExtensionRemoval(t *testing.T) {
 func TestDebugTemplateMenuOpensFromButton(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)
 	t.Cleanup(m.closeDebugger)
-	m.importDebugTemplates("php", []peb.DebugAdapter{{ID: "Xdebug", Templates: `[{"label":"监听 Xdebug","adapter":"Xdebug","request":"launch","configuration":{"port":9003}}]`}})
 	editorContextClick(t, app, m, state, "status-debug")
 	wait := func() {
 		t.Helper()
@@ -647,8 +697,14 @@ func TestDebugTemplateMenuOpensFromButton(t *testing.T) {
 	editorContextClick(t, app, m, state, "debug-add")
 	menu := editorContextBounds(t, m, "debug-template-menu")
 	root := editorContextBounds(t, m, "pencode-root")
-	if !m.debug.adding || len(m.debugTemplateRows) != 2 || m.debugTemplateRows[0].label != "监听 Xdebug" {
+	want := []string{"Go: 当前项目", "Go: 包测试", "Go: 远程附加", "PHP: 当前文件", "PHP: 监听 Xdebug", "Python: 当前文件", "Dart: 当前文件", "C#: 启动程序集", "LLDB: 启动可执行文件", "DAP: 远程附加"}
+	if !m.debug.adding || len(m.debugTemplateRows) != len(want)+1 {
 		t.Fatal("button did not open template menu")
+	}
+	for i, label := range want {
+		if got := m.debugTemplateRows[i].label; got != label {
+			t.Fatalf("template %d = %q, want %q", i, got, label)
+		}
 	}
 	if menu.X < root.X || menu.Y < root.Y || menu.X+menu.Width > root.X+root.Width || menu.Y+menu.Height > root.Y+root.Height {
 		t.Fatalf("menu escaped viewport: menu=%+v root=%+v", menu, root)
@@ -679,6 +735,9 @@ func TestDebugTemplateMenuOpensFromButton(t *testing.T) {
 	if m.debug.templateIndex != 1 {
 		t.Fatal("arrow key did not select menu row")
 	}
+	for range len(want) - 1 {
+		press(input.KeyDown)
+	}
 	press(input.KeyEnter)
 	wait()
 	if m.debug.adding || len(m.debug.configs) != 1 {
@@ -700,7 +759,6 @@ func TestDebugTemplateMenuOpensFromButton(t *testing.T) {
 	if m.debug.adding {
 		t.Fatal("outside click did not dismiss menu")
 	}
-	m.removeDebugTemplates("extensions/php/")
 	if allocs := testing.AllocsPerRun(50, func() { m.pollDebugger(nil) }); allocs != 0 {
 		t.Fatal("idle debugger allocated", allocs)
 	}

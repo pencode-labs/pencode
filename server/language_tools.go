@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,28 +35,23 @@ func (s *services) languageTools(ctx context.Context, d *protocol.Decoder, e *pr
 	if err := d.Done(); err != nil {
 		return err
 	}
-	directory := s.configurationDirectory
-	if directory == "" {
-		var err error
-		directory, err = configuration.Directory()
-		if err != nil {
-			return err
-		}
+	directory, err := s.toolConfigurationDirectory()
+	if err != nil {
+		return err
 	}
-	root := filepath.Join(directory, "language-servers")
 	if action != "" || id != "" {
 		tool := languagetool.Find(id)
 		if tool == nil {
 			return protocol.ErrProtocol
 		}
-		if err := manageLanguageTool(ctx, filepath.Join(root, id), tool, action); err != nil {
+		if err := manageLanguageTool(ctx, toolDirectory(directory, id), tool, action); err != nil {
 			return err
 		}
 	}
 	e.U32(uint32(len(languagetool.Tools)))
 	for i := range languagetool.Tools {
 		tool := &languagetool.Tools[i]
-		info := detectLanguageTool(filepath.Join(root, tool.ID), tool, paths[tool.ID])
+		info := detectLanguageTool(ctx, toolDirectory(directory, tool.ID), tool, paths[tool.ID])
 		e.String(tool.ID)
 		e.String(info.Command)
 		e.String(info.Entry)
@@ -68,6 +65,20 @@ func (s *services) languageTools(ctx context.Context, d *protocol.Decoder, e *pr
 	return nil
 }
 
+func (s *services) toolConfigurationDirectory() (string, error) {
+	if s.configurationDirectory != "" {
+		return s.configurationDirectory, nil
+	}
+	return configuration.Directory()
+}
+
+func toolDirectory(directory, id string) string {
+	if languagetool.IsDebugAdapter(id) {
+		return filepath.Join(directory, "debug-adapters", id)
+	}
+	return filepath.Join(directory, "language-servers", id)
+}
+
 func languageToolBuild(directory string) string {
 	data, err := os.ReadFile(filepath.Join(directory, "current"))
 	name := string(data)
@@ -77,7 +88,7 @@ func languageToolBuild(directory string) string {
 	return filepath.Join(directory, name)
 }
 
-func detectLanguageTool(directory string, tool *languagetool.Tool, override string) languagetool.Installation {
+func detectLanguageTool(ctx context.Context, directory string, tool *languagetool.Tool, override string) languagetool.Installation {
 	build := languageToolBuild(directory)
 	info := languagetool.Installation{Managed: build != ""}
 	var err error
@@ -87,7 +98,7 @@ func detectLanguageTool(directory string, tool *languagetool.Tool, override stri
 	case build != "":
 		info.Command, info.Entry, err = installedLanguageTool(build, tool)
 	default:
-		info.Command, info.Entry, err = systemLanguageTool(tool, tool.ID)
+		info.Command, info.Entry, err = defaultLanguageTool(ctx, tool)
 		if errors.Is(err, exec.ErrNotFound) && info.Entry == "" {
 			return info
 		}
@@ -99,7 +110,73 @@ func detectLanguageTool(directory string, tool *languagetool.Tool, override stri
 	return info
 }
 
+func discoverLLVMTool(ctx context.Context, name string) (string, error) {
+	command, err := exec.LookPath(name)
+	if !errors.Is(err, exec.ErrNotFound) {
+		return command, err
+	}
+	switch runtime.GOOS {
+	case "linux":
+		// Debian and Ubuntu publish versioned commands in /usr/bin.
+		prefix := name + "-"
+		for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+			if !filepath.IsAbs(dir) {
+				continue
+			}
+			entries, _ := os.ReadDir(dir)
+			best := 0
+			for _, entry := range entries {
+				suffix, ok := strings.CutPrefix(entry.Name(), prefix)
+				if !ok {
+					continue
+				}
+				if version, err := strconv.Atoi(suffix); err == nil && version > best {
+					if candidate, err := exec.LookPath(filepath.Join(dir, entry.Name())); err == nil {
+						command, best = candidate, version
+					}
+				}
+			}
+			if best != 0 {
+				return command, nil
+			}
+		}
+	case "darwin":
+		probe, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		if data, probeErr := exec.CommandContext(probe, "xcrun", "--find", name).Output(); probeErr == nil {
+			if candidate := strings.TrimSpace(string(data)); filepath.IsAbs(candidate) {
+				return exec.LookPath(candidate)
+			}
+		}
+	}
+	return "", err
+}
+
+func rustAnalyzerCommand(ctx context.Context) (string, error) {
+	command, err := exec.LookPath("rust-analyzer")
+	if err != nil {
+		return "", err
+	}
+	rustup := filepath.Join(filepath.Dir(command), "rustup"+filepath.Ext(command))
+	shim, shimErr := os.Stat(command)
+	updater, updaterErr := os.Stat(rustup)
+	if shimErr == nil && updaterErr == nil && os.SameFile(shim, updater) {
+		// rustup creates a proxy even when the component is absent.
+		probe, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(probe, rustup, "which", "rust-analyzer")
+		hideServiceWindow(cmd)
+		if err := cmd.Run(); err != nil {
+			return "", exec.ErrNotFound
+		}
+	}
+	return command, nil
+}
+
 func systemLanguageTool(tool *languagetool.Tool, name string) (string, string, error) {
+	if tool.ID == languagetool.Xdebug {
+		return xdebugCommand(name)
+	}
 	if !filepath.IsAbs(name) && filepath.Base(name) != name {
 		return "", "", fmt.Errorf("expected an absolute executable path: %s", name)
 	}
@@ -115,6 +192,12 @@ func systemLanguageTool(tool *languagetool.Tool, name string) (string, string, e
 
 func installedLanguageTool(build string, tool *languagetool.Tool) (command, entry string, err error) {
 	switch tool.Manager {
+	case "VSIX":
+		return xdebugCommand(filepath.Join(build, phpDebugScript))
+	case "pip":
+		return installedDebugpy(build)
+	case "go":
+		command = filepath.Join(build, "bin", path.Base(tool.Package))
 	case "npm":
 		pkg := filepath.Join(build, "node_modules", tool.Package)
 		data, err := os.ReadFile(filepath.Join(pkg, "package.json"))
@@ -147,6 +230,9 @@ func installedLanguageTool(build string, tool *languagetool.Tool) (command, entr
 // Each installation has its own immutable directory. Publish its name only
 // after validating the entry point, so a failed update leaves the old one live.
 func manageLanguageTool(ctx context.Context, directory string, tool *languagetool.Tool, action string) error {
+	if tool.Manager == "" {
+		return protocol.ErrProtocol
+	}
 	marker := filepath.Join(directory, "current")
 	old := languageToolBuild(directory)
 	if action == "uninstall" {
@@ -211,9 +297,11 @@ func installLanguageTool(ctx context.Context, build string, tool *languagetool.T
 	defer cancel()
 	var cmd *exec.Cmd
 	switch tool.Manager {
+	case "VSIX":
+		return installXdebug(ctx, build)
 	case "go":
 		cmd = exec.CommandContext(ctx, "go", "install", tool.Package+"@latest")
-		cmd.Env = append(os.Environ(), "GOBIN="+filepath.Join(build, "bin"), "GOWORK=off")
+		cmd.Env = append(os.Environ(), "GOBIN="+filepath.Join(build, "bin"), "GOWORK=off", "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
 	case "npm":
 		args := []string{"install", "--prefix", build, "--no-audit", "--no-fund", "--no-package-lock", tool.Package + "@latest"}
 		if tool.ID == "typescript-language-server" {
@@ -242,6 +330,10 @@ func installLanguageTool(ctx context.Context, build string, tool *languagetool.T
 		}
 	case "cargo":
 		cmd = exec.CommandContext(ctx, "cargo", "install", "--locked", "--root", build, tool.Package)
+	case "dotnet":
+		cmd = exec.CommandContext(ctx, "dotnet", "tool", "install", "--tool-path", filepath.Join(build, "bin"), tool.Package)
+	case "pip":
+		cmd = exec.CommandContext(ctx, debugpyPython(), "-m", "pip", "--isolated", "install", "--target", build, tool.Package)
 	default:
 		return protocol.ErrProtocol
 	}

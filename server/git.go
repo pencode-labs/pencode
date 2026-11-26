@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,10 @@ func runGit(ctx context.Context, root string, args []string, input []byte, outpu
 	hideServiceWindow(cmd)
 	cmd.WaitDelay = 200 * time.Millisecond
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
+	if (args[0] == "status" || args[0] == "-c") && slices.Contains(args, "--porcelain=v1") {
+		// The workbench uses stderr to identify a missing submodule worktree.
+		cmd.Env = append(cmd.Env, "LC_ALL=C")
+	}
 	var stderr limitedOutput
 	cmd.Stdout, cmd.Stderr = output, &stderr
 	err := cmd.Run()

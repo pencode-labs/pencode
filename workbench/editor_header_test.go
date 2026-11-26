@@ -7,8 +7,6 @@ import (
 
 	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
-	"github.com/pencode-labs/pencode/extensions"
-	"github.com/pencode-labs/pencode/peb"
 )
 
 func TestPencodeEditorHeaderPathCache(t *testing.T) {
@@ -95,16 +93,14 @@ func TestPencodeEditorOpenWithToolbarVisibility(t *testing.T) {
 		}
 	}
 	step(true, false)
-	model.importEditors([]extensions.Editor{{Action: peb.Action{
-		ID: "test/source", Text: "Source preview", Location: peb.OpenWith,
-		Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}},
-	}}})
+	editors := installPencodeEditorFixture(t, session.backend).Editors
+	model.importEditors(editors)
 	step(true, true)
 	if model.actions.openWithCount != 1 {
 		t.Fatal("missing open-with action")
 	}
-	editorContextBounds(t, model, "action-test/source")
-	model.removeEditors("test/")
+	editorContextBounds(t, model, "action-"+editors[0].ID)
+	model.removeEditors(editors[0].ID)
 	step(true, false)
 	project := model.activeProjectState()
 	active := project.ActivePath

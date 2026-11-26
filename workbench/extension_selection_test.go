@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/font"
 	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/input"
@@ -701,6 +702,33 @@ func TestExtensionHistoricalSelectionIgnoresClippedToolOutput(t *testing.T) {
 }
 
 func TestExtensionSelectionAfterFileChanges(t *testing.T) {
+	checkCodexDragSelection(t, `<section class="codex-message" data-ref="message/first" data-pencode-region><p>CLI 仍报 keychain access blocked。请在本机终端执行后回复“已完成”，我再继续完善：</p><pre id="pencode-extension-selection-first-command"><code>lark-cli docs +fetch --doc https://example.com/wiki --as user --doc-format markdown &gt; /tmp/plan.json</code></pre></section>
+<section class="codex-changes" data-ref="changes/first/region" data-pencode-region><div class="codex-changes-header"><div class="codex-changes-title"><span>已编辑 1 个文件</span><span class="codex-change-counts"><span class="codex-change-added">+137</span><span class="codex-change-removed">-0</span></span></div><button type="button" data-ref="changes-diff/first">查看变更</button></div><div class="codex-changes-list codex-changes-preview"><button class="codex-change-file" type="button" data-ref="change-file/first/0"><span class="codex-change-path">琼崖岛开发文档.md</span><span class="codex-change-counts"><span class="codex-change-added">+137</span><span class="codex-change-removed">-0</span></span></button></div><button class="codex-changes-toggle" type="button" data-ref="changes/first">展开文件</button></section>
+<section class="codex-message codex-user" data-ref="message/user" data-pencode-region><div class="codex-user-bubble"><p id="pencode-extension-selection-question">CLI 仍报 keychain access blocked 怎么修复？</p></div><div class="codex-message-actions"><span class="codex-message-time">15:04</span><button type="button" class="codex-icon-button" data-ref="copy-message/user" data-pencode-copy="question">复制</button></div></section>
+<section class="codex-turn" data-ref="turn/second/region" data-pencode-region><div class="codex-turn-progress"><button class="codex-turn-toggle" type="button" data-ref="turn/second">用时 27s</button></div><section class="codex-message" data-ref="message/commentary" data-pencode-region><p id="pencode-extension-selection-commentary">我先检查 CLI 的诊断和钥匙串修复命令，确认具体操作。</p></section><section class="codex-activity-group"><button class="codex-activity-summary" type="button" data-ref="activity"><span>读取了文件、运行了命令</span></button></section></section>
+<section class="codex-message" data-ref="message/final" data-pencode-region><p id="pencode-extension-selection-answer">CLI 自带这个修复命令。请在 macOS 的终端或 iTerm2 中手动执行：</p><pre id="pencode-extension-selection-repair-command"><code>lark-cli auth repair</code></pre></section>`,
+		codexDragRange{"first-command", "lark-cli docs +fetch --doc https://example.com/wiki --as user --doc-format markdown > /tmp/plan.json"},
+		codexDragRange{"question", "CLI 仍报 keychain access blocked 怎么修复？"},
+		codexDragRange{"commentary", "我先检查 CLI 的诊断和钥匙串修复命令，确认具体操作。"},
+		codexDragRange{"answer", "CLI 自带这个修复命令。请在 macOS 的终端或 iTerm2 中手动执行："},
+		codexDragRange{"repair-command", "lark-cli auth repair"},
+	)
+}
+
+func TestCodexSelectionAcrossInlineCode(t *testing.T) {
+	checkCodexDragSelection(t, `<section class="codex-message" id="pencode-extension-selection-summary" data-ref="message/summary" data-pencode-region>
+<p>已将 SSO 默认地址改为 <code><a href="https://sso.example.com">https://sso.example.com</a></code>。登录跳转使用新域名。</p>
+<p style="max-width:320px">已验证设置页版本号 <code id="pencode-extension-selection-version">6.0.1.103</code>，相关的 42 个测试全部通过。正式环境尚未部署。</p>
+</section>`,
+		codexDragRange{"summary", "已将 SSO 默认地址改为 https://sso.example.com。登录跳转使用新域名。\n\n已验证设置页版本号 6.0.1.103，相关的 42 个测试全部通过。正式环境尚未部署。"},
+		codexDragRange{"version", "6.0.1.103"},
+	)
+}
+
+type codexDragRange struct{ ref, want string }
+
+func checkCodexDragSelection(t *testing.T, messages string, ranges ...codexDragRange) {
+	t.Helper()
 	app, m, _, state := languageInteractionFixture(t)
 	w := m.fontResources
 	css, err := os.ReadFile("../extensions/codex/resources/chat.css")
@@ -709,12 +737,7 @@ func TestExtensionSelectionAfterFileChanges(t *testing.T) {
 	}
 	if err := m.applyExtensionUI("codex", &extensions.ActionSession{}, peb.UI{ID: "composer", Kind: peb.EditorTab, View: &peb.EditorView{
 		HTML: `<main class="codex-workspace" data-pencode-layout="fill"><section class="codex-chat-pane"><div class="codex-transcript" data-ref="transcript" data-pencode-selectable data-pencode-scroll="end"><article class="codex-chat">
-<section class="codex-message" data-ref="message/first" data-pencode-region><p>CLI 仍报 keychain access blocked。请在本机终端执行后回复“已完成”，我再继续完善：</p><pre id="pencode-extension-selection-first-command"><code>lark-cli docs +fetch --doc https://example.com/wiki --as user --doc-format markdown &gt; /tmp/plan.json</code></pre></section>
-<section class="codex-changes" data-ref="changes/first/region" data-pencode-region><div class="codex-changes-header"><div class="codex-changes-title"><span>已编辑 1 个文件</span><span class="codex-change-counts"><span class="codex-change-added">+137</span><span class="codex-change-removed">-0</span></span></div><button type="button" data-ref="changes-diff/first">查看变更</button></div><div class="codex-changes-list codex-changes-preview"><button class="codex-change-file" type="button" data-ref="change-file/first/0"><span class="codex-change-path">琼崖岛开发文档.md</span><span class="codex-change-counts"><span class="codex-change-added">+137</span><span class="codex-change-removed">-0</span></span></button></div><button class="codex-changes-toggle" type="button" data-ref="changes/first">展开文件</button></section>
-<section class="codex-message codex-user" data-ref="message/user" data-pencode-region><div class="codex-user-bubble"><p id="pencode-extension-selection-question">CLI 仍报 keychain access blocked 怎么修复？</p></div><div class="codex-message-actions"><span class="codex-message-time">15:04</span><button type="button" class="codex-icon-button" data-ref="copy-message/user" data-pencode-copy="question">复制</button></div></section>
-<section class="codex-turn" data-ref="turn/second/region" data-pencode-region><div class="codex-turn-progress"><button class="codex-turn-toggle" type="button" data-ref="turn/second">用时 27s</button></div><section class="codex-message" data-ref="message/commentary" data-pencode-region><p id="pencode-extension-selection-commentary">我先检查 CLI 的诊断和钥匙串修复命令，确认具体操作。</p></section><section class="codex-activity-group"><button class="codex-activity-summary" type="button" data-ref="activity"><span>读取了文件、运行了命令</span></button></section></section>
-<section class="codex-message" data-ref="message/final" data-pencode-region><p id="pencode-extension-selection-answer">CLI 自带这个修复命令。请在 macOS 的终端或 iTerm2 中手动执行：</p><pre id="pencode-extension-selection-repair-command"><code>lark-cli auth repair</code></pre></section>
-</article></div></section></main>`,
+` + messages + `</article></div></section></main>`,
 		CSS: string(css),
 	}}); err != nil {
 		t.Fatal(err)
@@ -724,28 +747,10 @@ func TestExtensionSelectionAfterFileChanges(t *testing.T) {
 		languageInteractionStep(t, app)
 	}
 	selection := &m.actions.ui.selection
-	point := func(ref string, end bool) (float64, float64) {
+	point := func(entity ecs.Entity, end bool) (float64, float64) {
 		t.Helper()
-		bounds := editorContextBounds(t, m, "pencode-extension-selection-"+ref)
-		var chosen *scene.Text2D
-		var transform *scene.UIGlobalTransform
-		for _, values := range w.Query2[scene.Text2D, scene.UIGlobalTransform]() {
-			text, matrix := values.A.Ref(), values.B.Ref()
-			x, y := matrix.Matrix[12], matrix.Matrix[13]
-			if text.Value == "" || x < bounds.X || x >= bounds.X+bounds.Width || y < bounds.Y || y >= bounds.Y+bounds.Height {
-				continue
-			}
-			if transform != nil {
-				before := y < transform.Matrix[13] || y == transform.Matrix[13] && x < transform.Matrix[12]
-				if before == end {
-					continue
-				}
-			}
-			chosen, transform = text, matrix
-		}
-		if chosen == nil {
-			t.Fatalf("missing rendered text in %s", ref)
-		}
+		chosen := w.Ref[scene.Text2D](entity)
+		transform := w.Ref[scene.UIGlobalTransform](entity)
 		caret := 0
 		if end {
 			caret = utf8.RuneCountInString(chosen.Value)
@@ -758,36 +763,68 @@ func TestExtensionSelectionAfterFileChanges(t *testing.T) {
 	}
 	var copied string
 	state.SetClipboard(func(value string) bool { copied = value; return true }, nil)
-	for _, test := range []struct{ ref, want string }{
-		{"first-command", "lark-cli docs +fetch --doc https://example.com/wiki --as user --doc-format markdown > /tmp/plan.json"},
-		{"question", "CLI 仍报 keychain access blocked 怎么修复？"},
-		{"commentary", "我先检查 CLI 的诊断和钥匙串修复命令，确认具体操作。"},
-		{"answer", "CLI 自带这个修复命令。请在 macOS 的终端或 iTerm2 中手动执行："},
-		{"repair-command", "lark-cli auth repair"},
-	} {
-		selection.lastClick = selection.lastClick.Add(-1e9)
-		x, y := point(test.ref, false)
-		state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
-		languageInteractionStep(t, app)
-		x, y = point(test.ref, true)
-		state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: y})
-		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
-		languageInteractionStep(t, app)
-		if got := selection.text(); got != test.want {
-			t.Fatalf("dragging %s selected %q, want %q", test.ref, got, test.want)
+	for _, test := range ranges {
+		bounds := editorContextBounds(t, m, "pencode-extension-selection-"+test.ref)
+		expected := make(map[ecs.Entity]bool)
+		var first, last ecs.Entity
+		var left, top, right, bottom float32
+		for entity, values := range w.Query2[scene.Text2D, scene.UIGlobalTransform]() {
+			matrix := values.B.Ref().Matrix
+			x, y := matrix[12], matrix[13]
+			if values.A.Ref().Value == "" || x < bounds.X || x >= bounds.X+bounds.Width || y < bounds.Y || y >= bounds.Y+bounds.Height {
+				continue
+			}
+			expected[entity] = true
+			if first == 0 || y < top || y == top && x < left {
+				first, left, top = entity, x, y
+			}
+			if last == 0 || y > bottom || y == bottom && x > right {
+				last, right, bottom = entity, x, y
+			}
 		}
-		primary := input.KeyLeftControl
-		if runtime.GOOS == "darwin" {
-			primary = input.KeyLeftSuper
+		if first == 0 {
+			t.Fatalf("missing rendered text in %s", test.ref)
 		}
-		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
-		state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyC})
-		languageInteractionStep(t, app)
-		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyC})
-		state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
-		languageInteractionStep(t, app)
-		if copied != test.want {
-			t.Fatalf("copying %s produced %q, want %q", test.ref, copied, test.want)
+		x, y := point(first, false)
+		endX, endY := point(last, true)
+		for range 2 {
+			selection.lastClick = selection.lastClick.Add(-1e9)
+			state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+			languageInteractionStep(t, app)
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: endX, Y: endY})
+			state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: endX, Y: endY})
+			languageInteractionStep(t, app)
+			for _, quad := range selection.quads {
+				if visible, _ := w.Get[scene.Visibility](quad); visible.Visible {
+					parent, _ := w.Get[scene.Parent](quad)
+					if _, ok := expected[parent.Entity]; ok {
+						expected[parent.Entity] = false
+					}
+				}
+			}
+			for entity, missing := range expected {
+				if missing {
+					t.Errorf("dragging %s left %q without a highlight", test.ref, w.Ref[scene.Text2D](entity).Value)
+				}
+				expected[entity] = true
+			}
+			if got := selection.text(); got != test.want {
+				t.Fatalf("dragging %s selected %q, want %q", test.ref, got, test.want)
+			}
+			primary := input.KeyLeftControl
+			if runtime.GOOS == "darwin" {
+				primary = input.KeyLeftSuper
+			}
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: primary})
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyC})
+			languageInteractionStep(t, app)
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyC})
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: primary})
+			languageInteractionStep(t, app)
+			if copied != test.want {
+				t.Fatalf("copying %s produced %q, want %q", test.ref, copied, test.want)
+			}
+			x, y, endX, endY = endX, endY, x, y
 		}
 	}
 }

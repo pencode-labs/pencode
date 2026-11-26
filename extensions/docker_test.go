@@ -56,7 +56,7 @@ func TestDockerRegistersTitleBarAndOpensContainerList(t *testing.T) {
 	if action.ID != "extensions/docker/containers" || action.Location != peb.TitleBarRight || action.Text != "" || len(bundle.Icons[action.Icon]) == 0 {
 		t.Fatalf("expected icon-only Docker title bar action: %+v", action)
 	}
-	session := bundle.Actions.Start(nil, nil)
+	session := bundle.Actions.Start("", nil, nil)
 	defer session.Close()
 	if !session.Submit(peb.ActionContext{ID: "containers", ProjectPath: "/workspace"}) {
 		t.Fatal("Docker title bar click rejected")

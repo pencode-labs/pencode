@@ -91,12 +91,11 @@ type UI struct {
 	InterceptClose bool
 }
 
-// UIEvent carries DOM events and "open", "closerequest", "close", "visibilitychange", "projectchange".
+// UIEvent carries DOM events and "open", "closerequest", "close" and "visibilitychange".
 // visibilitychange uses Event.Value="visible" or "hidden".
-// projectchange notifies EditorTab surfaces when the active project changes.
 // Its Context contains the new ProjectPath and clears file-specific fields.
 // Close reasons are "extension", "button", "escape", "outside", "replace", "timeout".
-// Context is the action invocation that opened this surface, updated by projectchange.
+// Context is the action invocation that opened this project’s surface.
 type UIEvent struct {
 	ID, Reason string
 	Context    ActionContext

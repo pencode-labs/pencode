@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
@@ -201,8 +202,17 @@ type pencodeProjectDirectoryProps struct {
 }
 
 func newProjectDirectoryDefinition(content *module.Content) (*htmlui.Definition[pencodeProjectDirectoryProps, struct{}], error) {
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "directory", "class", "pencode-project-directory", "type", "button")
+		b.TextElement("span", "›", "aria-hidden", "true")
+		b.Element("span", "data-ref", "name")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeProjectDirectoryProps, struct{}](
-		htmlui.NewTemplate(`<button data-ref="directory" class="pencode-project-directory" type="button"><span aria-hidden="true">›</span><span data-ref="name"></span></button>`), "",
+		template, "",
 		module.ContentBehavior[pencodeProjectDirectoryProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeProjectDirectoryProps, struct{}], view *htmlui.View) {
 				view.Text("name", c.Props.Name)

@@ -8,6 +8,7 @@ import (
 	"testing/fstest"
 
 	"github.com/onix-engine/onix/graphics"
+	"github.com/onix-engine/onix/graphics/codec/ontex"
 	"github.com/onix-engine/onix/render"
 	"github.com/onix-engine/onix/scene"
 	"github.com/onix-engine/onix/syntax"
@@ -98,7 +99,7 @@ func TestCodexStatusBarIconRenders(t *testing.T) {
 func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 	theme, err := syntax.LoadTheme(fstest.MapFS{"resources/icons.json": &fstest.MapFile{Data: []byte(`{
   "type":"light", "colors":{
-   "icon.foreground":"#2468ac80", "button.foreground":"#135790", "textLink.foreground":"#315ac8",
+   "icon.foreground":"#2468ac80", "descriptionForeground":"#507182", "errorForeground":"#bf2438", "button.foreground":"#135790", "textLink.foreground":"#315ac8",
    "symbolIcon.textForeground":"#2468ac80", "symbolIcon.methodForeground":"#652d90", "symbolIcon.functionForeground":"#652d90",
    "symbolIcon.constructorForeground":"#652d90", "symbolIcon.fieldForeground":"#0070c1", "symbolIcon.variableForeground":"#0070c1",
    "symbolIcon.classForeground":"#9e6a03", "symbolIcon.interfaceForeground":"#008070", "symbolIcon.moduleForeground":"#a06c00",
@@ -168,7 +169,10 @@ func TestPencodeIconsRasterizeThemeColorsAndReuseTextures(t *testing.T) {
 			t.Fatalf("%s uploaded without mipmap filtering: %v", source, descriptor.Filter)
 		}
 		pixels := driver.pixels[texture.RenderHandle()]
-		expected := theme.Color(key.foreground)
+		expected, ok := theme.LookupColor(key.foreground)
+		if !ok {
+			t.Fatalf("test theme is missing %q for %s", key.foreground, key.source)
+		}
 		visible := false
 		var maxAlpha uint8
 		for offset := 0; offset < len(pixels); offset += 4 {
@@ -351,6 +355,29 @@ func TestIconResolutionFollowsRenderedSize(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPackagedSVGIconReusesTextureAtLargerSizes(t *testing.T) {
+	// The release packer keeps the SVG filename when it writes a fixed-size texture.
+	const size = 16
+	packed, err := ontex.Encode(make([]byte, size*size*4), size, size, ontex.EncodeOptions{Mipmaps: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := pencodeIconProvider{root: t.TempDir()}
+	const source = "go.svg"
+	if err := os.WriteFile(filepath.Join(provider.root, source), packed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	texture, ok := provider.ResolveHTMLImage(source, 18, 18)
+	if !ok || !texture.Format().Compressed() || !texture.Mipmapped() {
+		t.Fatal("packaged language icon did not load with its compressed mipmaps")
+	}
+	defer texture.Dispose()
+	if cached, ok := provider.ResolveHTMLImage(source, 36, 36); !ok || cached != texture {
+		t.Fatal("resizing a packaged language icon replaced its texture")
+	}
+}
+
 func TestImageCacheBoundsAndKeepsLiveSprites(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	provider := session.active.icons

@@ -76,6 +76,62 @@ func TestProjectWatchRetryCancellation(t *testing.T) {
 	}
 }
 
+func TestLocalTextAndCodeTabsFollowDisk(t *testing.T) {
+	for _, scope := range []string{"project", "standalone", "excluded-directory"} {
+		t.Run(scope, func(t *testing.T) {
+			s, m := externalTestSession(t)
+			root := t.TempDir()
+			dir := root
+			if scope == "excluded-directory" {
+				dir = filepath.Join(root, "dist")
+			}
+			files := &pencodeProject{Path: dir}
+			resourceTestWrite(t, files, "notes.txt", "original")
+			resourceTestWrite(t, files, "main.go", "package original")
+			if scope != "standalone" {
+				s.OpenPaths(root)
+			}
+			s.OpenPaths(filepath.Join(dir, "notes.txt"), filepath.Join(dir, "main.go"))
+			settleExternalPaths(t, s, m)
+			p, code := m.activeProjectState(), m.activeFile()
+			notes := p.Files[p.Tabs[0]]
+			if p.watch != nil {
+				waitPencodeScanSignal(t, p.watch.ready)
+			}
+			wait := func(text, source string) {
+				t.Helper()
+				for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+					m.pollProjectScans()
+					m.pollProjectWatches()
+					m.pollFileIO()
+					if code.content() == source && notes.content() == text {
+						return
+					}
+					time.Sleep(time.Millisecond)
+				}
+				t.Fatalf("notes=%q code=%q status=%q", notes.content(), code.content(), p.Status)
+			}
+			resourceTestWrite(t, files, "notes.txt", "updated")
+			resourceTestWrite(t, files, "main.go", "package updated")
+			wait("updated", "package updated")
+			resourceTestWrite(t, files, "temporary", "package replaced")
+			if err := os.Rename(filepath.Join(dir, "temporary"), filepath.Join(dir, "main.go")); err != nil {
+				t.Fatal(err)
+			}
+			wait("updated", "package replaced")
+			m.updateActiveContent("package draft")
+			resourceTestWrite(t, files, "main.go", "package external")
+			resourceTestWrite(t, files, "notes.txt", "final")
+			wait("final", "package draft")
+			if !code.Dirty || notes.Dirty || m.activeFile() != code {
+				t.Fatal("external changes disturbed the draft or tab selection")
+			}
+			m.updateActiveContent("package replaced") // Return the draft to its saved contents.
+			wait("final", "package external")
+		})
+	}
+}
+
 func TestProjectWatchRefreshesTreeAndGitWithoutReloadingDrafts(t *testing.T) {
 	r := sourceTestRepository(t)
 	sourceTestWrite(t, r, "main.go", "package original\n")

@@ -289,7 +289,7 @@ func TestPencodeScanBatchesInvalidateQuickOpen(t *testing.T) {
 	connectPencodeProject(t, project)
 	project.scan = newBackendProjectScan(project.backend, project.workspace, false, 0, nil, nil, nil)
 	t.Cleanup(project.stopScan)
-	model := workspaceModel{backend: project.backend, projects: []*pencodeProject{project}, activeProjectIndex: 0, quickQuery: "file-2999"}
+	model := workspaceModel{backend: project.backend, projects: []*pencodeProject{project}, viewProject: project, activeProjectIndex: 0, pencodeProjectInteraction: pencodeProjectInteraction{quickQuery: "file-2999"}}
 	model.refreshQuickMatches()
 	if model.quickCount != 0 {
 		t.Fatal("empty project returned a quick-open match")
@@ -324,6 +324,7 @@ func TestPencodeScanCancellationUnblocksBufferBackpressure(t *testing.T) {
 
 func TestPencodeScanWakesIdleWorkspace(t *testing.T) {
 	app, session := newPencodeTestApp(t)
+	sourceWait(t, app, session.active.model)
 	app.SetRenderMode(onix.RenderOnDemand)
 	app.SetIdleEnabled(true)
 	model := session.active.model
@@ -343,7 +344,8 @@ func TestPencodeScanWakesIdleWorkspace(t *testing.T) {
 		return nil
 	}}
 	project.Entries = nil
-	project.scan = newPencodeProjectScan(func(name string) ([]fs.DirEntry, error) { return fs.ReadDir(source, name) }, false, func() { model.app.WakeAt(time.Now()) })
+	scan := newPencodeProjectScan(func(name string) ([]fs.DirEntry, error) { return fs.ReadDir(source, name) }, false, model.backgroundWake())
+	project.scan = scan
 	t.Cleanup(project.stopScan)
 	waitPencodeScanSignal(t, entered)
 	step := func() bool {
@@ -365,6 +367,7 @@ func TestPencodeScanWakesIdleWorkspace(t *testing.T) {
 		t.Fatal("idle workspace did not receive all scan batches")
 	}
 	// Consume a wake posted concurrently with the completion frame.
+	waitPencodeScanStopped(t, scan)
 	step()
 	if step() {
 		t.Fatal("completed scan prevented the workspace returning to idle")

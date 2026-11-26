@@ -25,21 +25,27 @@ type terminalIMEAnchor struct {
 	column, row int
 }
 
+type terminalPaint struct {
+	value       string
+	spans       []scene.TextSpan2D
+	backgrounds []terminalBackground
+	underlines  []terminalBackground
+	buffer      []byte
+	decorations []ecs.Entity
+	caret       int
+	runes       int
+}
+
 type pencodeTerminalView struct {
+	terminalPaint
 	repeatAt        time.Time
 	tabsActive      *pencodeTerminal
 	tabsTheme       *pencodeTheme
 	active          *pencodeTerminal
 	theme           *pencodeTheme
-	value           string
 	keys            []input.KeyCode
 	edits           []input.TextEdit
 	selectionBuffer []byte
-	spans           []scene.TextSpan2D
-	backgrounds     []terminalBackground
-	buffer          []byte
-	decorations     []ecs.Entity
-	underlines      []terminalBackground
 	tabs            sourceVNodeView
 	tabScroll       pencodeTabScroll
 	ime             terminalIMEAnchor
@@ -50,7 +56,6 @@ type pencodeTerminalView struct {
 	repeatKey       input.KeyCode
 	firstRow        int
 	revision        uint64
-	caret           int
 	tabsGeneration  uint64
 }
 
@@ -131,95 +136,100 @@ func (m *workspaceModel) prepareTerminalView() {
 		return
 	}
 	v.active, v.revision, v.scroll, v.theme = item, s.Revision, item.scroll, m.workbenchTheme
-	v.buffer = v.buffer[:0]
-	v.spans = v.spans[:0]
-	v.backgrounds = v.backgrounds[:0]
-	v.underlines = v.underlines[:0]
-	v.caret = -1
-	foreground, background := graphics.White, graphics.Black
-	if m.workbenchTheme != nil {
-		foreground = pencodeSyntaxColor(m.syntaxTheme.Color("editor.foreground"))
-		background = pencodeSyntaxColor(m.syntaxTheme.Color("editor.background"))
-	}
+	v.reset()
+	foreground, background := m.terminalColors()
 	s.DefaultForeground = terminal.Color(uint32(foreground.R*255)<<16 | uint32(foreground.G*255)<<8 | uint32(foreground.B*255))
 	s.DefaultBackground = terminal.Color(uint32(background.R*255)<<16 | uint32(background.G*255)<<8 | uint32(background.B*255))
-	runeIndex := 0
 	cx, cy := s.Cursor()
-	historyRows := len(s.History) / s.Cols
 	v.firstRow = int(s.Scrolled) - item.scroll
 	for row := 0; row < s.Rows; row++ {
-		line := historyRows - item.scroll + row
-		cells := s.Cells
-		offset := (line - historyRows) * s.Cols
-		if line < historyRows {
-			cells = s.HistoryRow(line)
-			offset = 0
+		line := v.firstRow + row
+		cursor := -1
+		if row == cy+item.scroll {
+			cursor = cx
 		}
-		for col := 0; col < s.Cols; {
-			c := cells[offset+col]
-			width := max(1, int(c.Width))
-			ink := c.Foreground
-			if c.Bold {
-				for i, color := range terminal.Palette[:8] {
-					if ink == color {
-						ink = terminal.Palette[i+8]
-						break
-					}
-				}
-			}
-			fg, bg := terminalColor(ink, foreground), terminalColor(c.Background, background)
-			if c.Inverse {
-				fg, bg = bg, fg
-			}
-			if row == cy+item.scroll && col <= cx && cx < col+width {
-				v.caret = runeIndex
-			}
-			start := len(v.buffer)
-			r := c.Rune
-			if r == 0 {
-				r = ' '
-			}
-			v.buffer = utf8.AppendRune(v.buffer, r)
-			runeIndex++
-			for _, combining := range c.Combining {
-				if combining == 0 {
-					break
-				}
-				v.buffer = utf8.AppendRune(v.buffer, combining)
-				runeIndex++
-			}
-			end := len(v.buffer)
-			if n := len(v.spans); n > 0 && v.spans[n-1].Color == fg && v.spans[n-1].End == start {
-				v.spans[n-1].End = end
-			} else {
-				v.spans = append(v.spans, scene.TextSpan2D{Start: start, End: end, Color: fg})
-			}
-			if bg != background {
-				n := len(v.backgrounds)
-				if n > 0 && v.backgrounds[n-1].color == bg && v.backgrounds[n-1].y == row && v.backgrounds[n-1].x+v.backgrounds[n-1].width == col {
-					v.backgrounds[n-1].width += width
-				} else {
-					v.backgrounds = append(v.backgrounds, terminalBackground{col, row, width, bg})
-				}
-			}
-			if c.Underline {
-				n := len(v.underlines)
-				if n > 0 && v.underlines[n-1].color == fg && v.underlines[n-1].y == row && v.underlines[n-1].x+v.underlines[n-1].width == col {
-					v.underlines[n-1].width += width
-				} else {
-					v.underlines = append(v.underlines, terminalBackground{col, row, width, fg})
-				}
-			}
-
-			col += width
-		}
+		v.appendRow(terminalRow(s, line), row, cursor, foreground, background)
 		if row < s.Rows-1 {
 			v.buffer = append(v.buffer, '\n')
-			runeIndex++
+			v.runes++
 		}
 	}
 	v.value = string(v.buffer)
 }
+func (m *workspaceModel) terminalColors() (graphics.ColorRGBA, graphics.ColorRGBA) {
+	if m.workbenchTheme == nil {
+		return graphics.White, graphics.Black
+	}
+	return pencodeSyntaxColor(m.syntaxTheme.Color("editor.foreground")), pencodeSyntaxColor(m.syntaxTheme.Color("editor.background"))
+}
+
+func (v *terminalPaint) reset() {
+	v.buffer, v.spans = v.buffer[:0], v.spans[:0]
+	v.backgrounds, v.underlines = v.backgrounds[:0], v.underlines[:0]
+	v.runes, v.caret = 0, -1
+}
+
+func (v *terminalPaint) appendRow(cells []terminal.Cell, row, cursor int, foreground, background graphics.ColorRGBA) {
+	for col := 0; col < len(cells); {
+		c := cells[col]
+		width := max(1, int(c.Width))
+		ink := c.Foreground
+		if c.Bold {
+			for i, color := range terminal.Palette[:8] {
+				if ink == color {
+					ink = terminal.Palette[i+8]
+					break
+				}
+			}
+		}
+		fg, bg := terminalColor(ink, foreground), terminalColor(c.Background, background)
+		if c.Inverse {
+			fg, bg = bg, fg
+		}
+		if col <= cursor && cursor < col+width {
+			v.caret = v.runes
+		}
+		start := len(v.buffer)
+		r := c.Rune
+		if r == 0 {
+			r = ' '
+		}
+		v.buffer = utf8.AppendRune(v.buffer, r)
+		v.runes++
+		for _, combining := range c.Combining {
+			if combining == 0 {
+				break
+			}
+			v.buffer = utf8.AppendRune(v.buffer, combining)
+			v.runes++
+		}
+		end := len(v.buffer)
+		if n := len(v.spans); n > 0 && v.spans[n-1].Color == fg && v.spans[n-1].End == start {
+			v.spans[n-1].End = end
+		} else {
+			v.spans = append(v.spans, scene.TextSpan2D{Start: start, End: end, Color: fg})
+		}
+		if bg != background {
+			n := len(v.backgrounds)
+			if n > 0 && v.backgrounds[n-1].color == bg && v.backgrounds[n-1].y == row && v.backgrounds[n-1].x+v.backgrounds[n-1].width == col {
+				v.backgrounds[n-1].width += width
+			} else {
+				v.backgrounds = append(v.backgrounds, terminalBackground{col, row, width, bg})
+			}
+		}
+		if c.Underline {
+			n := len(v.underlines)
+			if n > 0 && v.underlines[n-1].color == fg && v.underlines[n-1].y == row && v.underlines[n-1].x+v.underlines[n-1].width == col {
+				v.underlines[n-1].width += width
+			} else {
+				v.underlines = append(v.underlines, terminalBackground{col, row, width, fg})
+			}
+		}
+
+		col += width
+	}
+}
+
 func (m *workspaceModel) syncTerminalTabScroll(world *module.Content) {
 	node, ok := world.HTMLNode(m.surface, "terminal-tabs")
 	if !ok {
@@ -307,13 +317,9 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 		return
 	}
 	if m.terminals != nil && m.terminals.focus {
-		if m.terminalFocused(world) {
-			m.terminals.focus = false
-		} else {
-			world.Focus(control)
-			if m.app != nil {
-				m.app.RequestRender()
-			}
+		m.terminals.focus = !world.Focus(control)
+		if m.app != nil {
+			m.app.RequestRender()
 		}
 	}
 	font := m.codeFont()
@@ -371,15 +377,9 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 		}
 	}
 
-	used := 0
 	transform, _ := world.Get[scene.UITransform](v.text)
 	stack, _ := world.Get[scene.UIStackIndex](v.text)
-	for _, bg := range v.backgrounds {
-		m.terminalQuad(world, &used, control, stack-1, transform.Translation.X.Value+float32(bg.x)*width, transform.Translation.Y.Value+float32(bg.y)*height, float32(bg.width)*width, height, bg.color)
-	}
-	for _, line := range v.underlines {
-		m.terminalQuad(world, &used, control, stack, transform.Translation.X.Value+float32(line.x)*width, transform.Translation.Y.Value+float32(line.y+1)*height-1, float32(line.width)*width, 1, line.color)
-	}
+	used := v.paintRows(world, control, stack, transform, width, height, 0, s.Rows)
 
 	if s.CursorVisible && v.caret >= 0 && m.terminalFocused(world) && item.scroll == 0 && !item.exited {
 		if x, y, w, h, ok := scene.TextCaretRect2D(text, text.Value, v.caret); ok {
@@ -387,7 +387,7 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 			if m.workbenchTheme != nil {
 				color = pencodeSyntaxColor(m.syntaxTheme.Color("editorCursor.foreground"))
 			}
-			m.terminalQuad(world, &used, control, stack, transform.Translation.X.Value+x, transform.Translation.Y.Value+y+h-2, max(width, w), 2, color)
+			v.terminalQuad(world, &used, control, stack, transform.Translation.X.Value+x, transform.Translation.Y.Value+y+h-2, max(width, w), 2, color)
 		}
 	}
 	for _, e := range v.decorations[used:] {
@@ -432,8 +432,24 @@ func (m *workspaceModel) syncTerminalIME(world *module.Content, state *input.Sta
 	}
 }
 
-func (m *workspaceModel) terminalQuad(world *module.Content, used *int, parent ecs.Entity, stack scene.UIStackIndex, x, y, width, height float32, color graphics.ColorRGBA) {
-	v := &m.terminalView
+func (v *terminalPaint) paintRows(world *module.Content, control ecs.Entity, stack scene.UIStackIndex, transform scene.UITransform, width, height float32, first, end int) (used int) {
+	for _, bg := range v.backgrounds {
+		if bg.y < first || bg.y >= end {
+			continue
+		}
+		v.terminalQuad(world, &used, control, stack-1, transform.Translation.X.Value+float32(bg.x)*width, transform.Translation.Y.Value+float32(bg.y)*height, float32(bg.width)*width, height, bg.color)
+	}
+	for _, line := range v.underlines {
+		if line.y < first || line.y >= end {
+			continue
+		}
+		v.terminalQuad(world, &used, control, stack, transform.Translation.X.Value+float32(line.x)*width, transform.Translation.Y.Value+float32(line.y+1)*height-1, float32(line.width)*width, 1, line.color)
+	}
+
+	return used
+}
+
+func (v *terminalPaint) terminalQuad(world *module.Content, used *int, parent ecs.Entity, stack scene.UIStackIndex, x, y, width, height float32, color graphics.ColorRGBA) {
 	if *used == len(v.decorations) {
 		bundle := ecs.NewBundle(9)
 		bundle.Put(scene.UITransformFromXY(0, 0))

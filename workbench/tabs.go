@@ -1,14 +1,18 @@
 package workbench
 
 import (
+	"fmt"
 	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
+	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
+	"github.com/pencode-labs/pencode/extensions"
 )
 
 type pencodeTabScroll struct {
@@ -42,7 +46,12 @@ func (model *workspaceModel) syncTabScroll(world *module.Content) {
 	if s.Active != "" {
 		next.sourceKey = s.Active
 	}
-	if model.tabScroll == next {
+	current := model.storedView(next.project)
+	if current.restoreTabPosition {
+		current.restoreTabPosition = false
+		scroll.Position[0] = min(0, max(current.tabPosition, scroll.ViewportSize.X()-scroll.ContentSize.X()))
+		scroll.Momentum[0] = 0
+	} else if model.tabScroll == next {
 		return
 	}
 	model.tabScroll = next
@@ -161,6 +170,7 @@ const (
 	pencodeCloseAllTabs
 	pencodeCloseProject
 	pencodeCloseWindow
+	pencodeSaveUntitled
 )
 
 type pencodeCloseTarget struct {
@@ -170,7 +180,8 @@ type pencodeCloseTarget struct {
 
 type pencodeCloseRequest struct {
 	project          *pencodeProject
-	lifecyclePending map[string]bool
+	lifecyclePending map[*extensions.ActionSession]bool
+	savePath         string
 	message          string
 	path             string
 	error            string
@@ -284,6 +295,13 @@ func (model *workspaceModel) showCloseTarget() {
 		name = target.project.Name + "/" + name
 	}
 	request.message = model.tr("是否保存对 “") + name + model.tr("” 的更改？")
+	if target.file.untitled() {
+		request.savePath = target.file.Name + ".txt"
+		request.message = fmt.Sprintf(model.tr("保存位置：%s"), target.project.Path)
+		if request.action != pencodeSaveUntitled {
+			request.message = model.tr("是否保存对 “") + target.file.Name + model.tr("” 的更改？") + "\n" + request.message
+		}
+	}
 	request.error = ""
 	request.needsFocus = true
 }
@@ -309,7 +327,13 @@ func (model *workspaceModel) resolveClose(save bool) {
 	}
 	if save {
 		target := request.targets[request.index]
-		job, err := model.requestFileSave(target.project, target.file)
+		var job *fileIOJob
+		var err error
+		if target.file.untitled() {
+			job, err = model.saveUntitled(target, request.savePath)
+		} else {
+			job, err = model.requestFileSave(target.project, target.file)
+		}
 		if err != nil {
 			request.error = err.Error()
 			return
@@ -396,8 +420,12 @@ func (m *workspaceModel) discardProjectTabs(action pencodeCloseAction, project *
 	}
 }
 
-func (model *workspaceModel) handleCloseDialogEvent(world *module.Content, ref string) {
+func (model *workspaceModel) handleCloseDialogEvent(world *module.Content, ref, value string) {
 	switch ref {
+	case "save-as-path":
+		model.closing.savePath = value
+		model.closing.error = ""
+		return
 	case "close-save":
 		model.resolveClose(true)
 	case "close-discard":
@@ -428,7 +456,18 @@ func (model *workspaceModel) renderCloseDialog(view *htmlui.View) {
 			view.RemoveAttr(id, "disabled")
 		}
 	}
-	if model.closing.lifecycle {
+	naming := model.namingUntitled()
+	setPanelVisible(view, "save-as-path", naming)
+	if naming {
+		view.Event("save-as-path", htmlui.EventInput)
+		view.Attr("save-as-path", "value", model.closing.savePath)
+		view.Attr("save-as-path", "aria-label", model.tr("文件路径"))
+	}
+	if model.closing.action == pencodeSaveUntitled {
+		view.Text("close-title", model.tr("另存为"))
+		view.Text("close-save", model.tr("保存"))
+		view.Attr("close-discard", "hidden", "")
+	} else if model.closing.lifecycle {
 		view.Text("close-title", model.tr("确认关闭"))
 		view.Text("close-save", model.tr("继续关闭"))
 		view.Attr("close-discard", "hidden", "")
@@ -448,6 +487,15 @@ func (model *workspaceModel) renderCloseDialog(view *htmlui.View) {
 
 func (model *workspaceModel) focusCloseDialog(world *module.Content, surface ecs.Entity) {
 	if !model.closing.needsFocus {
+		return
+	}
+	if model.namingUntitled() {
+		control, ok := world.HTMLControl(surface, "save-as-path")
+		if ok && world.Has[engineui.TextField](control) && world.Focus(control) {
+			field := world.Mut[engineui.TextField](control)
+			field.Anchor, field.Caret = 0, utf8.RuneCountInString(model.closing.savePath)
+			model.closing.needsFocus = false
+		}
 		return
 	}
 	for entity, access := range world.Query[htmlui.Focusable]() {

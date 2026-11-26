@@ -19,23 +19,57 @@ const (
 	treeGitConflict
 )
 
-func (status treeGitStatus) nameClass() string {
-	switch status {
-	case treeGitUntracked:
-		return "pencode-tree-name git-untracked"
-	case treeGitAdded:
-		return "pencode-tree-name git-added"
-	case treeGitRenamed:
-		return "pencode-tree-name git-renamed"
-	case treeGitDeleted:
-		return "pencode-tree-name git-deleted"
-	case treeGitModified:
-		return "pencode-tree-name git-modified"
-	case treeGitConflict:
-		return "pencode-tree-name git-conflict"
-	default:
-		return "pencode-tree-name"
+type fileNameDecoration struct {
+	git       treeGitStatus
+	ignored   bool
+	hasErrors bool
+}
+
+func (m *workspaceModel) fileNameDecoration(project *pencodeProject, entry treeEntry) fileNameDecoration {
+	return fileNameDecoration{
+		git:       project.treeGit.names[entry.Path],
+		ignored:   entry.Ignored,
+		hasErrors: !entry.IsDir && m.fileHasErrors(project, entry.Path),
 	}
+}
+
+func (d fileNameDecoration) value() string {
+	if d.ignored {
+		return "ignored"
+	}
+	if d.hasErrors {
+		return "error"
+	}
+	switch d.git {
+	case treeGitUntracked:
+		return "untracked"
+	case treeGitAdded:
+		return "added"
+	case treeGitRenamed:
+		return "renamed"
+	case treeGitDeleted:
+		return "deleted"
+	case treeGitModified:
+		return "modified"
+	case treeGitConflict:
+		return "conflict"
+	default:
+		return "clean"
+	}
+}
+
+// Reuse the last position while scans and explorer moves preserve this path.
+func (f *openFile) treeEntry(entries []treeEntry) treeEntry {
+	if !f.untitled() {
+		if i := f.treeIndex; i >= 0 && i < len(entries) && entries[i].Path == f.Path {
+			return entries[i]
+		}
+		f.treeIndex = slices.IndexFunc(entries, func(entry treeEntry) bool { return entry.Path == f.Path })
+		if f.treeIndex >= 0 {
+			return entries[f.treeIndex]
+		}
+	}
+	return treeEntry{Path: f.Path}
 }
 
 func treeGitFileStatus(file sourceFile) treeGitStatus {

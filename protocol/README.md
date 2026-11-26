@@ -1,4 +1,16 @@
-# Pencode CS v20
+# Pencode CS v26
+
+v26 增加 DiskStorage，用于统计工作区主机上的应用数据，并按所选类别清理。
+
+v25 的 GitRepositories 可引用完整文件索引，共用一次目录遍历。
+
+v24 增加 FileHistoryRead，供差异编辑器只读访问选中的本地版本。
+
+v23 增加 FileHistoryList 和 FileHistoryRestore，用于在工作区主机上分页查看和恢复本地文件版本。
+
+v22 增加 DocumentCreate。未命名文本首次保存时，服务端独占创建文件并返回后续编辑使用的文档句柄。
+
+v21 将 Delve 和 Xdebug 加入 LanguageTools 工具目录。DebugAdapterOpen 接收工作区的适配器路径设置。GUI 与 server 必须同时更新。
 
 v20 增加 LanguageTools，在工作区主机上检测、安装、更新或卸载内置语言服务器。GUI 与 server 必须同时更新。
 
@@ -17,7 +29,7 @@ GUI 和无头服务通过有序双向字节流通信。本地传输是子进程�
 | 偏移 | 长度 | 内容 |
 | --- | --- | --- |
 | 0 | 4 | `pcs\0` |
-| 4 | 2 | 协议版本，当前 18 |
+| 4 | 2 | 协议版本，当前 23 |
 | 6 | 2 | Kind，见 protocol.go |
 | 8 | 8 | 非零 request ID |
 | 16 | 4 | 保留的 stream ID，当前必须为 0 |
@@ -35,6 +47,7 @@ v10 为 WorkspaceWatch 增加独立游标、工作区相对路径事件和完整
 | WorkspaceClose | id:u64 | 空 |
 | DirectoryRead | workspace:u64, path:string | count:u32, {name:string, mode:u32}[] |
 | DocumentOpen | workspace:u64, path:string, mode:u32 | id:u64, version:u64, content:string, offset:u64, size:u64, paged:u32 |
+| DocumentCreate | workspace:u64, path:string, content:string | id:u64, version:u64 |
 | DocumentChange | id:u64, baseVersion:u64, pageOffset:u64, start:u32, end:u32, text:string | version:u64 |
 | DocumentRead | id:u64, version:u64, offset:u64 | content:string, offset:u64, size:u64, paged:u32 |
 | DocumentSave | id:u64, version:u64 | 空 |
@@ -69,16 +82,21 @@ IndexOpen 的 previous=0 强制完整扫描；previous 非零时使用该成功�
 | DirectoryBrowse | directory:string（root 为空） | path:string, parent:string, count:u32, {name:string}[]（只含子目录） |
 | ConfigurationRead | 空 | directory:string, count:u32, {path:string, data:bytes}[] |
 | SettingsSave | data:bytes（JSON object） | 空 |
+| DiskStorage | clean:u32（分类位掩码，0 表示仅统计） | host:string, problem:string, removedBytes:u64, removedFiles:u64, {bytes:u64, files:u64}[8] |
 | GitCommand | args:string[] | output:bytes |
-| GitRepositories | 空 | count:u32, {root:string}[]（项目及其子目录内的仓库） |
+| GitRepositories | index:u64（0 表示实时扫描） | count:u32, {root:string}[]（项目及其子目录内的仓库） |
 | GitRebasing | 空 | rebasing:u32（0 或 1） |
 | WorkspaceWatch | after:u64（首次为 0；root 为工作区目录） | version:u64, changes:u32, reset:u32, files[] |
 | FileRead | path:string, links:u32, limit:u32 | content:bytes |
 | FileSave | path:string, diskBaseline:string, result:string | 空 |
+| FileHistoryList | scope:string, recursive:u32, beforePath:string, beforeTime:u64 | more:u32, count:u32, {path:string, time:u64}[] |
+| FileHistoryRead | path:string, time:u64 | content:bytes（最大 2 MiB） |
+| FileHistoryRestore | path:string, time:u64 | 空 |
 | DiffPatch | left:bytes, right:bytes | unifiedPatch:bytes |
 | ProcessOpen | cols:u32, rows:u32, command:string, args:string[] | stream:u64, stderrStream:u64 |
 | TerminalOpen | cols:u32, rows:u32, cwd:string, args:string[]（空） | stream:u64, stderrStream:u64 |
-| DebugAdapterOpen | adapter:string（Delve / stdio / tcp）, command:string, address:string, args:string[] | stream:u64, stderrStream:u64 |
+| LanguageTools | action:string, id:string, count:u32, {id:string, path:string}[]（root 为空） | count:u32, {id:string, command:string, entry:string, problem:string, managed:u32}[] |
+| DebugAdapterOpen | adapter:string, command:string, address:string, override:string, args:string[] | stream:u64, stderrStream:u64 |
 | DebugTerminalOpen | cwd:string, args:string[], count:u32, {key:string, present:u32, [value:string]}[] | pid:u32, stream:u64, stderrStream:u64（零） |
 | StreamRead | stream:u64 | eof:u32, data:bytes |
 | StreamWrite | stream:u64, data:bytes | 空 |
@@ -122,6 +140,8 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 
 索引每页最多 256 项，每工作区最多 262144 项，目录深度最多 256；不递归符号链接，跳过 `.git`、`dist`、`node_modules`。同根的新索引替换旧扫描。PathSearch 按历史顺序优先、随后按树顺序返回最多 128 个文件（包括需确认打开的未知或二进制类型），支持不区分大小写的子串；扫描期间可以查询已索引部分。
 
+PathSearch 将索引快照中的路径以 NUL 分隔，交给随服务端发布的 ripgrep 匹配。工作区普通文本搜索由 ripgrep 筛选磁盘文件，并对候选文件和已打开文档的快照分批计算字节偏移。预览、摘要和精确计数使用同一份快照。包含捕获组或边界断言的正则继续使用编辑器的匹配器，以便替换时取得相同的捕获组和范围。
+
 解析会话由客户端分配 ID，每连接最多 8 个，初始 baseVersion 为 0。增量范围采用 UTF-8 字节边界；结果只包含语言和 capture，不含颜色、字体、HTML、ECS 或 GPU 数据。captures 编码为 `prefix:u32, removed:u32, inserted:u32 + {start:u32, end:u32, captureID:u32, [name:string, scopes:string]}[inserted]`。保留上次结果的前 prefix 项，将之后的 removed 项替换为传回的 inserted 项，并将剩余后缀的起止位置加上本次源码字节长度变化。服务端比较解析后的真实 capture，允许多行注释等语法变化扩大替换范围；初次返回完整列表。名称表在解析会话内保留，captureID 从零递增；ID 首次出现时紧跟类别名称和空格分隔的完整 TextMate scope 栈，后续复用 ID。释放会话后清空 capture 和名称表。本地按主题和 capture 映射着色，主题切换不发送解析请求。
 
 `ExtensionInfo` 按顺序编码为 `id:string, name:string, version:string, publisher:string, description:string, entry:string, args:string[], disabled:u32, path:string, problem:string`。路径属于服务端文件系统；GUI 仅用于展示，不据此读取或执行。contributions 使用现有 peb v20 编码，CS 与 peb 的帧版本独立。
@@ -130,6 +150,6 @@ Ports 面板按 VS Code Remote SSH 的端口表格交互组织：行内添加端
 
 资源单份最大 32 MiB，一个扩展最多缓存 64 MiB，连接内扩展缓存合计最多 128 MiB。ExtensionResources 的 limit 是每份资源的字节限制，最多请求 4096 条不重复路径；返回请求的有序前缀，响应目标大小为 16 MiB，单份超过此值时单独返回。客户端继续请求剩余路径直到取完。GUI 缓存已验证的图片；每视图最多 64 张，单张 4 MiB、总计 8 MiB / 4 MP，每边不超过 2048 像素。自定义编辑器 SVG 按原始尺寸栅格化，避免图标采样倍率扩大图片预算。
 
-ExtensionLanguageProcess 的 root 必须是本连接工作区，可执行程序中的相对路径由服务端基于已发布的扩展目录解析，cwd 为工作区。ExtensionProcess 返回该扩展常驻进程中的虚拟会话流，允许空 root；同一连接内复用进程，关闭 Stream 只释放对应会话。服务端为 PEB 帧分配非零 session ID，客户端流中的 session ID 保持为零，由服务端添加和去除。stderr 各会话独立读取进程的有界日志尾部。不同连接保持进程隔离，进程生命周期属于连接。
+ExtensionLanguageProcess 的 root 必须是本连接工作区，可执行程序中的相对路径由服务端基于已发布的扩展目录解析，cwd 为工作区。ExtensionProcess 返回该扩展常驻进程中的虚拟会话流，允许空 root；同一连接内按项目 root 复用进程，关闭 Stream 只释放对应会话。服务端为 PEB 帧分配非零 session ID，客户端流中的 session ID 保持为零，由服务端添加和去除。stderr 各会话独立读取进程的有界日志尾部。关闭项目会回收该 root 的进程，空 root 的进程随窗口连接回收。
 
 DocumentOpen 的 mode：`0` 仅检查文件路径，供二进制查看器使用；`1` 检查文本内容，遇到 NUL 或无效 UTF-8 时返回空文档（id=0）；`2` 表示用户明确选择代码编辑器，读取内容并将无效 UTF-8 替换为 U+FFFD。路径查看器和未确认的文件不会创建文本模型。

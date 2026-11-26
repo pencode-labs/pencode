@@ -88,6 +88,8 @@ func TestSearchPreviewContainsExactMatch(t *testing.T) {
 		{"long.txt", "target" + strings.Repeat(" tail", 200), "target", textsearch.Options{}},
 		{"unicode.txt", strings.Repeat("中🙂", 80) + "TARGET target\r\n", "target", textsearch.Options{}},
 		{"regex.txt", "prefix 12345 suffix", `\d+`, textsearch.Options{Regex: true}},
+		{"folded-regex.txt", "prefix MiſSing123 suffix", `missing[0-9]+`, textsearch.Options{Regex: true}},
+		{"alternative.txt", "bar42", `(?:foo|bar)[0-9]+`, textsearch.Options{Regex: true}},
 		{"multiline.txt", "first target\nnext line", "target\nnext", textsearch.Options{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -124,6 +124,10 @@ func waitProjectWatchRetry(ctx context.Context, delay time.Duration) bool {
 }
 
 func (project *pencodeProject) stopWatch() {
+	for dir, w := range project.tabWatches {
+		w.cancel()
+		delete(project.tabWatches, dir)
+	}
 	if project.watch != nil {
 		project.watch.cancel()
 		project.watch = nil
@@ -144,6 +148,7 @@ func (m *workspaceModel) pollProjectWatches() bool {
 			w.fileCount, w.reset = 0, false
 			w.mu.Unlock()
 			if count != 0 || reset {
+				project.sourceControl.history.invalidate(files[:count], reset)
 				m.distributeFileChanges(project, files[:count], reset)
 			}
 			if !project.tree.moved && !reset && count != 0 && changes&protocol.WorkspaceTreeChanged != 0 && changes&(protocol.WorkspaceIgnoreChanged|protocol.WorkspaceRepositoriesChanged) == 0 && !project.watchTreeChanged(files[:count]) {
@@ -169,6 +174,7 @@ func (m *workspaceModel) pollProjectWatches() bool {
 			default:
 			}
 		}
+		m.pollLocalTabWatches(project)
 		m.reloadExternalFiles(project)
 		// Never restart a scan in flight. Keep one follow-up snapshot instead.
 		if project.treePending && project.scan == nil && (!m.quickOpen || project.tree.moved) {
@@ -233,7 +239,7 @@ func (w *pencodeProjectWatch) collect(batch protocol.FileChanges) {
 
 func (m *workspaceModel) distributeFileChanges(project *pencodeProject, files []protocol.FileEvent, reset bool) {
 	for _, file := range project.Files {
-		if file.Dirty {
+		if file.untitled() {
 			continue
 		}
 		if reset {
@@ -247,7 +253,8 @@ func (m *workspaceModel) distributeFileChanges(project *pencodeProject, files []
 			}
 		}
 	}
-	if len(m.actions.sessions) == 0 && len(m.customDocuments) == 0 {
+	sessions := m.projectActions(project).sessions
+	if len(sessions) == 0 && len(m.customDocuments) == 0 {
 		return
 	}
 	var events [128]peb.FileEvent
@@ -255,8 +262,10 @@ func (m *workspaceModel) distributeFileChanges(project *pencodeProject, files []
 		events[i] = peb.FileEvent{Path: file.Path, Op: peb.FileOperation(file.Op), Directory: file.Directory}
 	}
 	batch := peb.FileChanges{Root: project.Path, Reset: reset, Files: events[:len(files)]}
-	for _, session := range m.actions.sessions {
-		session.NotifyFiles(batch)
+	for _, session := range sessions {
+		if session != nil {
+			session.NotifyFiles(batch)
+		}
 	}
 	for _, document := range m.customDocuments {
 		if document.project == project && document.process != nil {
@@ -279,14 +288,23 @@ func (m *workspaceModel) reloadExternalFiles(project *pencodeProject) {
 		if file == nil || !file.externalChanged {
 			continue
 		}
+		if file.Dirty {
+			continue
+		}
+		document := m.customDocuments[file]
+		if document != nil && document.busy() {
+			// A pending editor reply can still contain the user's first edit.
+			continue
+		}
 		file.externalChanged = false
-		if file.Dirty || !file.text() && m.fileEditor(file) != &pencodeImageEditor {
+		mode := file.openMode()
+		if mode == protocol.DocumentFile && document == nil && m.fileEditor(file) != &pencodeImageEditor {
 			continue
 		}
 		if job == nil {
 			job = &fileIOJob{kind: fileReload, project: project, workspace: project.workspace.ID, external: true}
 		}
-		job.reload = append(job.reload, fileReloadResult{file: file, relative: name, before: file.content(), previous: file.document, mode: file.openMode()})
+		job.reload = append(job.reload, fileReloadResult{file: file, relative: name, before: file.content(), previous: file.document, mode: mode})
 	}
 	if job != nil {
 		if err := m.submitFileIO(job); err != nil {

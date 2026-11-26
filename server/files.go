@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -53,7 +54,7 @@ func readServiceFile(root, name string, links bool, limit int) ([]byte, error) {
 	}
 	return data, err
 }
-func saveServiceFile(root, name, before, after string) error {
+func (s *services) saveServiceFile(root, name, before, after string) error {
 	if !filepath.IsLocal(name) {
 		return protocol.ErrProtocol
 	}
@@ -107,7 +108,11 @@ func saveServiceFile(root, name, before, after string) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return r.Rename(tmp, name)
+	if err := r.Rename(tmp, name); err != nil {
+		return err
+	}
+	s.history.Saved(r, filepath.ToSlash(name), int64(len(after)), nil)
+	return nil
 }
 
 func (s *services) file(op protocol.Operation, root string, d *protocol.Decoder, e *protocol.Encoder) error {
@@ -130,7 +135,46 @@ func (s *services) file(op protocol.Operation, root string, d *protocol.Decoder,
 		if err := d.Done(); err != nil {
 			return err
 		}
-		return saveServiceFile(root, name, before, after)
+		return s.saveServiceFile(root, name, before, after)
+	}
+	return nil
+}
+
+func (s *services) fileHistory(ctx context.Context, op protocol.Operation, root string, d *protocol.Decoder, e *protocol.Encoder) error {
+	name := d.String()
+	if op != protocol.FileHistoryList {
+		v := protocol.FileVersion{Path: name, Time: d.U64()}
+		if err := d.Done(); err != nil {
+			return err
+		}
+		if op == protocol.FileHistoryRead {
+			data, err := workspace.ReadFileHistory(root, v)
+			if err == nil {
+				e.Bytes(data)
+			}
+			return err
+		}
+		r, err := os.OpenRoot(root)
+		if err != nil {
+			return err
+		}
+		defer r.Close()
+		return s.history.Restore(r, v)
+	}
+	recursive := d.U32()
+	before := protocol.FileVersion{Path: d.String(), Time: d.U64()}
+	if err := d.Done(); err != nil || recursive > 1 {
+		return protocol.ErrProtocol
+	}
+	page, more, err := s.history.List(ctx, root, name, recursive != 0, before)
+	if err != nil {
+		return err
+	}
+	e.U32(boolNumber(more))
+	e.U32(uint32(len(page)))
+	for _, v := range page {
+		e.String(v.Path)
+		e.U64(v.Time)
 	}
 	return nil
 }

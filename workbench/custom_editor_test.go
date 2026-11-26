@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +32,16 @@ func TestPencodeCustomEditorProcess(t *testing.T) {
 		return
 	}
 	err := peb.ServeEditors(os.Stdin, os.Stdout, peb.Contributions{Actions: []peb.Action{{ID: "source", Text: "Custom source", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}}, func(message peb.EditorMessage) (peb.EditorReply, error) {
+		if markup, ok := strings.CutPrefix(message.Content, "// editor fixture HTML\n"); ok {
+			return peb.EditorReply{View: &peb.EditorView{HTML: markup}}, nil
+		}
+		if message.Binary {
+			data, err := os.ReadFile(message.Path)
+			if err != nil {
+				return peb.EditorReply{}, err
+			}
+			return peb.EditorReply{View: &peb.EditorView{HTML: "<p>" + html.EscapeString(message.Event.Kind+" "+string(data)) + "</p>"}}, nil
+		}
 		if message.Event.Kind == "input" {
 			return peb.EditorReply{Content: &message.Event.Value}, nil
 		}
@@ -38,6 +51,39 @@ func TestPencodeCustomEditorProcess(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+func TestBinaryEditorRefreshesOnExternalReplacement(t *testing.T) {
+	m, p := resourceTestModel(t)
+	editors := installPencodeEditorFixture(t, p.backend).Editors
+	editors[0].Selectors = []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".xlsx"}}
+	m.importEditors(editors)
+	m.startProjectWatch(p)
+	t.Cleanup(p.stopWatch)
+	waitPencodeScanSignal(t, p.watch.ready)
+	resourceTestWrite(t, p, "系统信息.xlsx", "first")
+	openProjectFileAndWait(t, m, p, "系统信息.xlsx")
+	doc := m.customDocument()
+	t.Cleanup(m.closeCustomEditors)
+	wait := func(html string) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+			m.pollProjectWatches()
+			m.pollFileIO()
+			m.pollCustomEditors()
+			if doc.view != nil && doc.view.HTML == html {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatalf("expected %s, view=%+v error=%s", html, doc.view, doc.message)
+	}
+	wait("<p>open first</p>")
+	resourceTestWrite(t, p, "temporary", "second")
+	if err := os.Rename(filepath.Join(p.Path, "temporary"), filepath.Join(p.Path, "系统信息.xlsx")); err != nil {
+		t.Fatal(err)
+	}
+	wait("<p>documentchange second</p>")
 }
 
 func installPencodeEditorFixture(t *testing.T, backend *client.Client) *extensions.Bundle {
@@ -184,7 +230,8 @@ func TestPencodeEditorAssociationsAndBinarySave(t *testing.T) {
 	model.importEditors([]extensions.Editor{
 		{Action: peb.Action{ID: "extensions/test/suffix", Text: "Suffix", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".ts"}}}},
 		{Action: peb.Action{ID: "extensions/test/long", Text: "Long", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".d.ts"}}}},
-		{Action: peb.Action{ID: "extensions/test/exact", Text: "Exact", Location: peb.OpenWith, Default: true, Selectors: []peb.DocumentSelector{{Match: peb.FileName, Pattern: "exact.d.ts"}}}},
+		{Action: peb.Action{ID: "extensions/test/alternate", Text: "Alternate", Location: peb.OpenWith, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".d.ts"}}}},
+		{Action: peb.Action{ID: "extensions/test/exact", Text: "Exact", Location: peb.OpenWith, Selectors: []peb.DocumentSelector{{Match: peb.FileName, Pattern: "exact.d.ts"}}}},
 		{Action: peb.Action{ID: "extensions/test/image", Text: "Image", Location: peb.OpenWith, Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".png"}}}},
 	})
 	file := &openFile{Name: "exact.d.ts"}
@@ -193,10 +240,18 @@ func TestPencodeEditorAssociationsAndBinarySave(t *testing.T) {
 	}
 	file = &openFile{Name: "other.d.ts"}
 	if got := model.fileEditor(file); got == nil || got.ID != "extensions/test/long" {
-		t.Fatal("longest suffix did not win")
+		t.Fatal("expected the default tool matching the longest suffix")
 	}
 	if allocs := testing.AllocsPerRun(100, func() { model.fileEditor(file); model.pollCustomEditors() }); allocs != 0 {
 		t.Fatalf("idle editor allocated %g times", allocs)
+	}
+	file.editorID, file.editorGeneration = "extensions/test/alternate", 0
+	if got := model.fileEditor(file); got == nil || got.ID != file.editorID {
+		t.Fatal("explicit tool choice was overridden")
+	}
+	model.removeEditors(file.editorID)
+	if got := model.fileEditor(file); got == nil || got.ID != "extensions/test/long" {
+		t.Fatal("removing the selected tool did not activate the next matching tool")
 	}
 	file.editorID, file.editorGeneration = pencodeTextEditor, 0
 	if model.fileEditor(file) != nil {
@@ -297,6 +352,43 @@ func TestPencodeCustomViewRejectsInvalidBindingsAndHostIDs(t *testing.T) {
 	}
 }
 
+func TestCustomEditorRefreshRetainsFocusedInput(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	w, file := m.fontResources, m.activeFile()
+	provider := &extensions.Editor{Action: peb.Action{ID: "extensions/test/form", Selectors: []peb.DocumentSelector{{Match: peb.FileSuffix, Pattern: ".go"}}}}
+	m.customEditors = append(m.customEditors, provider)
+	m.editorGeneration++
+	file.editorID, file.editorGeneration = provider.ID, 0
+	doc := &pencodeCustomDocument{model: m, file: file, provider: provider, project: m.activeProjectState()}
+	m.customDocuments = map[*openFile]*pencodeCustomDocument{file: doc}
+	show := func(fields string) {
+		t.Helper()
+		if err := doc.setView(&peb.EditorView{HTML: fields + `<input data-ref="name" value="abc">`}); err != nil {
+			t.Fatal(err)
+		}
+		markPencodeRootDirtyByModel(w, m)
+		for range 2 {
+			languageInteractionStep(t, app)
+		}
+	}
+	show("")
+	id := fmt.Sprintf("pencode-extension-editor/%p/control-name", doc)
+	control, ok := w.HTMLControl(m.surface, id)
+	if !ok || !w.Focus(control) {
+		t.Fatal("cannot focus the custom editor input")
+	}
+	w.SetControlValue(control, "草稿abc")
+	field := w.Mut[engineui.TextField](control)
+	field.Anchor, field.Caret = 4, 1
+	show(`<input data-ref="filter">`)
+	control, ok = w.HTMLControl(m.surface, id)
+	field = w.Ref[engineui.TextField](control)
+	if !ok || field == nil || w.FocusedControl() != control || field.Value != "草稿abc" || field.Anchor != 4 || field.Caret != 1 {
+		t.Fatalf("inserting a sibling input interrupted editing: %+v", field)
+	}
+}
+
 func TestPencodeCustomViewSparseTextIDs(t *testing.T) {
 	document := &pencodeCustomDocument{}
 	view := &peb.EditorView{HTML: `<article data-ref="sheet" data-pencode-searchable data-pencode-selectable><div style="overflow:auto"><table><tr><td></td><td id="pencode-extension-kept"></td><td data-ref="dynamic"></td><td>target</td></tr></table></div><button data-ref="action" title="Action"></button></article>`}
@@ -369,6 +461,7 @@ func TestPencodeCustomViewLinksOpenWorkspaceDocuments(t *testing.T) {
 	resourceTestWrite(t, project, "guide with spaces.md", "# Guide")
 	openProjectFile(project, "docs/README.md")
 	model.syncActiveProjectFields()
+	project.tree.selection.set("docs/README.md")
 	document := &pencodeCustomDocument{model: model, project: project, file: model.activeFile(), process: &extensions.EditorSession{}}
 	view := &peb.EditorView{HTML: `<a data-ref="guide" href="../guide%20with%20spaces.md">Guide</a><a data-ref="site" href="https://example.com">Site</a><a hidden data-ref="hidden" href="hidden.md">Hidden</a><a data-ref="owned" href="owned.md">Owned</a>`, Events: []peb.EditorBinding{{Ref: "owned", Kind: "click"}}}
 	if err := document.setView(view); err != nil {
@@ -384,6 +477,9 @@ func TestPencodeCustomViewLinksOpenWorkspaceDocuments(t *testing.T) {
 	if file := model.activeFile(); file == nil || file.Path != "guide with spaces.md" {
 		t.Fatal("link did not open its document", file)
 	}
+	if s := &project.tree.selection; s.anchor != model.activePath || s.paths != nil {
+		t.Fatalf("link to %q left the tree selection at %+v", model.activePath, s)
+	}
 	if document.count != 0 {
 		t.Fatal("host link was forwarded to the extension")
 	}
@@ -398,10 +494,13 @@ func TestPencodeCustomViewLinksOpenWorkspaceDocuments(t *testing.T) {
 func TestPencodeOpenWithActionsReplaceAndSplit(t *testing.T) {
 	// Headless retained HTML controls; no editor window or screenshots.
 	app, model, _, state := languageInteractionFixture(t)
-	file := model.activeFile()
 	bundle := installPencodeEditorFixture(t, model.backend)
 	bundle.Editors[0].Default = false
 	model.importEditors(bundle.Editors)
+	project := model.activeProjectState()
+	resourceTestWrite(t, project, "example.go", "package example\n")
+	openProjectFileAndWait(t, model, project, "example.go")
+	file := model.activeFile()
 	step := func() {
 		t.Helper()
 		markPencodeRootDirtyByModel(model.fontResources, model)
@@ -420,16 +519,15 @@ func TestPencodeOpenWithActionsReplaceAndSplit(t *testing.T) {
 		}
 		t.Fatal("open-with view did not settle")
 	}
-	step()
-	if !model.textEditorActive() {
-		t.Fatal("optional view replaced source before a click")
-	}
 	id := bundle.Editors[0].ID
+	wait(func() bool { d := model.customDocuments[file]; return d != nil && d.definition != nil && !d.busy() })
+	if model.customDocuments[file].provider.ID != id || model.textEditorActive() || file.editorSplit {
+		t.Fatal("opening the file did not activate its registered tool")
+	}
+	editorContextClick(t, app, model, state, "editor-text")
+	wait(func() bool { return model.textEditorActive() && model.customDocuments[file] == nil })
 	editorContextClick(t, app, model, state, "action-"+id)
 	wait(func() bool { d := model.customDocuments[file]; return d != nil && d.definition != nil && !d.busy() })
-	if model.textEditorActive() || file.editorSplit {
-		t.Fatal("open-with action did not replace source")
-	}
 	body := editorContextBounds(t, model, "editor-body")
 	full := editorContextBounds(t, model, "custom-editor")
 	if full.Width < body.Width-2 || full.X < body.X || full.X > body.X+1 {
@@ -495,5 +593,84 @@ func TestPencodeOpenWithActionsReplaceAndSplit(t *testing.T) {
 	step()
 	if !model.textEditorActive() {
 		t.Fatal("removing the provider did not restore source")
+	}
+}
+
+func TestCustomEditorLoadsImagesAsTheyApproachViewport(t *testing.T) {
+	var first, last atomic.Int32
+	waitImage := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/top.svg":
+			first.Add(1)
+			select {
+			case <-waitImage:
+			case <-r.Context().Done():
+				return
+			}
+		case "/bottom.svg":
+			last.Add(1)
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `<svg width="64" height="48"><rect width="64" height="48" fill="red"/></svg>`)
+	}))
+	defer server.Close()
+	app, session := newPencodeTestApp(t)
+	model := session.active.model
+	file := model.activeFile()
+	top := server.URL + "/top.svg"
+	bottom := server.URL + "/bottom.svg"
+	var body strings.Builder
+	fmt.Fprintf(&body, "// editor fixture HTML\n<p>Body</p><p><img id=\"pencode-extension-top\" loading=\"lazy\" src=%q><img loading=\"lazy\" src=%q></p>", top, top)
+	for i := range 70 {
+		fmt.Fprintf(&body, `<p style="height:200px"><img loading="lazy" src="%s/%d.svg"></p>`, server.URL, i)
+	}
+	fmt.Fprintf(&body, `<p><img loading="lazy" src=%q></p>`, bottom)
+	model.applyFileContent(file, model.activeProjectState(), body.String(), true)
+	model.importEditors(installPencodeEditorFixture(t, session.backend).Editors)
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	wait := func(ready func() bool) {
+		t.Helper()
+		for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
+			if _, err := app.Step(); err != nil {
+				t.Fatal(err)
+			}
+			if ready() {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatalf("preview did not settle: status=%q, first=%d, last=%d", model.status, first.Load(), last.Load())
+	}
+	wait(func() bool { return first.Load() != 0 })
+	doc := model.customDocuments[file]
+	if doc.view == nil || doc.message != "" || len(doc.lazy.bySource) != 72 || last.Load() != 0 {
+		t.Fatalf("opening preview fetched a distant image or hid the body: %q last=%d", doc.message, last.Load())
+	}
+	close(waitImage)
+	wait(func() bool {
+		node, _ := model.fontResources.HTMLNode(model.surface, "pencode-extension-top")
+		width, _ := node.Attribute("width")
+		src, _ := node.Attribute("src")
+		return width == "64" && src == doc.lazy.bySource[top].uri && src != ""
+	})
+	if first.Load() != 1 || last.Load() != 0 {
+		t.Fatal("image request was repeated or premature")
+	}
+	viewport, _ := model.fontResources.HTMLNode(model.surface, "custom-editor")
+	area, _ := viewport.ScrollContainer()
+	scroll := model.fontResources.Mut[scene.UIScroll](area)
+	scroll.Position[1] = scroll.ViewportSize[1] - scroll.ContentSize[1]
+	wait(func() bool { return doc.lazy.bySource[bottom].uri != "" })
+	if last.Load() != 1 {
+		t.Fatal("scrolled image was not fetched exactly once")
+	}
+	model.selectEditor(pencodeTextEditor)
+	markPencodeRootDirtyByModel(model.fontResources, model)
+	wait(func() bool { return model.customDocuments[file] == nil })
+	if len(model.extensionImages) != 0 {
+		t.Fatal("closing the preview retained image bytes")
 	}
 }

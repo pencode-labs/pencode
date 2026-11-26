@@ -49,7 +49,7 @@ func TestTreeGitStatusPropagation(t *testing.T) {
 		}
 	}
 	if n := testing.AllocsPerRun(100, func() {
-		if git.names["nested"].nameClass() != "pencode-tree-name git-modified" {
+		if (fileNameDecoration{git: git.names["nested"]}).value() != "modified" {
 			t.Fatal("missing folder decoration")
 		}
 	}); n != 0 {
@@ -144,7 +144,7 @@ func TestTreeGitWatchRefreshAndRestore(t *testing.T) {
 	}
 }
 
-func TestTreeGitFolderNamesRenderWithThemeColor(t *testing.T) {
+func TestTreeAndTabNamesRenderWithGitThemeColor(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
 	p := m.activeProjectState()
@@ -154,22 +154,36 @@ func TestTreeGitFolderNamesRenderWithThemeColor(t *testing.T) {
 		{Path: "changed/deep/file.go", Depth: 2, Openable: true},
 		{Path: "clean", IsDir: true},
 	}
+	const tabPath = "changed/deep/file.go"
+	p.Files[tabPath] = &openFile{Path: tabPath, Name: "file.go"}
+	p.Tabs = append(p.Tabs, tabPath)
+	// Distinguish the active tab from its breadcrumb in the rendered text.
+	m.activeFile().Name = "active-tab.php"
 	p.ExpandedDirs = map[string]bool{"changed": false}
 	p.tree.entriesChanged()
 	// Leave source discovery idle so the fixture's synthetic statuses persist.
 	p.sourceControl.cancelRefresh()
 	p.sourceControl.RefreshStarted, p.sourceControl.RefreshPending = true, false
+	markPencodeRootDirtyByModel(m.fontResources, m)
+	languageInteractionStep(t, app)
 	for _, status := range []treeGitStatus{treeGitUntracked, treeGitAdded, treeGitRenamed, treeGitDeleted, treeGitModified, treeGitConflict, treeGitClean} {
-		p.treeGit.names = map[string]treeGitStatus{"changed": status, "changed/deep": status, "changed/deep/file.go": status}
-		computed := pencodeComputedTheme(t, *m.workbenchTheme, `<span data-ref="name" class="`+status.nameClass()+`"></span>`)
+		p.treeGit.names = map[string]treeGitStatus{"changed": status, "changed/deep": status, tabPath: status, m.activeFile().Path: status}
+		computed := pencodeComputedTheme(t, *m.workbenchTheme, `<span data-ref="name" data-file-decoration="`+(fileNameDecoration{git: status}).value()+`"></span>`)
 		want := pencodeSyntaxColor(syntax.Color(computed["name"].Color.Color))
 		if status == treeGitClean {
 			want = pencodeSyntaxColor(m.syntaxTheme.Color("sideBar.foreground"))
 		}
-		for _, expanded := range []bool{false, true} {
-			p.ExpandedDirs["changed"], p.ExpandedDirs["changed/deep"] = expanded, expanded
-			p.tree.revision++
-			markPencodeRootDirtyByModel(m.fontResources, m)
+		// First update mounted labels through the Git-only refresh.
+		expandedBefore := p.ExpandedDirs["changed"]
+		for _, expanded := range []bool{expandedBefore, !expandedBefore} {
+			if expanded == p.ExpandedDirs["changed"] {
+				m.refreshRegion(m.fontResources, pencodeRefreshGit)
+			} else {
+				p.ExpandedDirs["changed"], p.ExpandedDirs["changed/deep"] = expanded, expanded
+				p.tree.revision++
+				markPencodeRootDirtyByModel(m.fontResources, m)
+			}
+			languageInteractionStep(t, app)
 			languageInteractionStep(t, app)
 			found := 0
 			for _, access := range m.fontResources.Query[scene.Text2D]() {
@@ -180,15 +194,24 @@ func TestTreeGitFolderNamesRenderWithThemeColor(t *testing.T) {
 					if text.Color != want {
 						t.Errorf("status=%d expanded=%v name=%s color=%v, want %v", status, expanded, text.Text().String(), text.Color, want)
 					}
+				case "active-tab.php":
+					found++
+					activeColor := want
+					if status == treeGitClean {
+						activeColor = pencodeSyntaxColor(m.syntaxTheme.Color("list.activeSelectionForeground"))
+					}
+					if text.Color != activeColor {
+						t.Errorf("active tab status=%d color=%v, want %v", status, text.Color, activeColor)
+					}
 				case "clean":
 					if text.Color != pencodeSyntaxColor(m.syntaxTheme.Color("sideBar.foreground")) {
 						t.Error("unaffected sibling changed color")
 					}
 				}
 			}
-			wantCount := 1
+			wantCount := 3
 			if expanded {
-				wantCount = 3
+				wantCount = 5
 			}
 			if found != wantCount {
 				t.Fatalf("expanded=%v rendered %d decorated names, want %d", expanded, found, wantCount)

@@ -15,6 +15,7 @@ import (
 	"github.com/onix-engine/onix/scene"
 	engineui "github.com/onix-engine/onix/ui"
 	htmlui "github.com/onix-engine/onix/ui/html"
+	"github.com/pencode-labs/pencode/protocol"
 )
 
 type sourceJobKind uint8
@@ -58,14 +59,14 @@ type sourcePanelKey struct {
 	Icons                                    *pencodeFileIcons
 	Files, CommitFiles                       *sourceFile
 	Commits                                  *sourceCommit
-	RepositoryError                          string
+	Locale, RepositoryError                  string
 	ChangesWidthStyle                        string
 	Message, Selected, MergeMessage          string
 	Repositories                             sourceRepositoryListKey
 	Changes                                  [3]sourceRowRange
 	Sync                                     sourceSyncStatus
 	First, Visible                           int
-	TreeRevision                             uint64
+	TreeRevision, HistoryRevision            uint64
 	FileCount, CommitCount, CommitFileCount  int
 	Busy, Modal, HasMore, Multiline, Syncing bool
 	Resizing                                 bool
@@ -89,6 +90,7 @@ func sourceFirst[T any](values []T) *T {
 // UI state belongs to one project. A job only receives captured immutable values;
 // its bounded result is applied by the foreground, including for inactive projects.
 type pencodeSourceControl struct {
+	history                                 localHistory
 	lastClickAt                             time.Time
 	Context                                 context.Context
 	Collapsed                               map[string]bool
@@ -252,7 +254,7 @@ func (m *workspaceModel) sourceHasDraftsIn(root string) bool {
 	// Repository roots can enclose more than one open project.
 	for _, p := range m.projects {
 		for _, f := range p.Files {
-			if f.Dirty && sourceRepositoryForPath([]string{root}, filepath.ToSlash(filepath.Join(p.Path, filepath.FromSlash(f.Path)))) != "" {
+			if f.Dirty && !f.untitled() && sourceRepositoryForPath([]string{root}, filepath.ToSlash(filepath.Join(p.Path, filepath.FromSlash(f.Path)))) != "" {
 				return true
 			}
 		}
@@ -359,6 +361,9 @@ func (m *workspaceModel) refreshProjectSourceControl(owner *pencodeProject) {
 }
 
 func (m *workspaceModel) sourceErrorMessage(result sourceResult) (string, bool) {
+	if missingSourceSubmodule(result.Err) != "" {
+		return result.Err.Error(), true
+	}
 	if !result.expectedGitError() {
 		return result.Err.Error(), false
 	}
@@ -451,6 +456,9 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 			s.Snapshot.Graph, s.Snapshot.HasMore = result.Page.Graph, result.Page.HasMore
 		}
 		if result.Err != nil && !result.StatusOnly {
+			if s.JobKind != sourceRefresh && missingSourceSubmodule(result.Err) != "" {
+				s.RefreshPending = true
+			}
 			message, expected := m.sourceErrorMessage(result)
 			if expected {
 				m.setProjectStatus(project, message)
@@ -511,7 +519,7 @@ func (m *workspaceModel) pollSourceResult(s *pencodeSourceControl, project *penc
 				s.Tabs = append(s.Tabs, tab)
 			}
 			if result.Selection == s.Selection {
-				m.actions.ui.editor = nil
+				m.projectActions(project).ui.editor = nil
 				s.Active, s.RestoreScroll = tab.Key, true
 			}
 		}
@@ -596,6 +604,14 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 		changed = true
 	}
 	s := m.sourceState()
+	if h := &s.history; h.menu && (m.bottom.active != pencodePanelSourceControl || s.modal()) {
+		h.menu = false
+		changed = true
+	}
+	if m.bottom.active == pencodePanelSourceControl && s.history.expanded && s.history.refresh && s.history.loading == nil && !s.history.menu {
+		m.loadLocalHistory(protocol.FileVersion{})
+		changed = true
+	}
 	if m.followSourceRepository() {
 		changed = true
 	}
@@ -632,6 +648,9 @@ func (m *workspaceModel) updateSourceControl(world *module.Content, state *input
 	pointer := state.Pointer()
 	zoom := max(float32(m.settings.Zoom)/100, .01)
 	x, y := pointer.X/zoom, pointer.Y/zoom
+	if m.updateLocalHistoryMenu(world, state, x, y) {
+		return true
+	}
 	if s.BranchMenuOpen && (state.MousePressed(input.MouseLeft) || state.MousePressed(input.MouseRight)) {
 		anchor, ok := m.sourceBranchAnchor(world)
 		if !(ok && languageRectContains(anchor, x, y)) && !m.pointerInsideRefs(world, x, y, []string{"sc-branch-menu", "sc-branch-submenu"}) {
@@ -777,7 +796,7 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	m.renderSourceStatus(view)
 	view.Event("status-source-control", htmlui.EventClick)
 	view.Attr("status-source-control", "aria-expanded", strconv.FormatBool(m.bottom.active == pencodePanelSourceControl))
-	for _, ref := range []string{"source-content", "source-tabs", "source-overlay", "source-pane", "source-tools"} {
+	for _, ref := range []string{"source-content", "source-tabs", "source-overlay", "source-pane"} {
 		view.Event(ref, htmlui.EventInput)
 		view.Event(ref, htmlui.EventChange)
 	}
@@ -790,8 +809,7 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	if s.visible() {
 		view.Attr("editor-body", "class", "pencode-editor-body source-active")
 		if tab := s.activeTab(); tab != nil {
-			// Git paths are relative to the repository, which may enclose the project.
-			full := filepath.Join(s.Snapshot.Repository.Root, filepath.FromSlash(tab.Path))
+			full := m.editorTabPath(pencodeEditorTab{source: tab})
 			path := tab.Path
 			if relative, err := filepath.Rel(m.projectPath, full); err == nil {
 				path = filepath.ToSlash(relative)
@@ -816,6 +834,8 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 		label := path.Base(tab.Path) + " · " + tab.Kind
 		if tab.Kind == "history" {
 			label += " · " + tab.Revision[:8]
+		} else if tab.Kind == "local-history" {
+			label = path.Base(tab.Path) + " · " + m.tr("本地历史") + " · " + tab.Revision
 		}
 		if tab.Result != tab.Saved {
 			class += " dirty"
@@ -852,17 +872,17 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	view.Keyed("source-tabs", b.nodes())
 	if m.bottom.active == pencodePanelSourceControl {
 		m.renderSourceControl(&s.panelView)
-		m.renderSourceToolbar(&s.toolsView)
 	}
 	// Retain the hidden panel so reopening it reuses DOM nodes, controls and
 	// native event targets instead of mounting the repository again.
 	if s.panelView.used != 0 {
 		view.Keyed("source-pane", s.panelView.nodes())
-		view.Keyed("source-tools", s.toolsView.nodes())
 	}
 	b = &s.overlayView
 	b.reset()
-	if s.MenuOpen && m.bottom.active == pencodePanelSourceControl {
+	if s.history.menu && m.bottom.active == pencodePanelSourceControl {
+		m.renderLocalHistoryMenu(b)
+	} else if s.MenuOpen && m.bottom.active == pencodePanelSourceControl {
 		m.renderSourceMenu(b)
 	}
 	if s.BranchMenuOpen && m.bottom.active == pencodePanelSourceControl {
@@ -1085,6 +1105,10 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 	}
 	if s.BranchMenuOpen {
 		return true, m.sourceBranchShortcut(state)
+	}
+	if m.uiKey(state, input.KeyEscape) && s.history.menu {
+		s.history.menu = false
+		return true, true
 	}
 	if m.uiKey(state, input.KeyEscape) && s.MenuOpen {
 		s.MenuOpen = false

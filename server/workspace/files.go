@@ -77,7 +77,11 @@ func (s *Store) Rename(id uint64, from, to string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	return p.root.Rename(filepath.FromSlash(from), filepath.FromSlash(to))
+	if err := p.root.Rename(filepath.FromSlash(from), filepath.FromSlash(to)); err != nil {
+		return err
+	}
+	s.History.move(p, from, p, to)
+	return nil
 }
 
 func (s *Store) Import(targetID uint64, filename, directory string, overwrite bool) (string, error) {
@@ -161,7 +165,7 @@ func (s *Store) transfer(source *project, targetID uint64, from, directory strin
 		destination = path.Join(directory, fmt.Sprintf("%s 副本 %d%s", strings.TrimSuffix(name, ext), index, ext))
 	}
 	if cut && source == target && !overwrite {
-		return destination, source.root.Rename(filepath.FromSlash(from), filepath.FromSlash(destination))
+		return destination, s.Rename(targetID, from, destination)
 	}
 	buffer := make([]byte, 32<<10)
 	if err := copyResource(source.root, target.root, from, destination, info, buffer, 0, overwrite); err != nil {
@@ -171,6 +175,7 @@ func (s *Store) transfer(source *project, targetID uint64, from, directory strin
 		if err := source.root.RemoveAll(filepath.FromSlash(from)); err != nil {
 			return "", fmt.Errorf("已复制，但无法删除原文件：%w", err)
 		}
+		s.History.move(source, from, target, destination)
 	}
 	return destination, nil
 }

@@ -48,7 +48,7 @@ func TestRemoteExtensionInstallEnableDisableAndRevoke(t *testing.T) {
 		t.Fatal("installation did not publish a server-owned registration")
 	}
 	old := bundle.Actions.remote
-	session := bundle.Actions.Start(nil, nil)
+	session := bundle.Actions.Start("", nil, nil)
 	defer session.Close()
 	select {
 	case result := <-session.Results:
@@ -323,7 +323,7 @@ func TestRemoteExtensionUpdateValidatesBeforeReplacing(t *testing.T) {
 	}
 	defer oldBundle.Close()
 	old := oldBundle.Actions.remote
-	session := oldBundle.Actions.Start(nil, nil)
+	session := oldBundle.Actions.Start("", nil, nil)
 	defer session.Close()
 	select {
 	case result := <-session.Results:
@@ -375,7 +375,7 @@ func TestRemoteExtensionUpdateValidatesBeforeReplacing(t *testing.T) {
 	if _, err := bundle.Actions.remote.ReadResource(t.Context(), "resources/extension.json", 64<<10); err != nil {
 		t.Fatal("updated resource unavailable", err)
 	}
-	updated := bundle.Actions.Start(nil, nil)
+	updated := bundle.Actions.Start("", nil, nil)
 	defer updated.Close()
 	select {
 	case result := <-updated.Results:

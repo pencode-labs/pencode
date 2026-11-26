@@ -121,7 +121,7 @@ func TestProjectWatchDistinguishesReplacementAndStructure(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			p := &pencodeProject{Entries: []treeEntry{{Path: "main.go"}}, watch: &pencodeProjectWatch{}}
-			m := &workspaceModel{projects: []*pencodeProject{p}, quickOpen: true}
+			m := &workspaceModel{projects: []*pencodeProject{p}, pencodeProjectInteraction: pencodeProjectInteraction{quickOpen: true}}
 			if allocations := testing.AllocsPerRun(100, func() {
 				p.treePending = false
 				p.watch.collect(protocol.FileChanges{Files: test.files})

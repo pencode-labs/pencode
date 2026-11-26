@@ -75,7 +75,7 @@ func (m *workspaceModel) saveProjectState(p *pencodeProject) {
 
 func (m *workspaceModel) captureProjectState(p *pencodeProject) pencodeProjectState {
 	maps.DeleteFunc(p.ExpandedDirs, func(_ string, expanded bool) bool { return !expanded })
-	if m.fontResources != nil {
+	if m.fontResources != nil && p == m.activeProjectState() {
 		m.editor.saveView(m.fontResources, m)
 		if !p.tree.restore {
 			if scroll := m.fontResources.Ref[scene.UIScroll](p.tree.area); scroll != nil {
@@ -83,22 +83,19 @@ func (m *workspaceModel) captureProjectState(p *pencodeProject) pencodeProjectSt
 			}
 		}
 	}
+	layout := p.view.layout
+	if p == m.activeProjectState() {
+		layout = m.currentLayout()
+	}
 	state := pencodeProjectState{
 		ExpandedDirs: p.ExpandedDirs, ActivePath: p.ActivePath, Repository: p.sourceControl.Snapshot.Repository.Root,
 		TreePosition: p.tree.position, AllDirectoriesCollapsed: p.AllDirectoriesCollapsed,
-		SidebarHidden: p.sidebarCollapsed, SidebarWidth: m.sidebarWidthStyle, PanelHeight: m.bottom.heightStyle,
-		SourceChangesWidth: m.sourceChangesWidthStyle, Panel: m.bottom.active, OutputFilter: m.bottom.filter,
+		SidebarHidden: p.sidebarCollapsed, SidebarWidth: layout.sidebarWidth, PanelHeight: layout.panelHeight,
+		SourceChangesWidth: layout.changesWidth, Panel: layout.panel, OutputFilter: layout.filter,
 		SourceRepositoriesWidth: p.sourceControl.RepositoriesWidthStyle, SourceRepositoriesCollapsed: p.sourceControl.RepositoriesCollapsed,
 	}
-	if p != m.activeProjectState() {
-		if p.terminals != nil && p.terminals.visible {
-			state.Panel = pencodePanelTerminal
-		} else if state.Panel == pencodePanelTerminal {
-			state.Panel = pencodePanelClosed
-		}
-	}
-	if m.bottom.source != nil {
-		state.OutputSource = m.bottom.source.Name
+	if layout.source != nil {
+		state.OutputSource = layout.source.Name
 	}
 	if p.restoring != nil {
 		state.Tabs = slices.Clone(p.restoring.Tabs)
@@ -108,7 +105,10 @@ func (m *workspaceModel) captureProjectState(p *pencodeProject) pencodeProjectSt
 	}
 	for _, path := range p.Tabs {
 		f := p.Files[path]
-		if f == nil {
+		if f == nil || f.untitled() {
+			if state.ActivePath == path {
+				state.ActivePath = ""
+			}
 			continue
 		}
 		tab := pencodeTabState{Path: path, Editor: f.editorID, ForcedText: f.forcedText, Split: f.editorSplit, Preview: f.Preview,
@@ -160,12 +160,23 @@ func (m *workspaceModel) applyProjectState(p *pencodeProject, state *pencodeProj
 	p.sidebarCollapsed = !p.Loose && state.SidebarHidden
 	m.sidebarWidthStyle = state.SidebarWidth
 	m.bottom.heightStyle, m.sourceChangesWidthStyle = state.PanelHeight, state.SourceChangesWidth
+	m.bottom.active, m.bottom.source = pencodePanelClosed, nil
 	if state.Panel <= pencodePanelDebug && state.Panel != pencodePanelExtension {
 		m.bottom.active = state.Panel
 	}
 	m.bottom.filter = state.OutputFilter
 	if state.OutputSource != "" {
-		m.bottom.source = m.outputStore().Channel(state.OutputSource)
+		m.syncOutputChannels()
+		for _, channel := range m.bottom.channels {
+			if channel.Name == state.OutputSource {
+				m.bottom.source = channel
+				break
+			}
+		}
+		if m.bottom.source == nil {
+			m.bottom.source = m.outputStore().Channel(state.OutputSource)
+		}
+		m.bottom.options = m.bottom.options[:0]
 	}
 	m.syncActiveProjectFields()
 	if m.bottom.active == pencodePanelTerminal && (m.terminals == nil || m.terminals.active == nil) {

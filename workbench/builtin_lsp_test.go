@@ -36,7 +36,64 @@ func TestBuiltinGoplsDiscoveryAndHighlight(t *testing.T) {
 	t.Fatalf("no semantic tokens from built-in gopls: %s", m.status)
 }
 
+func TestBuiltinClangdSharesSession(t *testing.T) {
+	m, project, goFile := languageTestModel(t)
+	defer m.closeLanguageServers()
+	delete(project.Files, goFile.Path)
+	names := []string{"main.c", "main.cpp", "main.m", "main.mm"}
+	languages := []string{"c", "cpp", "objective-c", "objective-cpp"}
+	files := make([]*openFile, 0, len(names))
+	for _, name := range names {
+		const source = "int main(void) { return 0; }\n"
+		if err := os.WriteFile(filepath.Join(project.Path, name), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		file := &openFile{Path: name, Name: name, contentSnapshot: snapshotText(source)}
+		file.savedContent = file.snapshot()
+		project.Files[name] = file
+		files = append(files, file)
+	}
+	project.ActivePath, project.Tabs = names[0], names
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		m.pollBuiltinTools()
+		if m.builtinTools.cancel == nil && m.builtinTools.items["clangd"].Command == "" {
+			t.Skip("clangd unavailable")
+		}
+		m.pollLanguageServers(nil)
+		var shared *pencodeLanguageSession
+		synced := 0
+		for i, file := range files {
+			doc := m.languages.documents[file]
+			if doc == nil || len(doc.servers) == 0 {
+				continue
+			}
+			for session := range doc.servers {
+				if shared != nil && session != shared || session.server.LocalID != "clangd" || session.server.DocumentLanguage(file.Name) != languages[i] {
+					t.Fatalf("unexpected clangd session or document language for %s", file.Name)
+				}
+				shared = session
+				synced++
+			}
+		}
+		if synced == len(files) {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("clangd did not sync all four files: %s", m.status)
+}
+
 func TestLanguageSettingsChooseAndPersist(t *testing.T) {
+	bin := t.TempDir()
+	detected := filepath.Join(bin, "phpantom_lsp")
+	if runtime.GOOS == "windows" {
+		detected += ".exe"
+	}
+	if err := os.WriteFile(detected, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
 	app, m, _, state := languageInteractionFixture(t)
 	executable, err := os.Executable()
 	if err != nil {
@@ -49,7 +106,7 @@ func TestLanguageSettingsChooseAndPersist(t *testing.T) {
 	languageInteractionStep(t, app)
 	click := func(id string) { t.Helper(); editorContextClick(t, app, m, state, id) }
 	click("settings-language-servers-nav")
-	if !m.settingsLanguageServers {
+	if m.settingsToolPage != languageServerSettings {
 		t.Fatal("settings tab was not selected", m.settingsOpen)
 	}
 	for until := time.Now().Add(time.Second * 3); m.builtinTools.cancel != nil && time.Now().Before(until); {
@@ -102,8 +159,13 @@ func TestLanguageSettingsChooseAndPersist(t *testing.T) {
 	checkAttribute("language-tool-details-phpactor", "aria-expanded", "false")
 	editorContextBounds(t, m, "language-tool-path-intelephense")
 	checkAttribute("language-tool-path-intelephense", "value", executable)
+	checkAttribute("language-tool-path-intelephense", "placeholder", m.tr("留空以自动检测"))
 	click("language-tool-details-intelephense")
 	checkAttribute("language-tool-details-intelephense", "aria-expanded", "false")
+	click("language-tool-details-phpantom_lsp")
+	checkAttribute("language-tool-path-phpantom_lsp", "value", "")
+	checkAttribute("language-tool-path-phpantom_lsp", "placeholder", detected)
+	click("language-tool-details-phpantom_lsp")
 	click("language-tool-activate-intelephense")
 	checkAttribute("language-tool-details-intelephense", "aria-expanded", "false")
 	logs, _ := m.outputStore().Channel("pencode").Snapshot()
@@ -134,7 +196,7 @@ func TestLanguageSettingsChooseAndPersist(t *testing.T) {
 		t.Fatal("active PHP providers", count)
 	}
 	click("settings-appearance-nav")
-	if m.settingsLanguageServers {
+	if m.settingsToolPage == languageServerSettings {
 		t.Fatal("language pane still selected")
 	}
 }

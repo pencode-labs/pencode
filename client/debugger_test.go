@@ -66,7 +66,7 @@ func TestDebugTCPStreamRevokedWithWorkspace(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	p, err := c.OpenDebugAdapter(ctx, w.Path, "tcp", "", listener.Addr().String(), nil)
+	p, err := c.OpenDebugAdapter(ctx, w.Path, protocol.DebugAdapterCommand{Adapter: "tcp", Address: listener.Addr().String()})
 	if err != nil {
 		t.Fatal(err)
 	}

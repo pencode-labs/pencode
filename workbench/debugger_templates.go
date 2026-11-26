@@ -20,28 +20,35 @@ type pencodeDebugTemplate struct {
 	owner, label, content string
 }
 
+var builtinDebugTemplates = appendDebugTemplates(nil, "", "", debugger.BuiltinTemplates)
+
+func appendDebugTemplates(dst []pencodeDebugTemplate, owner, adapter, templates string) []pencodeDebugTemplate {
+	if templates == "" {
+		return dst
+	}
+	configs, err := debugger.ParseConfigs([]byte(templates), "${workspaceFolder}")
+	if err != nil {
+		return dst
+	}
+	var raw []json.RawMessage
+	if json.Unmarshal([]byte(templates), &raw) != nil {
+		return dst
+	}
+	for i, c := range configs {
+		if adapter == "" || c.Adapter == adapter {
+			dst = append(dst, pencodeDebugTemplate{owner, c.Label, string(raw[i])})
+		}
+	}
+	return dst
+}
+
 func (m *workspaceModel) importDebugTemplates(id string, adapters []peb.DebugAdapter) {
 	owner := "extensions/" + id + "/"
 	m.removeDebugTemplates(owner)
-	for _, adapter := range adapters {
-		var configs []json.RawMessage
-		if adapter.Templates == "" {
-			continue
-		}
-		if _, err := debugger.ParseConfigs([]byte(adapter.Templates), "${workspaceFolder}"); err != nil {
-			continue
-		}
-		if err := json.Unmarshal([]byte(adapter.Templates), &configs); err != nil {
-			continue
-		}
-		for _, config := range configs {
-			var c debugger.Config
-			if json.Unmarshal(config, &c) == nil && c.Adapter == adapter.ID {
-				m.debugTemplates = append(m.debugTemplates, pencodeDebugTemplate{owner, c.Label, string(config)})
-			}
-		}
+	for _, a := range adapters {
+		m.extensionDebugTemplates = appendDebugTemplates(m.extensionDebugTemplates, owner, a.ID, a.Templates)
 	}
-	slices.SortStableFunc(m.debugTemplates, func(a, b pencodeDebugTemplate) int {
+	slices.SortStableFunc(m.extensionDebugTemplates, func(a, b pencodeDebugTemplate) int {
 		if n := strings.Compare(a.owner, b.owner); n != 0 {
 			return n
 		}
@@ -51,16 +58,23 @@ func (m *workspaceModel) importDebugTemplates(id string, adapters []peb.DebugAda
 }
 
 func (m *workspaceModel) removeDebugTemplates(prefix string) {
-	m.debugTemplates = slices.DeleteFunc(m.debugTemplates, func(t pencodeDebugTemplate) bool { return strings.HasPrefix(t.owner, prefix) })
+	m.extensionDebugTemplates = slices.DeleteFunc(m.extensionDebugTemplates, func(t pencodeDebugTemplate) bool { return strings.HasPrefix(t.owner, prefix) })
 	m.debug.adding = false
 	m.rebuildDebugTemplateRows()
+}
+
+func (m *workspaceModel) debugTemplate(index int) pencodeDebugTemplate {
+	if index < len(builtinDebugTemplates) {
+		return builtinDebugTemplates[index]
+	}
+	return m.extensionDebugTemplates[index-len(builtinDebugTemplates)]
 }
 
 func (m *workspaceModel) rebuildDebugTemplateRows() {
 	clear(m.debugTemplateRows)
 	m.debugTemplateRows = m.debugTemplateRows[:0]
-	for i, template := range m.debugTemplates {
-		m.debugTemplateRows = append(m.debugTemplateRows, pencodeDebugRow{ref: "debug-template:" + strconv.Itoa(i), slot: "debug-template-menu", label: template.label})
+	for i := range len(builtinDebugTemplates) + len(m.extensionDebugTemplates) {
+		m.debugTemplateRows = append(m.debugTemplateRows, pencodeDebugRow{ref: "debug-template:" + strconv.Itoa(i), slot: "debug-template-menu", label: m.debugTemplate(i).label})
 	}
 	m.debugTemplateRows = append(m.debugTemplateRows, pencodeDebugRow{ref: "debug-template:edit", slot: "debug-template-menu", label: m.tr("手动编辑配置…")})
 }
@@ -179,7 +193,7 @@ func appendDebugTemplate(data []byte, template string) (string, error) {
 }
 
 func (m *workspaceModel) addDebugTemplate(index int) {
-	if index < 0 || index >= len(m.debugTemplates) || m.debug.loading || !m.backendConnected() || m.fileIOMutating(m.activeProjectState()) || m.debug.session != nil && m.debug.view.State < debugger.Ended {
+	if index < 0 || index >= len(builtinDebugTemplates)+len(m.extensionDebugTemplates) || m.debug.loading || !m.backendConnected() || m.fileIOMutating(m.activeProjectState()) || m.debug.session != nil && m.debug.view.State < debugger.Ended {
 		return
 	}
 	p := m.activeProjectState()
@@ -188,7 +202,7 @@ func (m *workspaceModel) addDebugTemplate(index int) {
 	}
 	m.debug.adding = false
 	m.debug.startPending = false
-	template := m.debugTemplates[index].content
+	template := m.debugTemplate(index).content
 	if f := p.Files[pencodeDebugConfigPath]; f != nil {
 		if err := m.requestFileOpen(p, pencodeDebugConfigPath, false, true, nil); err != nil {
 			m.debug.message = err.Error()

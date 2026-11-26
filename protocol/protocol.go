@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Version    = 20
+	Version    = 26
 	HeaderSize = 24
 	MaxPayload = 64 << 10
 	MaxMessage = 64 << 20
@@ -26,6 +26,7 @@ const (
 	WorkspaceOpen
 	WorkspaceClose
 	DocumentOpen
+	DocumentCreate
 	DocumentChange
 	DocumentSave
 	DocumentClose

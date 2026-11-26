@@ -41,10 +41,21 @@ func (m *workspaceModel) navigationLocation() pencodeNavigationLocation {
 			f.editorView = pencodeEditorView{field.Caret, field.Anchor, area.ScrollX, area.ScrollY}
 		}
 	}
-	if f == nil {
+	if f == nil || f.untitled() {
 		return pencodeNavigationLocation{}
 	}
 	return pencodeNavigationLocation{p, f.Path, f.editorView}
+}
+
+func (m *workspaceModel) recordNavigation(from, to pencodeNavigationLocation) {
+	m.navigation.record(from, to)
+	if from.project != to.project && from.path != "" {
+		// Both projects can retrace an explicit cross-project jump. Switching
+		// project tabs by itself adds no entries to either history.
+		history := &m.storedView(from.project).navigation
+		history.record(from, to)
+		history.index--
+	}
 }
 
 func (h *pencodeNavigationHistory) record(from, to pencodeNavigationLocation) {

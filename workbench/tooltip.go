@@ -1,8 +1,6 @@
 package workbench
 
 import (
-	"html"
-	"strconv"
 	"strings"
 	"time"
 
@@ -11,7 +9,6 @@ import (
 	"github.com/onix-engine/onix/module"
 	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
-	nethtml "golang.org/x/net/html"
 )
 
 const pencodeTooltipDelay = 450 * time.Millisecond
@@ -24,48 +21,6 @@ type pencodeTooltip struct {
 	open       bool
 	dismissed  bool
 	positioned bool
-}
-
-// Give anonymous template buttons stable IDs so native hover state can resolve
-// their retained nodes. Authored IDs and IDs supplied by renderers take priority.
-func tooltipTemplate(source, prefix string) htmlui.Template {
-	z := nethtml.NewTokenizer(strings.NewReader(source))
-	var b strings.Builder
-	index := 0
-	for {
-		kind := z.Next()
-		if kind == nethtml.ErrorToken {
-			break
-		}
-		raw := string(z.Raw())
-		if kind == nethtml.StartTagToken {
-			token := z.Token()
-			if token.Data == "button" {
-				id, ref := "", ""
-				for _, a := range token.Attr {
-					switch a.Key {
-					case "id":
-						id = a.Val
-					case "data-ref":
-						ref = a.Val
-					}
-				}
-				if id == "" {
-					if ref == "" {
-						ref = "button-" + strconv.Itoa(index)
-					}
-					b.WriteString(strings.TrimSuffix(raw, ">"))
-					b.WriteString(` id="`)
-					b.WriteString(html.EscapeString(prefix + ref))
-					b.WriteString(`">`)
-					index++
-					continue
-				}
-			}
-		}
-		b.WriteString(raw)
-	}
-	return htmlui.NewTemplate(b.String())
 }
 
 // Read current metadata directly: title updates need not repaint the control.

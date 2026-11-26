@@ -16,7 +16,7 @@ func TestPencodeTabContextTargetClipboardAndKeyboard(t *testing.T) {
 	for i := range 20 {
 		name := fmt.Sprintf("document-%02d.txt", i)
 		project.Files[name] = &openFile{Path: name, Name: name}
-		project.Tabs = append(project.Tabs, name)
+		project.Tabs = appendFileTab(project.Tabs, project.Files[name])
 	}
 	model.selectProjectTab(project, "document-19.txt")
 	clipboard := ""

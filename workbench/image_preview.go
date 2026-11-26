@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"html"
+
+	"github.com/onix-engine/onix/html/markup"
+	"github.com/onix-engine/onix/scene/node"
 	"image"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"path"
+	"strconv"
 	"strings"
 
 	onixsvg "github.com/onix-engine/onix/images/svg"
@@ -167,11 +170,36 @@ func (model *workspaceModel) acceptImagePreview(result *fileIOResult) {
 		document.image = &pencodeImageView{fit: true}
 	}
 	document.image.width, document.image.height = float32(preview.width), float32(preview.height)
-	view := &peb.EditorView{HTML: fmt.Sprintf(`<div id="pencode-extension-image-container" class="image-preview"><img id="pencode-extension-image" data-ref="image" src="%s" alt="%s" width="%d" height="%d"></div><div class="image-toolbar"><span class="image-info">%d × %d</span><button id="pencode-extension-image-zoom-out" data-ref="image-zoom-out" title="%s">−</button><span id="pencode-extension-image-zoom" data-ref="image-zoom" class="image-zoom"></span><button id="pencode-extension-image-zoom-in" data-ref="image-zoom-in" title="%s">+</button><button id="pencode-extension-image-actual" data-ref="image-actual" title="%s">1:1</button><button id="pencode-extension-image-fit" data-ref="image-fit">%s</button></div>`, preview.source, html.EscapeString(job.file.Name), preview.width, preview.height, preview.width, preview.height, html.EscapeString(model.tr("缩小")), html.EscapeString(model.tr("放大")), html.EscapeString(model.tr("实际大小")), html.EscapeString(model.tr("适应窗口"))), CSS: pencodeImageCSS}
+	document.image.source = preview.source
+	view := &peb.EditorView{CSS: pencodeImageCSS}
 	if err := document.setView(view); err != nil {
 		document.message = model.tr("图片预览失败：") + err.Error()
 		return
 	}
 	document.images = model.replaceExtensionImages(document.images, map[string][]byte{preview.source: preview.data})
 	document.message = ""
+}
+
+func (document *pencodeCustomDocument) imageTree() *node.Node {
+	image := document.image
+	width, height := strconv.Itoa(int(image.width)), strconv.Itoa(int(image.height))
+	var b markup.Builder
+	b.Open("div", "id", "pencode-extension-image-container", "class", "image-preview")
+	b.Element("img", "id", "pencode-extension-image", "data-ref", "image", "src", image.source, "alt", document.file.Name, "width", width, "height", height)
+	b.End()
+	b.Open("div", "class", "image-toolbar")
+	b.TextElement("span", width+" × "+height, "class", "image-info")
+	button := func(ref, title, label string) {
+		n := b.TextElement("button", label, "id", "pencode-extension-"+ref, "data-ref", ref)
+		if title != "" {
+			n.SetAttr("title", document.model.tr(title))
+		}
+	}
+	button("image-zoom-out", "缩小", "−")
+	b.Element("span", "id", "pencode-extension-image-zoom", "data-ref", "image-zoom", "class", "image-zoom")
+	button("image-zoom-in", "放大", "+")
+	button("image-actual", "实际大小", "1:1")
+	button("image-fit", "", document.model.tr("适应窗口"))
+	b.End()
+	return b.Document()
 }

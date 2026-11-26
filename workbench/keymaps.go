@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	htmlui "github.com/onix-engine/onix/ui/html"
@@ -71,6 +72,7 @@ var pencodeExtraShortcuts = []pencodeCommandBinding{
 	{"file-context-open", "打开文件", "files", "Enter"},
 	{"file-context-new-file", "新建文件", "files", "Primary+N"},
 	{"file-context-new-folder", "新建文件夹", "files", "Primary+Alt+N"},
+	{"file-context-history", "查看本地历史", "files", ""},
 	{"file-context-find", "在此文件夹中查找", "files", "Primary+Shift+F"},
 	{"file-context-reveal", "在系统文件管理器中显示", "files", "Shift+Alt+R"},
 	{"file-context-cut", "剪切文件", "files", "Primary+X"},
@@ -270,8 +272,17 @@ type pencodeShortcutProps struct {
 }
 
 func newShortcutDefinition(content *module.Content) (*htmlui.Definition[pencodeShortcutProps, struct{}], error) {
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "class", "pencode-settings-row")
+		b.Element("span", "data-ref", "name")
+		b.Element("button", "data-ref", "binding", "class", "pencode-settings-binding", "type", "button")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	return content.Define[pencodeShortcutProps, struct{}](
-		htmlui.NewTemplate(`<div class="pencode-settings-row"><span data-ref="name"></span><button data-ref="binding" class="pencode-settings-binding" type="button"></button></div>`), "",
+		template, "",
 		module.ContentBehavior[pencodeShortcutProps, struct{}]{
 			Render: func(c module.ContentRenderContext[pencodeShortcutProps, struct{}], v *htmlui.View) {
 				p := c.Props

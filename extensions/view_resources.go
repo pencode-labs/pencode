@@ -15,13 +15,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/onix-engine/onix/html/markup"
+	"github.com/onix-engine/onix/html/parse"
 	imagespng "github.com/onix-engine/onix/images/png"
 	"github.com/onix-engine/onix/images/svg"
 	imageswebp "github.com/onix-engine/onix/images/webp"
+	"github.com/onix-engine/onix/scene/node"
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/peb"
-	"golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
 )
 
 type viewResource struct {
@@ -33,6 +34,7 @@ type viewResource struct {
 type preparedView struct {
 	assets                                  map[string][]byte
 	source, markup, surface, root, document string
+	regions                                 []preparedRegion
 }
 
 type viewResources struct {
@@ -52,21 +54,33 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 		r.last = preparedView{}
 		return nil, nil
 	}
-	if last := &r.last; source == last.source && surfaceID == last.surface && r.root == last.root && r.document == last.document {
-		view.HTML = last.markup
-		return last.assets, nil
+	if last := &r.last; surfaceID == last.surface && r.root == last.root && r.document == last.document {
+		if source == last.source || last.updateRegion(source, r.remote, surfaceID) {
+			view.HTML = last.markup
+			return last.assets, nil
+		}
 	}
 	r.last = preparedView{}
+	var regions []preparedRegion
+	var byRef map[string]*preparedRegion
 	reusable := true
 	defer func() {
 		if err == nil && reusable {
-			r.last = preparedView{source: source, markup: view.HTML, assets: assets, surface: surfaceID, root: r.root, document: r.document}
+			if len(regions) != 0 && view.HTML != source {
+				regions = bindPreparedRegions(regions, view.HTML)
+			}
+			r.last = preparedView{regions: regions, source: source, markup: view.HTML, assets: assets, surface: surfaceID, root: r.root, document: r.document}
 		}
 	}()
 	const maxAssets, maxAssetBytes, maxTotalBytes, maxPixels = 64, 4 << 20, 8 << 20, 4 << 20
-	nodes, err := html.ParseFragment(strings.NewReader(view.HTML), &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div})
+	root, err := parse.ParseTree(view.HTML)
 	if err != nil {
 		return nil, err
+	}
+	// Independently editable regions must have the same boundaries in the
+	// authored tree and the HTML parser's tree (including implied end tags).
+	if surfaceID != "" && r.document == "" && strings.Contains(source, "data-pencode-region") && markup.HTMLWithSizeHint(root, len(source)) == source {
+		regions, byRef = editableRegions(source)
 	}
 	paths := make([]string, 0, 8)
 	sources := make(map[string]string)
@@ -79,74 +93,40 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 			cancelNetwork()
 		}
 	}()
-	var walk func(*html.Node) error
-	walk = func(node *html.Node) error {
-		if r.document != "" && node.Type == html.ElementNode && node.Data == "a" {
-			for _, a := range node.Attr {
-				if a.Key == "href" && a.Val != "" {
-					hasRef := false
-					for _, attr := range node.Attr {
-						hasRef = hasRef || attr.Key == "data-ref"
-					}
-					if !hasRef {
-						node.Attr = append(node.Attr, html.Attribute{Key: "data-ref", Val: "@peb-link-" + strconv.Itoa(focusCount)})
-						focusCount++
-						changed = true
-					}
-					break
-				}
-			}
-		}
-		if surfaceID != "" && node.Type == html.ElementNode {
-			ref, id, tab, href, editable := false, false, false, false, false
-			refValue := ""
-			refIndex, idIndex := -1, -1
-			for i, a := range node.Attr {
-				switch a.Key {
-				case "data-ref":
-					ref = a.Val != ""
-					refValue = a.Val
-					refIndex = i
-				case "id":
-					id = a.Val != ""
-					idIndex = i
-				case "tabindex":
-					tab = true
-				case "href":
-					href = true
-				case "contenteditable":
-					editable = a.Val != "false"
-				}
-			}
-			if node.Data == "form" || node.Data == "button" || node.Data == "input" || node.Data == "select" || node.Data == "textarea" || node.Data == "a" && href || tab || editable {
-				suffix := strconv.Itoa(focusCount)
+	var walk func(*node.Node, *preparedRegion, int) error
+	walk = func(n *node.Node, region *preparedRegion, flowDepth int) error {
+		if r.document != "" && n.Data == "a" && n.AttrValue("href") != "" {
+			if _, ok := n.Attr("data-ref"); !ok {
+				n.SetAttr("data-ref", "@peb-link-"+strconv.Itoa(focusCount))
 				focusCount++
-				if !ref {
-					refValue = "@peb-focus-" + suffix
-					if refIndex >= 0 {
-						node.Attr[refIndex].Val = refValue
-					} else {
-						node.Attr = append(node.Attr, html.Attribute{Key: "data-ref", Val: refValue})
-					}
-					changed = true
-				}
-				if !id {
-					value := "pencode-extension-ui/" + r.remote.Info.ID + "/" + surfaceID + "/control-" + refValue
-					if idIndex >= 0 {
-						node.Attr[idIndex].Val = value
-					} else {
-						node.Attr = append(node.Attr, html.Attribute{Key: "id", Val: value})
-					}
-					changed = true
-				}
+				changed = true
 			}
 		}
-		if node.Type == html.ElementNode && node.Data == "img" {
-			for i := range node.Attr {
-				if node.Attr[i].Key != "src" {
-					continue
+		if surfaceID != "" && n.Type == node.ElementNode && prepareSurfaceControl(n, r.remote, surfaceID, &focusCount) {
+			changed = true
+		}
+		var entered *preparedRegion
+		if flowDepth >= 0 && byRef != nil {
+			if n.Type != node.DocumentNode && !flowContainer(n.Data) {
+				flowDepth = -1
+			} else if _, marked := n.Attr("data-pencode-region"); marked {
+				entered = byRef[n.AttrValue("data-ref")]
+				if entered != nil {
+					region = entered
+					region.depth, region.focusStart = flowDepth, focusCount
 				}
-				source := node.Attr[i].Val
+				flowDepth = -1 // PEB patch boundaries are the outermost regions.
+			} else {
+				flowDepth++
+			}
+		}
+
+		if source, ok := n.Attr("src"); ok && n.Type == node.ElementNode && n.Data == "img" {
+			prepareImage := func() error {
+				// Document views request lazy images from the paint window, after layout.
+				if r.document != "" && surfaceID == "" && n.AttrValue("loading") == "lazy" && !strings.HasPrefix(source, "peb:") {
+					return nil
+				}
 				inline := strings.HasPrefix(source, "data:")
 				var parsed *url.URL
 				var parseErr error
@@ -189,11 +169,11 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 					if err != nil {
 						// Keep the control usable and retry missing images on the next update.
 						reusable = false
-						node.Attr = append(node.Attr[:i], node.Attr[i+1:]...)
-						node.Attr = append(node.Attr, html.Attribute{Key: "title", Val: err.Error()})
-						break
+						n.RemoveAttr("src")
+						n.SetAttr("title", err.Error())
+						return nil
 					}
-					node.Attr[i].Val = uri
+					n.SetAttr("src", uri)
 					if _, ok := sources[uri]; !ok {
 						if len(paths) == maxAssets {
 							return fmt.Errorf("编辑器图片资源超过 %d 项", maxAssets)
@@ -201,7 +181,7 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 						sources[uri] = uri
 						paths = append(paths, uri)
 					}
-					break
+					return nil
 				}
 				if parseErr != nil {
 					return parseErr
@@ -218,7 +198,7 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 						sources[source] = source
 						paths = append(paths, source)
 					}
-					break
+					return nil
 				}
 				if parsed.Scheme == "peb" && parsed.Host == r.remote.Info.ID {
 					name = strings.TrimPrefix(name, "/")
@@ -232,7 +212,7 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 					return fmt.Errorf("不支持的编辑器图片格式 %q", name)
 				}
 				uri := "peb://" + r.remote.Info.ID + "/" + name
-				node.Attr[i].Val = uri
+				n.SetAttr("src", uri)
 				if _, ok := sources[name]; !ok {
 					if len(paths) == maxAssets {
 						return fmt.Errorf("编辑器图片资源超过 %d 项", maxAssets)
@@ -240,24 +220,31 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 					sources[name] = uri
 					paths = append(paths, name)
 				}
-				break
+				return nil
+			}
+			if err := prepareImage(); err != nil {
+				return err
+			}
+			if region != nil {
+				region.images = append(region.images, regionImage{strings.Clone(source), strings.Clone(n.AttrValue("src"))})
 			}
 		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			if err := walk(child); err != nil {
+		for _, child := range n.Children {
+			if err := walk(child, region, flowDepth); err != nil {
 				return err
 			}
 		}
+		if entered != nil {
+			entered.focusEnd = focusCount
+		}
 		return nil
 	}
-	for _, node := range nodes {
-		if err := walk(node); err != nil {
-			return nil, err
-		}
+	if err := walk(root, nil, 0); err != nil {
+		return nil, err
 	}
 	if len(paths) == 0 {
 		if changed {
-			return nil, renderViewNodes(view, nodes)
+			view.HTML = markup.HTMLWithSizeHint(root, len(source))
 		}
 		return nil, nil
 	}
@@ -296,7 +283,29 @@ func (r *viewResources) prepare(ctx context.Context, view *peb.EditorView, surfa
 		}
 		assets[sources[name]] = asset.data
 	}
-	return assets, renderViewNodes(view, nodes)
+	view.HTML = markup.HTMLWithSizeHint(root, len(source))
+	return assets, nil
+}
+
+func prepareSurfaceControl(n *node.Node, remote *client.Extension, surfaceID string, focusCount *int) bool {
+	_, tab := n.Attr("tabindex")
+	_, href := n.Attr("href")
+	edit, editable := n.Attr("contenteditable")
+	if !(n.Data == "form" || n.Data == "button" || n.Data == "input" || n.Data == "select" || n.Data == "textarea" || n.Data == "a" && href || tab || editable && edit != "false") {
+		return false
+	}
+	ref := n.AttrValue("data-ref")
+	generated := ref == ""
+	if generated {
+		ref = "@peb-focus-" + strconv.Itoa(*focusCount)
+		n.SetAttr("data-ref", ref)
+	}
+	*focusCount++
+	if n.AttrValue("id") != "" {
+		return generated
+	}
+	n.SetAttr("id", "pencode-extension-ui/"+remote.Info.ID+"/"+surfaceID+"/control-"+ref)
+	return true
 }
 
 // Inline images become validated, memory-backed assets just like bundled
@@ -426,17 +435,6 @@ func (r *viewResources) documentImage(ctx context.Context, source string) (strin
 	return uri, nil
 }
 
-func renderViewNodes(view *peb.EditorView, nodes []*html.Node) error {
-	var markup strings.Builder
-	for _, node := range nodes {
-		if err := html.Render(&markup, node); err != nil {
-			return err
-		}
-	}
-	view.HTML = markup.String()
-	return nil
-}
-
 func imageConfig(name string, data []byte) (image.Config, error) {
 	switch strings.ToLower(path.Ext(name)) {
 	case ".svg":
@@ -450,4 +448,28 @@ func imageConfig(name string, data []byte) (image.Config, error) {
 	default:
 		return image.Config{}, fmt.Errorf("unsupported image format")
 	}
+}
+
+// DocumentImage holds validated bytes and intrinsic dimensions for a single paint request.
+type DocumentImage struct {
+	URI           string
+	Data          []byte
+	Width, Height int
+}
+
+func (e *Editor) ReadDocumentImage(ctx context.Context, root, document, source string) (DocumentImage, error) {
+	// Each lazy read has its own budget. The view owns successful results.
+	r := viewResources{remote: e.remote, root: root, document: document, cache: make(map[string]viewResource, 1)}
+	var uri string
+	var err error
+	if strings.HasPrefix(source, "data:") {
+		uri, err = r.inlineImage(source)
+	} else {
+		uri, err = r.documentImage(ctx, source)
+	}
+	if err != nil {
+		return DocumentImage{}, err
+	}
+	asset := r.cache[uri]
+	return DocumentImage{uri, asset.data, asset.config.Width, asset.config.Height}, nil
 }

@@ -63,7 +63,7 @@ func TestRemoteExtensionSettingsInitialAndLiveSessions(t *testing.T) {
 		data, _ := json.Marshal(name)
 		return peb.SettingValues{"name": data}
 	}
-	session := bundle.Actions.Start(values("saved"), nil)
+	session := bundle.Actions.Start("", values("saved"), nil)
 	defer session.Close()
 	waitAction := func(want string) {
 		t.Helper()

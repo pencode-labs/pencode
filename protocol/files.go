@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -57,12 +58,13 @@ func IsTextFile(name string) bool {
 	return strings.HasPrefix(name, ".env.") || strings.HasPrefix(name, "dockerfile.") || strings.HasPrefix(name, "containerfile.")
 }
 
-// IsBinaryFile is a cheap search prefilter. Unknown types still undergo content
-// checks during search, even though opening them requires an editor choice.
+var binaryExtensions = []string{"png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "ttf", "otf", "woff", "woff2", "mp3", "wav", "ogg", "mp4", "mov", "webm", "mkv", "avi", "bin", "glb", "zip", "gz", "pdf", "exe", "dll", "so", "a", "o", "class", "jar", "wasm", "7z", "rar", "bz2", "xz", "sqlite", "db"}
+
+// BinarySearchGlob excludes known binary extensions from ripgrep's directory walk.
+var BinarySearchGlob = "!*.{" + strings.Join(binaryExtensions, ",") + "}"
+
+// IsBinaryFile is a cheap search prefilter. Unknown types undergo content checks.
 func IsBinaryFile(name string) bool {
-	switch strings.ToLower(path.Ext(name)) {
-	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".ico", ".ttf", ".otf", ".woff", ".woff2", ".mp3", ".wav", ".ogg", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".bin", ".glb", ".zip", ".gz", ".pdf", ".exe", ".dll", ".so", ".a", ".o", ".class", ".jar", ".wasm", ".7z", ".rar", ".bz2", ".xz", ".sqlite", ".db":
-		return true
-	}
-	return false
+	ext := path.Ext(name)
+	return len(ext) > 1 && slices.Contains(binaryExtensions, strings.ToLower(ext[1:]))
 }

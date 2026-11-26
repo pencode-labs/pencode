@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -22,6 +23,115 @@ func tabContextRightClick(t *testing.T, app *onix.App, m *workspaceModel, state 
 	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseRight, X: x, Y: y})
 	languageInteractionStep(t, app)
 	languageInteractionStep(t, app)
+}
+
+func TestExtensionAndFileTabsFollowOpenOrder(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	project, first := m.activeProjectState(), m.activePath
+	const second = "second.txt"
+	if err := os.WriteFile(filepath.Join(project.Path, second), []byte(second), 0644); err != nil {
+		t.Fatal(err)
+	}
+	process := &extensions.ActionSession{}
+	show := func(id, title string) {
+		t.Helper()
+		if err := m.applyExtensionUI("test", process, peb.UI{ID: id, Kind: peb.EditorTab, Title: title, View: &peb.EditorView{HTML: "<p>tool</p>"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	show("one", "One")
+	one := m.actions.ui.editor
+	openFileAndWait(t, m, second)
+	show("two", "Two")
+	two := m.actions.ui.editor
+	show("one", "Updated")
+	markPencodeRootDirtyByModel(m.fontResources, m)
+	languageInteractionStep(t, app)
+
+	lastX := float32(-1)
+	for _, id := range []string{project.Path + ":" + first, one.rootID, project.Path + ":" + second, two.rootID} {
+		x := editorContextBounds(t, m, "file-tab-close:"+id).X
+		if x <= lastX {
+			t.Fatalf("tab %q at x=%g should follow x=%g", id, x, lastX)
+		}
+		lastX = x
+	}
+
+	m.runShortcut(m.fontResources, pencodeShortcutPrevious)
+	if m.activeFile() != project.Files[second] {
+		t.Fatal("previous tab from the second extension should be the second file")
+	}
+	m.runShortcut(m.fontResources, pencodeShortcutPrevious)
+	if m.actions.ui.editor != one {
+		t.Fatal("previous tab from the second file should be the first extension")
+	}
+	m.runShortcut(m.fontResources, pencodeShortcutNext)
+	m.closeTab(second)
+	if m.actions.ui.editor != two {
+		t.Fatal("closing the middle file should select the extension on its right")
+	}
+	openFileAndWait(t, m, second)
+	markPencodeRootDirtyByModel(m.fontResources, m)
+	languageInteractionStep(t, app)
+	tabContextRightClick(t, app, m, state, "file-tab:"+one.rootID)
+	editorContextClick(t, app, m, state, "tab-context-right")
+	if len(m.actions.ui.surfaces) != 1 || m.actions.ui.editor != one || !slices.Equal(project.Tabs, []string{first}) {
+		t.Fatalf("close right of first extension left files %v and %d extension tabs", project.Tabs, len(m.actions.ui.surfaces))
+	}
+}
+
+func TestClosingExtensionSelectsLooseFileInOpenOrder(t *testing.T) {
+	s, m := externalTestSession(t)
+	open := func() *pencodeProject {
+		root := t.TempDir()
+		resourceTestWrite(t, &pencodeProject{Path: root}, "same.txt", root)
+		s.OpenPaths(filepath.Join(root, "same.txt"))
+		settleExternalPaths(t, s, m)
+		return m.activeProjectState()
+	}
+	first := open()
+	if err := m.applyExtensionUI("test", &extensions.ActionSession{}, peb.UI{ID: "tool", Kind: peb.EditorTab, View: &peb.EditorView{HTML: "<p>tool</p>"}}); err != nil {
+		t.Fatal(err)
+	}
+	tool := m.actions.ui.editor
+	second := open()
+	m.activateProject(first)
+	want := []pencodeEditorTab{{project: first, path: "same.txt"}, {surface: tool}, {project: second, path: "same.txt"}}
+	if got := slices.Collect(m.editorTabs()); !slices.Equal(got, want) {
+		t.Fatalf("wrong file and extension order across directories: %v", got)
+	}
+	m.closeExtensionSurface(tool, "button", true)
+	if m.activeProjectState() != second || m.activeFile() != second.Files["same.txt"] || len(m.projectActions(first).ui.surfaces) != 0 {
+		t.Fatal("closing the extension should remove it from its project and select the neighboring loose file")
+	}
+}
+
+func TestPreviewReplacementKeepsPositionBetweenExtensionTabs(t *testing.T) {
+	p := &pencodeProject{}
+	m := &workspaceModel{projects: []*pencodeProject{p}}
+	m.syncActiveProjectFields()
+	show := func(id string) *pencodeExtensionSurface {
+		t.Helper()
+		if err := m.applyExtensionUI("test", &extensions.ActionSession{}, peb.UI{ID: id, Kind: peb.EditorTab, View: &peb.EditorView{HTML: "<p>tool</p>"}}); err != nil {
+			t.Fatal(err)
+		}
+		return m.actions.ui.editor
+	}
+	left := show("left")
+	acceptProjectFile(p, "old.txt", true, nil, "")
+	right := show("right")
+	acceptProjectFile(p, "new.txt", true, nil, "")
+	want := []pencodeEditorTab{{surface: left}, {project: p, path: "new.txt"}, {surface: right}}
+	if tabs := slices.Collect(m.editorTabs()); !slices.Equal(tabs, want) {
+		t.Fatalf("preview moved in the strip: %v", tabs)
+	}
+	if n := testing.AllocsPerRun(100, func() {
+		for range m.editorTabs() {
+		}
+	}); n != 0 {
+		t.Fatalf("walking the tab strip allocated %g times", n)
+	}
 }
 
 func TestTabContextAllEditorKinds(t *testing.T) {
@@ -92,8 +202,8 @@ func mixedEditorTabs(t *testing.T) (*workspaceModel, *pencodeProject, *pencodeEx
 	}}
 	m := &workspaceModel{projects: []*pencodeProject{p}}
 	m.syncActiveProjectFields()
-	tool := &pencodeExtensionSurface{model: m, session: &extensions.ActionSession{}, ui: peb.UI{ID: "tool", Kind: peb.EditorTab}}
-	panel := &pencodeExtensionSurface{model: m, ui: peb.UI{Kind: peb.Panel}}
+	tool := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, session: &extensions.ActionSession{}, ui: peb.UI{ID: "tool", Kind: peb.EditorTab}}
+	panel := &pencodeExtensionSurface{project: m.activeProjectState(), model: m, ui: peb.UI{Kind: peb.Panel}}
 	m.actions.ui.surfaces = []*pencodeExtensionSurface{panel, tool}
 	p.sourceControl.Tabs = []*sourceTab{{Key: "diff", Kind: "changes"}, {Key: "merge", Kind: "merge"}}
 	return m, p, tool

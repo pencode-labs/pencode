@@ -137,7 +137,7 @@ func (model *workspaceModel) relocateProjectResources(source, target *pencodePro
 				source.Tabs[write] = updated.Path
 				write++
 			} else {
-				target.Tabs = append(target.Tabs, updated.Path)
+				target.Tabs = appendFileTab(target.Tabs, &updated)
 			}
 		} else if file != nil {
 			file.closeDocument()
@@ -235,6 +235,11 @@ func (model *workspaceModel) transferProjectResources(clipboard pencodeFileClipb
 func (model *workspaceModel) submitResourceIO(j *fileIOJob, paths ...string) error {
 	if model.fileIO != nil {
 		for _, pending := range model.fileIO.pending {
+			// The worker delivers reload and removal results in order. A
+			// removal only needs paths, so a watch reload may finish first.
+			if pending.kind == fileHistoryList || j.kind == fileRemove && pending.kind == fileReload && pending.external {
+				continue
+			}
 			if pending.project == j.project || pending.target == j.project || j.target != nil && (pending.project == j.target || pending.target == j.target) {
 				return fmt.Errorf("%s", model.tr("请等待当前文件任务完成"))
 			}
@@ -290,7 +295,8 @@ func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 			}
 		}
 	}
-	if c := &model.fileContext; c.pending && c.project == j.project && c.path == j.relative &&
+	c := &model.projectInteraction(j.initiator).fileContext
+	if c.pending && c.project == j.project && c.path == j.relative &&
 		(j.kind == fileCreate && c.creating() || j.kind == fileRename && c.dialog == "rename") {
 		if r.err != nil {
 			c.pending, c.needsFocus, c.err = false, true, r.err.Error()
@@ -338,7 +344,7 @@ func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 			next := *j
 			next.imports = j.imports[r.importIndex:]
 			name := filepath.Base(next.imports[0])
-			model.fileContext = pencodeFileContext{project: j.project, transfer: &next, dialog: "overwrite", title: model.tr("覆盖文件？"), needsFocus: true,
+			*c = pencodeFileContext{project: j.project, transfer: &next, dialog: "overwrite", title: model.tr("覆盖文件？"), needsFocus: true,
 				message: fmt.Sprintf(model.tr("“%s”已存在，是否覆盖？文件夹将合并，并覆盖其中的同名文件。未保存的编辑会保留。"), path.Join(j.destination, name))}
 			return
 		}
@@ -356,8 +362,7 @@ func (model *workspaceModel) acceptResourceIO(r *fileIOResult) {
 		model.setProjectStatus(target, model.tr("资源已移动，文档重新连接失败：")+err.Error())
 		break
 	}
-	if j.kind == fileCreate && !j.directory && model.canOpenFile(j.destination) {
-		model.activateProject(target)
+	if j.kind == fileCreate && !j.directory && j.initiator == model.activeProjectState() && target == j.initiator && model.canOpenFile(j.destination) {
 		model.openProjectFile(target, j.destination)
 	}
 }

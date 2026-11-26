@@ -22,10 +22,11 @@ UI languages: change **Settings → Appearance → Display language** for Chines
 
 | Area | Implemented capabilities |
 | --- | --- |
-| Editing | Tabs, undo/redo, find and replace, quick file opening, soft wrapping, and a piece-tree text buffer |
+| Editing | Untitled tabs (Ctrl+N, or ⌘N on macOS), undo/redo, find and replace, quick file opening, soft wrapping, and a piece-tree text buffer |
 | Language tools | Incremental syntax highlighting; LSP completion, diagnostics, navigation, rename, formatting, and code actions, depending on the language server |
 | Terminal | Multiple shell sessions, Linux/macOS PTY, Windows ConPTY, Unicode, true color, and scrollback |
-| Debugger | DAP sessions, Go/Delve quick start, breakpoints, stepping, call stacks, variables, and expression evaluation in local and SSH workspaces |
+| Debugger | DAP launchers for Go, PHP, Python, Dart, C#, C, C++, Objective-C, Objective-C++, Rust, Zig, and Swift, with breakpoints, stepping, call stacks, variables, and expression evaluation in local and SSH workspaces |
+| Local history | Right-click a file or folder in the explorer to view its history in Source Control. Click a version to compare it with the current file, including unsaved edits, or right-click it to restore. Changes written directly by external tools do not create entries. By default the workspace host records saves up to 256 KiB, merges saves from the same source within 10 seconds, and keeps the latest 50 entries per file. File and folder moves carry existing history to the new path. The host’s `settings.json` supports `workbench.localHistory.enabled`, `maxFileSize` (KiB), `maxFileEntries`, `mergeWindow` (seconds), and `exclude` (for example, `"workbench.localHistory.exclude": {"**/dist/**": true}`). All five keys use the `workbench.localHistory.` prefix. |
 | Git | Staging, commits, branch and history views, file comparisons, and a three-way merge editor |
 | Remote work | System OpenSSH or token-authenticated WebSocket connections, with file operations, terminals, language servers, and extensions running on the workspace host |
 | Customization | System fonts, VS Code JSON/JSONC color themes, file icon themes, and syntax capture mappings |
@@ -44,7 +45,7 @@ File changes use native FSEvents on macOS, recursive `ReadDirectoryChangesW` on 
 - Go **1.27.0 or newer**.
 - An Onix checkout next to this repository, named `onix`. The current `go.mod` uses `replace github.com/onix-engine/onix => ../onix`.
 - The native development libraries required by Onix for desktop builds; see `docs/desktop-builds.md` in the Onix checkout.
-- System `git` for source control and OpenSSH `ssh` for SSH connections. Manage workspace language servers in **Settings → Language Servers**. Pencode detects executables on the workspace host and uses the active server’s semantic highlighting automatically.
+- System `git` for source control and OpenSSH `ssh` for SSH connections. Manage workspace tools in **Settings → Language Servers** and **Settings → Debuggers (DAP)**. Pencode detects tools on the workspace host and applies semantic highlighting from the active language server. [Language server setup](lsp/README.md#内置语言服务器) · [Debugger setup](debugger/README.md#adapter-settings)
 - Text fonts installed on the GUI host. Pencode bundles Symbols Nerd Font Mono as a fallback for shell prompt icons.
 - Image paste on Linux requires `wl-paste` (from `wl-clipboard`) on Wayland or `xclip` on X11. Windows and macOS use native clipboard APIs.
 
@@ -69,6 +70,8 @@ Use an Onix checkout that provides `github.com/onix-engine/onix/html/parse` and 
 ```sh
 go build ./...
 ```
+
+Unpackaged Go builds use `rg` from `PATH` for search. The Makefile and release builds download ripgrep 16.0.0 for each build target, verify its SHA-256, and embed it in the desktop or server executable. The verified downloads are cached in the Git-ignored `internal/ripgrep/bundle/` directory.
 
 To compile and install `pencode-server` and reinstall the bundled extensions before starting Pencode, run:
 
@@ -155,7 +158,7 @@ For remote workspaces, settings and extensions belong to the workspace host; sys
 
 ## Extensions
 
-Extensions are native executables or JavaScript bundles compiled from TypeScript, communicating with the server through **peb v20**, a binary protocol over stdin/stdout. Within each window, one process per extension serves its workbench actions and document views; closing a view releases its session while the process remains until the connection closes or the extension is revoked. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
+Extensions are native executables or JavaScript bundles compiled from TypeScript, communicating with the server through **peb v20**, a binary protocol over stdin/stdout. Within each project, one process per extension serves its workbench actions and document views. Closing a view releases its session. Closing the project, closing the connection, or revoking the extension releases the process. Logs go to stderr. They run with the server user's permissions, including on remote workspace hosts.
 
 Download prebuilt extension packages from their releases and extract them directly into the workspace server's `~/.pencode/extensions/` directory. See [extension releases](extensions/README.md) for the fixed package format, platform support and download links.
 
@@ -176,7 +179,7 @@ For an existing checkout, initialize the submodules with `git submodule update -
 (cd extensions/docker && go build -o bin/docker .)
 ```
 
-The current extension protocol is peb v20 (CS v20). Older extensions must be rebuilt with the current SDK.
+The current extension protocol is peb v20 (CS v26). Older extensions must be rebuilt with the current SDK.
 
 The workspace host recognizes `.js`, `.mjs`, and `.cjs` entries and launches them with Node.js from its PATH, falling back to Bun. Runtime loading never invokes a package manager; compile TypeScript and bundle dependencies first. See the [TypeScript SDK](peb/ts/README.md). `make install-extensions` uses npm (or Bun) with the lockfile, runs the package build, and installs its output directory, resources and package.json. The package metadata preserves ESM/CJS behavior for `.js`; JavaScript entries keep the same name on every platform.
 

@@ -21,6 +21,7 @@ import (
 	"github.com/onix-engine/onix/graphics/codec/png"
 	graphicssvg "github.com/onix-engine/onix/graphics/codec/svg"
 	"github.com/onix-engine/onix/graphics/codec/webp"
+	"github.com/onix-engine/onix/html/markup"
 	onixsvg "github.com/onix-engine/onix/images/svg"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
@@ -78,7 +79,9 @@ type openFile struct {
 	pageLabel       string
 	pencodeEditHistory
 	editorView             pencodeEditorView
+	treeIndex              int
 	editorGeneration       uint64
+	tabOrder               uint64
 	saveRevision           uint64
 	page                   protocol.DocumentPage
 	pageLoading, pageDirty bool
@@ -97,10 +100,13 @@ type pencodeEdit struct {
 }
 
 type pencodeProject struct {
+	output                  *output.Store
+	view                    pencodeProjectView
 	restoring               *pencodeProjectState
 	terminals               *pencodeTerminals
 	debugBreakpoints        map[string][]pencodeBreakpoint
 	watch                   *pencodeProjectWatch
+	tabWatches              map[string]*localTabWatch
 	Files                   map[string]*openFile
 	scan                    *pencodeProjectScan
 	backend                 *client.Client
@@ -128,140 +134,143 @@ type pencodeProject struct {
 }
 
 type workspaceModel struct {
-	builtinTools                        *pencodeBuiltinTools
-	locale                              localization.Pack
-	languagePacks                       []pencodeLanguagePack
-	languageOptions                     []htmlui.VNode
-	highlightDue                        time.Time
-	syntaxMemoryDue                     time.Time
-	lastFileClickAt                     time.Time
-	syntaxDefinitions                   *syntax.Definitions
-	terminals                           *pencodeTerminals // active project's terminal state
-	standaloneTerminals                 *pencodeTerminals
-	extensionImages                     map[string]pencodeExtensionImage
-	hoverCancel                         context.CancelFunc
-	hoverWorker                         *latestWorker[pencodeHoverJob, pencodeHoverResult]
-	hoverDocument                       *client.Syntax
-	highlightCancel                     context.CancelFunc
-	highlightWorker                     *latestWorker[pencodeHighlightJob, pencodeHighlightResult]
-	backend                             *client.Client
-	files                               map[string]*openFile
-	referenceWorker                     *latestWorker[pencodeReferenceJob, pencodeReferenceResult]
-	output                              *output.Store
-	highlightCache                      *pencodeHighlightCache
-	expandedDirs                        map[string]bool
-	ports                               *pencodePorts
-	syntaxTheme                         *syntax.Theme
-	revealProject                       *pencodeProject
-	fileIcons                           *pencodeFileIcons
-	quickWorker                         *latestWorker[pencodeQuickJob, pencodeQuickResult]
-	languages                           *pencodeLanguageState
-	workbenchTheme                      *pencodeTheme
-	customDocuments                     map[*openFile]*pencodeCustomDocument
-	referenceCancel                     context.CancelFunc
-	findPattern                         *textsearch.Pattern
-	session                             *Session
-	market                              *pencodeMarketplace
-	extensionStates                     map[string]pencodeExtensionState
-	app                                 *module.Host
-	fontResources                       *module.Content
-	fonts                               map[string]pencodeFont
-	defaultFont                         *text.Font
-	fileIO                              *pencodeFileIO
-	quickCancel                         context.CancelFunc
-	extensionIcons                      map[string][]byte
-	shortcutLabels                      [pencodeShortcutCount]string
-	shortcutAriaLabels                  [pencodeShortcutCount]string
-	quickMatches                        [8]string
-	highlightedContent                  piecetree.Snapshot
-	findContent                         piecetree.Snapshot
-	findPreview                         *pencodeCustomDocument
-	replaceQuery                        string
-	shortcutQuery                       string
-	defaultFontID                       string
-	extensionFeedback                   string
-	findQuery                           string
-	findCachedQuery                     string
-	settingsPath                        string
-	activePath                          string
-	defaultUIFontID                     string
-	lineInfo                            string
-	findCountLabel                      string
-	projectName                         string
-	selectionPrevious                   string
-	revealPath                          string // pending reveal row, empty when nothing is pending
-	captureAction                       string
-	highlightedPath                     string
-	keymapName                          string
-	findError                           string
-	settingsFeedback                    string
-	zoomLabel                           string
-	uiFontSizeLabel                     string
-	fontSizeLabel                       string
-	status                              string
-	editorWidthLabel                    string
-	editorStyle                         string
-	settingsExtension                   string
-	themeSourceCSS                      string
-	lastDirectory                       string
-	quickProjectPath                    string
-	sidebarWidthStyle                   string
-	sourceChangesWidthStyle             string
-	quickCachedQuery                    string
-	projectPath                         string
-	quickQuery                          string
-	editorHeader                        pencodeEditorHeader
-	projectMenu                         pencodeProjectMenu
-	fileClipboard                       pencodeFileClipboard
-	navigation                          pencodeNavigationHistory
-	highlightRebaseScratch              []sceneapi.TextSpan2D
-	entries                             []treeEntry
-	findMatches                         []textsearch.Match
-	iconThemeOptions                    []htmlui.VNode
-	fileIconThemes                      []*pencodeFileIcons
-	themeOptions                        []htmlui.VNode
-	themes                              []pencodeTheme
-	uiFontOptions                       []htmlui.VNode
-	customEditors                       []*extensions.Editor
-	projects                            []*pencodeProject
-	highlightScratch                    []sceneapi.TextSpan2D
-	findScope, findCachedScope          pencodeFindScope
-	extensionSettings                   []*pencodeExtensionSettings
-	debugTemplates                      []pencodeDebugTemplate
-	debugTemplateRows                   []pencodeDebugRow
-	tabs                                []string
-	codeFontOptions                     []htmlui.VNode
-	projectTabScroll                    pencodeTabScroll
-	tabScroll                           pencodeTabScroll
-	tooltip                             pencodeTooltip
-	tabContext                          pencodeTabContext
-	highlightRequest                    pencodeHighlightJob
-	settings                            pencodeSettings
-	fileContext                         pencodeFileContext
-	fileDrag                            pencodeFileDrag
-	bottom                              pencodeBottomPanel
-	closing                             pencodeCloseRequest
-	fileClose                           pencodeCloseRequest
-	customClose                         pencodeCloseRequest
-	portUI                              pencodePortUI
-	inputContext                        pencodeInputContext
-	terminalView                        pencodeTerminalView
-	folderSearch                        pencodeFolderSearch
-	actions                             pencodeActionState
-	debug                               pencodeDebugState
-	languageUI                          pencodeLanguageInteraction
-	editor                              pencodeEditor
-	sourceControl                       pencodeSourceControl
-	characterCount                      int
-	activeProjectIndex                  int
-	nextTerminalID                      uint64
-	findRevision                        uint64
-	surface                             ecs.Entity
-	editorGeneration                    uint64
-	semanticPaintRevision               uint64
-	extensionImageRevision              uint64
-	lineCount                           int
-	findIndex                           int
+	pencodeProjectInteraction
+	viewProject         *pencodeProject
+	launcherView        pencodeProjectView
+	storage             *storagePage
+	builtinTools        *pencodeBuiltinTools
+	locale              localization.Pack
+	languagePacks       []pencodeLanguagePack
+	languageOptions     []htmlui.VNode
+	highlightDue        time.Time
+	syntaxMemoryDue     time.Time
+	lastFileClickAt     time.Time
+	syntaxDefinitions   *syntax.Definitions
+	terminals           *pencodeTerminals // active project's terminal state
+	standaloneTerminals *pencodeTerminals
+	extensionImages     map[string]pencodeExtensionImage
+	hoverCancel         context.CancelFunc
+	hoverWorker         *latestWorker[pencodeHoverJob, pencodeHoverResult]
+	hoverDocument       *client.Syntax
+	highlightCancel     context.CancelFunc
+	highlightWorker     *latestWorker[pencodeHighlightJob, pencodeHighlightResult]
+	backend             *client.Client
+	files               map[string]*openFile
+	referenceWorker     *latestWorker[pencodeReferenceJob, pencodeReferenceResult]
+	output              *output.Store
+	highlightCache      *pencodeHighlightCache
+	expandedDirs        map[string]bool
+	ports               *pencodePorts
+	syntaxTheme         *syntax.Theme
+	revealProject       *pencodeProject
+	fileIcons           *pencodeFileIcons
+	quickWorker         *latestWorker[pencodeQuickJob, pencodeQuickResult]
+	languages           *pencodeLanguageState
+	workbenchTheme      *pencodeTheme
+	customDocuments     map[*openFile]*pencodeCustomDocument
+	referenceCancel     context.CancelFunc
+	findPattern         *textsearch.Pattern
+	session             *Session
+	market              *pencodeMarketplace
+	extensionStates     map[string]pencodeExtensionState
+	app                 *module.Host
+	fontResources       *module.Content
+	fonts               map[string]pencodeFont
+	defaultFont         *text.Font
+	fileIO              *pencodeFileIO
+	quickCancel         context.CancelFunc
+	extensionIcons      map[string][]byte
+	shortcutLabels      [pencodeShortcutCount]string
+	shortcutAriaLabels  [pencodeShortcutCount]string
+	quickMatches        [8]string
+	highlightedContent  piecetree.Snapshot
+	findContent         piecetree.Snapshot
+
+	defaultFontID string
+
+	findCachedQuery   string
+	settingsPath      string
+	activePath        string
+	defaultUIFontID   string
+	lineInfo          string
+	findCountLabel    string
+	projectName       string
+	selectionPrevious string
+	revealPath        string // pending reveal row, empty when nothing is pending
+	captureAction     string
+	highlightedPath   string
+	keymapName        string
+	findError         string
+
+	zoomLabel        string
+	uiFontSizeLabel  string
+	fontSizeLabel    string
+	status           string
+	editorWidthLabel string
+	editorStyle      string
+
+	themeSourceCSS          string
+	lastDirectory           string
+	quickProjectPath        string
+	sidebarWidthStyle       string
+	sourceChangesWidthStyle string
+	quickCachedQuery        string
+	projectPath             string
+
+	editorHeader  pencodeEditorHeader
+	projectMenu   pencodeProjectMenu
+	fileClipboard pencodeFileClipboard
+
+	highlightRebaseScratch  []sceneapi.TextSpan2D
+	entries                 []treeEntry
+	findMatches             []textsearch.Match
+	iconThemeOptions        []htmlui.VNode
+	fileIconThemes          []*pencodeFileIcons
+	themeOptions            []htmlui.VNode
+	themes                  []pencodeTheme
+	uiFontOptions           []htmlui.VNode
+	customEditors           []*extensions.Editor
+	projects                []*pencodeProject
+	highlightScratch        []sceneapi.TextSpan2D
+	findCachedScope         pencodeFindScope
+	extensionSettings       []*pencodeExtensionSettings
+	extensionDebugTemplates []pencodeDebugTemplate
+	debugTemplateRows       []pencodeDebugRow
+	tabScratch              []orderedEditorTab
+	tabs                    []string
+	codeFontOptions         []htmlui.VNode
+	projectTabScroll        pencodeTabScroll
+	tabScroll               pencodeTabScroll
+	tooltip                 pencodeTooltip
+	tabContext              pencodeTabContext
+	highlightRequest        pencodeHighlightJob
+	settings                pencodeSettings
+
+	fileDrag     pencodeFileDrag
+	bottom       pencodeBottomPanel
+	closing      pencodeCloseRequest
+	fileClose    pencodeCloseRequest
+	customClose  pencodeCloseRequest
+	portUI       pencodePortUI
+	inputContext pencodeInputContext
+	terminalView pencodeTerminalView
+	folderSearch pencodeFolderSearch
+	actions      pencodeActionState
+
+	languageUI             pencodeLanguageInteraction
+	editor                 pencodeEditor
+	sourceControl          pencodeSourceControl
+	characterCount         int
+	untitledSequence       uint64
+	activeProjectIndex     int
+	nextTerminalID         uint64
+	findRevision           uint64
+	surface                ecs.Entity
+	editorGeneration       uint64
+	semanticPaintRevision  uint64
+	extensionImageRevision uint64
+	lineCount              int
+
 	referenceRevision, referenceApplied uint64
 	windowTitlebarHeight                float64
 	quickRevision                       uint64
@@ -274,34 +283,31 @@ type workspaceModel struct {
 	hoverRevision, hoverApplied         uint64
 	highlightPaintRevision              uint64
 	quickCount                          int
-	quickIndex                          int
-	root                                ecs.Entity
-	resize                              pencodeWorkbenchResize
-	viewportHeight                      float32
-	viewportWidth                       float32
-	findOptions                         textsearch.Options
-	findCachedOptions                   textsearch.Options
-	screen                              pencodeScreen
-	findOpen                            bool
-	allDirectoriesCollapsed             bool
-	replaceOpen                         bool
-	findNeedsFocus                      bool
-	settingsLanguageServers             bool
-	settingsShortcuts                   bool
-	settingsAbout                       bool
-	highlighted                         bool
-	settingsOpen                        bool
-	highlightPending                    bool
-	settingsRemote                      bool
-	settingsExtensions                  bool
-	quickFocusEditor                    bool
-	quickNeedsFocus                     bool
-	quickOpen                           bool
-	refresh                             pencodeRefresh
-	settingsExtensionsExpanded          bool
-	findSelection                       bool
-	capturingShortcut                   bool
-	fullRefresh                         bool
+
+	root           ecs.Entity
+	resize         pencodeWorkbenchResize
+	viewportHeight float32
+	viewportWidth  float32
+
+	findCachedOptions textsearch.Options
+	screen            pencodeScreen
+
+	allDirectoriesCollapsed bool
+	settingsRemote          bool
+
+	findNeedsFocus bool
+
+	highlighted bool
+
+	highlightPending bool
+
+	quickFocusEditor bool
+	quickNeedsFocus  bool
+
+	refresh pencodeRefresh
+
+	capturingShortcut bool
+	fullRefresh       bool
 }
 
 type appProps struct {
@@ -314,45 +320,43 @@ type appState struct {
 }
 
 type treeProps struct {
-	Model     *workspaceModel
-	Theme     *pencodeTheme
-	Icons     *pencodeFileIcons
-	Project   *pencodeProject
-	Path      string
-	RowID     string
-	TreeID    string
-	Name      string
-	Depth     int
-	IsDir     bool
-	Openable  bool
-	HasErrors bool
-	Editing   bool
-	Ignored   bool
-	GitStatus treeGitStatus
+	Model      *workspaceModel
+	Theme      *pencodeTheme
+	Icons      *pencodeFileIcons
+	Project    *pencodeProject
+	Path       string
+	RowID      string
+	TreeID     string
+	Name       string
+	Depth      int
+	IsDir      bool
+	Openable   bool
+	Editing    bool
+	Decoration fileNameDecoration
 }
 
 // Keyed rows retain their last rendered bindings across tree updates.
 type treeRowState struct {
-	rowID, name, class, nameClass, arrow, icon  string
+	rowID, name, class, decoration, arrow, icon string
 	depth                                       int
 	directory, selected, expanded, multiProject bool
 }
 
 type tabProps struct {
-	Model     *workspaceModel
-	Surface   *pencodeExtensionSurface
-	Theme     *pencodeTheme
-	Icons     *pencodeFileIcons
-	Project   *pencodeProject
-	Path      string
-	Name      string
-	Icon      string
-	Active    bool
-	Preview   bool
-	Dirty     bool
-	Busy      bool
-	Unread    bool
-	HasErrors bool
+	Model      *workspaceModel
+	Surface    *pencodeExtensionSurface
+	Theme      *pencodeTheme
+	Icons      *pencodeFileIcons
+	Project    *pencodeProject
+	Path       string
+	Name       string
+	Icon       string
+	Active     bool
+	Preview    bool
+	Dirty      bool
+	Busy       bool
+	Unread     bool
+	Decoration fileNameDecoration
 }
 
 type projectProps struct {
@@ -426,18 +430,32 @@ func seedPencodeViewport(world *module.Content, app *module.Host) {
 }
 
 func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefinitions, error) {
-	page, translations, err := localizedPencodeTemplate(page)
+	document, translations, err := localizedPencodeTemplate(page, "")
+	if err != nil {
+		return nil, err
+	}
+	pageTemplate, err := htmlui.NewDocumentTemplate(document)
 	if err != nil {
 		return nil, err
 	}
 	definitions := &pencodeDefinitions{}
+	treeTemplate, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "row", "class", "pencode-tree-row", "type", "button", "role", "treeitem")
+		b.Element("img", "data-ref", "arrow", "class", "pencode-tree-arrow", "src", "icons/chevron-right.svg", "alt", "")
+		b.Element("img", "data-ref", "icon", "class", "pencode-tree-icon", "src", "icons/file-text.svg", "alt", "")
+		b.Element("span", "data-ref", "name", "class", "pencode-tree-name")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	definitions.tree, err = content.Define[treeProps, treeRowState](
-		htmlui.NewTemplate(`<button data-ref="row" class="pencode-tree-row" type="button" role="treeitem"><img data-ref="arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt=""><img data-ref="icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tree-name"></span></button>`), "",
+		treeTemplate, "",
 		module.ContentBehavior[treeProps, treeRowState]{
 			Render: func(context module.ContentRenderContext[treeProps, treeRowState], view *htmlui.View) {
 				props := context.Props
 				row := treeRowState{
-					rowID: context.State.rowID, name: props.Name, class: treeRowClass(props), nameClass: props.GitStatus.nameClass(),
+					rowID: context.State.rowID, name: props.Name, class: treeRowClass(props), decoration: props.Decoration.value(),
 					icon:  props.Model.themedIcon(treeIcon(props), treeIconForeground(props)),
 					depth: props.Depth, directory: props.IsDir, selected: props.Project.tree.selection.contains(props.Path),
 					multiProject: len(props.Model.projects) > 1,
@@ -449,11 +467,6 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				if props.IsDir {
 					row.expanded = props.Model.isProjectDirectoryExpanded(props.Project, props.Path, props.Depth)
 					row.arrow = props.Model.themedIcon("icons/chevron-right.svg", "icon.foreground")
-				}
-				if props.Ignored {
-					row.nameClass = "pencode-tree-name pencode-ignored-name"
-				} else if props.HasErrors {
-					row.nameClass = "pencode-tree-name pencode-error-name"
 				}
 				if row == *context.State {
 					view.PatchBindings()
@@ -470,7 +483,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				view.Attr("icon", "src", row.icon)
 				view.Text("name", row.name)
-				view.Attr("name", "class", row.nameClass)
+				view.Attr("name", "data-file-decoration", row.decoration)
 				view.Event("row", htmlui.EventClick)
 			},
 			HandleEvent: handleTreeEvent,
@@ -479,8 +492,21 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "id", "file-tree-create", "data-ref", "edit-row", "class", "pencode-tree-create")
+		b.Element("img", "data-ref", "edit-arrow", "class", "pencode-tree-arrow", "src", "icons/chevron-right.svg", "alt", "", "hidden", "")
+		b.Element("img", "data-ref", "edit-icon", "class", "pencode-tree-icon", "src", "icons/file-text.svg", "alt", "")
+		b.Open("div", "class", "pencode-tree-input")
+		b.Element("input", "id", "file-tree-name", "data-ref", "edit-name", "type", "text", "class", "pencode-tree-name-input", "autocomplete", "off", "spellcheck", "false", "aria-describedby", "file-tree-error")
+		b.Element("div", "id", "file-tree-error", "data-ref", "edit-error", "class", "pencode-tree-create-error", "role", "alert", "hidden", "")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	editDefinition, err := content.Define[treeProps, treeRowState](
-		htmlui.NewTemplate(`<div id="file-tree-create" data-ref="edit-row" class="pencode-tree-create"><img data-ref="edit-arrow" class="pencode-tree-arrow" src="icons/chevron-right.svg" alt="" hidden><img data-ref="edit-icon" class="pencode-tree-icon" src="icons/file-text.svg" alt=""><div class="pencode-tree-input"><input id="file-tree-name" data-ref="edit-name" type="text" class="pencode-tree-name-input" autocomplete="off" spellcheck="false" aria-describedby="file-tree-error"><div id="file-tree-error" data-ref="edit-error" class="pencode-tree-create-error" role="alert" hidden></div></div></div>`),
+		template,
 		"",
 		module.ContentBehavior[treeProps, treeRowState]{
 			Render: func(context module.ContentRenderContext[treeProps, treeRowState], view *htmlui.View) {
@@ -492,8 +518,20 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	projectTemplate, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("section", "data-ref", "project", "class", "pencode-project")
+		b.Open("nav", "data-ref", "tree", "class", "pencode-tree", "role", "tree", "aria-multiselectable", "true", "aria-label", "项目目录")
+		b.Open("div", "data-ref", "tree-height", "class", "pencode-tree-height")
+		b.Element("div", "data-ref", "tree-window", "class", "pencode-tree-window")
+		b.End()
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	definitions.project, err = content.Define[projectProps, struct{}](
-		htmlui.NewTemplate(`<section data-ref="project" class="pencode-project"><nav data-ref="tree" class="pencode-tree" role="tree" aria-multiselectable="true" aria-label="项目目录"><div data-ref="tree-height" class="pencode-tree-height"><div data-ref="tree-window" class="pencode-tree-window"></div></div></nav></section>`),
+		projectTemplate,
 		"",
 		module.ContentBehavior[projectProps, struct{}]{
 			Render: func(context module.ContentRenderContext[projectProps, struct{}], view *htmlui.View) {
@@ -528,13 +566,30 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	tabTemplate, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "data-ref", "tab", "class", "pencode-tab")
+		b.Open("button", "data-ref", "select", "class", "pencode-tab-select", "type", "button", "role", "tab")
+		b.Element("img", "data-ref", "icon", "class", "pencode-tab-icon", "src", "icons/file-text.svg", "alt", "")
+		b.Element("span", "data-ref", "name", "class", "pencode-tab-name")
+		b.End()
+		b.Open("button", "data-ref", "close", "class", "pencode-tab-close", "type", "button", "title", "关闭文件", "aria-label", "关闭文件")
+		b.Element("span", "data-ref", "dot", "class", "pencode-tab-dot", "aria-hidden", "true")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	definitions.tab, err = content.Define[tabProps, struct{}](
-		htmlui.NewTemplate(`<div data-ref="tab" class="pencode-tab"><button data-ref="select" class="pencode-tab-select" type="button" role="tab"><img data-ref="icon" class="pencode-tab-icon" src="icons/file-text.svg" alt=""><span data-ref="name" class="pencode-tab-name"></span></button><button data-ref="close" class="pencode-tab-close" type="button" title="关闭文件" aria-label="关闭文件"><span data-ref="dot" class="pencode-tab-dot" aria-hidden="true"></span></button></div>`),
+		tabTemplate,
 		"",
 		module.ContentBehavior[tabProps, struct{}]{
 			Render: func(context module.ContentRenderContext[tabProps, struct{}], view *htmlui.View) {
 				props := context.Props
 				className := "pencode-tab"
+				if props.Surface != nil {
+					view.Attr("tab", "data-extension", props.Surface.owner)
+				}
 				if props.Active {
 					className += " active"
 					view.Attr("tab", "id", "active-tab")
@@ -583,11 +638,9 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				view.Attr("select", "aria-selected", boolAttribute(props.Active))
 				view.Attr("close", "aria-label", props.Model.tr("关闭 ")+props.Name)
 				view.Text("name", props.Name)
-				nameClass := "pencode-tab-name"
-				if props.HasErrors {
-					nameClass = "pencode-tab-name pencode-error-name"
+				if props.Project != nil {
+					view.Attr("name", "data-file-decoration", props.Decoration.value())
 				}
-				view.Attr("name", "class", nameClass)
 				view.Event("select", htmlui.EventClick)
 				view.Event("close", htmlui.EventClick)
 			},
@@ -597,20 +650,56 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 	if err != nil {
 		return nil, err
 	}
+	marketTemplate, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "item", "class", "pencode-market-item", "type", "button", "aria-pressed", "false")
+		b.Element("span", "data-ref", "name", "class", "pencode-market-item-name")
+		b.Element("span", "data-ref", "description", "class", "pencode-market-item-description")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	definitions.market, err = content.Define[pencodeMarketProps, struct{}](
-		htmlui.NewTemplate(`<button data-ref="item" class="pencode-market-item" type="button" aria-pressed="false"><span data-ref="name" class="pencode-market-item-name"></span><span data-ref="description" class="pencode-market-item-description"></span></button>`), "",
+		marketTemplate, "",
 		module.ContentBehavior[pencodeMarketProps, struct{}]{Render: renderPencodeMarketItem, HandleEvent: handlePencodeMarketItem})
 	if err != nil {
 		return nil, err
 	}
+	connectTemplate, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("article", "data-ref", "row", "class", "pencode-connection-row", "role", "listitem")
+		b.Open("div", "class", "pencode-connection-copy")
+		b.Element("span", "data-ref", "dot", "class", "pencode-connection-dot")
+		b.Element("strong", "data-ref", "name")
+		b.Element("span", "data-ref", "host")
+		b.End()
+		b.Open("button", "data-ref", "project", "class", "pencode-icon-button", "type", "button", "title", "打开远端项目", "aria-label", "打开远端项目")
+		b.Element("img", "data-ref", "project-icon", "src", "icons/folder-opened.svg", "alt", "")
+		b.End()
+		b.Open("button", "data-ref", "more", "class", "pencode-icon-button", "type", "button", "title", "更多操作", "aria-label", "更多操作", "aria-haspopup", "menu", "aria-expanded", "false")
+		b.Element("img", "data-ref", "more-icon", "src", "icons/ellipsis.svg", "alt", "")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	definitions.connect, err = content.Define[pencodeConnectionProps, pencodeConnectionState](
-		htmlui.NewTemplate(`<article data-ref="row" class="pencode-connection-row" role="listitem"><div class="pencode-connection-copy"><span data-ref="dot" class="pencode-connection-dot"></span><strong data-ref="name"></strong><span data-ref="host"></span></div><button data-ref="project" class="pencode-icon-button" type="button" title="打开远端项目" aria-label="打开远端项目"><img data-ref="project-icon" src="icons/folder-opened.svg" alt=""></button><button data-ref="more" class="pencode-icon-button" type="button" title="更多操作" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false"><img data-ref="more-icon" src="icons/ellipsis.svg" alt=""></button></article>`), "",
+		connectTemplate, "",
 		module.ContentBehavior[pencodeConnectionProps, pencodeConnectionState]{Render: renderPencodeConnection, HandleEvent: handlePencodeConnection})
 	if err != nil {
 		return nil, err
 	}
+	actionTemplate, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "run", "type", "button", "class", "pencode-action")
+		b.Element("img", "data-ref", "icon", "alt", "")
+		b.Element("span", "data-ref", "text")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
 	definitions.action, err = content.Define[pencodeActionProps, struct{}](
-		htmlui.NewTemplate(`<button data-ref="run" type="button" class="pencode-action"><img data-ref="icon" alt=""><span data-ref="text"></span></button>`), "",
+		actionTemplate, "",
 		module.ContentBehavior[pencodeActionProps, struct{}]{Render: renderPencodeAction, HandleEvent: handlePencodeAction})
 	if err != nil {
 		return nil, err
@@ -668,7 +757,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 		return nil, err
 	}
 	definitions.root, err = content.Define[appProps, appState](
-		tooltipTemplate(page, ""),
+		pageTemplate,
 		"",
 		module.ContentBehavior[appProps, appState]{
 			Render: func(context module.ContentRenderContext[appProps, appState], view *htmlui.View) {
@@ -689,6 +778,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					context.Props.Model.renderExtensionSettings(view, settingNav, settingRow)
 					context.Props.Model.renderShortcutSettings(view, shortcutRow)
 					context.Props.Model.renderUpdates(view)
+					context.Props.Model.renderStorage(view)
 					context.Props.Model.renderLanguageSettings(view, languageChoice, languageTool)
 				}
 				if context.Props != nil && context.Props.Model != nil {
@@ -997,21 +1087,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		)
 	}
 
-	if project != nil {
-		for _, filePath := range project.Tabs {
-			file := project.Files[filePath]
-			if file == nil {
-				continue
-			}
-			view.AppendComponentChild("file-tabs",
-				componentKey(project.Path)*1099511628211^componentKey(file.Path),
-				tabDefinition,
-				tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons, Project: project, Path: file.Path, Name: file.Name, Active: project == model.activeProjectState() && model.actions.ui.editor == nil && file.Path == project.ActivePath && !project.sourceControl.visible(), Preview: file.Preview, Dirty: file.Dirty, HasErrors: model.fileHasErrors(project, file.Path)},
-				struct{}{},
-			)
-		}
-	}
-	model.renderExtensionTabs(view, tabDefinition)
+	model.renderEditorTabs(view, tabDefinition)
 	model.renderSourceWorkspace(view)
 }
 
@@ -1128,7 +1204,7 @@ func handlePencodeRootEvent(context *module.ContentEventContext[appProps, appSta
 		return
 	}
 	if model.closing.action != pencodeCloseNone {
-		model.handleCloseDialogEvent(context.World, context.Ref)
+		model.handleCloseDialogEvent(context.World, context.Ref, context.Event.Value)
 		markPencodeRootDirty(context, model)
 		return
 	}
@@ -1322,9 +1398,6 @@ func handleTabEvent(context *module.ContentEventContext[tabProps, struct{}]) {
 		markPencodeRootDirtyByModel(context.World, props.Model)
 		return
 	}
-	if props.Project == nil {
-		return
-	}
 	model := props.Model
 	if model.closing.action != pencodeCloseNone {
 		return
@@ -1333,12 +1406,12 @@ func handleTabEvent(context *module.ContentEventContext[tabProps, struct{}]) {
 	model.activateProject(project)
 	if context.Ref == "close" {
 		model.lastFileClick = 0
-		model.closeProjectTab(project, props.Path)
+		model.closeTab(props.Path)
 	} else if context.Ref == "select" {
-		if model.fileDoubleClick(context.Component, time.Now()) {
+		if project != nil && model.fileDoubleClick(context.Component, time.Now()) {
 			pinProjectFile(project, props.Path)
 		}
-		model.selectProjectTab(project, props.Path)
+		model.selectTab(props.Path)
 	}
 	page := ecs.Entity(0)
 	if component, ok := context.World.Get[htmlui.Component[tabProps, struct{}]](context.Component); ok {
@@ -1557,12 +1630,11 @@ func (model *workspaceModel) syncActiveProjectFields() {
 	if model == nil {
 		return
 	}
-	previous := model.projectPath
 	project := model.activeProjectState()
+	if model.viewProject != project {
+		model.switchProjectView(project)
+	}
 	if project == nil {
-		if previous != "" {
-			model.switchTerminalProject(nil)
-		}
 		model.revealProject, model.revealPath = nil, ""
 		model.projectPath = ""
 		model.projectName = ""
@@ -1572,11 +1644,9 @@ func (model *workspaceModel) syncActiveProjectFields() {
 		model.tabs = nil
 		model.activePath = ""
 		model.allDirectoriesCollapsed = false
-		model.syncExtensionProject(previous)
 		return
 	}
-	if previous != project.Path {
-		model.switchTerminalProject(project)
+	if model.projectPath != project.Path {
 		// Inactive projects only load Git status; activation also needs history.
 		project.sourceControl.RefreshPending = true
 	}
@@ -1593,20 +1663,21 @@ func (model *workspaceModel) syncActiveProjectFields() {
 	model.activePath = project.ActivePath
 	model.allDirectoriesCollapsed = project.AllDirectoriesCollapsed
 	model.status = project.Status
-	model.syncExtensionProject(previous)
 }
 
 func (model *workspaceModel) setProjectStatus(project *pencodeProject, status string) {
 	if model == nil {
 		return
 	}
-	model.logOutput("pencode", status)
+	model.logProjectOutput(project, "pencode", status)
 	if project != nil {
 		project.Status = status
 	}
 	if project == model.activeProjectState() || model.activeProjectState() == nil {
 		model.status = status
 		model.bottom.lastStatus = status
+	} else {
+		model.storedView(project).layout.loggedStatus = status
 	}
 }
 
@@ -1696,11 +1767,9 @@ func (model *workspaceModel) discardProject(project *pencodeProject) {
 		return
 	}
 	model.saveProjectState(project)
-	model.notifyProjectClosed(project.Path)
+	model.notifyProjectClosed(project)
+	model.releaseProjectView(project)
 	model.cancelProjectFileIO(project)
-	if model.debug.project == project || model.debug.configProject == project {
-		model.closeDebugger()
-	}
 	wasActive := index == model.activeProjectIndex
 	project.stopScan()
 	project.stopWatch()
@@ -1859,21 +1928,25 @@ func (model *workspaceModel) revealProjectActiveFile(project *pencodeProject) {
 		model.setProjectStatus(project, model.tr("没有打开的文件"))
 		return
 	}
-	model.queueProjectFileReveal(project)
+	model.selectAndRevealProjectFile(project)
 	model.setProjectStatus(project, fmt.Sprintf(model.tr("已定位 %s"), file.Name))
 	model.syncActiveProjectFields()
 }
 
-// Queue navigation without changing status or allocating row IDs before layout.
-func (model *workspaceModel) queueProjectFileReveal(project *pencodeProject) {
+func (model *workspaceModel) selectAndRevealProjectFile(project *pencodeProject) {
+	project.tree.selection.set(model.queueProjectFileReveal(project))
+}
+
+// Return the queued path, or an empty selection for files outside the tree.
+func (model *workspaceModel) queueProjectFileReveal(project *pencodeProject) string {
 	if project.Loose {
-		return
+		return ""
 	}
 	project.tree.restore = false
 	file := project.Files[project.ActivePath]
-	if file == nil {
+	if file == nil || file.untitled() {
 		model.revealProject, model.revealPath = nil, ""
-		return
+		return ""
 	}
 	relative := path.Dir(file.Path)
 	if relative != "." {
@@ -1893,12 +1966,13 @@ func (model *workspaceModel) queueProjectFileReveal(project *pencodeProject) {
 		}
 	}
 	model.revealProject, model.revealPath = project, file.Path
+	return file.Path
 }
 
 // centerRevealedTreeRow centres the pending reveal row in its tree viewport.
 // Progressive scans must finish before clamping; staged refreshes keep a stable
 // visible snapshot that can still be navigated while the next one is built.
-func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
+func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) (moved bool) {
 	if model == nil || model.revealProject == nil {
 		return
 	}
@@ -1957,6 +2031,7 @@ func (model *workspaceModel) centerRevealedTreeRow(world *module.Content) {
 	if model.app != nil {
 		model.app.RequestRender()
 	}
+	return true
 }
 
 // pencodeTreeScrollArea finds the scrolling tree viewport that owns a row.
@@ -2040,6 +2115,7 @@ func acceptProjectFile(project *pencodeProject, relative string, preview bool, d
 			for index, tab := range project.Tabs {
 				if tab == project.PreviewPath {
 					project.Tabs[index] = relative
+					file.tabOrder = previous.tabOrder
 					delete(project.Files, project.PreviewPath)
 					previous.closeDocument()
 					*previous = openFile{}
@@ -2052,7 +2128,7 @@ func acceptProjectFile(project *pencodeProject, relative string, preview bool, d
 		}
 	}
 	if !replaced {
-		project.Tabs = append(project.Tabs, relative)
+		project.Tabs = appendFileTab(project.Tabs, file)
 	}
 	if preview {
 		project.PreviewPath = relative
@@ -2094,9 +2170,9 @@ func (model *workspaceModel) selectProjectTab(project *pencodeProject, relative 
 	}
 	before := model.selectionSnapshot()
 	defer func() { model.refreshFileSelection(before) }()
-	model.actions.ui.editor = nil
 	model.cancelFileOpens()
 	model.activateProject(project)
+	model.actions.ui.editor = nil
 	if project.sourceControl.visible() {
 		model.editor.file = nil
 	}
@@ -2104,7 +2180,7 @@ func (model *workspaceModel) selectProjectTab(project *pencodeProject, relative 
 	project.sourceControl.Selection++
 	project.ActivePath = relative
 	project.Status = ""
-	model.queueProjectFileReveal(project)
+	model.selectAndRevealProjectFile(project)
 	model.syncActiveProjectFields()
 }
 
@@ -2145,6 +2221,9 @@ func (model *workspaceModel) discardProjectTab(project *pencodeProject, relative
 			continue
 		}
 		wasActive := project == model.activeProjectState() && model.actions.ui.editor == nil && !project.sourceControl.visible() && project.ActivePath == relative
+		if wasActive {
+			model.selectEditorTabNeighbor(pencodeEditorTab{project: project, path: relative})
+		}
 		copy(project.Tabs[index:], project.Tabs[index+1:])
 		project.Tabs[len(project.Tabs)-1] = ""
 		project.Tabs = project.Tabs[:len(project.Tabs)-1]
@@ -2171,10 +2250,6 @@ func (model *workspaceModel) discardProjectTab(project *pencodeProject, relative
 			model.resetHighlight()
 		}
 		model.syncActiveProjectFields()
-		// Extension tabs follow file tabs in the strip.
-		if wasActive && index == len(project.Tabs) {
-			model.selectFirstExtensionTab()
-		}
 		return
 	}
 }
@@ -2199,6 +2274,9 @@ func (model *workspaceModel) discardTab(relative string) {
 			continue
 		}
 		wasActive := model.actions.ui.editor == nil && !model.sourceState().visible() && model.activePath == relative
+		if wasActive {
+			model.selectEditorTabNeighbor(pencodeEditorTab{path: relative})
+		}
 		copy(model.tabs[index:], model.tabs[index+1:])
 		model.tabs[len(model.tabs)-1] = ""
 		model.tabs = model.tabs[:len(model.tabs)-1]
@@ -2220,9 +2298,6 @@ func (model *workspaceModel) discardTab(relative string) {
 		delete(model.files, relative)
 		if model.highlightedPath == relative {
 			model.resetHighlight()
-		}
-		if wasActive && index == len(model.tabs) {
-			model.selectFirstExtensionTab()
 		}
 		return
 	}
@@ -2565,6 +2640,14 @@ func (model *workspaceModel) saveActiveFile() {
 		model.setActiveStatus(model.tr("没有打开的文件"))
 		return
 	}
+	if file.untitled() {
+		if model.closing.action == pencodeCloseNone {
+			model.closing.action = pencodeSaveUntitled
+			model.closing.targets = append(model.closing.targets[:0], pencodeCloseTarget{model.activeProjectState(), file})
+			model.showCloseTarget()
+		}
+		return
+	}
 	if document := model.customDocuments[file]; document != nil && document.busy() {
 		document.savePending = true
 		return
@@ -2751,8 +2834,14 @@ func pencodeWindowDragRegion(width, zoom, x, y float64) bool {
 	if y < 0 || y >= float64(pencodeTitlebarHeight+pencodeTitlebarInset)*zoom {
 		return false
 	}
-	searchInset := float64(456) // HTML borders/insets (16px) plus search max-width inset.
-	searchHalfWidth := max(0, min(360*zoom, width-searchInset*zoom)) / 2
+	searchMaxWidth := width - 456*zoom
+	if runtime.GOOS == "darwin" {
+		// The centered search gives the project strip more room on macOS,
+		// down to 72px where the original insets allow it.
+		titlebarWidth := width - 14*zoom
+		searchMaxWidth = min(titlebarWidth-440*zoom, max(72*zoom, titlebarWidth-536*zoom))
+	}
+	searchHalfWidth := max(0, min(360*zoom, searchMaxWidth)) / 2
 	if x >= width/2-searchHalfWidth && x < width/2+searchHalfWidth {
 		return false
 	}
@@ -2799,6 +2888,14 @@ type pencodeIconProvider struct {
 
 func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, height float32) (*graphics.Texture, bool) {
 	if provider == nil || source == "" {
+		return nil, false
+	}
+	if strings.HasPrefix(source, lazyImagePrefix) {
+		if model := provider.model; model != nil {
+			if doc := model.customDocuments[model.activeFile()]; doc != nil && doc.lazy != nil {
+				doc.requestLazyImage(source)
+			}
+		}
 		return nil, false
 	}
 	if entry, ok := provider.textures[source]; ok {
@@ -2856,9 +2953,12 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, heig
 		}
 	}
 	var texture *graphics.Texture
+	var scalableIcon bool
 	if err == nil {
 		extension := strings.ToLower(filepath.Ext(asset))
-		if extension == ".svg" {
+		// Release packages can store an ONIXTEX container under the original SVG name.
+		vector := extension == ".svg" && !bytes.HasPrefix(data, (ontex.Decoder{}).ImageContainerMagic())
+		if vector {
 			data = []byte(strings.ReplaceAll(string(data), "currentColor", "#"+foreground))
 		}
 		if extension == ".jpeg" {
@@ -2872,17 +2972,16 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, heig
 			jpeg.Decoder,
 			webp.Decoder,
 		]{}
-		options := graphics.TextureOptions{Usage: graphics.ResourceUsageGPU}
-		icon := extension == ".svg" && !preview
-		if icon {
+		options := graphics.TextureOptions{Usage: graphics.ResourceUsageGPU, Mipmap: extension == ".svg" && !preview}
+		scalableIcon = vector && !preview
+		if scalableIcon {
 			config, configErr := onixsvg.DecodeConfig(bytes.NewReader(data))
 			if configErr != nil {
 				err = configErr
 			} else {
-				options.Mipmap = true
 				texture, err = graphicssvg.DecodeAtScale(data, provider.iconScale(config.Width, config.Height, width, height), options)
 			}
-		} else if preview && extension == ".svg" {
+		} else if vector {
 			// Editor images retain the worker-validated pixel budget. The icon
 			// supersampling factor would multiply their texture memory by 16.
 			texture, err = graphicssvg.DecodeAtScale(data, 1, options)
@@ -2900,6 +2999,6 @@ func (provider *pencodeIconProvider) ResolveHTMLImage(source string, width, heig
 	if provider.textures == nil {
 		provider.textures = make(map[string]*pencodeCachedImage)
 	}
-	provider.cacheImage(source, texture, strings.EqualFold(filepath.Ext(asset), ".svg") && !preview, preview)
+	provider.cacheImage(source, texture, scalableIcon, preview)
 	return texture, texture != nil
 }

@@ -1,65 +1,67 @@
 package workbench
 
 import (
-	"bytes"
-	"io"
 	"strings"
 
-	"golang.org/x/net/html"
+	"github.com/onix-engine/onix/html/parse"
+	uinode "github.com/onix-engine/onix/scene/node"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
-type pencodeExtensionExpanded struct {
-	ref, value string
+type pencodeExtensionExpanded struct{ ref, value string }
+
+type pencodeExtensionMarkup struct {
+	tree     *uinode.Node
+	template htmlui.Template
+	html     string
+	expanded []pencodeExtensionExpanded
 }
 
-// Expansion is rendered as an attribute update so opening or dismissing a
-// menu does not replace a button that may already own a pointer press.
-func splitExtensionExpanded(source string) (string, []pencodeExtensionExpanded, error) {
-	if !strings.Contains(source, "aria-expanded") {
-		return source, nil, nil
+// Keep expansion in render state so a menu toggle preserves a pressed button.
+// The wire source is also the fast path for unchanged transcript regions.
+func extensionMarkup(source string, old *pencodeExtensionMarkup, detach bool) (pencodeExtensionMarkup, error) {
+	if old != nil && old.tree != nil && old.html == source {
+		return *old, nil
 	}
-	var template strings.Builder
-	var expanded []pencodeExtensionExpanded
-	tokens := html.NewTokenizer(strings.NewReader(source))
-	offset, copied := 0, 0
-	for {
-		kind := tokens.Next()
-		position := offset
-		offset += len(tokens.Raw())
-		if kind == html.ErrorToken {
-			if tokens.Err() != io.EOF {
-				return "", nil, tokens.Err()
-			}
-			break
-		}
-		if kind != html.StartTagToken && kind != html.SelfClosingTagToken {
-			continue
-		}
-		if !bytes.Contains(tokens.Raw(), []byte("aria-expanded")) {
-			continue
-		}
-		token := tokens.Token()
-		ref, index := "", -1
-		for i, attr := range token.Attr {
-			switch attr.Key {
-			case "data-ref":
-				ref = attr.Val
-			case "aria-expanded":
-				index = i
-			}
-		}
-		if ref == "" || index < 0 {
-			continue
-		}
-		expanded = append(expanded, pencodeExtensionExpanded{ref: ref, value: token.Attr[index].Val})
-		token.Attr[index].Val = ""
-		template.WriteString(source[copied:position])
-		template.WriteString(token.String())
-		copied = offset
+	// Parsed names and text may borrow the input. A small, long-lived region
+	// must not retain a whole obsolete view after the other regions change.
+	if detach {
+		source = strings.Clone(source)
 	}
-	if len(expanded) == 0 {
-		return source, nil, nil
+	tree, err := parse.ParseTree(source)
+	if err != nil {
+		return pencodeExtensionMarkup{}, err
 	}
-	template.WriteString(source[copied:])
-	return template.String(), expanded, nil
+	next := pencodeExtensionMarkup{tree: tree, html: source}
+	var prior *uinode.Node
+	if old != nil {
+		prior = old.tree
+	}
+	if next.normalize(tree, prior) {
+		next.tree, next.template = old.tree, old.template
+		return next, nil
+	}
+	// Template compilation consumes metadata such as embedded styles. Keep the
+	// authored tree for validation, selection and subsequent structural comparisons.
+	var arena uinode.Arena
+	next.template, err = htmlui.NewDocumentTemplate(arena.Clone(tree))
+	return next, err
+}
+
+func (m *pencodeExtensionMarkup) normalize(n, previous *uinode.Node) bool {
+	if value, ok := n.Attr("aria-expanded"); ok {
+		if ref := n.AttrValue("data-ref"); ref != "" {
+			m.expanded = append(m.expanded, pencodeExtensionExpanded{ref, value})
+			n.SetAttr("aria-expanded", "")
+		}
+	}
+	equal := previous != nil && n.Type == previous.Type && n.Namespace == previous.Namespace && n.Data == previous.Data && len(n.Children) == len(previous.Children) && n.EqualAttributes(previous)
+	for i, child := range n.Children {
+		var prior *uinode.Node
+		if equal {
+			prior = previous.Children[i]
+		}
+		equal = m.normalize(child, prior) && equal
+	}
+	return equal
 }

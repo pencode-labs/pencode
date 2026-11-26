@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pencode-labs/pencode/internal/languagetool"
 	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/terminal"
 	"github.com/pencode-labs/pencode/transport"
@@ -39,7 +40,7 @@ func (p *debugSocket) Wait() error {
 }
 
 func (s *services) openDebugAdapter(ctx context.Context, root string, d *protocol.Decoder, e *protocol.Encoder) error {
-	adapter, command, address := d.String(), d.String(), d.String()
+	adapter, command, address, override := d.String(), d.String(), d.String(), d.String()
 	count := d.U32()
 	if count > 4096 {
 		return protocol.ErrProtocol
@@ -57,7 +58,17 @@ func (s *services) openDebugAdapter(ctx context.Context, root string, d *protoco
 	var extension uint64
 	var entry *extensionEntry
 	var prefix []string
-	if command == "" && adapter != "tcp" {
+	var detected languagetool.Installation
+	var builtin *languagetool.Tool
+	if command == "" && languagetool.IsDebugAdapter(adapter) {
+		builtin = languagetool.Find(adapter)
+		directory, err := s.toolConfigurationDirectory()
+		if err != nil {
+			return err
+		}
+		detected = detectLanguageTool(ctx, toolDirectory(directory, adapter), builtin, override)
+	}
+	if command == "" && adapter != "tcp" && !(builtin != nil && (override != "" || detected.Managed)) {
 		s.extensions.mu.Lock()
 		var err error
 		command, prefix, extension, err = s.extensions.debugAdapter(adapter)
@@ -65,6 +76,19 @@ func (s *services) openDebugAdapter(ctx context.Context, root string, d *protoco
 		s.extensions.mu.Unlock()
 		if err != nil {
 			return err
+		}
+	}
+	if command == "" && builtin != nil {
+		command = detected.Command
+		if detected.Problem != "" {
+			return fmt.Errorf("%s: %s", adapter, detected.Problem)
+		}
+		if command == "" {
+			return fmt.Errorf("install %s on the workspace host in Settings → Debuggers (DAP)", adapter)
+		}
+		prefix = builtin.Args
+		if detected.Entry != "" {
+			prefix = append([]string{detected.Entry}, prefix...)
 		}
 	}
 	s.mu.Lock()
@@ -93,9 +117,6 @@ func (s *services) openDebugAdapter(ctx context.Context, root string, d *protoco
 			stream = &debugSocket{Conn: conn}
 		}
 	case "Delve":
-		if command == "" {
-			command = "dlv"
-		}
 		var child io.ReadWriteCloser
 		adapterArgs := append(append(append([]string(nil), prefix...), "dap", "--listen=127.0.0.1:0"), args...)
 		child, err = transport.StartWithOutput(root, command, childLogs, adapterArgs...)

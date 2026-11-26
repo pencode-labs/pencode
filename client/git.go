@@ -7,7 +7,14 @@ import (
 )
 
 func (c *Client) GitRepositories(ctx context.Context, root string) ([]string, error) {
+	return c.IndexRepositories(ctx, root, 0)
+}
+
+// IndexRepositories verifies the Git markers found during a full index scan.
+// Zero requests fresh discovery independently of any snapshot.
+func (c *Client) IndexRepositories(ctx context.Context, root string, index uint64) ([]string, error) {
 	e := service(protocol.GitRepositories, root)
+	e.U64(index)
 	d, err := c.execute(ctx, &e)
 	if err != nil {
 		return nil, err

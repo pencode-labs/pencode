@@ -8,21 +8,30 @@ import (
 	"github.com/google/pprof/profile"
 )
 
+// RenderTargetSize describes one live Metal render target in physical pixels.
+type RenderTargetSize struct {
+	Kind   string `json:"kind"`
+	ID     uint32 `json:"id,omitempty"`
+	Width  uint32 `json:"width"`
+	Height uint32 `json:"height"`
+}
+
 // Graphics is a partial resource inventory, not total GPU residency. Native
 // scratch is CPU memory; Go scratch overlaps the Go heap. TextureCacheBytes is
 // the workbench's logical texture size, excluding fonts and driver overhead.
 // SampledAt remains unchanged while the UI is idle, making stale data explicit.
 type Graphics struct {
-	SampledAt          time.Time `json:"sampled_at"`
-	Backend            string    `json:"backend"`
-	Device             string    `json:"device"`
-	InstanceBytes      uint64    `json:"instance_bytes"`
-	StagingBytes       uint64    `json:"staging_bytes"`
-	ReadbackBytes      uint64    `json:"readback_bytes"`
-	NativeScratchBytes uint64    `json:"native_scratch_bytes"`
-	GoScratchBytes     uint64    `json:"go_scratch_bytes"`
-	TextureCacheBytes  uint64    `json:"texture_cache_bytes"`
-	BuffersAvailable   bool      `json:"buffers_available"`
+	SampledAt          time.Time          `json:"sampled_at"`
+	Backend            string             `json:"backend"`
+	Device             string             `json:"device"`
+	RenderTargets      []RenderTargetSize `json:"render_targets,omitempty"`
+	InstanceBytes      uint64             `json:"instance_bytes"`
+	StagingBytes       uint64             `json:"staging_bytes"`
+	ReadbackBytes      uint64             `json:"readback_bytes"`
+	NativeScratchBytes uint64             `json:"native_scratch_bytes"`
+	GoScratchBytes     uint64             `json:"go_scratch_bytes"`
+	TextureCacheBytes  uint64             `json:"texture_cache_bytes"`
+	BuffersAvailable   bool               `json:"buffers_available"`
 }
 
 type processMemory struct {

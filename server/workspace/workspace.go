@@ -31,6 +31,7 @@ type document struct {
 	disk    [sha256.Size]byte
 }
 type Store struct {
+	History   *FileHistory
 	projects  map[uint64]*project
 	documents map[uint64]*document
 	next      uint64
@@ -229,12 +230,48 @@ func (s *Store) OpenDocument(projectID uint64, name string, mode protocol.Docume
 	if s.bytes+len(content) > 128<<20 {
 		return protocol.Document{}, failure(protocol.Busy, "打开文档超过 128 MiB 连接预算")
 	}
+	return s.registerDocument(p, name, content, digest), nil
+}
+
+func (s *Store) CreateDocument(workspace uint64, name, content string) (protocol.Document, error) {
+	p, err := s.resource(workspace, name)
+	if err != nil {
+		return protocol.Document{}, err
+	}
+	if s.occupied(p, name) {
+		return protocol.Document{}, failure(protocol.Conflict, "文件已打开")
+	}
+	if !utf8.ValidString(content) || len(content) > protocol.MaxMessage-1024 {
+		return protocol.Document{}, failure(protocol.Invalid, "无效的文本内容或长度")
+	}
+	if len(s.documents) >= 128 || s.bytes+len(content) > 128<<20 {
+		return protocol.Document{}, failure(protocol.Busy, "打开文档超过连接预算")
+	}
+	dest := filepath.FromSlash(name)
+	f, err := p.root.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return protocol.Document{}, err
+	}
+	_, err = f.WriteString(content)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = p.root.Remove(dest)
+		return protocol.Document{}, err
+	}
+	digest := sha256.Sum256([]byte(content))
+	s.History.Saved(p.root, name, int64(len(content)), &digest)
+	return s.registerDocument(p, name, content, digest), nil
+}
+
+func (s *Store) registerDocument(p *project, name, content string, digest [sha256.Size]byte) protocol.Document {
 	d := &document{project: p, path: name, version: 1, disk: digest}
 	d.tree.Reset(content)
 	id := s.id()
 	s.documents[id] = d
 	s.bytes += len(content)
-	return protocol.Document{ID: id, Version: 1, Content: content}, nil
+	return protocol.Document{ID: id, Version: 1, Content: content}
 }
 
 func (s *Store) Change(id, version, offset uint64, start, end uint32, text string) (uint64, error) {
@@ -387,6 +424,7 @@ func (s *Store) Save(id, version uint64) error {
 	}
 	buffer.hash.Sum(buffer.sum[:0])
 	d.disk = buffer.sum
+	s.History.Saved(d.project.root, filepath.ToSlash(relative), size, &d.disk)
 	return nil
 }
 

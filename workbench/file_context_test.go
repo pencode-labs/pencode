@@ -151,15 +151,30 @@ func TestFileContextNativeRenameCreateDeleteAndRefresh(t *testing.T) {
 	if model.activePath != "created.txt" {
 		t.Fatalf("new file was not opened: active=%q error=%q", model.activePath, model.fileContext.err)
 	}
-	fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "created.txt"))
-	editorContextClick(t, app, model, state, "file-context-delete")
+	openDelete := func() {
+		t.Helper()
+		fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "created.txt"))
+		if !model.fileContext.open || model.fileContext.path != "created.txt" {
+			t.Fatalf("wrong context menu for created file: %+v", model.fileContext)
+		}
+		editorContextClick(t, app, model, state, "file-context-delete")
+		if model.fileContext.dialog != "delete" || !slices.Equal(model.fileContext.paths, []string{"created.txt"}) {
+			t.Fatalf("wrong delete confirmation: %+v", model.fileContext)
+		}
+	}
+	openDelete()
 	if _, err := os.Stat(filepath.Join(project.Path, "created.txt")); err != nil {
 		t.Fatal("file was deleted before confirmation")
 	}
 	editorContextClick(t, app, model, state, "file-dialog-cancel")
-	fileContextRightClick(t, app, model, state, model.projectTreeRowID(project, "created.txt"))
-	editorContextClick(t, app, model, state, "file-context-delete")
+	if model.fileContext.dialog != "" {
+		t.Fatalf("cancel left delete confirmation open: %+v", model.fileContext)
+	}
+	openDelete()
 	editorContextClick(t, app, model, state, "file-dialog-submit")
+	if model.fileContext.dialog != "" {
+		t.Fatalf("submit left delete confirmation open: %+v", model.fileContext)
+	}
 	if err := awaitFileIO(t, model); err != nil {
 		t.Fatal(err)
 	}

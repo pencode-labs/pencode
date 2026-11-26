@@ -112,7 +112,10 @@ func folderContains(directory, name string) bool {
 }
 
 func (m *workspaceModel) startFolderSearch() {
-	s := &m.folderSearch
+	m.folderSearch.start(m)
+}
+
+func (s *pencodeFolderSearch) start(m *workspaceModel) {
 	if s.replacing {
 		return
 	}
@@ -250,8 +253,11 @@ func (m *workspaceModel) pollFolderSearch() bool {
 }
 
 func (m *workspaceModel) closeFolderSearchWorker() {
-	s := &m.folderSearch
-	m.closeFolderSearchHighlight()
+	m.folderSearch.closeWorker()
+}
+
+func (s *pencodeFolderSearch) closeWorker() {
+	s.preview.close()
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -466,12 +472,13 @@ func (m *workspaceModel) openFolderSearchMatch(world *module.Content, index int)
 	file := s.result.Files[row.file]
 	match := file.Matches[row.match]
 	navigation := &fileNavigation{searchMatch: &match, digest: file.Digest}
-	m.activateProject(s.project)
-	if err := m.requestFileOpen(s.project, file.Path, false, true, navigation); err != nil {
+	project := s.project
+	m.closeFolderSearch(world)
+	m.activateProject(project)
+	if err := m.requestFileOpen(project, file.Path, false, true, navigation); err != nil {
 		s.message = err.Error()
 		return
 	}
-	m.closeFolderSearch(world)
 }
 
 func (m *workspaceModel) finishSearchNavigation(project *pencodeProject, file *openFile, n *fileNavigation) {
@@ -484,7 +491,7 @@ func (m *workspaceModel) finishSearchNavigation(project *pencodeProject, file *o
 	s := &m.folderSearch
 	s.navigate, s.navigateStart, s.navigateEnd = file, utf8.RuneCountInString(file.content()[:match.Start]), utf8.RuneCountInString(file.content()[:match.End])
 	file.editorView.anchor, file.editorView.caret = s.navigateStart, s.navigateEnd
-	m.navigation.record(n.origin, pencodeNavigationLocation{project, file.Path, file.editorView})
+	m.recordNavigation(n.origin, pencodeNavigationLocation{project, file.Path, file.editorView})
 	m.editor.needsFocus = true
 }
 
@@ -690,8 +697,11 @@ func executeFolderReplace(j *fileIOJob) error {
 
 func (m *workspaceModel) acceptFolderReplace(r *fileIOResult) {
 	j := r.job
+	owner := j.initiator
 	s := &m.folderSearch
-	s.replacing = false
+	if owner != m.activeProjectState() {
+		s = m.storedView(owner).folder
+	}
 	count, failed := 0, 0
 	message := ""
 	for _, t := range j.searchReplace.targets {
@@ -717,7 +727,7 @@ func (m *workspaceModel) acceptFolderReplace(r *fileIOResult) {
 			message = t.path + "：" + err.Error()
 		} else {
 			count += t.count
-			if !j.searchReplace.all {
+			if s != nil && !j.searchReplace.all {
 				s.nextPath, s.nextOffset = t.path, t.end+len(t.after)-len(t.before)
 				if t.start == t.end {
 					_, size := utf8.DecodeRuneInString(t.after[min(s.nextOffset, len(t.after)):])
@@ -730,16 +740,20 @@ func (m *workspaceModel) acceptFolderReplace(r *fileIOResult) {
 		m.syncActiveProjectFields()
 		m.syncLanguageDocuments()
 	}
-	if m.fontResources != nil {
+	if j.project == m.activeProjectState() && m.fontResources != nil {
 		setPencodeEditorValue(m.fontResources, m.surface, m.activeContent())
 	}
+	if s == nil || owner != nil && !m.projectLive(owner) {
+		return
+	}
+	s.replacing = false
 	if s.open {
-		m.startFolderSearch()
+		s.start(m)
 	}
 	status := fmt.Sprintf(m.tr("已替换 %d 处"), count)
 	if failed > 0 {
 		status += fmt.Sprintf(m.tr("；%d 个文件失败：%s"), failed, message)
 	}
 	s.message = status
-	m.setProjectStatus(j.project, status)
+	m.setProjectStatus(owner, status)
 }

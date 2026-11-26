@@ -12,6 +12,7 @@ import (
 	"runtime"
 
 	"github.com/onix-engine/onix/editor"
+	"github.com/pencode-labs/pencode/internal/ripgrep/download"
 	"github.com/pencode-labs/pencode/internal/systemproxy"
 	buildversion "github.com/pencode-labs/pencode/internal/version"
 )
@@ -43,6 +44,9 @@ func release(output, version string) error {
 	}
 	project, err := os.Getwd()
 	if err != nil {
+		return err
+	}
+	if err := download.Prepare(filepath.Join(project, "internal", "ripgrep"), runtime.GOOS, runtime.GOARCH); err != nil {
 		return err
 	}
 	artifact, err := editor.BuildProject(editor.BuildOptions{

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/onix-engine/onix/scene"
@@ -114,7 +113,7 @@ func TestAuthoredTranslationsHaveEnglishFallback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, bindings, err := localizedPencodeTemplate(string(data))
+		_, bindings, err := localizedPencodeTemplate(string(data), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,11 +127,11 @@ func TestAuthoredTranslationsHaveEnglishFallback(t *testing.T) {
 		}
 	}
 	source := `<button data-ref="menu"><img src="test.svg">扩展</button><input data-ref="user" value="设置" placeholder="搜索文本">`
-	page, bindings, err := localizedPencodeTemplate(source)
+	page, bindings, err := localizedPencodeTemplate(source, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bindings) != 2 || !strings.Contains(page, `value="设置"`) || !strings.Contains(page, `<img src="test.svg"/>`) {
+	if len(bindings) != 2 || page.Children[1].AttrValue("value") != "设置" || page.Children[0].Children[0].AttrValue("src") != "test.svg" {
 		t.Fatalf("authored translation changed user values or icons: %s", page)
 	}
 	settings := parsePencodeSettings([]byte(`{"language":"it"}`))

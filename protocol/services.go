@@ -50,6 +50,10 @@ const (
 	GitCheckIgnore
 	GitRebasing
 	LanguageTools
+	FileHistoryList
+	FileHistoryRestore
+	FileHistoryRead
+	DiskStorage
 )
 
 type WorkspaceChange uint32
@@ -103,4 +107,12 @@ type FileChanges struct {
 	Version uint64
 	Changes WorkspaceChange
 	Reset   bool // Reconcile when history or native events overflowed.
+}
+
+const FileHistoryPageSize = 100
+const FileComparisonLimit = 2 << 20
+
+type FileVersion struct {
+	Path string
+	Time uint64 // Unix nanoseconds, unique within a file's history.
 }

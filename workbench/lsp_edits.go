@@ -225,9 +225,9 @@ func (m *workspaceModel) acceptLanguageEdit(r *fileIOResult) {
 				t.document = nil
 				files[t.relative] = f
 				if j.project != nil {
-					j.project.Tabs = append(j.project.Tabs, t.relative)
+					j.project.Tabs = appendFileTab(j.project.Tabs, f)
 				} else {
-					m.tabs = append(m.tabs, t.relative)
+					m.tabs = appendFileTab(m.tabs, f)
 				}
 			}
 			m.applyFileContent(f, j.project, t.content, true)

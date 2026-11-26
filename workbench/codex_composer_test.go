@@ -46,7 +46,7 @@ func TestCodexComposerGrowsUpwardBeforeScrolling(t *testing.T) {
 	initial := bounds()
 	footer := editorContextBounds(t, m, "pencode-extension-composer-footer")
 	control, ok := w.HTMLControl(m.surface, id)
-	if !ok || !w.Focus(control) || initial.Height != 38 {
+	if !ok || !w.Focus(control) || initial.Height != 59 {
 		t.Fatalf("invalid initial input: %+v", initial)
 	}
 	state, _ := app.World.GetResource[*input.State]()

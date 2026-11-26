@@ -12,6 +12,44 @@ import (
 	"github.com/pencode-labs/pencode/peb"
 )
 
+func TestCodexTabTitleEllipsis(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	process := &extensions.ActionSession{}
+	const short = "Review"
+	for _, title := range []string{strings.Repeat("会话宽度firstHeroCureTime", 6), short} {
+		if err := m.applyExtensionUI("codex", process, peb.UI{ID: "composer", Title: title, Kind: peb.EditorTab, View: &peb.EditorView{HTML: "<p>Codex</p>"}}); err != nil {
+			t.Fatal(err)
+		}
+		markPencodeRootDirtyByModel(m.fontResources, m)
+		languageInteractionStep(t, app)
+		tab := editorContextBounds(t, m, "active-tab")
+		closeButton := editorContextBounds(t, m, "file-tab-close:"+m.actions.ui.editor.rootID)
+		if tab.Width > 240 || closeButton.X+closeButton.Width > tab.X+tab.Width {
+			t.Fatalf("unexpected tab or close button bounds: tab=%+v close=%+v", tab, closeButton)
+		}
+		if title == short && tab.Width >= 240 {
+			t.Fatal("short title expanded to the tab width limit")
+		}
+		matched := false
+		for _, text := range m.fontResources.Query[scene.Text2D]() {
+			label := text.Ref().Text().String()
+			if title == short {
+				matched = label == title
+			} else {
+				prefix, ellipsis := strings.CutSuffix(label, "…")
+				matched = ellipsis && prefix != "" && strings.Contains(title, prefix)
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("unexpected rendered label for %q", title)
+		}
+	}
+}
+
 func TestExtensionEditorTabBusyAnimationFollowsBackgroundUpdates(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	m := session.active.model
@@ -276,5 +314,43 @@ func TestExtensionEditorTabSteadyStateDoesNotAllocate(t *testing.T) {
 	}
 	if !strings.Contains(m.workbenchTheme.resolveCSS("color: inherit"), "inherit") {
 		t.Fatal("nil theme changed CSS")
+	}
+}
+
+func TestInactiveProjectExtensionUpdatesStayWithTheirOwner(t *testing.T) {
+	m, first := resourceTestModel(t)
+	second := &pencodeProject{Path: t.TempDir()}
+	m.projects = append(m.projects, second)
+	makeSession := func() chan extensions.ActionResult {
+		results := make(chan extensions.ActionResult, 1)
+		m.actions.sessions = map[string]*extensions.ActionSession{"test": {Results: results}}
+		return results
+	}
+	show := func(results chan extensions.ActionResult, title string) {
+		results <- extensions.ActionResult{UI: &peb.UI{ID: "chat", Kind: peb.EditorTab, Title: title, View: &peb.EditorView{HTML: "<p>text</p>"}}}
+		m.pollActions()
+	}
+	a := makeSession()
+	m.activateProject(second)
+	b := makeSession()
+	show(a, "late first reply")
+	if len(m.actions.ui.surfaces) != 0 || m.actions.ui.editor != nil {
+		t.Fatal("background open reached the foreground")
+	}
+	show(b, "second")
+	foreground := m.actions.ui.editor
+	show(a, "first updated")
+	if m.actions.ui.editor != foreground || foreground.ui.Title != "second" {
+		t.Fatal("same-ID background update changed the foreground tab")
+	}
+	m.activateProject(first)
+	if m.actions.ui.editor == foreground || m.actions.ui.editor.ui.Title != "first updated" {
+		t.Fatal("first project's background update was lost")
+	}
+	m.activateProject(second)
+	a <- extensions.ActionResult{UI: &peb.UI{ID: "chat", Close: true}}
+	m.pollActions()
+	if m.actions.ui.editor != foreground || len(first.view.actions.ui.surfaces) != 0 {
+		t.Fatal("background close affected the wrong tab")
 	}
 }

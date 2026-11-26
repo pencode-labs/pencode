@@ -16,15 +16,16 @@ import (
 	"github.com/pencode-labs/pencode/dap"
 	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/output"
+	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/server"
 )
 
-// Opt in with an installed PHP extension directory and, when PHP does not load
+// Opt in with a PHP debug adapter script and, when PHP does not load
 // Xdebug by default, PENCODE_TEST_PHP_XDEBUG pointing to its runtime module.
-func TestPHPWithXdebugExtension(t *testing.T) {
-	directory := os.Getenv("PENCODE_TEST_PHP_EXTENSIONS")
-	if directory == "" {
-		t.Skip("set PENCODE_TEST_PHP_EXTENSIONS to test the real PHP adapter")
+func TestPHPWithBuiltinXdebug(t *testing.T) {
+	script := os.Getenv("PENCODE_TEST_PHP_DEBUG_JS")
+	if script == "" {
+		t.Skip("set PENCODE_TEST_PHP_DEBUG_JS to test the real PHP adapter")
 	}
 	php, err := exec.LookPath("php")
 	if err != nil {
@@ -37,9 +38,10 @@ func TestPHPWithXdebugExtension(t *testing.T) {
 	}
 	a, b := net.Pipe()
 	done := make(chan struct{})
+	options := server.Options{ExtensionDirectory: t.TempDir(), ConfigurationDirectory: t.TempDir()}
 	go func() {
 		defer close(done)
-		_ = server.Serve(context.Background(), b, server.Options{ExtensionDirectory: directory})
+		_ = server.Serve(context.Background(), b, options)
 	}()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -48,21 +50,17 @@ func TestPHPWithXdebugExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Close(); <-done }()
-	extension, err := c.LoadExtension(ctx, "php")
-	if err != nil {
-		t.Fatal(err)
-	}
 	workspace, err := c.OpenWorkspace(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	configs, err := debugger.ParseConfigs([]byte(extension.Contributions.DebugAdapters[0].Templates), root)
+	configs, err := debugger.ParseConfigs([]byte(debugger.BuiltinTemplates), root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var config debugger.Config
 	for _, candidate := range configs {
-		if strings.Contains(string(candidate.Configuration), "${file}") {
+		if candidate.Adapter == "Xdebug" && strings.Contains(string(candidate.Configuration), "${file}") {
 			config = candidate
 			break
 		}
@@ -87,7 +85,7 @@ func TestPHPWithXdebugExtension(t *testing.T) {
 	var logs output.Store
 	channel := logs.Channel("PHP")
 	open := func(ctx context.Context) (io.ReadWriteCloser, error) {
-		stream, err := c.OpenDebugAdapter(ctx, workspace.Path, config.Adapter, "", "", nil)
+		stream, err := c.OpenDebugAdapter(ctx, workspace.Path, protocol.DebugAdapterCommand{Adapter: config.Adapter, Override: script})
 		if err == nil {
 			go func() { _, _ = io.Copy(channel, stream.Stderr()) }()
 		}

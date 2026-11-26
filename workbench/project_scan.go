@@ -65,14 +65,6 @@ func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace,
 			case <-ready:
 			}
 		}
-		if repositories == nil {
-			var err error
-			repositories, err = backend.GitRepositories(ctx, workspace.Path)
-			if err == nil && repositories == nil {
-				repositories = []string{}
-			}
-		}
-		scan.repositories = repositories
 		var id uint64
 		var err error
 		if previous != 0 {
@@ -88,6 +80,14 @@ func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace,
 				_ = backend.CloseIndex(closeCtx, id)
 			}
 		}()
+		if repositories == nil {
+			var snapshot uint64
+			if previous == 0 {
+				snapshot = id
+			}
+			repositories, _ = backend.IndexRepositories(ctx, workspace.Path, snapshot)
+		}
+		scan.repositories = repositories
 		offset := 0
 		var entries []protocol.IndexEntry
 		for {

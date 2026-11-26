@@ -46,6 +46,27 @@ func TestSourceChangesResize(t *testing.T) {
 			body := editorContextBounds(t, m, "sc-main")
 			history := editorContextBounds(t, m, "sc-history")
 			handle := editorContextBounds(t, m, "sc-changes-resize")
+			checkGraphActions := func() {
+				t.Helper()
+				history := editorContextBounds(t, m, "sc-history")
+				list := editorContextBounds(t, m, "sc-graph")
+				left := history.X
+				for _, id := range []string{"sc-refresh", "sc-op:fetch", "sc-op:pull", "sc-op:push", "sc-op:abort", "sc-panel-close"} {
+					button := editorContextBounds(t, m, id)
+					if button.X < left || button.Y < history.Y || button.Y+button.Height > list.Y {
+						t.Fatalf("%s is outside the graph header or overlaps another action: button=%+v history=%+v list=%+v", id, button, history, list)
+					}
+					left = button.X + button.Width
+				}
+				if inset := history.X + history.Width - left; inset < -1 || inset > 8 {
+					t.Fatalf("graph actions are not aligned to the right: inset=%v", inset)
+				}
+			}
+			checkGraphActions()
+			panel := editorContextBounds(t, m, "bottom-panel")
+			if history.Y-panel.Y > 2 {
+				t.Fatalf("the source panel has an extra title row: panel=%+v history=%+v", panel, history)
+			}
 			if math.Abs(float64(before.Width-min(max(body.Width*.65, 190), body.Width-206))) > 1 {
 				t.Fatalf("unexpected default changes width: changes=%+v body=%+v", before, body)
 			}
@@ -68,6 +89,7 @@ func TestSourceChangesResize(t *testing.T) {
 			if math.Abs(float64(after.Width-(body.Width-206))) > 1 || nextHistory.Width < 200 {
 				t.Fatalf("drag did not preserve graph minimum width: changes=%+v history=%+v body=%+v", after, nextHistory, body)
 			}
+			checkGraphActions()
 			if zoom != 150 {
 				m.setZoom(world, 150)
 				for range 2 {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
 	engineui "github.com/onix-engine/onix/ui"
@@ -38,30 +39,54 @@ type pencodePortProps struct {
 }
 
 func newPortDefinition(content *module.Content) (*htmlui.Definition[pencodePortProps, struct{}], error) {
-	return content.Define[pencodePortProps, struct{}](htmlui.NewTemplate(`<div data-ref="row" class="pencode-port-row" role="row">
-  <div class="pencode-port-cell pencode-port-number" role="cell">
-    <span data-ref="dot" class="pencode-port-dot"></span>
-    <button data-ref="select" class="pencode-port-name" type="button"></button>
-    <input data-ref="label-input" class="pencode-port-input" type="text" aria-label="端口标签" autocomplete="off" spellcheck="false" hidden>
-    <span class="pencode-port-row-actions"><button data-ref="label" class="pencode-icon-button" type="button" title="设置端口标签 (F2)" aria-label="设置端口标签"><img data-ref="label-icon" alt=""></button></span>
-  </div>
-  <div class="pencode-port-cell pencode-port-address" role="cell">
-    <button data-ref="address" class="pencode-port-link" type="button"></button>
-    <input data-ref="local-input" class="pencode-port-input" type="text" aria-label="本地端口" autocomplete="off" spellcheck="false" hidden>
-    <span class="pencode-port-row-actions">
-      <button data-ref="local" class="pencode-icon-button" type="button" title="更改本地端口" aria-label="更改本地端口"><img data-ref="local-icon" alt=""></button>
-      <button data-ref="open" class="pencode-icon-button" type="button" title="在浏览器中打开" aria-label="在浏览器中打开"><img data-ref="open-icon" alt=""></button>
-      <button data-ref="copy" class="pencode-icon-button" type="button" title="复制本地地址" aria-label="复制本地地址"><img data-ref="copy-icon" alt=""></button>
-    </span>
-  </div>
-  <div class="pencode-port-cell pencode-port-protocol" role="cell"><button data-ref="protocol" class="pencode-port-toggle" type="button" aria-label="切换端口协议"></button></div>
-  <span data-ref="process" class="pencode-port-cell pencode-port-process" role="cell"></span>
-  <div class="pencode-port-cell pencode-port-visibility" role="cell"><button data-ref="visibility" class="pencode-port-toggle" type="button" title="切换本机 / 局域网可见性" aria-label="切换端口可见性"></button></div>
-  <div class="pencode-port-cell pencode-port-origin" role="cell">
-    <span data-ref="source" class="pencode-port-source"></span>
-    <span class="pencode-port-row-actions"><button data-ref="stop" class="pencode-icon-button" type="button" title="停止转发端口 (Delete)" aria-label="停止转发端口"><img data-ref="stop-icon" alt=""></button></span>
-  </div>
-</div>`), "", module.ContentBehavior[pencodePortProps, struct{}]{Render: renderPortRow, HandleEvent: handlePortRowEvent})
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "data-ref", "row", "class", "pencode-port-row", "role", "row")
+		b.Open("div", "class", "pencode-port-cell pencode-port-number", "role", "cell")
+		b.Element("span", "data-ref", "dot", "class", "pencode-port-dot")
+		b.Element("button", "data-ref", "select", "class", "pencode-port-name", "type", "button")
+		b.Element("input", "data-ref", "label-input", "class", "pencode-port-input", "type", "text", "aria-label", "端口标签", "autocomplete", "off", "spellcheck", "false", "hidden", "")
+		b.Open("span", "class", "pencode-port-row-actions")
+		b.Open("button", "data-ref", "label", "class", "pencode-icon-button", "type", "button", "title", "设置端口标签 (F2)", "aria-label", "设置端口标签")
+		b.Element("img", "data-ref", "label-icon", "alt", "")
+		b.End()
+		b.End()
+		b.End()
+		b.Open("div", "class", "pencode-port-cell pencode-port-address", "role", "cell")
+		b.Element("button", "data-ref", "address", "class", "pencode-port-link", "type", "button")
+		b.Element("input", "data-ref", "local-input", "class", "pencode-port-input", "type", "text", "aria-label", "本地端口", "autocomplete", "off", "spellcheck", "false", "hidden", "")
+		b.Open("span", "class", "pencode-port-row-actions")
+		b.Open("button", "data-ref", "local", "class", "pencode-icon-button", "type", "button", "title", "更改本地端口", "aria-label", "更改本地端口")
+		b.Element("img", "data-ref", "local-icon", "alt", "")
+		b.End()
+		b.Open("button", "data-ref", "open", "class", "pencode-icon-button", "type", "button", "title", "在浏览器中打开", "aria-label", "在浏览器中打开")
+		b.Element("img", "data-ref", "open-icon", "alt", "")
+		b.End()
+		b.Open("button", "data-ref", "copy", "class", "pencode-icon-button", "type", "button", "title", "复制本地地址", "aria-label", "复制本地地址")
+		b.Element("img", "data-ref", "copy-icon", "alt", "")
+		b.End()
+		b.End()
+		b.End()
+		b.Open("div", "class", "pencode-port-cell pencode-port-protocol", "role", "cell")
+		b.Element("button", "data-ref", "protocol", "class", "pencode-port-toggle", "type", "button", "aria-label", "切换端口协议")
+		b.End()
+		b.Element("span", "data-ref", "process", "class", "pencode-port-cell pencode-port-process", "role", "cell")
+		b.Open("div", "class", "pencode-port-cell pencode-port-visibility", "role", "cell")
+		b.Element("button", "data-ref", "visibility", "class", "pencode-port-toggle", "type", "button", "title", "切换本机 / 局域网可见性", "aria-label", "切换端口可见性")
+		b.End()
+		b.Open("div", "class", "pencode-port-cell pencode-port-origin", "role", "cell")
+		b.Element("span", "data-ref", "source", "class", "pencode-port-source")
+		b.Open("span", "class", "pencode-port-row-actions")
+		b.Open("button", "data-ref", "stop", "class", "pencode-icon-button", "type", "button", "title", "停止转发端口 (Delete)", "aria-label", "停止转发端口")
+		b.Element("img", "data-ref", "stop-icon", "alt", "")
+		b.End()
+		b.End()
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return content.Define[pencodePortProps, struct{}](template, "", module.ContentBehavior[pencodePortProps, struct{}]{Render: renderPortRow, HandleEvent: handlePortRowEvent})
 }
 
 func renderPortRow(c module.ContentRenderContext[pencodePortProps, struct{}], view *htmlui.View) {

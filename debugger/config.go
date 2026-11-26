@@ -1,22 +1,73 @@
 package debugger
 
 import (
+	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net"
 	"path"
+	"strconv"
 	"strings"
+
+	"github.com/pencode-labs/pencode/protocol"
 )
+
+// BuiltinTemplates contains the launchers for built-in debug adapters.
+//
+//go:embed templates.json
+var BuiltinTemplates string
 
 // Config keeps the editor's adapter settings separate from the opaque DAP
 // launch/attach payload. All paths are interpreted on the workspace machine.
 type Config struct {
+	Port          *uint16         `json:"port,omitempty"`
 	Label         string          `json:"label"`
 	Adapter       string          `json:"adapter"`
 	Command       string          `json:"command,omitempty"`
-	Args          []string        `json:"args,omitempty"`
 	Address       string          `json:"address,omitempty"`
+	Host          string          `json:"host,omitempty"`
 	Request       string          `json:"request"`
+	Args          []string        `json:"args,omitempty"`
 	Configuration json.RawMessage `json:"configuration"`
+}
+
+// AdapterCommand selects the transport on the workspace host. The DAP
+// initialize request still identifies the adapter by its configured name.
+func (c Config) AdapterCommand(override string) protocol.DebugAdapterCommand {
+	if c.Port != nil {
+		host := c.Host
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		return protocol.DebugAdapterCommand{Adapter: "tcp", Address: net.JoinHostPort(host, strconv.Itoa(int(*c.Port)))}
+	}
+	if c.Address != "" {
+		return protocol.DebugAdapterCommand{Adapter: "tcp", Address: c.Address}
+	}
+	return protocol.DebugAdapterCommand{Adapter: c.Adapter, Command: c.Command, Args: c.Args, Override: override}
+}
+
+func (c Config) validateTransport() error {
+	switch {
+	case c.Address != "" && (c.Host != "" || c.Port != nil):
+		return fmt.Errorf("use either address or host/port")
+	case c.Port != nil && *c.Port == 0:
+		return fmt.Errorf("port must be between 1 and 65535")
+	case c.Host != "" && c.Port == nil:
+		return fmt.Errorf("host requires port")
+	case c.Host != "" && !protocol.ValidPortHost(c.Host):
+		return fmt.Errorf("invalid host %q", c.Host)
+	case c.Address != "" || c.Port != nil:
+		if c.Adapter == "stdio" || c.Command != "" || len(c.Args) != 0 {
+			return fmt.Errorf("a TCP endpoint cannot be combined with stdio, command or args")
+		}
+	case c.Adapter == "tcp":
+		return fmt.Errorf("tcp requires address or port")
+	case c.Adapter == "stdio" && c.Command == "":
+		return fmt.Errorf("stdio requires command")
+	}
+	return nil
 }
 
 func ParseConfigs(data []byte, root string) ([]Config, error) {
@@ -35,16 +86,12 @@ func ParseConfigs(data []byte, root string) ([]Config, error) {
 		if c.Adapter == "" || len(c.Adapter) > 128 || strings.ContainsAny(c.Adapter, "\x00\r\n/\\") {
 			return nil, fmt.Errorf("debug.json: invalid adapter %q", c.Adapter)
 		}
-		if c.Adapter == "stdio" && c.Command == "" || c.Adapter == "tcp" && c.Address == "" {
-			return nil, fmt.Errorf("debug.json: adapter requires command/address")
+		if err := c.validateTransport(); err != nil {
+			return nil, fmt.Errorf("debug.json: %q: %w", c.Label, err)
 		}
-		// Substitute string values recursively, preserving JSON escaping and
-		// numeric/boolean adapter options.
-		var value map[string]any
-		if err := json.Unmarshal(c.Configuration, &value); err != nil || value == nil {
-			return nil, fmt.Errorf("debug.json: configuration must be an object")
+		if err := c.replaceStrings(func(value string) string { return strings.ReplaceAll(value, "${workspaceFolder}", root) }); err != nil {
+			return nil, err
 		}
-		c.Configuration, _ = json.Marshal(resolveValue(value, func(value string) string { return strings.ReplaceAll(value, "${workspaceFolder}", root) }))
 	}
 	return configs, nil
 }
@@ -59,14 +106,21 @@ func (c Config) ResolveFile(filename string) (Config, error) {
 		return c, fmt.Errorf("debug.json: open a file before launching a file configuration")
 	}
 	filename = strings.ReplaceAll(filename, "\\", "/")
-	var value map[string]any
-	if err := json.Unmarshal(c.Configuration, &value); err != nil {
-		return c, err
-	}
 	replacer := strings.NewReplacer("${file}", filename, "${fileDirname}", path.Dir(filename))
-	var err error
-	c.Configuration, err = json.Marshal(resolveValue(value, replacer.Replace))
+	err := c.replaceStrings(replacer.Replace)
 	return c, err
+}
+
+func (c *Config) replaceStrings(replace func(string) string) error {
+	var value map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(c.Configuration))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil || value == nil {
+		return fmt.Errorf("debug.json: configuration must be an object")
+	}
+	var err error
+	c.Configuration, err = json.Marshal(resolveValue(value, replace))
+	return err
 }
 
 func resolveValue(value any, replace func(string) string) any {

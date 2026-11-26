@@ -55,7 +55,7 @@ func TestWindowRuntimeSharesProcessAndKeepsViewsIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actions := bundle.Actions.Start(nil, nil)
+	actions := bundle.Actions.Start("", nil, nil)
 	defer actions.Close()
 	nextAction := func() int {
 		t.Helper()

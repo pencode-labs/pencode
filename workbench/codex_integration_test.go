@@ -78,7 +78,7 @@ func TestCodexStatusBarReopensWorkspaceWhileStartupPending(t *testing.T) {
 	testCodexStatusBarWorkspace(t, gate)
 }
 
-func TestCodexWorkspaceFollowsActiveProject(t *testing.T) {
+func TestCodexWorkspaceIsolatedByProject(t *testing.T) {
 	t.Setenv("PENCODE_CODEX_PATH", codexFixtureExecutable(t))
 	t.Setenv("PENCODE_CODEX_FIXTURE", "1")
 	t.Setenv("PENCODE_CODEX_HISTORY_PROJECTS", "1")
@@ -224,7 +224,11 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := backend.OpenWorkspace(t.Context(), model.projectPath); err != nil {
+		t.Fatal(err)
+	}
 	model.importActions(bundle.Actions)
+	projectLog := model.outputStore().Channel("Extension: " + bundle.Actions.ID)
 	t.Cleanup(func() { model.removeActions("codex") })
 	phase := "open workspace"
 	wait := func(ready func() bool) {
@@ -237,7 +241,7 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			}
 			time.Sleep(time.Millisecond)
 		}
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		t.Fatalf("Codex timed out during %s: %s; logs=%s", phase, model.extensionFeedback, logs)
 	}
 	button := "action-extensions/codex/chat"
@@ -824,36 +828,47 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		rename := model.actions.ui.overlay
 		editorContextClick(t, app, model, state, waitControl(rename, "rename-cancel"))
 		wait(func() bool { return model.actions.ui.overlay == nil })
+		promptID := waitControl(surface, "prompt")
+		control, _ := model.fontResources.HTMLControl(model.surface, promptID)
+		model.fontResources.SetControlValue(control, "first project draft")
 		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "first project draft"}, "")
 		second := &pencodeProject{Path: t.TempDir(), Name: "Second project", Files: make(map[string]*openFile)}
-		model.projects = append(model.projects, second)
-		for _, project := range []*pencodeProject{second, first, second} {
-			model.activateProject(project)
-			markPencodeRootDirtyByModel(model.fontResources, model)
-			wait(func() bool {
-				return strings.Contains(surface.view.HTML, `data-ref="history/`+project.Path+`/saved"`)
-			})
-			other := first
-			if project == first {
-				other = second
-				if !strings.Contains(surface.view.HTML, ">first project draft</textarea>") {
-					t.Fatal("returning to the project lost its draft")
-				}
-			}
-			if strings.Contains(surface.view.HTML, `data-ref="history/`+other.Path+`/saved"`) || model.actions.ui.editor != surface {
-				t.Fatal("project switch mixed histories or replaced the Codex tab")
-			}
+		if _, err := backend.OpenWorkspace(t.Context(), second.Path); err != nil {
+			t.Fatal(err)
 		}
-		// A history refresh for a hidden tab must preserve the selected file.
-		model.actions.ui.editor = nil
+		model.projects = append(model.projects, second)
+		model.activateProject(second)
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		wait(func() bool {
+			return !surface.live() && model.actions.ui.editor == nil && len(model.actions.ui.surfaces) == 0
+		})
+		phase = "second project history"
+		editorContextClick(t, app, model, state, button)
+		wait(func() bool {
+			return model.actions.ui.editor != nil && strings.Contains(model.actions.ui.editor.view.HTML, `data-ref="history/`+second.Path+`/saved"`)
+		})
+		other := model.actions.ui.editor
+		if other == surface || strings.Contains(other.view.HTML, "first project draft") {
+			t.Fatal("second project inherited first project's composer")
+		}
 		model.activateProject(first)
 		markPencodeRootDirtyByModel(model.fontResources, model)
-		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/`+first.Path+`/saved"`) })
-		if model.actions.ui.editor != nil {
-			t.Fatal("project change revealed the hidden Codex tab")
+		wait(func() bool {
+			control, ok := model.fontResources.HTMLControl(model.surface, promptID)
+			field := model.fontResources.Ref[engineui.TextField](control)
+			return model.actions.ui.editor == surface && ok && field != nil && field.Text().String() == "first project draft"
+		})
+		model.selectProjectTab(first, first.ActivePath)
+		model.activateProject(second)
+		if model.actions.ui.editor != other {
+			t.Fatal("second project lost its selected tab")
 		}
-		if allocations := testing.AllocsPerRun(100, func() { model.syncExtensionProject(model.projectPath) }); allocations != 0 {
-			t.Fatalf("unchanged project allocated: %g", allocations)
+		model.activateProject(first)
+		if model.actions.ui.editor != nil || len(model.actions.ui.surfaces) != 1 {
+			t.Fatal("switching back lost the file selection or Codex tab")
+		}
+		if n := testing.AllocsPerRun(100, model.syncActiveProjectFields); n != 0 {
+			t.Fatalf("unchanged project allocated %g", n)
 		}
 		return
 	}

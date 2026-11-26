@@ -17,6 +17,7 @@ import (
 	"github.com/pencode-labs/pencode/debugger"
 	"github.com/pencode-labs/pencode/output"
 
+	"github.com/pencode-labs/pencode/protocol"
 	"github.com/pencode-labs/pencode/server"
 )
 
@@ -62,7 +63,7 @@ func TestDelveBreakpointStepVariablesAndDisconnect(t *testing.T) {
 	var store output.Store
 	channel := store.Channel("debug")
 	open := func(ctx context.Context) (io.ReadWriteCloser, error) {
-		p, err := c.OpenDebugAdapter(ctx, w.Path, "Delve", dlv, "", nil)
+		p, err := c.OpenDebugAdapter(ctx, w.Path, protocol.DebugAdapterCommand{Adapter: "Delve", Override: dlv})
 		if err == nil {
 			go io.Copy(channel, p.Stderr())
 		}

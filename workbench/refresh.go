@@ -44,8 +44,9 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 		if regions&pencodeRefreshSelection != 0 {
 			m.renderEditorHeader(view, m.activeFile())
 			for entity, access := range c.World.Query[htmlui.Component[treeProps, treeRowState]]() {
-				props := access.Ref().Props
-				if props.Model == m && props.Project == m.activeProjectState() && (props.Path == previous || props.Path == m.activePath) {
+				row := access.Ref()
+				props := row.Props
+				if props.Model == m && props.Project == m.activeProjectState() && (row.State.selected || props.Path == previous || props.Path == m.activePath) {
 					c.World.UpdateState[treeProps, treeRowState](entity, func(*treeRowState) {})
 				}
 			}
@@ -54,19 +55,23 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 	}
 	if regions&(pencodeRefreshEditor|pencodeRefreshSave) != 0 {
 		view.Text("launcher-status", m.status)
-		// A first edit pins the preview and changes the dirty indicator, without
-		// reconciling the explorer or the other workbench regions.
+	}
+	if regions&(pencodeRefreshEditor|pencodeRefreshSave|pencodeRefreshGit) != 0 {
 		for entity, access := range c.World.Query[htmlui.Component[tabProps, struct{}]]() {
-			props := access.Get().Props
+			props := access.Ref().Props
 			if props.Model != m || props.Project == nil {
 				continue
 			}
-			active := props.Project == m.activeProjectState() && props.Path == m.activePath
-			if file := props.Project.Files[props.Path]; file != nil && (props.Dirty != file.Dirty || props.Preview != file.Preview || regions&pencodeRefreshSelection != 0 && props.Active != active) {
-				if regions&pencodeRefreshSelection != 0 {
-					props.Active = active
-				}
+			if regions&pencodeRefreshGit != 0 {
+				props.Decoration.git = props.Project.treeGit.names[props.Path]
+			}
+			if file := props.Project.Files[props.Path]; file != nil {
 				props.Dirty, props.Preview = file.Dirty, file.Preview
+			}
+			if regions&pencodeRefreshSelection != 0 {
+				props.Active = props.Project == m.activeProjectState() && props.Path == m.activePath
+			}
+			if props != access.Ref().Props {
 				c.World.Mut[htmlui.Component[tabProps, struct{}]](entity).Props = props
 				c.World.UpdateState[tabProps, struct{}](entity, func(*struct{}) {})
 			}
@@ -79,8 +84,8 @@ func (m *workspaceModel) patchWorkbench(c module.ContentRenderContext[appProps, 
 			if props.Model != m || props.Project == nil {
 				continue
 			}
-			if status := props.Project.treeGit.names[props.Path]; props.GitStatus != status {
-				props.GitStatus = status
+			if status := props.Project.treeGit.names[props.Path]; props.Decoration.git != status {
+				props.Decoration.git = status
 				c.World.Mut[htmlui.Component[treeProps, treeRowState]](entity).Props = props
 				c.World.UpdateState[treeProps, treeRowState](entity, func(*treeRowState) {})
 			}

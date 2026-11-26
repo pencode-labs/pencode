@@ -53,7 +53,7 @@ func checkRegexpRange(t testing.TB, content, query string, wholeWord bool, start
 	var want []Match
 	count := 0
 	for _, groups := range p.re.FindAllStringSubmatchIndex(content, -1) {
-		if groups[0] < start || groups[1] > end || !p.boundary(content, groups[0], groups[1]) {
+		if groups[0] < start || groups[1] > end || !p.WordBoundary(content, groups[0], groups[1]) {
 			continue
 		}
 		count++

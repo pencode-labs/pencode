@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/pencode-labs/pencode/configuration"
+	"github.com/pencode-labs/pencode/server/workspace"
 
 	"github.com/onix-engine/onix/syntax"
 	"github.com/pencode-labs/pencode/protocol"
@@ -21,6 +22,7 @@ type services struct {
 	streams                map[uint64]*serviceStream
 	indexes                map[uint64]*serviceIndex
 	syntax                 map[uint64]*syntaxSession
+	history                *workspace.FileHistory
 	extensions             *extensionService
 	configurationDirectory string
 	background             sync.WaitGroup
@@ -34,6 +36,9 @@ func newServices(ctx context.Context, options Options) *services {
 	s.extensions = &extensionService{owner: s, directory: options.ExtensionDirectory, entries: make(map[uint64]*extensionEntry)}
 	s.watches = make(map[string]*workspaceWatch)
 	s.configurationDirectory = options.ConfigurationDirectory
+	if directory, err := s.toolConfigurationDirectory(); err == nil {
+		s.history = &workspace.FileHistory{SettingsPath: filepath.Join(directory, "settings.json")}
+	}
 	return s
 }
 func (s *services) close() {
@@ -83,6 +88,31 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 		}
 	}
 	switch op {
+	case protocol.DiskStorage:
+		clean := protocol.StorageMask(d.U32())
+		if root != "" || d.Done() != nil || clean & ^protocol.CleanableStorage != 0 {
+			return protocol.ErrProtocol
+		}
+		config, err := s.toolConfigurationDirectory()
+		if err != nil {
+			return err
+		}
+		s.extensions.mu.Lock()
+		extensions := s.extensions.directory
+		s.extensions.mu.Unlock()
+		report, err := workspace.DiskStorage(ctx, config, extensions, clean)
+		if err != nil {
+			return err
+		}
+		e.String(report.Host)
+		e.String(report.Problem)
+		e.U64(report.Removed.Bytes)
+		e.U64(report.Removed.Files)
+		for _, item := range report.Sizes {
+			e.U64(item.Bytes)
+			e.U64(item.Files)
+		}
+		return nil
 	case protocol.LanguageTools:
 		if root != "" {
 			return protocol.ErrProtocol
@@ -97,13 +127,9 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 		if root != "" {
 			return protocol.ErrProtocol
 		}
-		directory := s.configurationDirectory
-		if directory == "" {
-			var err error
-			directory, err = configuration.Directory()
-			if err != nil {
-				return err
-			}
+		directory, err := s.toolConfigurationDirectory()
+		if err != nil {
+			return err
 		}
 		if op == protocol.SettingsSave {
 			data := d.Bytes()
@@ -138,7 +164,7 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 			return err
 		}
 		return browseDirectory(ctx, directory, e)
-	case protocol.GitCommand, protocol.GitRepositories, protocol.GitCheckIgnore, protocol.GitRebasing, protocol.FileRead, protocol.FileSave, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen, protocol.TextSearch, protocol.WorkspaceWatch:
+	case protocol.GitCommand, protocol.GitRepositories, protocol.GitCheckIgnore, protocol.GitRebasing, protocol.FileRead, protocol.FileSave, protocol.FileHistoryList, protocol.FileHistoryRestore, protocol.FileHistoryRead, protocol.ProcessOpen, protocol.TerminalOpen, protocol.IndexOpen, protocol.TextSearch, protocol.WorkspaceWatch:
 		if root == "" {
 			return protocol.ErrProtocol
 		}
@@ -167,6 +193,8 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 			return err
 		}
 		return gitRebasing(ctx, root, e)
+	case protocol.FileHistoryList, protocol.FileHistoryRestore, protocol.FileHistoryRead:
+		return s.fileHistory(ctx, op, root, &d, e)
 	case protocol.FileRead, protocol.FileSave:
 		return s.file(op, root, &d, e)
 	case protocol.DiffPatch:
@@ -186,6 +214,10 @@ func (s *services) dispatch(ctx context.Context, payload []byte, e *protocol.Enc
 
 // Closing a workspace revokes its derived repository roots and process handles.
 func (s *services) closeWorkspace(id uint64) {
+	// Match extension process creation's lock order so a reopened root cannot
+	// acquire a runtime that belongs to the workspace being closed.
+	s.extensions.mu.Lock()
+	defer s.extensions.mu.Unlock()
 	s.mu.Lock()
 	root := s.projects[id]
 	delete(s.projects, id)
@@ -227,6 +259,14 @@ func (s *services) closeWorkspace(id uint64) {
 			delete(s.streams, key)
 			s.background.Add(1)
 			go func() { defer s.background.Done(); p.close() }()
+		}
+	}
+	if root != "" && !s.roots[root] {
+		for _, entry := range s.extensions.entries {
+			if runtime := entry.runtimes[root]; runtime != nil {
+				delete(entry.runtimes, root)
+				runtime.Close()
+			}
 		}
 	}
 	s.mu.Unlock()

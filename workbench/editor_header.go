@@ -28,9 +28,14 @@ func (header *pencodeEditorHeader) sync(model *workspaceModel, filePath string) 
 	}
 	header.projectPath, header.projectName, header.filePath = model.projectPath, model.projectName, filePath
 	header.icons, header.themeID = model.fileIcons, themeID
-	header.fullPath = filepath.Join(model.projectPath, filepath.FromSlash(filePath))
 	clear(header.segments)
 	header.segments = header.segments[:0]
+	if name, untitled := strings.CutPrefix(filePath, untitledPrefix); untitled {
+		header.fullPath = name
+		header.appendSegment(model, name, false, true)
+		return
+	}
+	header.fullPath = filepath.Join(model.projectPath, filepath.FromSlash(filePath))
 	header.appendSegment(model, model.projectName, true, false)
 	for rest := filePath; rest != ""; {
 		name, next, more := strings.Cut(rest, "/")

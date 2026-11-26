@@ -30,6 +30,7 @@ func TestSourceControlProjectActivationRefreshesHistory(t *testing.T) {
 			m := &workspaceModel{projects: []*pencodeProject{current, next}, backend: r.Backend, projectPath: current.Path}
 			current.sourceControl.RefreshStarted = true
 			m.bottom.active = pencodePanelSourceControl
+			next.view.layout.panel = pencodePanelSourceControl
 			s := &next.sourceControl
 			t.Cleanup(s.stop)
 			s.Snapshot.Repository = r
@@ -214,7 +215,6 @@ func TestSourceControlBackgroundStatusOutsideRepository(t *testing.T) {
 	checkPanel := func() {
 		t.Helper()
 		m.renderSourceControl(&s.panelView)
-		m.renderSourceToolbar(&s.toolsView)
 		found := false
 		for _, group := range s.panelView.groups[:s.panelView.used] {
 			found = found || group.node.Text == "当前文件夹未检测到 Git 仓库。"
@@ -236,13 +236,12 @@ func TestSourceControlBackgroundStatusOutsideRepository(t *testing.T) {
 				}
 				disabled = disabled || attr.Name == "disabled"
 			}
-			if disabled != (id != "sc-refresh") {
+			if disabled != (id != "sc-refresh" && id != "sc-panel-close") {
 				t.Fatalf("unexpected toolbar availability: %s disabled=%v", id, disabled)
 			}
 		}
 		if allocations := testing.AllocsPerRun(100, func() {
 			m.renderSourceControl(&s.panelView)
-			m.renderSourceToolbar(&s.toolsView)
 		}); allocations != 0 {
 			t.Fatalf("unchanged repository error view allocated %g times", allocations)
 		}

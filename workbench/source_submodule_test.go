@@ -2,9 +2,60 @@ package workbench
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestSourceControlRefreshMissingSubmoduleWorktree(t *testing.T) {
+	r, child := sourceTestRepository(t), sourceTestRepository(t)
+	sourceTestGit(t, child, "commit", "--allow-empty", "-m", "base")
+	const broken = "cross/vendor libs"
+	for _, path := range []string{broken, "healthy"} {
+		sourceTestGit(t, r, "-c", "protocol.file.allow=always", "submodule", "add", "--name", filepath.Base(path), child.Root, path)
+	}
+	sourceTestGit(t, r, "commit", "-m", "add submodules")
+	config := ".git/modules/vendor libs/config"
+	original := sourceTestGit(t, r, "config", "--file", config, "core.worktree")
+	sourceTestGit(t, r, "config", "--file", config, "core.worktree", "missing-directory")
+	sourceTestWrite(t, r, "file.txt", "new\n")
+	sourceTestWrite(t, r, "healthy/dirty.txt", "new\n")
+	sourceTestWrite(t, r, broken+"/dirty.txt", "new\n")
+
+	m := &workspaceModel{projectPath: r.Root, backend: r.Backend}
+	s := m.sourceState()
+	t.Cleanup(s.stop)
+	refresh := func(action string, want []sourceFile) {
+		t.Helper()
+		m.sourceAction(action)
+		if s.Done == nil {
+			t.Fatal("refresh did not start")
+		}
+		result := <-s.Done
+		s.Done <- result
+		m.pollSourceResult(s, nil)
+		if result.Err != nil || s.modal() || s.RefreshPending || !slices.Equal(s.Snapshot.Files, want) {
+			t.Fatalf("refresh: err=%v, notice=%q, pending=%t, files=%+v", result.Err, s.Notice, s.RefreshPending, s.Snapshot.Files)
+		}
+	}
+	want := []sourceFile{{Path: "file.txt", Index: '?', Work: '?'}, {Path: "healthy", Index: ' ', Work: 'M'}}
+	refresh("sc-toggle", want)
+
+	s.CommitMessage = "draft"
+	m.sourceAction("sc-create-commit")
+	job := s.repositoryJobs[r.Root]
+	if job.Done == nil {
+		t.Fatal("commit did not start")
+	}
+	result := <-job.Done
+	job.Done <- result
+	m.pollSourceResult(s, nil)
+	if result.Err == nil || s.modal() || !s.RefreshPending || s.CommitMessage != "draft" {
+		t.Fatalf("commit: err=%v, notice=%q, pending=%t, draft=%q", result.Err, s.Notice, s.RefreshPending, s.CommitMessage)
+	}
+	sourceTestGit(t, r, "config", "--file", config, "core.worktree", original)
+	refresh("sc-refresh", slices.Insert(want, 0, sourceFile{Path: broken, Index: ' ', Work: 'M'}))
+}
 
 func TestSourceControlSubmoduleSummary(t *testing.T) {
 	r, child := sourceTestRepository(t), sourceTestRepository(t)

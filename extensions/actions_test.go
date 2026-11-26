@@ -93,7 +93,7 @@ func TestActionSessionReconstructsPatchesBeforeResources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := bundle.Actions.Start(nil, nil)
+	session := bundle.Actions.Start("", nil, nil)
 	defer session.Close()
 	for i, value := range []string{"first", "second", "second"} {
 		event := peb.UIEvent{ID: "stream", Event: peb.EditorEvent{Kind: "click", Ref: "stream-test", Value: value}}
@@ -145,7 +145,7 @@ func TestActionSessionUIAnchors(t *testing.T) {
 		{"ui:composer", false},
 	} {
 		t.Run(tc.anchor, func(t *testing.T) {
-			session := bundle.Actions.Start(nil, nil)
+			session := bundle.Actions.Start("", nil, nil)
 			defer session.Close()
 			if !session.SubmitUI(peb.UIEvent{ID: "composer", Event: peb.EditorEvent{Kind: "click", Ref: "model-settings", Value: tc.anchor}}) {
 				t.Fatal("UI event rejected")
@@ -192,7 +192,7 @@ func TestActionSessionLiveUpdateClickAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	extension := bundle.Actions
-	session := extension.Start(nil, nil)
+	session := extension.Start("", nil, nil)
 	defer session.Close()
 	receive := func() ActionResult {
 		t.Helper()
@@ -336,7 +336,7 @@ func TestActionSessionLifecycleRepliesKeepTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := bundle.Actions.Start(nil, nil)
+	session := bundle.Actions.Start("", nil, nil)
 	defer session.Close()
 	events := [...]peb.LifecycleEvent{{Kind: peb.WindowClosing}, {Kind: peb.ProjectClosing, ProjectPath: "/fail"}, {Kind: peb.ProjectClosed, ProjectPath: "/project"}}
 	for i, event := range events {

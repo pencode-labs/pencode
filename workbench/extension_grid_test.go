@@ -29,7 +29,7 @@ func TestOfficeVirtualGridScrollSearchAndCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	payload := `{"rows":10000,"columns":200,"rowHeight":21,"columnWidth":64,"rowSizes":[[3,64],[5000,42]],"columnSizes":[[150,180]],"styles":["","text-align:center;vertical-align:middle;","white-space:pre-wrap;overflow-wrap:break-word;"],"cells":[[1,1,"repeat",0],[1,3,"alpha  beta",0],[2,2,"copy-end",0],[3,1,"wrapped words across lines",2],[5000,150,"中文🙂 far-target",1],[10000,200,"repeat",0]]}`
-	view := &peb.EditorView{HTML: `<section class="office-viewer"><header class="office-toolbar">Sheet</header><article class="office-content workbook" data-ref="office-content" data-pencode-selectable data-pencode-searchable data-pencode-preserve-whitespace><div class="sheet-grid" data-ref="grid" data-pencode-grid="` + html.EscapeString(payload) + `"></div></article></section>`, CSS: string(css)}
+	view := &peb.EditorView{HTML: `<section class="office-viewer"><header class="office-toolbar">Sheet</header><article class="office-content workbook" data-ref="office-content" data-pencode-selectable data-pencode-searchable data-pencode-preserve-whitespace><div class="sheet-grid" data-ref="grid" data-pencode-highlight-rows data-pencode-highlight-cells data-pencode-grid="` + html.EscapeString(payload) + `"></div></article></section>`, CSS: string(css)}
 	if err := doc.setView(view); err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +106,82 @@ func TestOfficeVirtualGridScrollSearchAndCopy(t *testing.T) {
 	if n := testing.AllocsPerRun(100, func() { m.syncCustomGrid(w) }); n != 0 {
 		t.Fatalf("stable grid allocated %g", n)
 	}
+	clickCell := func(row, column int) {
+		t.Helper()
+		node, ok := w.HTMLNode(m.surface, cellID(row, column))
+		bounds, valid := node.Bounds()
+		if !ok || !valid {
+			t.Fatalf("missing cell %d,%d", row, column)
+		}
+		// Click the padding, away from any cell text.
+		scroll := w.Ref[scene.UIScroll](g.area)
+		zoom := float64(m.settings.Zoom) / 100
+		x := float64(bounds.X+bounds.Width-4+scroll.Position[0]) * zoom
+		y := float64(bounds.Y+bounds.Height/2+scroll.Position[1]) * zoom
+		keys.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		keys.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
+		step()
+	}
+	checkRow := func(row, selectedColumn int) {
+		t.Helper()
+		for c := g.firstColumn; c < g.endColumn; c++ {
+			node, ok := w.HTMLNode(m.surface, cellID(row, c))
+			value, _ := node.Attribute("aria-selected")
+			selected := selectedColumn == 0 || c == selectedColumn
+			if !ok || (value == "true") != selected {
+				t.Fatalf("cell %d,%d aria-selected = %q, want selected %v", row, c, value, selected)
+			}
+		}
+	}
+	clickCell(3, 0)
+	checkRow(3, 0)
+	clickCell(3, 2)
+	checkRow(3, 2)
+	blank, _ := w.HTMLNode(m.surface, cellID(3, 2))
+	bounds, _ := blank.Bounds()
+	background := pencodeSyntaxColor(m.syntaxTheme.Color("list.activeSelectionBackground"))
+	painted := false
+	for _, values := range w.Query2[scene.Sprite2D, scene.UIGlobalTransform]() {
+		sprite, matrix := values.A.Ref(), &values.B.Ref().Matrix
+		if sprite.Shape.Fill == background && matrix[12] == bounds.X && matrix[13] == bounds.Y {
+			painted = true
+			break
+		}
+	}
+	if !painted {
+		t.Fatal("blank cell did not paint the highlight in the theme selection color")
+	}
+	clickCell(3, 1)
+	checkRow(3, 1)
+	w.Mut[scene.UIScroll](g.area).Position[0] = -6400
+	step()
+	w.Mut[scene.UIScroll](g.area).Position[0] = 0
+	step()
+	checkRow(3, 1)
+	clickCell(10, 0)
+	checkRow(3, -1)
+	checkRow(10, 0)
+	w.Mut[scene.UIScroll](g.area).Position[0] = -6400
+	step()
+	checkRow(10, 0)
+	clickCell(10, 103)
+	checkRow(10, 103)
+	w.Mut[scene.UIScroll](g.area).Position = [2]float32{0, -2100}
+	originalZoom := m.settings.Zoom
+	m.settings.Zoom = 150
+	markPencodeRootDirtyByModel(w, m)
+	step()
+	clickCell(110, 0)
+	checkRow(110, 0)
+	clickCell(110, 2)
+	checkRow(110, 2)
+	m.settings.Zoom = originalZoom
+	markPencodeRootDirtyByModel(w, m)
+	w.Mut[scene.UIScroll](g.area).Position = [2]float32{}
+	step()
+	checkRow(10, -1)
+	clickCell(1, 0)
 	// Use the real pointer path to select across a blank column.
 	point := func(label string, caret int) (float64, float64) {
 		t.Helper()
@@ -138,6 +214,7 @@ func TestOfficeVirtualGridScrollSearchAndCopy(t *testing.T) {
 	if got := m.actions.ui.selection.text(); got != "repeat\t\talpha" {
 		t.Fatalf("pointer selected %q", got)
 	}
+	checkRow(1, 1)
 	// Keep selection offsets while their original DOM nodes are evicted.
 	selection := &m.actions.ui.selection
 	selection.surface, selection.area = doc.selection, g.area
@@ -239,6 +316,9 @@ func TestOfficeVirtualGridScrollSearchAndCopy(t *testing.T) {
 	if selection.surface == nil || selection.grid != doc.grid || !selection.all {
 		t.Fatal("style refresh lost virtual selection")
 	}
+	if doc.grid.highlightedRow != 1 || doc.grid.highlightedColumn != 1 {
+		t.Fatal("style refresh lost the highlighted cell")
+	}
 	replacement := next
 	replacement.HTML = strings.Replace(view.HTML, "far-target", "new-target", 1)
 	if err := doc.setView(&replacement); err != nil {
@@ -248,6 +328,9 @@ func TestOfficeVirtualGridScrollSearchAndCopy(t *testing.T) {
 	step()
 	if selection.surface != nil || selection.grid != nil {
 		t.Fatal("replacing grid retained old selection/data")
+	}
+	if doc.grid.highlightedRow != 0 || doc.grid.highlightedColumn != 0 {
+		t.Fatal("replacing grid retained the highlighted cell")
 	}
 }
 

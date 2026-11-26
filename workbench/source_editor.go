@@ -73,6 +73,9 @@ func (a *workspaceModel) renderSourceTabs(b *sourceVNodeView) {
 		if tab.Kind == "history" {
 			left, right = "Parent", "Commit · "+tab.Revision[:8]
 		}
+		if tab.Kind == "local-history" {
+			left, right = a.tr("本地历史")+" · "+tab.Revision, a.tr("当前文件")
+		}
 		b.text("h3", "left", left, "class", "sc-heading")
 		b.text("div", "separator", "", "class", "sc-diff-gutter-heading", "aria-hidden", "true")
 		b.text("h3", "right", right, "class", "sc-heading")
@@ -302,7 +305,11 @@ func (a *workspaceModel) renderSourcePrompt(b *sourceVNodeView) {
 		}
 		b.open("div", "actions", "class", "pencode-close-actions")
 		b.button("sc-prompt-cancel", "Cancel")
-		b.button("sc-prompt-confirm", "Confirm", "class", "pencode-close-save")
+		confirmClass := "pencode-close-save"
+		if s.Prompt == "delete-branch" {
+			confirmClass = "danger"
+		}
+		b.button("sc-prompt-confirm", "Confirm", "class", confirmClass)
 		b.close()
 	}
 	b.close()

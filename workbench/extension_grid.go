@@ -87,8 +87,12 @@ func (a *pencodeGridAxis) offset(index int) float64 {
 	return position
 }
 
+func (a *pencodeGridAxis) indexAt(position float64) int {
+	return sort.Search(a.count, func(i int) bool { return a.offset(i+1) > position })
+}
+
 func (a *pencodeGridAxis) window(position, viewport float64, overscan int) (int, int) {
-	first := sort.Search(a.count, func(i int) bool { return a.offset(i+1) > position })
+	first := a.indexAt(position)
 	end := sort.Search(a.count, func(i int) bool { return a.offset(i) >= position+viewport })
 	return max(0, first-overscan), min(a.count, end+overscan)
 }
@@ -101,12 +105,14 @@ type pencodeVirtualGrid struct {
 	cells                         []pencodeGridCell
 	nodes                         []htmlui.VNode
 	records                       []htmlui.VNode
-	attributes                    [][6]htmlui.VNodeAttribute
+	attributes                    [][7]htmlui.VNodeAttribute
 	metadata                      []*uinode.Node
 	chunks                        []pencodeRenderedFindChunk
 	rows, columns                 pencodeGridAxis
 	component, area               ecs.Entity
 	firstRow, endRow              int
+	highlightedRow                int
+	highlightedColumn             int
 	focusOffset                   int
 	firstColumn, endColumn        int
 	originX, originY              float32
@@ -218,7 +224,7 @@ func (g *pencodeVirtualGrid) render(target *htmlui.View) {
 		g.cacheRows, g.cacheColumns = max(g.cacheRows, rowCount), max(g.cacheColumns, columnCount)
 		for len(g.records) < g.cacheRows*g.cacheColumns {
 			g.records = append(g.records, htmlui.VNode{})
-			g.attributes = append(g.attributes, [6]htmlui.VNodeAttribute{})
+			g.attributes = append(g.attributes, [7]htmlui.VNodeAttribute{})
 			g.metadata = append(g.metadata, &uinode.Node{Type: uinode.ElementNode, Data: "div", Parent: g.node})
 		}
 		clear(g.records)
@@ -261,17 +267,21 @@ func (g *pencodeVirtualGrid) render(target *htmlui.View) {
 					class += " pencode-grid-header"
 				}
 				x, y := g.columns.offset(c), g.rows.offset(r)
-				*attrs = [6]htmlui.VNodeAttribute{
+				*attrs = [7]htmlui.VNodeAttribute{
 					{Name: "id", Value: g.id + "/cell/" + strconv.Itoa(r) + "/" + strconv.Itoa(c)},
 					{Name: "class", Value: class}, {Name: "role", Value: role},
 					{Name: "style", Value: fmt.Sprintf("left:%gpx;top:%gpx;width:%gpx;height:%gpx;%s", x, y, g.columns.offset(c+1)-x, g.rows.offset(r+1)-y, css)},
 					{Name: "aria-rowindex", Value: strconv.Itoa(r + 1)}, {Name: "aria-colindex", Value: strconv.Itoa(c + 1)},
+					{Name: "aria-selected", Value: "true"},
 				}
 				*vnode = htmlui.VNode{Key: key, Tag: "div", Text: value}
 				g.metadata[slot].SetAttr("id", attrs[0].Value)
 			}
 			// The attribute backing array can move while growing the first window.
-			vnode.Attributes = attrs[:]
+			vnode.Attributes = attrs[:6]
+			if r > 0 && r == g.highlightedRow && (g.highlightedColumn == 0 || c == g.highlightedColumn) {
+				vnode.Attributes = attrs[:]
+			}
 			g.nodes[n] = *vnode
 			if cell != nil {
 				g.chunks = append(g.chunks, pencodeRenderedFindChunk{node: g.metadata[slot], start: cell.start + renderStart, end: cell.start + renderStart + len(visible)})
@@ -280,6 +290,30 @@ func (g *pencodeVirtualGrid) render(target *htmlui.View) {
 		}
 	}
 	target.Keyed(g.ref, g.nodes[:count])
+}
+
+// Hit-test the cell rectangle so padding and empty cells are selectable too.
+func (g *pencodeVirtualGrid) highlightAt(world *module.Content, x, y float32) {
+	transform := world.Ref[scene.UIGlobalTransform](g.area)
+	scroll := world.Ref[scene.UIScroll](g.area)
+	if transform == nil || scroll == nil {
+		return
+	}
+	matrix := &transform.Matrix
+	x = (x-matrix[12])/matrix[0] - scroll.Position[0] - g.originX
+	y = (y-matrix[13])/matrix[5] - scroll.Position[1] - g.originY
+	row, column := g.rows.indexAt(float64(y)), g.columns.indexAt(float64(x))
+	attribute := "data-pencode-highlight-cells"
+	if column == 0 {
+		attribute = "data-pencode-highlight-rows"
+	}
+	if _, enabled := g.node.Attr(attribute); !enabled || x < 0 || row == 0 || row == g.rows.count || column == g.columns.count {
+		row, column = 0, 0
+	}
+	if g.highlightedRow != row || g.highlightedColumn != column {
+		g.highlightedRow, g.highlightedColumn = row, column
+		world.UpdateState[*pencodeCustomDocument, struct{}](g.component, func(*struct{}) {})
+	}
 }
 
 // Bound text shaping inside clipped cells. A find result requests the slice

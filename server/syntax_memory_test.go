@@ -1,6 +1,7 @@
 package server
 
 import (
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -67,5 +68,36 @@ func BenchmarkSyntaxIncrementalEdit(b *testing.B) {
 				apply(offset, offset+1, [...]string{"x", "y"}[index])
 			}
 		})
+	}
+}
+
+func BenchmarkSyntaxReopenAfterGC(b *testing.B) {
+	s := newServices(b.Context(), Options{})
+	b.Cleanup(s.close)
+	var request, release, response protocol.Encoder
+	request.U64(1)
+	request.U64(0)
+	request.String("main.go")
+	request.U32(0)
+	request.U32(0)
+	request.String("package main\nimport \"fmt\"\nfunc main() { fmt.Println(1) }\n")
+	release.U64(1)
+	openClose := func() {
+		response.Reset()
+		d := protocol.Decoder{Buffer: request.Buffer}
+		if err := s.analyze(b.Context(), protocol.SyntaxAnalyze, &d, &response); err != nil {
+			b.Fatal(err)
+		}
+		d = protocol.Decoder{Buffer: release.Buffer}
+		if err := s.analyze(b.Context(), protocol.SyntaxRelease, &d, &response); err != nil {
+			b.Fatal(err)
+		}
+	}
+	openClose()
+	b.ReportAllocs()
+	for b.Loop() {
+		runtime.GC()
+		runtime.GC()
+		openClose()
 	}
 }

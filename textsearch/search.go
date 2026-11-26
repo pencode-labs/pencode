@@ -20,11 +20,11 @@ type Match struct {
 }
 
 type Pattern struct {
-	re      *regexp.Regexp
-	after   *regexp.Regexp
-	query   string
-	options Options
-	literal bool
+	re                 *regexp.Regexp
+	after              *regexp.Regexp
+	query, diskLiteral string
+	options            Options
+	literal, diskFold  bool
 }
 
 func Compile(query string, options Options) (*Pattern, error) {
@@ -53,7 +53,15 @@ func Compile(query string, options Options) (*Pattern, error) {
 		// RuneError stays on the regexp path to also match invalid UTF-8 bytes.
 		p.literal, p.query = true, string(parsed.Rune)
 		p.options.CaseSensitive = parsed.Flags&syntax.FoldCase == 0
-	} else if needsLeftContext(parsed) {
+		return p, nil
+	}
+	leftContext, literal := regexpRequirements(parsed)
+	p.diskLiteral, _ = p.re.LiteralPrefix()
+	if p.diskLiteral == "" && literal != nil {
+		p.diskLiteral = string(literal.Rune[:min(len(literal.Rune), 64)])
+		p.diskFold = literal.Flags&syntax.FoldCase != 0
+	}
+	if leftContext {
 		// Consume the preceding rune, then search lazily from the requested
 		// position. Assertions still see that rune and the original input end;
 		// an absolute beginning assertion cannot match after the consumed prefix.
@@ -65,17 +73,26 @@ func Compile(query string, options Options) (*Pattern, error) {
 	return p, nil
 }
 
-func needsLeftContext(re *syntax.Regexp) bool {
+// Gather assertions and a mandatory literal in the same syntax-tree walk.
+// Alternation and optional repeats cannot promise a literal from a child.
+func regexpRequirements(re *syntax.Regexp) (leftContext bool, literal *syntax.Regexp) {
 	switch re.Op {
 	case syntax.OpBeginLine, syntax.OpBeginText, syntax.OpWordBoundary, syntax.OpNoWordBoundary:
-		return true
-	}
-	for _, sub := range re.Sub {
-		if needsLeftContext(sub) {
-			return true
+		return true, nil
+	case syntax.OpLiteral:
+		if !slices.Contains(re.Rune, utf8.RuneError) {
+			return false, re
 		}
 	}
-	return false
+	required := re.Op == syntax.OpConcat || re.Op == syntax.OpCapture || re.Op == syntax.OpPlus || re.Op == syntax.OpRepeat && re.Min > 0
+	for _, sub := range re.Sub {
+		left, candidate := regexpRequirements(sub)
+		leftContext = leftContext || left
+		if required && candidate != nil && (literal == nil || len(candidate.Rune) > len(literal.Rune)) {
+			literal = candidate
+		}
+	}
+	return leftContext, literal
 }
 
 func (p *Pattern) nextMatch[T string | []byte](content T, position int) []int {
@@ -110,7 +127,8 @@ func word(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }
 
-func (p *Pattern) boundary[T string | []byte](content T, start, end int) bool {
+// WordBoundary checks the configured whole-word constraint at a match.
+func (p *Pattern) WordBoundary[T string | []byte](content T, start, end int) bool {
 	if !p.options.WholeWord {
 		return true
 	}
@@ -135,7 +153,7 @@ func (p *Pattern) FindRange[T string | []byte](content T, dst []Match, start, en
 	}
 	count := 0
 	accept := func(m Match) bool {
-		if m.Start < start || m.End > end || !p.boundary(content, m.Start, m.End) {
+		if m.Start < start || m.End > end || !p.WordBoundary(content, m.Start, m.End) {
 			return false
 		}
 		count++
@@ -333,7 +351,12 @@ func (p *Pattern) Replace(content, replacement string, matches []Match) string {
 		b.WriteString(content[offset:match.Start])
 		value := replacement
 		if p.options.Regex {
-			value = string(p.re.ExpandString(nil, template, content, match.groups))
+			groups := match.groups
+			if p.literal {
+				bounds := [2]int{match.Start, match.End}
+				groups = bounds[:]
+			}
+			value = string(p.re.ExpandString(nil, template, content, groups))
 		}
 		if p.options.PreserveCase {
 			value = preserveCase(content[match.Start:match.End], value)

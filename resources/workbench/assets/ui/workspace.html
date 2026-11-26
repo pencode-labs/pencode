@@ -135,8 +135,10 @@
         <button id="settings-appearance-nav" data-ref="settings-appearance-nav" class="pencode-settings-nav-item active" type="button" aria-current="page">外观</button>
         <button id="settings-shortcuts-nav" data-ref="settings-shortcuts-nav" class="pencode-settings-nav-item" type="button">快捷键</button>
         <button id="settings-language-servers-nav" data-ref="settings-language-servers-nav" class="pencode-settings-nav-item" type="button">语言服务器</button>
+        <button id="settings-debug-adapters-nav" data-ref="settings-debug-adapters-nav" class="pencode-settings-nav-item" type="button">调试器（DAP）</button>
         <button id="settings-extensions-nav" data-ref="settings-extensions-nav" class="pencode-settings-nav-item" type="button" aria-expanded="false" aria-controls="settings-extension-list"><img data-ref="settings-extensions-toggle" class="pencode-settings-toggle" src="icons/chevron-right.svg" alt="">扩展</button>
         <div id="settings-extension-list" data-ref="settings-extension-list"></div>
+        <button id="settings-storage-nav" data-ref="settings-storage-nav" class="pencode-settings-nav-item" type="button">磁盘占用</button>
         <button id="settings-about-nav" data-ref="settings-about-nav" class="pencode-settings-nav-item" type="button">关于</button>
       </nav>
       <div id="settings-main" class="pencode-settings-main">
@@ -202,6 +204,20 @@
         <section id="settings-language-servers-pane" data-ref="settings-language-servers-pane" hidden>
           <div data-ref="language-tools-feedback" role="status" aria-live="polite"></div>
           <div data-ref="language-list" class="pencode-language-list"></div>
+        </section>
+        <section id="settings-storage-pane" data-ref="settings-storage-pane" aria-label="磁盘占用" hidden>
+          <div class="pencode-settings-row"><span data-ref="storage-host"></span><button id="storage-refresh" data-ref="storage-refresh" class="pencode-settings-reset" type="button">重新统计</button></div>
+          <div class="pencode-settings-row"><strong>文件总大小</strong><strong data-ref="storage-total"></strong></div>
+          <p data-ref="storage-status" class="pencode-setting-description" role="status" aria-live="polite"></p>
+          <div class="pencode-settings-row"><span data-ref="storage-selection"></span><div class="pencode-storage-actions"><button id="storage-cancel" data-ref="storage-cancel" class="pencode-settings-reset" type="button" hidden>取消</button><button id="storage-clean" data-ref="storage-clean" class="pencode-settings-reset" type="button" disabled>清理所选项</button></div></div>
+          <div class="pencode-settings-row"><label class="pencode-storage-choice" for="storage-large"><input id="storage-large" data-ref="storage-large" type="checkbox"><span>本地历史（超过 256 KiB）</span></label><span data-ref="storage-large-size"></span></div>
+          <div class="pencode-settings-row"><label class="pencode-storage-choice" for="storage-history"><input id="storage-history" data-ref="storage-history" type="checkbox"><span>本地历史（256 KiB 及以下）</span></label><span data-ref="storage-history-size"></span></div>
+          <div class="pencode-settings-row"><label class="pencode-storage-choice" for="storage-profiles"><input id="storage-profiles" data-ref="storage-profiles" type="checkbox"><span>已完成的性能报告</span></label><span data-ref="storage-profiles-size"></span></div>
+          <div class="pencode-settings-row"><label class="pencode-storage-choice" for="storage-search"><input id="storage-search" data-ref="storage-search" type="checkbox"><span>可清理的搜索工具缓存</span></label><span data-ref="storage-search-size"></span></div>
+          <div class="pencode-settings-row"><span>其他性能报告</span><span data-ref="storage-other-profiles-size"></span></div>
+          <div class="pencode-settings-row"><span>已安装的扩展</span><span data-ref="storage-extensions-size"></span></div>
+          <div class="pencode-settings-row"><span>语言、调试和搜索工具</span><span data-ref="storage-tools-size"></span></div>
+          <div class="pencode-settings-row"><span>设置和其他应用数据</span><span data-ref="storage-other-size"></span></div>
         </section>
         <section id="settings-about-pane" data-ref="settings-about-pane" aria-label="关于 Pencode" hidden>
           <div class="pencode-settings-row pencode-setting-toggle-row">
@@ -428,10 +444,9 @@
       </div>
       <div id="panel-resize" data-ref="panel-resize" class="pencode-panel-resize" role="separator" aria-orientation="horizontal" aria-label="拖动调整底部面板高度" hidden></div>
       <section id="bottom-panel" data-ref="bottom-panel" class="pencode-bottom-panel" aria-label="工作区面板" hidden>
-        <header class="pencode-panel-toolbar">
+        <header data-ref="panel-toolbar" class="pencode-panel-toolbar">
           <div class="pencode-panel-tools">
             <span data-ref="problems-title" class="pencode-panel-title" hidden>Problems</span>
-            <div data-ref="source-tools" class="sc-panel-tools" hidden></div>
             <div data-ref="terminal-tools" class="pencode-terminal-tools" hidden>
               <div id="terminal-tabs" data-ref="terminal-tabs" class="pencode-terminal-tabs" role="tablist" aria-label="终端会话"></div>
               <button id="terminal-new" data-ref="terminal-new" class="pencode-icon-button" type="button" title="新建终端 (Ctrl+Shift+`)" aria-label="新建终端"><img data-ref="terminal-new-icon" src="icons/add.svg" alt=""></button>
@@ -560,6 +575,7 @@
     <button id="file-context-new-file" data-ref="file-context-new-file" type="button" role="menuitem" tabindex="-1"><span>新建文件</span><span id="file-context-new-file-shortcut" data-ref="file-context-new-file-shortcut" class="pencode-context-hint">Ctrl+N</span></button>
     <button id="file-context-new-folder" data-ref="file-context-new-folder" type="button" role="menuitem" tabindex="-1"><span>新建文件夹</span><span id="file-context-new-folder-shortcut" data-ref="file-context-new-folder-shortcut" class="pencode-context-hint">Ctrl+Alt+N</span></button>
     <button id="file-context-find" data-ref="file-context-find" type="button" role="menuitem" tabindex="-1"><span>Find in Folder...</span><span id="file-context-find-shortcut" data-ref="file-context-find-shortcut" class="pencode-context-hint">Ctrl+Shift+F</span></button>
+    <button id="file-context-history" data-ref="file-context-history" type="button" role="menuitem" tabindex="-1"><span id="file-context-history-label" data-ref="file-context-history-label">查看本地历史</span><span id="file-context-history-shortcut" data-ref="file-context-history-shortcut" class="pencode-context-hint"></span></button>
     <button id="file-context-reveal" data-ref="file-context-reveal" type="button" role="menuitem" tabindex="-1"><span id="file-context-reveal-label" data-ref="file-context-reveal-label">在文件管理器中显示</span><span id="file-context-reveal-shortcut" data-ref="file-context-reveal-shortcut" class="pencode-context-hint">Shift+Alt+R</span></button>
     <div class="pencode-context-separator" role="separator"></div>
     <button id="file-context-cut" data-ref="file-context-cut" type="button" role="menuitem" tabindex="-1"><span>剪切</span><span id="file-context-cut-shortcut" data-ref="file-context-cut-shortcut" class="pencode-context-hint">Ctrl+X</span></button>
@@ -625,6 +641,7 @@
     <section class="pencode-close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="close-title" aria-describedby="close-message">
       <h2 id="close-title" data-ref="close-title">未保存的更改</h2>
       <p id="close-message" data-ref="close-message" class="pencode-close-message"></p>
+      <input id="save-as-path" data-ref="save-as-path" class="pencode-port-input" type="text" autocomplete="off" spellcheck="false" hidden>
       <p data-ref="close-error" class="pencode-close-error" role="alert" hidden></p>
       <div class="pencode-close-actions">
         <button id="close-save" data-ref="close-save" class="pencode-close-save" type="button">保存</button>

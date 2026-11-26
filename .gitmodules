@@ -26,11 +26,3 @@
 	path = extensions/quick-commands
 	url = git@github.com:pencode-labs/quick-commands.git
 	branch = main
-[submodule "extensions/go"]
-	path = extensions/go
-	url = git@github.com:pencode-labs/go.git
-	branch = main
-[submodule "extensions/php"]
-	path = extensions/php
-	url = git@github.com:pencode-labs/php.git
-	branch = main

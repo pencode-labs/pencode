@@ -1,16 +1,32 @@
 package workbench
 
-import "github.com/pencode-labs/pencode/peb"
+import (
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
+)
 
 func (m *workspaceModel) beginExtensionClose(action pencodeCloseAction, project *pencodeProject, path string) bool {
-	if action < pencodeCloseProject || len(m.actions.sessions) == 0 {
+	if action < pencodeCloseProject {
+		return false
+	}
+	count := 0
+	for p, group := range m.actionGroups {
+		if project == nil || p == project {
+			for _, session := range group.sessions {
+				if session != nil {
+					count++
+				}
+			}
+		}
+	}
+	if count == 0 {
 		return false
 	}
 	m.actions.closeToken++
 	r := &m.closing
 	r.action, r.project, r.path = action, project, path
 	r.lifecycle, r.lifecycleToken = true, m.actions.closeToken
-	r.lifecyclePending = make(map[string]bool, len(m.actions.sessions))
+	r.lifecyclePending = make(map[*extensions.ActionSession]bool, count)
 	r.message, r.needsFocus = m.tr("正在检查扩展的后台任务…"), true
 	m.settingsOpen, m.quickOpen = false, false
 	m.capturingShortcut, m.quickNeedsFocus, m.findNeedsFocus = false, false, false
@@ -19,11 +35,19 @@ func (m *workspaceModel) beginExtensionClose(action pencodeCloseAction, project 
 	if project != nil {
 		event.Kind, event.ProjectPath = peb.ProjectClosing, project.Path
 	}
-	for id, session := range m.actions.sessions {
-		if session.SubmitLifecycle(event, r.lifecycleToken) {
-			r.lifecyclePending[id] = true
-		} else {
-			r.error += m.tr("扩展 ") + id + m.tr(" 暂时无法检查后台任务。\n")
+	for p, group := range m.actionGroups {
+		if project != nil && p != project {
+			continue
+		}
+		for id, session := range group.sessions {
+			if session == nil {
+				continue
+			}
+			if session.SubmitLifecycle(event, r.lifecycleToken) {
+				r.lifecyclePending[session] = true
+			} else {
+				r.error += m.tr("扩展 ") + id + m.tr(" 暂时无法检查后台任务。\n")
+			}
 		}
 	}
 	if len(r.lifecyclePending) == 0 {
@@ -32,7 +56,7 @@ func (m *workspaceModel) beginExtensionClose(action pencodeCloseAction, project 
 	return true
 }
 
-func (m *workspaceModel) resolveExtensionClose(id string, token uint64, reply peb.LifecycleReply) {
+func (m *workspaceModel) resolveExtensionClose(id *extensions.ActionSession, token uint64, reply peb.LifecycleReply) {
 	r := &m.closing
 	if !r.lifecycle || r.lifecycleToken != token || !r.lifecyclePending[id] {
 		return
@@ -82,8 +106,10 @@ func (m *workspaceModel) approveExtensionClose() {
 	}
 }
 
-func (m *workspaceModel) notifyProjectClosed(path string) {
-	for _, session := range m.actions.sessions {
-		session.SubmitLifecycle(peb.LifecycleEvent{Kind: peb.ProjectClosed, ProjectPath: path}, 0)
+func (m *workspaceModel) notifyProjectClosed(project *pencodeProject) {
+	for _, session := range m.projectActions(project).sessions {
+		if session != nil {
+			session.SubmitLifecycle(peb.LifecycleEvent{Kind: peb.ProjectClosed, ProjectPath: project.Path}, 0)
+		}
 	}
 }

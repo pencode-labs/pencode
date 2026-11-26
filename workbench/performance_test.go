@@ -86,6 +86,9 @@ func newPencodeTestApp(b testing.TB) (*onix.App, *Session) {
 	app, session := newPencodeTestLauncher(b)
 	dir := os.Getenv("ONIX_PENCODE_PROFILE_PROJECT")
 	if dir == "" {
+		// Start the synthetic workspace with an empty tool catalog. Host
+		// language servers otherwise publish diagnostics between test frames.
+		session.active.model.builtinTools = &pencodeBuiltinTools{results: make(chan pencodeToolResult, 1)}
 		dir = b.TempDir()
 		body := "package demo\n" + strings.Repeat("// text to keep the editor layout representative\n", 200)
 		if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(body), 0644); err != nil {
@@ -193,6 +196,7 @@ func BenchmarkPencodeCachedFileSwitch(b *testing.B) {
 
 func TestPencodeOpenFileIdleAndScroll(t *testing.T) {
 	app, session := newPencodeTestApp(t)
+	sourceWait(t, app, session.active.model)
 	app.SetRenderMode(onix.RenderOnDemand)
 	app.SetIdleEnabled(true)
 	step := func() bool {

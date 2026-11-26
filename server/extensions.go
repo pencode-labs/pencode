@@ -23,7 +23,7 @@ const (
 )
 
 type extensionEntry struct {
-	runtime      *extensionRuntime
+	runtimes     map[string]*extensionRuntime
 	ctx          context.Context
 	root         *os.Root
 	cancel       context.CancelFunc
@@ -70,10 +70,10 @@ func (s *extensionService) remove(id uint64, entry *extensionEntry) {
 }
 
 func (s *extensionService) stopProcesses(id uint64, entry *extensionEntry) {
-	if entry.runtime != nil {
-		entry.runtime.Close()
-		entry.runtime = nil
+	for _, runtime := range entry.runtimes {
+		runtime.Close()
 	}
+	clear(entry.runtimes)
 	s.owner.mu.Lock()
 	var closing []*serviceStream
 	for key, stream := range s.owner.streams {
@@ -455,11 +455,12 @@ func (s *extensionService) openProcess(ctx context.Context, id uint64, entry *ex
 		return &protocol.Error{Code: protocol.Busy, Message: "stream budget exceeded"}
 	}
 	if language == "" {
-		if entry.runtime != nil && !entry.runtime.alive() {
-			entry.runtime.Close()
-			entry.runtime = nil
+		runtime := entry.runtimes[root]
+		if runtime != nil && !runtime.alive() {
+			runtime.Close()
+			runtime = nil
 		}
-		if entry.runtime == nil {
+		if runtime == nil {
 			logs, childLogs, err := os.Pipe()
 			if err != nil {
 				return err
@@ -470,9 +471,13 @@ func (s *extensionService) openProcess(ctx context.Context, id uint64, entry *ex
 				logs.Close()
 				return err
 			}
-			entry.runtime = newExtensionRuntime(p, logs)
+			runtime = newExtensionRuntime(p, logs)
+			if entry.runtimes == nil {
+				entry.runtimes = make(map[string]*extensionRuntime)
+			}
+			entry.runtimes[root] = runtime
 		}
-		p, logs, err := entry.runtime.open()
+		p, logs, err := runtime.open()
 		if err != nil {
 			return err
 		}

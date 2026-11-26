@@ -16,6 +16,9 @@ type ViewRegion struct {
 	start, end int
 }
 
+// Bounds returns the byte range of the region contents in the split source.
+func (r ViewRegion) Bounds() (start, end int) { return r.start, r.end }
+
 // ViewPatch is relative to exactly one previously received view version.
 // Nested regions belong to their outer region and cannot be patched separately.
 type ViewPatch struct {

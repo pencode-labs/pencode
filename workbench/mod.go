@@ -97,9 +97,11 @@ func (m *Mod) Enter(c *module.Context, _ module.SceneStartup) error {
 		// Surface callbacks must mutate the foreground list, not a stale copy
 		// whose backing array is shared with the active model.
 		previous.model.actions.ui = pencodeExtensionUIState{}
-		for _, surface := range m.model.actions.ui.surfaces {
-			surface.model = m.model
-			surface.needsFocus = surface.ui.Kind != peb.Notification && surface.ui.Kind != peb.EditorTab
+		for _, group := range m.model.actionGroups {
+			for _, surface := range group.ui.surfaces {
+				surface.model = m.model
+				surface.needsFocus = surface.ui.Kind != peb.Notification && surface.ui.Kind != peb.EditorTab
+			}
 		}
 		m.model.root, m.model.surface, m.model.fontResources = local.root, local.surface, c.Content()
 		m.model.windowBorder = local.windowBorder
@@ -144,6 +146,9 @@ func (m *Mod) Update(c *module.Context, _ module.Tick) error {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
 	connectionChanged := m.model.pollConnection()
+	if m.model.pollStorage() {
+		markPencodeRootDirtyByModel(c.Content(), m.model)
+	}
 	if m.session.pollRemoteProjects(m.model) || connectionChanged {
 		markPencodeRootDirtyByModel(c.Content(), m.model)
 	}
@@ -287,7 +292,8 @@ func (m *Mod) Destroy(c *module.Context) error {
 		m.installed = false
 		delete(m.session.views, m)
 		if len(m.session.views) == 0 {
-			m.model.closeDebugger()
+			m.model.stopStorage()
+			m.model.closeProjectWorkers()
 			m.model.closePorts()
 			m.session.closeSettingsWriters()
 			m.model.stopFileIO()

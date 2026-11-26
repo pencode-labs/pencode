@@ -309,7 +309,7 @@ func TestImagePreviewExternalRasterReload(t *testing.T) {
 	if err := awaitFileIO(t, m); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(document.view.HTML, "16 × 4") || len(m.extensionImages) != 1 {
+	if document.image == nil || document.image.width != 16 || document.image.height != 4 || len(m.extensionImages) != 1 {
 		t.Fatal("external image write did not refresh the preview")
 	}
 }

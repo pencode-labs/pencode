@@ -86,7 +86,7 @@ func (model *workspaceModel) renderFileName(view *htmlui.View, props treeProps) 
 
 var pencodeFileContextRefs = [...]string{
 	"file-context-open", "file-context-new-file", "file-context-new-folder",
-	"file-context-find", "file-context-reveal",
+	"file-context-find", "file-context-history", "file-context-reveal",
 	"file-context-cut", "file-context-copy", "file-context-paste",
 	"file-context-copy-path", "file-context-copy-relative", "file-context-rename", "file-context-delete", "file-context-refresh",
 }
@@ -109,6 +109,7 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 			label = model.tr("展开 / 折叠")
 		}
 		view.Text("file-context-open-label", label)
+		view.Text("file-context-history-label", model.tr("查看本地历史"))
 		view.Text("file-context-reveal-label", model.tr(fileManagerLabel(runtime.GOOS)))
 		for i, ref := range pencodeFileContextRefs {
 			model.ensureSettings()
@@ -133,11 +134,12 @@ func (model *workspaceModel) renderFileContext(view *htmlui.View) {
 	view.Text("file-dialog-title", c.title)
 	view.Text("file-dialog-message", c.message)
 	view.Text("file-dialog-error", c.err)
-	label := "删除"
+	label, class := "删除", "danger"
 	if c.dialog == "overwrite" {
-		label = "覆盖"
+		label, class = "覆盖", "pencode-close-save"
 	}
 	view.Text("file-dialog-submit", model.tr(label))
+	view.Attr("file-dialog-submit", "class", class)
 	if c.err == "" {
 		view.Attr("file-dialog-error", "hidden", "")
 	} else {
@@ -161,7 +163,7 @@ func (model *workspaceModel) fileContextEnabled(ref string) bool {
 		return c.externalFiles || len(model.fileClipboard.paths) != 0
 	case "file-context-reveal":
 		return !multiple && !model.remoteWorkspace()
-	case "file-context-find", "file-context-new-file", "file-context-new-folder":
+	case "file-context-history", "file-context-find", "file-context-new-file", "file-context-new-folder":
 		return !multiple
 	}
 	return true
@@ -409,16 +411,18 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 	c.open = false
 	project, relative := c.project, c.path
 	switch action := strings.TrimPrefix(ref, "file-context-"); action {
+	case "history":
+		model.showLocalHistory(project, relative, c.directory)
 	case "find":
 		model.openFolderSearch(project, model.fileContextDirectory(), false)
 	case "new-file", "new-folder":
-		c.dialog, c.needsFocus, c.err, c.name = action, true, "", ""
-		c.path, c.directory = model.fileContextDirectory(), true
+		directory := model.fileContextDirectory()
+		model.activateProject(project)
+		*c = pencodeFileContext{project: project, dialog: action, needsFocus: true, path: directory, directory: true}
 		if c.path == "." {
 			c.path = ""
 		}
 		c.depth = 0
-		model.activateProject(project)
 		if project.ExpandedDirs == nil {
 			project.ExpandedDirs = make(map[string]bool)
 		}
@@ -441,9 +445,10 @@ func (model *workspaceModel) handleFileContextEvent(world *module.Content, ref, 
 			c.message = fmt.Sprintf(model.tr("确定永久删除选中的 %d 项及其内容？未保存的更改也会丢失。"), len(c.paths))
 		}
 	case "open":
+		directory, depth := c.directory, c.depth
 		model.activateProject(project)
-		if c.directory {
-			model.toggleProjectDirectory(project, relative, c.depth)
+		if directory {
+			model.toggleProjectDirectory(project, relative, depth)
 		} else {
 			model.openProjectFile(project, relative)
 			model.syncActiveProjectFields()

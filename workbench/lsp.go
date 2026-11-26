@@ -141,7 +141,7 @@ func (model *workspaceModel) importLanguageServers(servers []extensions.Language
 		model.languages = &pencodeLanguageState{sessions: make(map[pencodeLanguageKey]*pencodeLanguageSession), documents: make(map[*openFile]*pencodeLanguageDocument), events: make(chan pencodeLanguageEvent, 128)}
 	}
 	for i := range servers {
-		servers[i].Output = model.outputStore().Channel("Language Server: " + servers[i].Label)
+
 		model.languages.servers = append(model.languages.servers, &servers[i])
 	}
 }
@@ -255,6 +255,12 @@ func (model *workspaceModel) startLanguageSession(key pencodeLanguageKey, server
 			}
 		}
 	}
+	var project *pencodeProject
+	if i := model.projectIndex(key.root); i >= 0 {
+		project = model.projects[i]
+	}
+	scoped := *server
+	scoped.Output = model.projectOutput(project).Channel("Language Server: " + server.Label)
 	backend := model.backend
 	go func() {
 		defer close(session.done)
@@ -296,7 +302,7 @@ func (model *workspaceModel) startLanguageSession(key pencodeLanguageKey, server
 		}
 		// Extension launchers can install their language tools on first use.
 		startup, stop := context.WithTimeout(ctx, 10*time.Minute)
-		client, err := server.Start(startup, backend, key.root, values, handler)
+		client, err := scoped.Start(startup, backend, key.root, values, handler)
 		stop()
 		if err != nil {
 			publish(pencodeLanguageEvent{method: "failed", err: err})
@@ -430,7 +436,7 @@ func (model *workspaceModel) syncLanguageDocuments() {
 		doc.seen = false
 	}
 	visit := func(root, directory string, project *pencodeProject, file *openFile, tab *sourceTab, pane int) {
-		if !file.text() || file.page.Paged {
+		if !file.text() || file.untitled() || file.page.Paged {
 			return
 		}
 		var server *extensions.LanguageServer
@@ -526,7 +532,7 @@ func (model *workspaceModel) syncLanguageDocuments() {
 		}
 	}
 	if tab != nil {
-		directory := model.sourceState().Snapshot.Repository.Root
+		directory := model.sourceTabRoot(tab)
 		for side := range tab.languageFiles {
 			if !closing[side] {
 				visit(model.projectPath, directory, model.activeProjectState(), tab.languageFile(side), tab, side+1)
@@ -575,12 +581,12 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 			switch event.method {
 			case "ready":
 				event.session.client = event.client
-				model.logOutput("Language Server: "+event.session.server.Label, model.tr("语言服务已启动"))
+				model.logLanguageOutput(event.session, model.tr("语言服务已启动"))
 				model.syncLanguageDocuments()
 			case "failed":
 				event.session.failed = true
 				model.clearSessionProblems(event.session)
-				model.logOutput("Language Server: "+event.session.server.Label, fmt.Sprintf("[Error] %v", event.err))
+				model.logLanguageOutput(event.session, fmt.Sprintf("[Error] %v", event.err))
 				for _, doc := range state.documents {
 					delete(doc.diagnostics, event.session)
 					if doc.semantic != nil && doc.semantic.session == event.session {
@@ -648,7 +654,7 @@ func (model *workspaceModel) pollLanguageServers(world *module.Content) bool {
 					Type    int    `json:"type"`
 				}
 				if json.Unmarshal(event.params, &p) == nil {
-					model.logOutput("Language Server: "+event.session.server.Label, fmt.Sprintf("[%s] %s", languageMessageLevel(p.Type), p.Message))
+					model.logLanguageOutput(event.session, fmt.Sprintf("[%s] %s", languageMessageLevel(p.Type), p.Message))
 					model.refreshRegion(world, pencodeRefreshOutput)
 				}
 			case "workspace/semanticTokens/refresh":
@@ -718,4 +724,12 @@ func (model *workspaceModel) prepareLanguageSave(file *openFile) {
 		}
 	}
 
+}
+
+func (m *workspaceModel) logLanguageOutput(session *pencodeLanguageSession, message string) {
+	var project *pencodeProject
+	if i := m.projectIndex(session.key.root); i >= 0 {
+		project = m.projects[i]
+	}
+	m.logProjectOutput(project, "Language Server: "+session.server.Label, message)
 }

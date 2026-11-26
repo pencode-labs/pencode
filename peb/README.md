@@ -4,7 +4,7 @@ peb 是 Pencode 和 server 上扩展进程之间的二进制协议。宿主写�
 
 server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连接代理 peb 流，并在后台解析字体、主题、图标与编辑器图片。已验证资源进入本地内存缓存，渲染时不读取服务端文件。
 
-字体、主题与图标保持静态注册。每个窗口连接为同一扩展按需启动一个常驻进程，工作台 action 和各文件编辑器通过独立逻辑会话复用它。不同窗口保持进程隔离；关闭文件或切换工具只释放该视图，最后一个视图关闭后进程仍保留，禁用、卸载、窗口连接关闭时回收。注册探测仍使用短生命周期进程；LSP 和调试适配器沿用各自的进程管理。注册、进程 I/O 和退出不阻塞 UI。v20 为帧增加会话标识；宿主与 Go、TypeScript 扩展需用当前 SDK 重新构建。
+字体、主题与图标保持静态注册。窗口内每个项目为同一扩展按需启动一个常驻进程，工作台 action 和各文件编辑器通过独立逻辑会话复用它。不同窗口保持进程隔离；关闭文件或切换工具只释放该视图，最后一个视图关闭后进程仍保留，项目关闭、禁用、卸载或窗口连接关闭时回收。注册探测仍使用短生命周期进程；LSP 和调试适配器沿用各自的进程管理。注册、进程 I/O 和退出不阻塞 UI。v20 为帧增加会话标识；宿主与 Go、TypeScript 扩展需用当前 SDK 重新构建。
 
 ## 窗口与视图会话
 
@@ -12,7 +12,7 @@ server 负责扩展目录、安装、注册探测和进程；GUI 通过 CS 连�
 
 宿主为既有 action/editor 调用提供虚拟 stdio 流，在服务端添加和去除 session ID。每个会话输出队列最多约 8 MiB，溢出仅关闭该会话；stderr 共享保留最近 64 KiB，各会话独立读取。扩展崩溃会断开所有视图，包括空闲视图，下一次打开会话可重启扩展。
 
-`Handlers.Editor` / TS `editor` 适合无状态处理函数。有缓存、选择或分页状态的编辑器使用 `Handlers.NewEditor(ctx)` / TS `newEditor(signal)`，每个文档视图创建一次处理函数，同一路径在不同视图中也互相隔离。关闭视图会取消传入的 context/signal，可据此停止后台任务。窗口级 settings、action、UI 和 lifecycle 回调仍串行执行；配置快照应来自该窗口的一致配置。
+`Handlers.Editor` / TS `editor` 适合无状态处理函数。有缓存、选择或分页状态的编辑器使用 `Handlers.NewEditor(ctx)` / TS `newEditor(signal)`，每个文档视图创建一次处理函数，同一路径在不同视图中也互相隔离。关闭视图会取消传入的 context/signal，可据此停止后台任务。项目内的 settings、action、UI 和 lifecycle 回调串行执行；配置快照应来自该窗口的一致配置。
 
 ```go
 peb.Handlers{
@@ -309,7 +309,7 @@ peb.Action{
 }
 ```
 
-打开方式使用 action 的 ID、图标与提示校验规则，宿主 ID 为 `extensions/<扩展 ID>/<工具 ID>`，消息内 Editor 使用扩展本地 ID。selector 只允许 FileName、FileSuffix，必须非空；区分大小写。文本文件默认使用内置编辑器，`Default: true` 声明自动打开。精确文件名优先于后缀，较长后缀优先，相同优先级按宿主工具 ID 排序。二进制和未知类型文件自动选择匹配工具；没有匹配工具时显示确认页，用户点击“使用代码编辑器打开”后才加载为文本。已知文本后缀仍由文件服务检查内容，包含 NUL 或无效 UTF-8 的文件也会进入确认页。扩展卸载或禁用后重新解析关联。代码区右上角浮动显示匹配的打开方式图标，默认透明度为 30%，悬停或键盘聚焦时为 100%。只有内置代码编辑器时不显示图标组；存在扩展打开方式时显示代码按钮，点击可返回源码。点击扩展图标默认替换整个代码区；路径栏的双栏按钮可同时显示左侧源码与右侧扩展视图，再次点击保留当前扩展为单栏。选择和布局按文件保留，并随项目标签状态恢复。
+打开方式使用 action 的 ID、图标与提示校验规则，宿主 ID 为 `extensions/<扩展 ID>/<工具 ID>`，消息内 Editor 使用扩展本地 ID。selector 只允许 FileName、FileSuffix，必须非空；区分大小写。打开文件时自动使用匹配且可用的工具。精确文件名优先，其次是最长后缀。匹配程度相同时优先选择 `Default: true` 的工具，再按宿主工具 ID 排序。没有匹配工具的文本文件使用代码编辑器。图片可使用内置预览。其余二进制文件、未知类型或包含 NUL 或无效 UTF-8 的文本文件显示确认页，用户点击“使用代码编辑器打开”后才加载为文本。扩展卸载或禁用后重新解析关联。代码区右上角浮动显示匹配的打开方式图标，默认透明度为 30%，悬停或键盘聚焦时为 100%。只有内置代码编辑器时不显示图标组；存在扩展打开方式时显示代码按钮，点击可返回源码。点击扩展图标默认替换整个代码区；路径栏的双栏按钮可同时显示左侧源码与右侧扩展视图，再次点击保留当前扩展为单栏。选择和布局按文件保留，并随项目标签状态恢复。
 
 handler 接收 `EditorMessage`：Editor、文件绝对 Path、宿主当前 Content、Binary 和 Event。`open` 请求创建视图，`documentchange` 表示撤销、重做或从磁盘重新加载后同步文档。HTML 事件提供 Kind、data-ref、Value、Checked、Selected、Anchor、Focus、InputType 和 Data。宿主串行提交事件，每次均附最新文档快照；切换标签后回复仍应用到所属文件。与宿主新内容冲突的过期回复会丢弃并重新同步。
 
@@ -565,9 +565,8 @@ err := peb.ServeExtension(os.Stdin, os.Stdout,
 | `open`             | 新界面已被宿主接受；同一 ID 的更新不会重复触发                                   |
 | `close`            | `e.Reason` 为 `extension`、`button`、`escape`、`outside`、`replace` 或 `timeout` |
 | `visibilitychange` | `e.Event.Value` 为 `visible` 或 `hidden`，用于 Panel 切换                        |
-| `projectchange`    | 活动项目变化时通知 EditorTab，`e.Context.ProjectPath` 为新项目目录；关闭最后一个项目时为空 |
 
-每个事件附带 `e.ID` 和打开界面时的 `e.Context`（项目、文件路径、目录标记及选区）。EditorTab 收到 `projectchange` 后更新上下文的项目目录，并清空文件路径、目录标记及选区。SDK 在 `Action` 和 `UIEvent` handler 中自动继承当前上下文；后台任务应保存并显式传入 `UI.Context`，避免使用后来触发的 action 上下文。异步控件事件无法同步取消浏览器默认行为，当前不支持 JavaScript 或任意键盘、指针事件订阅。
+每个事件附带 `e.ID` 和打开界面时的 `e.Context`（项目、文件路径、目录标记及选区）。每个项目使用独立的 action 会话和界面 ID 空间。切换项目时，宿主保留原项目的标签和上下文，并通过 `visibilitychange` 通知可见性变化。SDK 在 `Action` 和 `UIEvent` handler 中自动继承当前上下文；后台任务应保存并显式传入 `UI.Context`，避免使用后来触发的 action 上下文。异步控件事件无法同步取消浏览器默认行为，当前不支持 JavaScript 或任意键盘、指针事件订阅。
 
 UI 和 action 请求共享串行队列及 5 秒请求超时，handler 内可以继续推送界面更新；不要在 handler 中等待后续用户事件。空闲轮询和复用缓冲区的编码保持零分配；创建或替换视图、解码字符串与加载资源有必要的分配。
 
@@ -613,9 +612,9 @@ UIResponse {}                   // 成功应答；错误使用 Failure
 
 ## 调试工具
 
-`Contributions.DebugAdapters` 为 workspace server 提供调试启动命令。Go 扩展注册 `Delve`，以自身的 `--tool dlv` 启动器按需安装工具。显式配置的 command 优先；同一 adapter ID 有多个提供者时返回冲突。禁用、卸载和断开连接会取消启动并回收对应适配器进程。
+`Contributions.DebugAdapters` 为 workspace server 提供调试启动命令。Delve 和 Xdebug 由工作台内置，其他适配器可通过扩展注册。显式配置的 command 优先；同一 adapter ID 有多个提供者时返回冲突。禁用、卸载和断开连接会取消启动并回收对应适配器进程。
 
-`DebugAdapter.Templates` 是可选的 `.pencode/debug.json` 数组文本，每项须为有效配置，且 `adapter` 与该适配器 ID 一致。工作台的“添加启动器”从已加载扩展展示模板，选中后将单项追加写入项目文件并打开编辑；注册和添加模板不会启动调试。模板中的 `${workspaceFolder}` 原样保留到启动时解析。Go 扩展提供项目运行和包测试模板，PHP 扩展提供调试当前文件和监听 Xdebug 模板。
+`DebugAdapter.Templates` 是可选的 `.pencode/debug.json` 数组文本，每项须为有效配置，且 `adapter` 与该适配器 ID 一致。工作台的“添加启动器”展示内置模板和已加载扩展提供的模板，选中后将单项追加写入项目文件并打开编辑；注册和添加模板不会启动调试。模板中的 `${workspaceFolder}` 原样保留到启动时解析。内置 Go 模板支持运行项目和包测试，内置 PHP 模板支持调试当前文件和监听 Xdebug。
 
 `DocumentSelector` 在 match、pattern 后增加 `languageId:string`，为空则继承 LanguageServer.LanguageID，允许同一 gopls 会话分别用 go、go.mod、go.work 打开文档。
 

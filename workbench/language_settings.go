@@ -4,10 +4,27 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/onix-engine/onix/html/markup"
 	"github.com/onix-engine/onix/module"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/internal/languagetool"
 )
+
+type toolSettingsPage uint8
+
+const (
+	noToolSettings toolSettingsPage = iota
+	languageServerSettings
+	debugAdapterSettings
+	diskStorageSettings
+)
+
+func (m *workspaceModel) toolPaths(id string) *map[string]string {
+	if languagetool.IsDebugAdapter(id) {
+		return &m.settings.DebugAdapterPaths
+	}
+	return &m.settings.ServerPaths
+}
 
 type languageChoiceProps struct {
 	Model    *workspaceModel
@@ -26,8 +43,18 @@ type languageToolProps struct {
 }
 
 func newLanguageChoiceDefinition(content *module.Content) (*htmlui.Definition[languageChoiceProps, struct{}], error) {
-	const template = `<button data-ref="choice" type="button" class="pencode-language-choice"><img data-ref="arrow" class="pencode-settings-toggle" alt=""><img data-ref="icon" class="pencode-language-icon" alt=""><span data-ref="name"></span><span data-ref="active" class="pencode-language-active"></span></button>`
-	return content.Define[languageChoiceProps, struct{}](htmlui.NewTemplate(template), "", module.ContentBehavior[languageChoiceProps, struct{}]{
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("button", "data-ref", "choice", "type", "button", "class", "pencode-language-choice")
+		b.Element("img", "data-ref", "arrow", "class", "pencode-settings-toggle", "alt", "")
+		b.Element("img", "data-ref", "icon", "class", "pencode-language-icon", "alt", "")
+		b.Element("span", "data-ref", "name")
+		b.Element("span", "data-ref", "active", "class", "pencode-language-active")
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return content.Define[languageChoiceProps, struct{}](template, "", module.ContentBehavior[languageChoiceProps, struct{}]{
 		Render: func(c module.ContentRenderContext[languageChoiceProps, struct{}], v *htmlui.View) {
 			p := c.Props
 			lang := p.Language
@@ -36,9 +63,11 @@ func newLanguageChoiceDefinition(content *module.Content) (*htmlui.Definition[la
 			v.Attr("arrow", "src", p.Model.themedIcon("icons/chevron-right.svg", "icon.foreground"))
 			v.Attr("icon", "src", lang.Icon)
 			v.Text("name", lang.Label)
+			label := ""
 			if p.Active != nil {
-				v.Text("active", p.Active.Label)
+				label = p.Active.Label
 			}
+			v.Text("active", label)
 			v.Event("choice", htmlui.EventClick)
 		},
 		HandleEvent: func(c *module.ContentEventContext[languageChoiceProps, struct{}]) {
@@ -56,18 +85,30 @@ func newLanguageChoiceDefinition(content *module.Content) (*htmlui.Definition[la
 }
 
 func newLanguageToolDefinition(content *module.Content) (*htmlui.Definition[languageToolProps, bool], error) {
-	const template = `<div class="pencode-language-tool">
-		<div data-ref="summary" class="pencode-language-summary">
-			<button data-ref="details" type="button" class="pencode-language-details"><img data-ref="arrow" class="pencode-settings-toggle" alt=""><span data-ref="name"></span></button>
-			<span data-ref="status" class="pencode-setting-description"></span>
-			<button data-ref="activate" type="button" class="pencode-settings-reset"></button>
-			<button data-ref="install" type="button" class="pencode-settings-reset"></button>
-			<button data-ref="uninstall" type="button" class="pencode-settings-reset"></button>
-		</div>
-		<div data-ref="feedback" class="pencode-language-feedback" role="status" aria-live="polite" hidden></div>
-		<div data-ref="path-row" class="pencode-language-path" hidden><label data-ref="label"></label><input data-ref="path" type="text" class="pencode-setting-input"></div>
-	</div>`
-	return content.Define[languageToolProps, bool](htmlui.NewTemplate(template), "", module.ContentBehavior[languageToolProps, bool]{
+	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
+		b.Open("div", "class", "pencode-language-tool")
+		b.Open("div", "data-ref", "summary", "class", "pencode-language-summary")
+		b.Open("button", "data-ref", "details", "type", "button", "class", "pencode-language-details")
+		b.Element("img", "data-ref", "arrow", "class", "pencode-settings-toggle", "alt", "")
+		b.Element("span", "data-ref", "name")
+		b.End()
+		b.Element("span", "data-ref", "status", "class", "pencode-setting-description")
+		b.Element("button", "data-ref", "activate", "type", "button", "class", "pencode-settings-reset")
+		b.Element("button", "data-ref", "install", "type", "button", "class", "pencode-settings-reset")
+		b.Element("button", "data-ref", "uninstall", "type", "button", "class", "pencode-settings-reset")
+		b.End()
+		b.Element("div", "data-ref", "runtime", "class", "pencode-language-feedback pencode-setting-description", "hidden", "")
+		b.Element("div", "data-ref", "feedback", "class", "pencode-language-feedback", "role", "status", "aria-live", "polite", "hidden", "")
+		b.Open("div", "data-ref", "path-row", "class", "pencode-language-path", "hidden", "")
+		b.Element("label", "data-ref", "label")
+		b.Element("input", "data-ref", "path", "type", "text", "class", "pencode-setting-input")
+		b.End()
+		b.End()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return content.Define[languageToolProps, bool](template, "", module.ContentBehavior[languageToolProps, bool]{
 		Render: func(c module.ContentRenderContext[languageToolProps, bool], v *htmlui.View) {
 			p := c.Props
 			m, tool := p.Model, p.Tool
@@ -75,12 +116,26 @@ func newLanguageToolDefinition(content *module.Content) (*htmlui.Definition[lang
 			v.Text("feedback", p.Feedback)
 			setPanelVisible(v, "feedback", p.Feedback != "")
 			v.Attr("arrow", "src", m.themedIcon("icons/chevron-right.svg", "icon.foreground"))
-			v.Attr("details", "title", m.tr("可执行文件路径"))
+			pathLabel := "可执行文件路径"
+			var runtimeHint string
+			if tool.ID == languagetool.Xdebug {
+				pathLabel = "phpDebug.js 路径"
+				runtimeHint = m.tr("适配器需要 Node.js，PHP 运行时需启用 Xdebug 扩展。")
+			} else if tool.Manager == "" && p.Info.Command == "" {
+				runtimeHint = fmt.Sprintf(m.tr("请在工作区主机安装 %s，并将其加入 PATH 或设置可执行文件路径。"), tool.Package)
+			}
+			v.Text("runtime", runtimeHint)
+			setPanelVisible(v, "runtime", runtimeHint != "")
+			v.Attr("details", "title", m.tr(pathLabel))
 			v.Attr("details", "aria-expanded", boolAttribute(*c.State))
 			v.Attr("details", "aria-controls", "language-tool-path-row-"+tool.ID)
 			v.Attr("path-row", "id", "language-tool-path-row-"+tool.ID)
 			setPanelVisible(v, "path-row", *c.State)
-			status := m.tr("未安装") + " · " + tool.Manager + " · " + tool.Package
+			status := m.tr("未安装")
+			if tool.Manager != "" {
+				status += " · " + tool.Manager + " · " + tool.Package
+			}
+			placeholder := m.tr("留空以自动检测")
 			if p.Info.Command != "" {
 				source := "系统环境"
 				if p.Override != "" {
@@ -92,17 +147,20 @@ func newLanguageToolDefinition(content *module.Content) (*htmlui.Definition[lang
 				if path == "" {
 					path = p.Info.Command
 				}
+				if p.Override == "" {
+					placeholder = path
+				}
 				status = m.tr(source) + " · " + path
 			} else if p.Info.Problem != "" {
 				status = p.Info.Problem
 			}
 			v.Text("status", status)
 			v.Attr("status", "title", status)
-			v.Text("label", m.tr("可执行文件路径"))
+			v.Text("label", m.tr(pathLabel))
 			v.Attr("label", "for", "language-tool-path-"+tool.ID)
 			v.Attr("path", "id", "language-tool-path-"+tool.ID)
 			v.Attr("path", "value", p.Override)
-			v.Attr("path", "placeholder", m.tr("留空以自动检测"))
+			v.Attr("path", "placeholder", placeholder)
 			v.Event("path", htmlui.EventChange)
 			v.Event("summary", htmlui.EventClick)
 			for _, ref := range [...]string{"details", "activate", "install", "uninstall"} {
@@ -113,6 +171,7 @@ func newLanguageToolDefinition(content *module.Content) (*htmlui.Definition[lang
 			if p.Active {
 				activate = "已激活"
 			}
+			setPanelVisible(v, "activate", !languagetool.IsDebugAdapter(tool.ID))
 			v.Text("activate", m.tr(activate))
 			v.Attr("activate", "aria-pressed", boolAttribute(p.Active))
 			install := "安装"
@@ -122,6 +181,7 @@ func newLanguageToolDefinition(content *module.Content) (*htmlui.Definition[lang
 				install = "安装托管副本"
 			}
 			v.Text("install", m.tr(install))
+			setPanelVisible(v, "install", tool.Manager != "")
 			v.Text("uninstall", m.tr("卸载"))
 			setPanelVisible(v, "uninstall", p.Info.Managed)
 			for _, ref := range [...]string{"activate", "install", "uninstall", "path"} {
@@ -161,16 +221,17 @@ func newLanguageToolDefinition(content *module.Content) (*htmlui.Definition[lang
 				}
 			case "path":
 				path := strings.TrimSpace(c.Event.Value)
-				if m.settings.ServerPaths[id] == path {
+				paths := m.toolPaths(id)
+				if (*paths)[id] == path {
 					return
 				}
 				if path == "" {
-					delete(m.settings.ServerPaths, id)
+					delete(*paths, id)
 				} else {
-					if m.settings.ServerPaths == nil {
-						m.settings.ServerPaths = make(map[string]string)
+					if *paths == nil {
+						*paths = make(map[string]string)
 					}
-					m.settings.ServerPaths[id] = path
+					(*paths)[id] = path
 				}
 				m.saveSettings()
 				m.startBuiltinTools("", "")
@@ -192,17 +253,24 @@ func (m *workspaceModel) renderLanguageSettings(v *htmlui.View, choice *htmlui.D
 	if !m.settingsOpen {
 		return
 	}
-	v.Event("settings-language-servers-nav", htmlui.EventClick)
-	v.Attr("settings-language-servers-nav", "class", "pencode-settings-nav-item")
-	v.RemoveAttr("settings-language-servers-nav", "aria-current")
-	setPanelVisible(v, "settings-language-servers-pane", m.settingsLanguageServers)
-	setPanelVisible(v, "language-tools-refresh", m.settingsLanguageServers)
-	if !m.settingsLanguageServers {
+	for _, nav := range [...]string{"settings-language-servers-nav", "settings-debug-adapters-nav"} {
+		v.Event(nav, htmlui.EventClick)
+		v.Attr(nav, "class", "pencode-settings-nav-item")
+		v.RemoveAttr(nav, "aria-current")
+	}
+	open := m.settingsToolPage == languageServerSettings || m.settingsToolPage == debugAdapterSettings
+	setPanelVisible(v, "settings-language-servers-pane", open)
+	setPanelVisible(v, "language-tools-refresh", open)
+	if !open {
 		return
 	}
-	v.Text("settings-page-title", m.tr("语言服务器"))
-	v.Attr("settings-language-servers-nav", "class", "pencode-settings-nav-item active")
-	v.Attr("settings-language-servers-nav", "aria-current", "page")
+	nav, title, languages := "settings-language-servers-nav", "语言服务器", languagetool.Languages[:]
+	if m.settingsToolPage == debugAdapterSettings {
+		nav, title, languages = "settings-debug-adapters-nav", "调试器（DAP）", languagetool.DebugLanguages[:]
+	}
+	v.Text("settings-page-title", m.tr(title))
+	v.Attr(nav, "class", "pencode-settings-nav-item active")
+	v.Attr(nav, "aria-current", "page")
 	v.Attr("settings-appearance-nav", "class", "pencode-settings-nav-item")
 	v.RemoveAttr("settings-appearance-nav", "aria-current")
 	setPanelVisible(v, "settings-appearance-pane", false)
@@ -220,14 +288,14 @@ func (m *workspaceModel) renderLanguageSettings(v *htmlui.View, choice *htmlui.D
 		feedback = ""
 	}
 	v.Text("language-tools-feedback", feedback)
-	for i := range languagetool.Languages {
-		lang := &languagetool.Languages[i]
+	for i := range languages {
+		lang := &languages[i]
 		active := m.activeTool(lang)
 		expanded := state.expanded == lang
 		v.AppendComponentChild("language-list", uint64(i+1), choice, languageChoiceProps{m, lang, languagetool.Find(active), expanded}, struct{}{})
 		if expanded {
 			for _, id := range lang.Tools {
-				props := languageToolProps{Model: m, Language: lang, Tool: languagetool.Find(id), Locale: m.settings.Language, Override: m.settings.ServerPaths[id], Info: state.items[id], Active: active == id, Busy: busy}
+				props := languageToolProps{Model: m, Language: lang, Tool: languagetool.Find(id), Locale: m.settings.Language, Override: (*m.toolPaths(id))[id], Info: state.items[id], Active: active == id, Busy: busy}
 				if id == state.feedbackID {
 					props.Feedback = state.feedback
 				}

@@ -40,6 +40,9 @@
       "images",
       "html"
     ],
-    "textureCompression": true
+    "textureCompression": true,
+    "textureCompressionExcludes": [
+      "resources/workbench/assets/ui/squiggly.svg"
+    ]
   }
 }

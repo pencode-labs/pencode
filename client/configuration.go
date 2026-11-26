@@ -44,3 +44,18 @@ func (c *Client) SaveSettings(ctx context.Context, data []byte) error {
 	}
 	return d.Done()
 }
+
+func (c *Client) DiskStorage(ctx context.Context, clean protocol.StorageMask) (protocol.StorageReport, error) {
+	e := service(protocol.DiskStorage, "")
+	e.U32(uint32(clean))
+	d, err := c.execute(ctx, &e)
+	if err != nil {
+		return protocol.StorageReport{}, err
+	}
+	r := protocol.StorageReport{Host: d.String(), Problem: d.String()}
+	r.Removed = protocol.StorageSize{Bytes: d.U64(), Files: d.U64()}
+	for i := range r.Sizes {
+		r.Sizes[i] = protocol.StorageSize{Bytes: d.U64(), Files: d.U64()}
+	}
+	return r, d.Done()
+}

@@ -5,10 +5,11 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/onix-engine/onix/html/parse"
+	uinode "github.com/onix-engine/onix/scene/node"
 	htmlui "github.com/onix-engine/onix/ui/html"
 	"github.com/pencode-labs/pencode/localization"
-	nethtml "golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
+	"strconv"
 )
 
 type pencodeLanguagePack struct {
@@ -20,62 +21,55 @@ type pencodeLocalizedBinding struct{ ref, attribute, source string }
 
 // Bind authored UI text separately from filenames, editor content and extension
 // views. This runs once when the page is compiled, never during rendering.
-func localizedPencodeTemplate(source string) (string, []pencodeLocalizedBinding, error) {
-	nodes, err := nethtml.ParseFragment(strings.NewReader(source), &nethtml.Node{Type: nethtml.ElementNode, Data: "div", DataAtom: atom.Div})
+func localizedPencodeTemplate(source, tooltipPrefix string) (*uinode.Node, []pencodeLocalizedBinding, error) {
+	root, err := parse.ParseTree(source)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 	var bindings []pencodeLocalizedBinding
-	index := 0
-	refFor := func(node *nethtml.Node) string {
-		for _, attr := range node.Attr {
-			if attr.Key == "data-ref" {
-				return attr.Val
-			}
+	localeIndex, buttonIndex := 0, 0
+	refFor := func(n *uinode.Node) string {
+		if ref, ok := n.Attr("data-ref"); ok {
+			return ref
 		}
-		index++
-		ref := fmt.Sprintf("locale-%d", index)
-		node.Attr = append(node.Attr, nethtml.Attribute{Key: "data-ref", Val: ref})
+		localeIndex++
+		ref := "locale-" + strconv.Itoa(localeIndex)
+		n.SetAttr("data-ref", ref)
 		return ref
 	}
-	var walk func(*nethtml.Node)
-	walk = func(node *nethtml.Node) {
-		if node.Type != nethtml.ElementNode {
-			return
-		}
-		for _, attr := range node.Attr {
-			switch attr.Key {
-			case "title", "aria-label", "placeholder", "alt":
-				if strings.ContainsFunc(attr.Val, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
-					bindings = append(bindings, pencodeLocalizedBinding{refFor(node), attr.Key, attr.Val})
-				}
+	hasHan := func(r rune) bool { return unicode.Is(unicode.Han, r) }
+	var walk func(*uinode.Node)
+	walk = func(n *uinode.Node) {
+		for _, name := range [...]string{"title", "aria-label", "placeholder", "alt"} {
+			if value := n.AttrValue(name); strings.ContainsFunc(value, hasHan) {
+				bindings = append(bindings, pencodeLocalizedBinding{refFor(n), name, value})
 			}
 		}
-		for child := node.FirstChild; child != nil; {
-			next := child.NextSibling
-			if child.Type == nethtml.TextNode && strings.ContainsFunc(child.Data, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
-				target := node
-				if node.FirstChild != node.LastChild {
-					target = &nethtml.Node{Type: nethtml.ElementNode, Data: "span", DataAtom: atom.Span}
-					node.InsertBefore(target, child)
-					node.RemoveChild(child)
+		for i, child := range n.Children {
+			if child.Type == uinode.ElementNode {
+				walk(child)
+			} else if child.Type == uinode.TextNode && strings.ContainsFunc(child.Data, hasHan) && n.Type == uinode.ElementNode {
+				target := n
+				if len(n.Children) > 1 {
+					target = uinode.NewElement("span")
+					target.Parent, n.Children[i] = n, target
 					target.AppendChild(child)
 				}
 				bindings = append(bindings, pencodeLocalizedBinding{refFor(target), "", strings.TrimSpace(child.Data)})
-			} else {
-				walk(child)
 			}
-			child = next
+		}
+		// Anonymous buttons need stable IDs for native hover state.
+		if n.Data == "button" && n.AttrValue("id") == "" {
+			ref := n.AttrValue("data-ref")
+			if ref == "" {
+				ref = "button-" + strconv.Itoa(buttonIndex)
+			}
+			n.SetAttr("id", tooltipPrefix+ref)
+			buttonIndex++
 		}
 	}
-	var out strings.Builder
-	for _, node := range nodes {
-		walk(node)
-		if err := nethtml.Render(&out, node); err != nil {
-			return "", nil, err
-		}
-	}
-	return out.String(), bindings, nil
+	walk(root)
+	return root, bindings, nil
 }
 
 func (m *workspaceModel) ensureLanguagePacks() {

@@ -49,12 +49,13 @@ func (m *workspaceModel) tabContextValid() bool {
 func (m *workspaceModel) tabContextEnabled(index int) bool {
 	anchor := m.tabContext.target()
 	if index >= 5 {
-		return anchor.surface == nil && (anchor.source != nil || anchor.project != nil && anchor.path != "")
+		file := anchor.file(m)
+		return anchor.source != nil || file != nil && !file.untitled()
 	}
 	right := false
 	enabled := false
 	for tab := range m.editorTabs() {
-		selected := editorTabCloseIncludes(pencodeTabContextActions[index].action, tab, anchor, right)
+		selected := m.editorTabCloseIncludes(pencodeTabContextActions[index].action, tab, anchor, right)
 		if selected {
 			if m.sourceState().busy() && tab.source != nil {
 				return false
@@ -126,7 +127,7 @@ func (m *workspaceModel) updateTabContext(world *module.Content, state *input.St
 				id = "file-tab:" + tab.surface.rootID
 			}
 		default:
-			if tab.project != m.activeProjectState() || m.actions.ui.editor != nil || m.sourceState().visible() || tab.path != tab.project.ActivePath {
+			if tab.project != m.activeProjectState() || m.actions.ui.editor != nil || m.sourceState().visible() || tab.path != m.activePath {
 				id = fileTabID(tab.project, tab.path)
 			}
 		}

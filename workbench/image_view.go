@@ -12,7 +12,7 @@ import (
 const imageZoomStep = 1.2
 
 type pencodeImageView struct {
-	style, label                  string
+	source, style, label          string
 	width, height                 float32
 	viewportWidth, viewportHeight float32
 	scale, x, y                   float32

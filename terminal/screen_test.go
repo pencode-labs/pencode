@@ -250,3 +250,24 @@ func TestScreenClearReleasesLargeHistory(t *testing.T) {
 		}
 	}
 }
+
+func TestResetReusesStorageForIndependentStreams(t *testing.T) {
+	s := NewScreen(20, 2)
+	replay := func() {
+		s.Reset(20, 2)
+		s.Feed([]byte("\x1b[31mline 1\r\nline 2\r\nline 3\x1b]2;title\a\x1b["))
+	}
+	replay()
+	if s.Title != "title" || len(s.History) == 0 {
+		t.Fatal("first stream did not set title or scroll")
+	}
+	if n := testing.AllocsPerRun(100, func() { s.Reset(20, 2); s.Feed([]byte("a\r\nb\r\nc")) }); n != 0 {
+		t.Fatalf("warm replay allocated %g times", n)
+	}
+	replay()
+	s.Reset(20, 2)
+	s.Feed([]byte("ok"))
+	if s.Cells[0].Rune != 'o' || s.Cells[1].Foreground != Default || s.Title != "" || s.Scrolled != 0 || len(s.History) != 0 {
+		t.Fatal("fresh stream inherited previous parser or display state")
+	}
+}

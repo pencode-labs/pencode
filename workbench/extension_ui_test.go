@@ -92,6 +92,73 @@ func TestPencodeExtensionUIProcess(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestExtensionPanelRefreshKeepsTypingFocus(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	m := session.active.model
+	w := m.fontResources
+	state, _ := app.World.GetResource[*input.State]()
+	show := func(status, caret string) {
+		t.Helper()
+		err := m.applyExtensionUI("test", &extensions.ActionSession{}, peb.UI{ID: "panel", Kind: peb.Panel, View: &peb.EditorView{
+			HTML: `<button data-ref="first">First</button><textarea data-ref="draft" data-pencode-caret="` + caret + `">abcd</textarea><p>` + status + `</p>`,
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		markPencodeRootDirtyByModel(w, m)
+		for range 3 {
+			languageInteractionStep(t, app)
+		}
+	}
+	show("opening", "")
+	panel := m.actions.ui.panel
+	if first, ok := w.HTMLControl(m.surface, panel.focus[0].id); !ok || first != w.FocusedControl() {
+		t.Fatal("opening the panel did not focus its first control")
+	}
+	id := panel.focus[1].id
+	control, ok := w.HTMLControl(m.surface, id)
+	if !ok || !w.Focus(control) {
+		t.Fatal("cannot focus the second field")
+	}
+	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "草稿"})
+	languageInteractionStep(t, app)
+	field := w.Mut[engineui.TextField](control)
+	field.Anchor, field.Caret = 5, 2
+	state.Enqueue(input.Event{Kind: input.EventTextComposition, Composition: input.TextComposition{Text: "ni", Active: true}})
+	languageInteractionStep(t, app)
+	revision := state.TextInputConfig().Revision
+	show("working", "")
+	control, _ = w.HTMLControl(m.surface, id)
+	field = w.Ref[engineui.TextField](control)
+	if field == nil || w.FocusedControl() != control || field.Text().String() != "abcd草稿" || field.Anchor != 5 || field.Caret != 2 ||
+		field.Composition != "ni" || state.TextInputConfig().Revision != revision {
+		t.Fatalf("panel refresh interrupted the draft: %+v", field)
+	}
+	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "你"})
+	languageInteractionStep(t, app)
+	if got := w.Ref[engineui.TextField](control).Text().String(); got != "ab你稿" {
+		t.Fatalf("IME commit landed at the wrong selection: %q", got)
+	}
+	if !w.Focus(m.editor.control) {
+		t.Fatal("cannot move focus to the source editor")
+	}
+	show("complete", "2:1")
+	if !pencodeControlFocused(w, m.surface, "editor") {
+		t.Fatal("panel refresh took focus from the source editor")
+	}
+	m.handleBottomPanelEvent(w, "status-output", "")
+	markPencodeRootDirtyByModel(w, m)
+	languageInteractionStep(t, app)
+	filter, ok := w.HTMLControl(m.surface, "output-filter")
+	if !ok || !w.Focus(filter) {
+		t.Fatal("cannot focus the output filter")
+	}
+	show("background update", "2:1")
+	if m.bottom.active != pencodePanelOutput || !pencodeControlFocused(w, m.surface, "output-filter") {
+		t.Fatal("a hidden panel displaced the focused output filter")
+	}
+}
+
 func TestPencodeExtensionUISceneTransfer(t *testing.T) {
 	app, session := newPencodeTestApp(t)
 	model := session.active.model
@@ -248,7 +315,11 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := backend.OpenWorkspace(t.Context(), model.projectPath); err != nil {
+		t.Fatal(err)
+	}
 	model.importActions(bundle.Actions)
+	projectLog := model.outputStore().Channel("Extension: " + bundle.Actions.ID)
 	wait := func(ready func() bool) {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)
@@ -259,7 +330,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 			}
 			time.Sleep(time.Millisecond)
 		}
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		t.Fatalf("UI did not settle: %s; logs=%s", model.extensionFeedback, logs)
 	}
 	wait(func() bool {
@@ -328,13 +399,13 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	model.handleBottomPanelEvent(model.fontResources, "status-output", "")
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI result visibilitychange  tools hidden")
 	})
 	model.bottom.active = pencodePanelExtension
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI result visibilitychange  tools visible")
 	})
 	if panel.definition != panelDefinition {
@@ -364,7 +435,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "last character"})
 	pressEnter(0)
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI result submit ")
 	})
 	if value() != "last character" {
@@ -388,10 +459,10 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	pressEnter(0)
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Count(logs, "UI result submit ") >= 2
 	})
-	if logs, _ := bundle.Actions.Output.Snapshot(); strings.Count(logs, "UI result submit ") != 2 || !strings.Contains(logs, "last character\n\n你") {
+	if logs, _ := projectLog.Snapshot(); strings.Count(logs, "UI result submit ") != 2 || !strings.Contains(logs, "last character\n\n你") {
 		t.Fatalf("Enter did not submit the latest draft exactly once, or Shift/IME Enter submitted: %s", logs)
 	}
 	notes, ok := model.fontResources.HTMLControl(model.surface, panel.focus[2].id)
@@ -424,7 +495,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		t.Fatal("Escape did not dismiss menu")
 	}
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI tools close escape tools")
 	})
 	// Clicking outside dismisses the menu without invoking an item.
@@ -437,7 +508,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		t.Fatal("outside click did not dismiss menu")
 	}
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI tools close outside tools")
 	})
 	// Rich nonmodal popups use workspace coordinates and retain inputs when moved.
@@ -562,7 +633,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	editorContextClick(t, app, model, state, popup.closeID)
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return model.actions.ui.overlay == nil && strings.Contains(logs, "UI market close button tools")
 	})
 	editorContextClick(t, app, model, state, "action-extensions/ui-fixture/tools")
@@ -573,7 +644,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return model.actions.ui.overlay == nil && strings.Contains(logs, "UI market close escape tools")
 	})
 	// Toggle outside dismissal through the extension protocol without replacing
@@ -614,7 +685,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	bottomBefore := model.bottom.active
 	editorContextClick(t, app, model, state, "status-output")
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return model.actions.ui.overlay == nil && strings.Count(logs, "UI market close outside tools") == 1
 	})
 	if model.bottom.active == bottomBefore {
@@ -685,12 +756,12 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: x, Y: y})
 		languageInteractionStep(t, app)
 		settle()
-		if model.bottom.active != pencodePanelOutput || model.bottom.source != bundle.Actions.Output || model.bottom.filter != "" {
+		if model.bottom.active != pencodePanelOutput || model.bottom.source != projectLog || model.bottom.filter != "" {
 			t.Fatal("view logs did not reveal the extension output")
 		}
 		editorContextBounds(t, model, "bottom-panel")
 		editorContextBounds(t, model, "output-pane")
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		if model.bottom.outputText != logs || notice.ui.Title != "Build complete" || !notice.live() {
 			t.Fatal("view logs changed the notification or hid output")
 		}
@@ -701,7 +772,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		t.Fatal("notification update lost controls or action context")
 	}
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI notice click  notifications")
 	})
 	// An update resets expiry, including after an old deadline already woke us.
@@ -719,7 +790,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	markPencodeRootDirtyByModel(model.fontResources, model)
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI timed close timeout notifications")
 	})
 	// Only a focused notification consumes Escape; ordinary editor Escape leaves it open.
@@ -732,7 +803,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	}
 	editorContextClick(t, app, model, state, notice.closeID)
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return !notice.live() && strings.Contains(logs, "UI notice close button notifications")
 	})
 	// Reopen and close via Escape, then leave notifications open for unload cleanup.
@@ -747,7 +818,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
 	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return !notice.live() && strings.Contains(logs, "UI notice close escape notifications")
 	})
 	// A full notification stack scrolls to the latest message and respects the
@@ -815,7 +886,7 @@ func TestPencodeExtensionUISurfacesEventsAndCleanup(t *testing.T) {
 		}
 	}
 	wait(func() bool {
-		logs, _ := bundle.Actions.Output.Snapshot()
+		logs, _ := projectLog.Snapshot()
 		return strings.Contains(logs, "UI task close extension")
 	})
 	if slices.Contains(model.actions.ui.surfaces, task) {

@@ -22,6 +22,7 @@ import (
 const pencodeTextEditor = "text"
 
 type pencodeCustomDocument struct {
+	draft       pencodeExtensionInput
 	project     *pencodeProject
 	provider    *extensions.Editor
 	process     *extensions.EditorSession
@@ -35,6 +36,7 @@ type pencodeCustomDocument struct {
 	find        *pencodeRenderedFind
 	selection   *pencodeExtensionSurface
 	grid        *pencodeVirtualGrid
+	lazy        *lazyDocumentImages
 	image       *pencodeImageView
 	content     string
 	message     string
@@ -63,7 +65,7 @@ func editorMatch(editor *peb.Action, name string) int {
 }
 
 // File associations are resolved once per file/registry change. Exact names
-// beat suffixes; longest suffix wins; stable IDs break ties deterministically.
+// beat suffixes. Ties on specificity prefer Default, then the first sorted ID.
 func (model *workspaceModel) fileEditor(file *openFile) *extensions.Editor {
 	if file == nil || file.page.Paged || file.editorID == pencodeTextEditor {
 		return nil
@@ -82,11 +84,11 @@ func (model *workspaceModel) fileEditor(file *openFile) *extensions.Editor {
 			file.customEditor = editor
 			return editor
 		}
-		if file.editorID == "" && (editor.Default || !file.text()) && match > score {
+		if best := file.customEditor; best == nil || match > score || match == score && editor.Default && !best.Default {
 			file.customEditor, score = editor, match
 		}
 	}
-	if file.customEditor == nil && imageFile(file.Name) && (file.editorID == "" || file.editorID == pencodeImageEditor.ID) {
+	if (file.customEditor == nil || file.editorID == pencodeImageEditor.ID) && imageFile(file.Name) {
 		file.customEditor = &pencodeImageEditor
 	}
 	return file.customEditor
@@ -105,9 +107,6 @@ func (model *workspaceModel) canOpenFile(name string) bool { return name != "" }
 
 func (model *workspaceModel) importEditors(editors []extensions.Editor) {
 	for i := range editors {
-		if editors[i].Output == nil {
-			editors[i].Output = model.outputStore().Channel("Editor: " + editors[i].Text)
-		}
 		editor := &editors[i]
 		model.customEditors = append(model.customEditors, editor)
 		if err := model.actionRegistry().Register(actions.Definition{Action: editor.Action, Run: func(c peb.ActionContext) error {
@@ -195,7 +194,9 @@ func (model *workspaceModel) customDocument() *pencodeCustomDocument {
 		document.loadImage()
 		return document
 	}
-	document.process = provider.Start(root, model.extensionSettingValues(extensionOwner(provider.ID)), model.backgroundWake())
+	scoped := *provider
+	scoped.Output = model.projectOutput(document.project).Channel("Editor: " + provider.Text)
+	document.process = scoped.Start(root, model.extensionSettingValues(extensionOwner(provider.ID)), model.backgroundWake())
 	document.enqueue(peb.EditorEvent{Kind: "open"})
 	document.dispatch()
 	return document
@@ -244,6 +245,7 @@ func (document *pencodeCustomDocument) dispatch() {
 }
 
 func (document *pencodeCustomDocument) fail(err error) {
+	document.replaceLazyImages(nil)
 	document.message = "编辑工具失败：" + err.Error()
 	document.model.setActiveStatus(document.message)
 	document.process.Close()
@@ -283,6 +285,9 @@ func (model *workspaceModel) pollCustomEditors() bool {
 		}
 		if document.process == nil {
 			continue
+		}
+		if document.lazy != nil && document.lazy.running != 0 {
+			document.pollLazyImages()
 		}
 		select {
 		case result, ok := <-document.process.Results:
@@ -368,24 +373,34 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	if document.model != nil {
 		theme = document.model.workbenchTheme
 	}
-	if previous := document.view; previous != nil && document.theme == theme && previous.HTML == view.HTML && previous.CSS == view.CSS && slices.Equal(previous.Events, view.Events) {
+	if previous := document.view; document.image == nil && previous != nil && document.theme == theme && previous.HTML == view.HTML && previous.CSS == view.CSS && slices.Equal(previous.Events, view.Events) {
 		document.view, document.bindings = view, view.Events
 		return nil
 	}
 	var links map[string]string
+	var lazy *lazyDocumentImages
 	var searchable *uinode.Node
 	var grid *pencodeVirtualGrid
 	var gridErr error
 	var selectables []pencodeExtensionSelectable
 	var focus []pencodeExtensionFocus
-	tree, err := parse.Parse(view.HTML)
-	if err != nil {
-		return err
+	var tree *uinode.Node
+	if document.image != nil {
+		tree = document.imageTree()
+	} else {
+		var err error
+		tree, err = parse.ParseTree(view.HTML)
+		if err != nil {
+			return err
+		}
 	}
 	prefix := fmt.Sprintf("pencode-extension-editor/%p/", document)
 	textView := strings.Contains(view.HTML, "data-pencode-searchable") || strings.Contains(view.HTML, "data-pencode-selectable") || strings.Contains(view.HTML, "data-pencode-grid")
 	index := 0
 	if err := validateExtensionTree(view, tree, nil, func(node *uinode.Node, hidden bool) {
+		if node.Data == "img" && node.AttrValue("loading") == "lazy" {
+			document.bindLazyImage(&lazy, node)
+		}
 		prepareExtensionViewNode(node, prefix, &index, textView)
 		if source, ok := node.Attr("data-pencode-grid"); ok && !hidden && gridErr == nil {
 			if grid != nil {
@@ -450,6 +465,9 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 			if doc.image != nil {
 				doc.image.render(target)
 			}
+			if doc.lazy != nil && doc.lazy.render(target, context.Component, doc.grid == nil && doc.image == nil) {
+				return
+			}
 			if doc.grid != nil {
 				doc.grid.component = context.Component
 				doc.grid.renderExtent(target)
@@ -489,6 +507,9 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	if err != nil {
 		return err
 	}
+	if m := document.model; document.definition != nil && m != nil && m.activeFile() == document.file {
+		document.draft.captureFocused(m.fontResources, focus, "")
+	}
 	if len(selectables) > 0 {
 		if document.selection == nil {
 			document.selection = &pencodeExtensionSurface{model: document.model, document: document}
@@ -501,9 +522,11 @@ func (document *pencodeCustomDocument) setView(view *peb.EditorView) error {
 	} else {
 		document.selection = nil
 	}
+	document.replaceLazyImages(lazy)
 	document.definition, document.bindings, document.links = definition, view.Events, links
 	document.view, document.theme, document.grid = view, theme, grid
-	if preserveGridSelection && previousGrid != nil && document.model != nil {
+	if preserveGridSelection && previousGrid != nil && grid != nil && document.model != nil {
+		grid.highlightedRow, grid.highlightedColumn = previousGrid.highlightedRow, previousGrid.highlightedColumn
 		selection := &document.model.actions.ui.selection
 		if selection.surface == document.selection && selection.grid == previousGrid {
 			selection.grid = grid
@@ -548,7 +571,7 @@ func (document *pencodeCustomDocument) openLink(href string) {
 	}
 	switch u.Scheme {
 	case "http", "https", "mailto":
-		output := document.provider.Output
+		output := document.model.projectOutput(document.project).Channel("Editor: " + document.provider.Text)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -751,6 +774,7 @@ func (document *pencodeCustomDocument) close() {
 		document.model.findPreview = nil
 	}
 	document.process.Close()
+	document.replaceLazyImages(nil)
 	document.images = document.model.replaceExtensionImages(document.images, nil)
 	document.definition, document.view, document.links = nil, nil, nil
 	document.bindings, document.content = nil, ""

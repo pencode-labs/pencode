@@ -29,6 +29,10 @@ func (model *workspaceModel) renderProfilingSettings(view *htmlui.View) {
 // never requests a frame: idle observations retain their original timestamp.
 func (s *Session) ProfilingSystem(recorder *profiling.Recorder) ecs.SystemConfig {
 	var next time.Time
+	var targets []profiling.RenderTargetSize
+	collectTarget := func(kind string, id, width, height uint32) {
+		targets = append(targets, profiling.RenderTargetSize{Kind: kind, ID: id, Width: width, Height: height})
+	}
 	return ecs.SystemConfig{Name: "pencode_profile_graphics", After: []string{"render_cameras"}, System: func(context *ecs.SystemContext) error {
 		now := time.Now()
 		if now.Before(next) {
@@ -55,6 +59,15 @@ func (s *Session) ProfilingSystem(recorder *profiling.Recorder) ecs.SystemConfig
 			SampledAt: now, Backend: info.Backend, Device: info.Device, BuffersAvailable: available,
 			InstanceBytes: buffers.InstanceBytes, StagingBytes: buffers.StagingBytes, ReadbackBytes: buffers.ReadbackBytes,
 			NativeScratchBytes: buffers.NativeScratchBytes, GoScratchBytes: buffers.ScratchBytes,
+		}
+		if profiling.DefaultEnabled() {
+			if metal, ok := device.Driver().(interface {
+				VisitRenderTargetSizes(func(string, uint32, uint32, uint32))
+			}); ok {
+				targets = targets[:0]
+				metal.VisitRenderTargetSizes(collectTarget)
+				value.RenderTargets = targets
+			}
 		}
 		for view := range s.views {
 			if view.icons != nil {

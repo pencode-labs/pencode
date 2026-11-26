@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -66,14 +65,16 @@ func (e indexEntry) encodePath(out *protocol.Encoder) {
 }
 
 type serviceIndex struct {
-	err     error
-	changed chan struct{}
-	cancel  context.CancelFunc
-	watch   *workspaceWatch
-	root    string
-	entries []indexEntry
-	mu      sync.Mutex
-	done    bool
+	err            error
+	changed        chan struct{}
+	cancel         context.CancelFunc
+	watch          *workspaceWatch
+	root           string
+	entries        []indexEntry
+	gitDirs        []string // Non-nil for a full snapshot covering the repository discovery walk.
+	scannedEntries int
+	mu             sync.Mutex
+	done           bool
 }
 
 func (p *serviceIndex) signal() { close(p.changed); p.changed = make(chan struct{}) }
@@ -94,6 +95,8 @@ func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []indexEntry, 
 	if err == nil {
 		defer root.Close()
 		if delta.full {
+			p.gitDirs = []string{}
+			p.scannedEntries = 1
 			err = p.scan(ctx, root, &indexRootDirectory)
 		} else {
 			p.mu.Lock()
@@ -207,6 +210,12 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, dir *indexD
 	if len(children) > protocol.IndexEntryLimit {
 		return fmt.Errorf("directory exceeds index budget")
 	}
+	if p.gitDirs != nil {
+		p.scannedEntries += len(children)
+		if p.scannedEntries > protocol.IndexEntryLimit {
+			p.gitDirs = nil
+		}
+	}
 	slices.SortFunc(children, func(a, b fs.DirEntry) int {
 		return compareIndexNames(a.Name(), a.IsDir(), b.Name(), b.IsDir())
 	})
@@ -216,11 +225,23 @@ func (p *serviceIndex) reconcile(ctx context.Context, root *os.Root, dir *indexD
 			return err
 		}
 		name := child.Name()
-		if strings.HasPrefix(name, workspace.SaveTemporaryPrefix) {
+		if name == ".DS_Store" || strings.HasPrefix(name, workspace.SaveTemporaryPrefix) {
+			if child.IsDir() {
+				p.gitDirs = nil // Standalone discovery also visits these directories.
+			}
 			continue
 		}
 		switch name {
-		case ".DS_Store", ".git", "dist", "node_modules":
+		case ".git":
+			if p.gitDirs != nil && directory != "." {
+				if len(p.gitDirs) == maxRepositoryRoots {
+					p.gitDirs = nil
+				} else {
+					p.gitDirs = append(p.gitDirs, directory)
+				}
+			}
+			continue
+		case "dist", "node_modules":
 			continue
 		}
 		for offset < len(previous) && compareIndexNames(previous[offset].name(), previous[offset].isDir(), name, child.IsDir()) < 0 {
@@ -390,76 +411,9 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 			}
 		}
 	case protocol.PathSearch:
-		query := strings.ReplaceAll(d.String(), `\`, "/")
-		root := strings.TrimRight(strings.ReplaceAll(p.root, `\`, "/"), "/")
-		if len(query) > len(root) && query[len(root)] == '/' && strings.EqualFold(query[:len(root)], root) {
-			query = query[len(root)+1:]
-		}
-		count := d.U32()
-		if count > 128 {
-			return protocol.ErrProtocol
-		}
-		history := make(map[string]int, count)
-		for i := range count {
-			history[d.String()] = int(i)
-		}
-
-		if err := d.Done(); err != nil {
-			return err
-		}
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		var results [128]int
-		var ranks [128]int
-		n := 0
-		var scratch [256]byte
-		path := scratch[:0]
-		needle := []byte(query)
-		for pos, entry := range p.entries {
-			if entry.isDir() {
-				continue
-			}
-			rank := 128
-			if query != "" || count != 0 {
-				path = append(path[:0], entry.directory.prefix...)
-				path = append(path, entry.filename...)
-				if query != "" && !containsFold(path, needle) {
-					continue
-				}
-				if r, ok := history[string(path)]; ok {
-					rank = r
-				}
-			}
-			index := n
-			for index > 0 && rank < ranks[index-1] {
-				index--
-			}
-			if index < len(results) {
-				last := min(n, len(results)-1)
-				copy(results[index+1:last+1], results[index:last])
-				copy(ranks[index+1:last+1], ranks[index:last])
-				results[index], ranks[index] = pos, rank
-				n = min(n+1, len(results))
-				if count == 0 && n == len(results) {
-					break
-				}
-			}
-		}
-
-		e.U32(uint32(n))
-		for _, pos := range results[:n] {
-			p.entries[pos].encodePath(e)
-		}
+		return p.searchPaths(ctx, d, e)
 	default:
 		return protocol.ErrProtocol
 	}
 	return nil
-}
-func containsFold(value, query []byte) bool {
-	for i := 0; i+len(query) <= len(value); i++ {
-		if bytes.EqualFold(value[i:i+len(query)], query) {
-			return true
-		}
-	}
-	return false
 }

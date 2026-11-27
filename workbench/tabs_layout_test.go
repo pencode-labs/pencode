@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/onix-engine/onix/font"
@@ -12,7 +13,36 @@ import (
 	"github.com/onix-engine/onix/html/parse"
 	"github.com/onix-engine/onix/html/style"
 	"github.com/onix-engine/onix/syntax"
+	"github.com/pencode-labs/pencode/extensions"
+	"github.com/pencode-labs/pencode/peb"
 )
+
+func TestEditorTabsHaveNoGaps(t *testing.T) {
+	app, session := newPencodeTestApp(t)
+	model := session.active.model
+	project, filePath := model.activeProjectState(), model.activePath
+	comparison := &sourceTab{Key: "changes::route.proto", Kind: "changes", Path: "route.proto"}
+	model.sourceState().Tabs = []*sourceTab{comparison}
+	process := &extensions.ActionSession{}
+	for _, title := range []string{strings.Repeat("检查场景加入与退出的流程", 4), "Review"} {
+		if err := model.applyExtensionUI("codex", process, peb.UI{ID: "composer", Title: title, Kind: peb.EditorTab, View: &peb.EditorView{HTML: "<p>Codex</p>"}}); err != nil {
+			t.Fatal(err)
+		}
+		surface := model.actions.ui.surfaces[0]
+		model.selectEditorTab(pencodeEditorTab{project: project, source: comparison})
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		languageInteractionStep(t, app)
+		file := editorContextBounds(t, model, fileTabID(project, filePath))
+		extension := editorContextBounds(t, model, fileTabID(nil, surface.rootID))
+		diff := editorContextBounds(t, model, "sc-tab-group:"+comparison.Key)
+		if gap := extension.X - (file.X + file.Width); math.Abs(float64(gap)) > .01 {
+			t.Errorf("file and extension tab gap = %g px for %q", gap, title)
+		}
+		if gap := diff.X - (extension.X + extension.Width); math.Abs(float64(gap)) > .01 {
+			t.Errorf("extension and comparison tab gap = %g px for %q", gap, title)
+		}
+	}
+}
 
 func TestPencodeLabelsCenterFontEdges(t *testing.T) {
 	source, err := os.ReadFile("../resources/workbench/assets/ui/pencode.css")

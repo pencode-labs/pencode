@@ -452,7 +452,13 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			}
 			checkImage(surface, 160, 100)
 			phase = "open sent image preview"
-			// The transcript has scrolled; click the painted control's position.
+			// Scroll back to the submitted image after the reply and approval.
+			transcript := editorContextBounds(t, model, surface.prefix+"control-transcript")
+			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: float64(transcript.X + transcript.Width/2), Y: float64(transcript.Y + transcript.Height/2)})
+			state.Enqueue(input.Event{Kind: input.EventMouseWheel, WheelY: 1000})
+			for range 3 {
+				languageInteractionStep(t, app)
+			}
 			control, _ := model.fontResources.HTMLControl(model.surface, openID)
 			transform := model.fontResources.Ref[scene.UIGlobalTransform](control)
 			x := float64(transform.Matrix[12] + transform.Matrix[0]*thumb.Width/2)

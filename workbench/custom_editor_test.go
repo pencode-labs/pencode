@@ -623,7 +623,10 @@ func TestCustomEditorLoadsImagesAsTheyApproachViewport(t *testing.T) {
 	top := server.URL + "/top.svg"
 	bottom := server.URL + "/bottom.svg"
 	var body strings.Builder
-	fmt.Fprintf(&body, "// editor fixture HTML\n<p>Body</p><p><img id=\"pencode-extension-top\" loading=\"lazy\" src=%q><img loading=\"lazy\" src=%q></p>", top, top)
+	fmt.Fprintf(&body, `// editor fixture HTML
+<p>Body</p>
+<table><tr><td><img id="pencode-extension-top" width="32" loading="lazy" src=%q></td></tr></table>
+<p><img id="pencode-extension-height" height="24" loading="lazy" src=%q><img id="pencode-extension-auto" loading="lazy" src=%q></p>`, top, top, top)
 	for i := range 70 {
 		fmt.Fprintf(&body, `<p style="height:200px"><img loading="lazy" src="%s/%d.svg"></p>`, server.URL, i)
 	}
@@ -653,9 +656,22 @@ func TestCustomEditorLoadsImagesAsTheyApproachViewport(t *testing.T) {
 	wait(func() bool {
 		node, _ := model.fontResources.HTMLNode(model.surface, "pencode-extension-top")
 		width, _ := node.Attribute("width")
+		height, _ := node.Attribute("height")
 		src, _ := node.Attribute("src")
-		return width == "64" && src == doc.lazy.bySource[top].uri && src != ""
+		return width == "32" && height == "24" && src == doc.lazy.bySource[top].uri && src != ""
 	})
+	for _, id := range []string{"pencode-extension-height", "pencode-extension-auto"} {
+		node, _ := model.fontResources.HTMLNode(model.surface, id)
+		width, _ := node.Attribute("width")
+		height, _ := node.Attribute("height")
+		wantWidth, wantHeight := "32", "24"
+		if id == "pencode-extension-auto" {
+			wantWidth, wantHeight = "64", "48"
+		}
+		if width != wantWidth || height != wantHeight {
+			t.Errorf("%s dimensions = %s × %s, want %s × %s", id, width, height, wantWidth, wantHeight)
+		}
+	}
 	if first.Load() != 1 || last.Load() != 0 {
 		t.Fatal("image request was repeated or premature")
 	}

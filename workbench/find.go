@@ -44,19 +44,27 @@ func toggleSearchOption(options *textsearch.Options, index int) {
 	}
 }
 
+func (model *workspaceModel) canFind() bool {
+	return model.languageEditorActive() || model.renderedFind() != nil
+}
+
+func (model *workspaceModel) findOnly() bool {
+	return model.sourceState().visible() || model.renderedFind() != nil
+}
+
 func (model *workspaceModel) openFind(replace bool) {
 	previous := model.findPreview
 	findFocused := model.findInputFocused(model.fontResources)
 	model.findPreview = nil
-	if document := model.customDocuments[model.activeFile()]; document != nil && document.find != nil &&
+	if document := model.customDocuments[model.activeFile()]; !model.sourceState().visible() && document != nil && document.find != nil &&
 		(!model.textEditorActive() || findFocused && previous == document || !findFocused && model.fontResources != nil && model.fontResources.FocusedControl() != model.editor.control) {
 		model.findPreview = document
 	}
-	if !model.textEditorActive() && model.renderedFind() == nil {
+	if !model.canFind() {
 		return
 	}
 	model.findOpen = true
-	model.replaceOpen = replace && model.renderedFind() == nil
+	model.replaceOpen = replace && !model.findOnly()
 	model.findNeedsFocus = true
 	model.settingsOpen = false
 	model.quickOpen = false
@@ -66,18 +74,19 @@ func (model *workspaceModel) openFind(replace bool) {
 		model.selectFindMatch(model.fontResources)
 		return
 	}
-	if model.findScope.file != model.activeFile() {
+	file := model.languageFile()
+	if model.findScope.file != file {
 		model.findScope = pencodeFindScope{}
 		model.findSelection = false
 	}
 	if world := model.fontResources; world != nil {
-		if field, ok := world.Get[engineui.TextField](model.editor.control); ok && field.Focused && field.Caret != field.Anchor {
-			if !model.findSelection {
+		if field, ok := world.Get[engineui.TextField](model.languageEditor().control); ok && field.Focused && field.Caret != field.Anchor {
+			if !model.findSelection && !model.findOnly() {
 				model.captureFindScope(world)
 			}
-			buffer := model.activeFile().snapshotBuffer()
+			buffer := file.snapshotBuffer()
 			start, end := buffer.ByteOffset(min(field.Caret, field.Anchor)), buffer.ByteOffset(max(field.Caret, field.Anchor))
-			if selected := model.activeSnapshot().Slice(start, end); !strings.ContainsAny(selected, "\r\n") {
+			if selected := file.snapshot().Slice(start, end); !strings.ContainsAny(selected, "\r\n") {
 				model.findQuery = strings.Clone(selected)
 			}
 		}
@@ -91,13 +100,15 @@ func (model *workspaceModel) findFromCaret(world *module.Content) {
 		model.selectFindMatch(world)
 		return
 	}
-	if world != nil && len(model.findMatches) > 0 {
-		if field, ok := world.Get[engineui.TextField](model.editor.control); ok {
-			offset := model.activeFile().snapshotBuffer().ByteOffset(min(field.Anchor, field.Caret))
-			model.findIndex = sort.Search(len(model.findMatches), func(i int) bool { return model.findMatches[i].Start >= offset })
-			if model.findIndex == len(model.findMatches) {
-				model.findIndex = 0
+	if count := model.findCount(); world != nil && count > 0 {
+		if field, ok := world.Get[engineui.TextField](model.languageEditor().control); ok {
+			offset := model.languageFile().snapshotBuffer().ByteOffset(min(field.Anchor, field.Caret))
+			matches, base := model.findMatches, 0
+			if model.findDiff != nil && model.sourceState().languageSide == 1 {
+				matches, base = model.findDiff.matches, len(model.findMatches)
 			}
+			index := sort.Search(len(matches), func(i int) bool { return matches[i].Start >= offset })
+			model.findIndex = (base + index) % count
 			model.updateFindCountLabel()
 		}
 	}
@@ -117,6 +128,7 @@ func (model *workspaceModel) closeFind(world *module.Content) {
 }
 
 func (model *workspaceModel) clearFindCache() {
+	model.releaseDiffFind()
 	model.findContent = piecetree.Snapshot{}
 	model.findPreview = nil
 	model.findScope, model.findCachedScope = pencodeFindScope{}, pencodeFindScope{}
@@ -139,8 +151,19 @@ func (model *workspaceModel) releaseFileFind(file *openFile) {
 
 func (model *workspaceModel) refreshFindMatches() {
 	content := model.activeSnapshot()
-	preview := model.renderedFind()
-	if preview != nil {
+	tab := model.languageDiffTab()
+	if model.findDiff != nil && model.findDiff.tab != tab {
+		model.releaseDiffFind()
+	}
+	var modified piecetree.Snapshot
+	if tab != nil {
+		if model.findDiff == nil {
+			model.findDiff = &pencodeDiffFind{tab: tab}
+			model.findCountLabel = ""
+		}
+		content, modified = snapshotText(tab.sourceText(0)), snapshotText(tab.sourceText(1))
+		model.findSelection, model.replaceOpen = false, false
+	} else if preview := model.renderedFind(); preview != nil {
 		if preview.grid != nil && preview.grid.remote != nil && !preview.grid.remote.complete && model.findQuery != "" {
 			model.customDocuments[model.activeFile()].requestGrid(true)
 			model.findMatches = model.findMatches[:0]
@@ -157,10 +180,14 @@ func (model *workspaceModel) refreshFindMatches() {
 	if model.findSelection {
 		scope = model.findScope
 	}
-	if model.findContent == content && model.findCachedQuery == model.findQuery && model.findCachedOptions == model.findOptions && model.findCachedScope == scope && model.findCountLabel != "" {
+	patternChanged := model.findCachedQuery != model.findQuery || model.findCachedOptions != model.findOptions
+	refreshBoth := patternChanged || model.findCountLabel == ""
+	refreshContent := refreshBoth || model.findContent != content || model.findCachedScope != scope
+	refreshModified := model.findDiff != nil && (refreshBoth || model.findDiff.content != modified)
+	if !refreshContent && !refreshModified {
 		return
 	}
-	if model.findPattern == nil || model.findCachedQuery != model.findQuery || model.findCachedOptions != model.findOptions {
+	if model.findPattern == nil || patternChanged {
 		var err error
 		model.findPattern, err = textsearch.Compile(model.findQuery, model.findOptions)
 		model.findError = ""
@@ -170,30 +197,34 @@ func (model *workspaceModel) refreshFindMatches() {
 	}
 	model.findContent, model.findCachedQuery, model.findCachedOptions = content, model.findQuery, model.findOptions
 	model.findCachedScope = scope
-	if model.findQuery == "" || model.findError != "" {
-		clear(model.findMatches)
-		model.findMatches = model.findMatches[:0]
-	} else {
+	if refreshContent {
 		model.findMatches = model.scopedFindMatches(content, model.findMatches, pencodeFindMatchLimit)
 	}
-	model.findRevision++
-	if len(model.findMatches) == 0 {
-		model.findIndex = 0
-		model.findCountLabel = "0/0"
-		return
+	if refreshModified {
+		model.findDiff.content = modified
+		model.findDiff.matches = model.scopedFindMatches(modified, model.findDiff.matches, pencodeFindMatchLimit)
 	}
-	model.findIndex = min(model.findIndex, len(model.findMatches)-1)
+	model.findRevision++
+	model.findIndex = max(0, min(model.findIndex, model.findCount()-1))
 	model.updateFindCountLabel()
 }
 
-func (model *workspaceModel) updateFindCountLabel() {
+func (model *workspaceModel) findCount() int {
 	count := len(model.findMatches)
+	if diff := model.findDiff; diff != nil {
+		count += len(diff.matches)
+	}
+	return count
+}
+
+func (model *workspaceModel) updateFindCountLabel() {
+	count := model.findCount()
 	if count == 0 {
 		model.findCountLabel = "0/0"
 		return
 	}
 	model.findCountLabel = strconv.Itoa(model.findIndex+1) + "/" + strconv.Itoa(count)
-	if count == pencodeFindMatchLimit {
+	if len(model.findMatches) == pencodeFindMatchLimit || model.findDiff != nil && len(model.findDiff.matches) == pencodeFindMatchLimit {
 		model.findCountLabel += "+"
 	}
 }
@@ -203,15 +234,32 @@ func (model *workspaceModel) selectFindMatch(world *module.Content) {
 		preview.reveal = true
 		return
 	}
-	if len(model.findMatches) == 0 || world == nil || !world.IsAlive(model.editor.control) {
+	if model.findCount() == 0 || world == nil {
 		return
 	}
-	content := model.activeSnapshot()
-	match := model.findMatches[model.findIndex]
-	start, end := match.Start, match.End
-	anchor, caret := content.RuneOffset(start), content.RuneOffset(end)
-	if field := world.Mut[engineui.TextField](model.editor.control); field != nil {
-		field.Anchor, field.Caret = anchor, caret
+	matches, index := model.findMatches, model.findIndex
+	if diff := model.findDiff; diff != nil {
+		model.sourceState().languageSide = 0
+		if index >= len(matches) {
+			model.sourceState().languageSide = 1
+			matches, index = diff.matches, index-len(matches)
+		}
+	}
+	editor, file := model.languageEditor(), model.languageFile()
+	field := world.Mut[engineui.TextField](editor.control)
+	if field == nil || file == nil {
+		return
+	}
+	match := matches[index]
+	buffer := file.snapshotBuffer()
+	anchor, caret := buffer.RuneOffset(match.Start), buffer.RuneOffset(match.End)
+	if model.findDiff != nil && !model.findOpen {
+		world.Focus(editor.control)
+	}
+	field.Anchor, field.Caret = anchor, caret
+	if model.findDiff != nil {
+		model.revealDiffFind(world, editor, file.snapshot(), anchor)
+		return
 	}
 	model.revealEditorCaret(world, caret)
 }
@@ -245,16 +293,17 @@ func (model *workspaceModel) revealEditorCaret(world *module.Content, caret int)
 
 func (model *workspaceModel) advanceFind(world *module.Content, step int) {
 	model.refreshFindMatches()
-	if len(model.findMatches) == 0 {
+	count := model.findCount()
+	if count == 0 {
 		return
 	}
-	model.findIndex = (model.findIndex + step + len(model.findMatches)) % len(model.findMatches)
+	model.findIndex = (model.findIndex + step + count) % count
 	model.updateFindCountLabel()
 	model.selectFindMatch(world)
 }
 
 func (model *workspaceModel) replaceFindMatch(world *module.Content, all bool) {
-	if model.renderedFind() != nil {
+	if model.findOnly() {
 		return
 	}
 	model.refreshFindMatches()
@@ -298,7 +347,7 @@ func (model *workspaceModel) replaceFindMatch(world *module.Content, all bool) {
 func (model *workspaceModel) handleFindEvent(context *module.ContentEventContext[appProps, appState]) bool {
 	switch context.Ref {
 	case "find-selection":
-		if model.renderedFind() != nil {
+		if model.findOnly() {
 			return true
 		}
 		if model.findSelection {
@@ -314,7 +363,7 @@ func (model *workspaceModel) handleFindEvent(context *module.ContentEventContext
 	case "find-preserve":
 		model.findOptions.PreserveCase = !model.findOptions.PreserveCase
 	case "find-toggle-replace":
-		model.replaceOpen = !model.replaceOpen && model.renderedFind() == nil
+		model.replaceOpen = !model.replaceOpen && !model.findOnly()
 	case "find-case", "find-word", "find-regex":
 		switch context.Ref {
 		case "find-case":

@@ -6,10 +6,14 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
+	"github.com/onix-engine/onix/ecs"
 	"github.com/onix-engine/onix/html/markup"
+	"github.com/onix-engine/onix/input"
 	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
 	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
@@ -70,6 +74,7 @@ type pencodeProjectTabProps struct {
 	Model   *workspaceModel
 	Project *pencodeProject
 	Theme   *pencodeTheme
+	Drag    string
 	Active  bool
 }
 
@@ -96,14 +101,17 @@ func newProjectTabDefinition(content *module.Content) (*htmlui.Definition[pencod
 			Render: func(c module.ContentRenderContext[pencodeProjectTabProps, struct{}], view *htmlui.View) {
 				p := c.Props
 				className, foreground := "pencode-project-tab", "descriptionForeground"
-				id := "project-tab:" + p.Project.Path
+				id := p.Project.tabID
 				if p.Active {
 					className, foreground = className+" active", "titleBar.activeForeground"
 					id = "active-project-tab"
 				}
 				view.Attr("tab", "id", id)
 				view.Attr("tab", "class", className)
-				view.Attr("select", "id", "project-tab-select:"+p.Project.Path)
+				if p.Drag != "" {
+					view.Attr("tab", "data-drag", p.Drag)
+				}
+				view.Attr("select", "id", p.Project.tabSelectID)
 				view.Attr("select", "title", p.Project.Path)
 				view.Attr("select", "aria-selected", boolAttribute(p.Active))
 				view.Attr("close", "id", "project-tab-close:"+p.Project.Path)
@@ -119,7 +127,7 @@ func newProjectTabDefinition(content *module.Content) (*htmlui.Definition[pencod
 			HandleEvent: func(c *module.ContentEventContext[pencodeProjectTabProps, struct{}]) {
 				p := c.Props
 				m := p.Model
-				if m.closing.action != pencodeCloseNone || m.fileDrag.suppressClick {
+				if m.closing.action != pencodeCloseNone || m.fileDrag.suppressClick || m.projectTabDrag.suppressClick {
 					return
 				}
 				switch c.Ref {
@@ -138,8 +146,206 @@ func newProjectTabDefinition(content *module.Content) (*htmlui.Definition[pencod
 }
 
 func (m *workspaceModel) renderProjectTabs(view *htmlui.View, definition *htmlui.Definition[pencodeProjectTabProps, struct{}]) {
+	active, drag := m.activeProjectState(), &m.projectTabDrag
 	for _, project := range m.projects {
+		if project.tabID == "" {
+			project.tabID = "project-tab:" + project.Path
+			project.tabSelectID = "project-tab-select:" + project.Path
+		}
+		role := ""
+		if drag.active && project == drag.source {
+			role = "source"
+		} else if project == drag.target {
+			role = "before"
+			if drag.after {
+				role = "after"
+			}
+		}
 		view.AppendComponentChild("project-tabs", componentKey(project.Path), definition,
-			pencodeProjectTabProps{Model: m, Project: project, Theme: m.workbenchTheme, Active: project == m.activeProjectState()}, struct{}{})
+			pencodeProjectTabProps{Model: m, Project: project, Theme: m.workbenchTheme, Drag: role, Active: project == active}, struct{}{})
+	}
+}
+
+type pencodeProjectTabDrag struct {
+	nextScroll                   time.Time
+	source, target               *pencodeProject
+	active, after, suppressClick bool
+}
+
+// ProjectTabDragSystem resolves drags before pointer releases can activate a tab.
+func (s *Session) ProjectTabDragSystem() ecs.SystemConfig {
+	return ecs.SystemConfig{
+		Name: "update_pencode_project_tab_drag", Before: []string{"dispatch_pointer_events_2d"},
+		System: func(c *ecs.SystemContext) error {
+			if s.active != nil {
+				m := s.active.model
+				if state, ok := c.World.GetResource[*input.State](); ok && m.updateProjectTabDrag(m.fontResources, state) {
+					markPencodeRootDirtyByModel(m.fontResources, m)
+				}
+			}
+			return nil
+		},
+	}
+}
+
+func (m *workspaceModel) updateProjectTabDrag(world *module.Content, state *input.State) bool {
+	drag := &m.projectTabDrag
+	pointer := state.Pointer()
+	if drag.suppressClick && (pointer.Pressed || m.uiKey(state, input.KeyEnter) || m.uiKey(state, input.KeySpace)) {
+		drag.suppressClick = false
+	}
+	if drag.source == nil && !pointer.Pressed {
+		return false
+	}
+	if m.screen != pencodeWorkspace || len(m.projects) < 2 || m.settingsOpen || m.quickOpen || m.folderSearch.open ||
+		m.fileContext.dialog != "" || m.closing.action != pencodeCloseNone || m.market != nil && m.market.open ||
+		m.uiKey(state, input.KeyEscape) || state.MousePressed(input.MouseRight) ||
+		pointer.Device != input.PointerDeviceMouse || !pointer.Down && !pointer.Released {
+		return drag.finish()
+	}
+	node, _ := world.HTMLNode(m.surface, "project-tabs")
+	viewport, ok := node.Bounds()
+	if !ok {
+		return drag.finish()
+	}
+	zoom := max(float32(m.settings.Zoom)/100, .01)
+	x, y := pointer.X/zoom, pointer.Y/zoom
+	px, py := pointer.PressX/zoom, pointer.PressY/zoom
+	changed := false
+	if pointer.Pressed {
+		changed = drag.finish()
+		// The press location still identifies the tab when press and move arrive together.
+		if !languageRectContains(viewport, px, py) {
+			return changed
+		}
+	}
+	area, _ := node.ScrollContainer()
+	scroll := world.Ref[scene.UIScroll](area)
+	var offset float32
+	if scroll != nil {
+		offset = scroll.Position.X()
+	}
+	if pointer.Pressed {
+		for _, project := range m.projects {
+			selectNode, _ := world.HTMLNode(m.surface, project.tabSelectID)
+			bounds, ok := selectNode.Bounds()
+			if ok && languageRectContains(bounds, px-offset, py) {
+				drag.source = project
+				break
+			}
+		}
+	}
+	if drag.source == nil {
+		return changed
+	}
+	dx, dy := x-px, y-py
+	if !drag.active && dx*dx+dy*dy < 36 {
+		if pointer.Released {
+			drag.finish()
+		}
+		return changed
+	}
+	changed = changed || !drag.active
+	drag.active, drag.suppressClick = true, true
+	from, to := -1, -1
+	if languageRectContains(viewport, x, y) {
+		if !pointer.Released && scroll != nil && scroll.Horizontal && !scroll.DisableInput {
+			offset = m.scrollProjectTabDrag(world, area, scroll, viewport, x)
+		}
+		active := m.activeProjectState()
+		slot := 0
+		for index, project := range m.projects {
+			if project == drag.source {
+				from = index
+			}
+			id := project.tabID
+			if project == active {
+				id = "active-project-tab"
+			}
+			tab, _ := world.HTMLNode(m.surface, id)
+			if bounds, ok := tab.Bounds(); ok && x-offset >= bounds.X+bounds.Width/2 {
+				slot = index + 1
+			}
+		}
+		if from < 0 {
+			return drag.finish()
+		}
+		// Convert the gap in the original order to the index after removing the source.
+		to = slot
+		if from < slot {
+			to--
+		}
+	} else {
+		drag.nextScroll = time.Time{}
+	}
+	if pointer.Released {
+		if to >= 0 && from != to {
+			m.moveProjectTab(from, to)
+		}
+		return drag.finish()
+	}
+	var target *pencodeProject
+	if to >= 0 && from != to {
+		target = m.projects[to]
+	}
+	after := to > from
+	changed = changed || drag.target != target || drag.after != after
+	drag.target, drag.after = target, after
+	return changed
+}
+
+func (drag *pencodeProjectTabDrag) finish() bool {
+	active := drag.active
+	*drag = pencodeProjectTabDrag{suppressClick: drag.suppressClick}
+	return active
+}
+
+func (m *workspaceModel) scrollProjectTabDrag(world *module.Content, area ecs.Entity, scroll *scene.UIScroll, viewport htmlui.Rect, x float32) float32 {
+	drag := &m.projectTabDrag
+	offset := scroll.Position.X()
+	edge := min(20, viewport.Width/4)
+	leftLimit := min(0, scroll.ViewportSize.X()-scroll.ContentSize.X())
+	next := offset
+	switch {
+	case x < viewport.X+edge:
+		next = min(0, offset+12)
+	case x >= viewport.X+viewport.Width-edge:
+		next = max(leftLimit, offset-12)
+	}
+	if next == offset {
+		drag.nextScroll = time.Time{}
+		return offset
+	}
+	now := time.Now()
+	if !now.Before(drag.nextScroll) {
+		scroll := world.Mut[scene.UIScroll](area)
+		scroll.Position[0], scroll.Momentum[0] = next, 0
+		offset = next
+		drag.nextScroll = now.Add(32 * time.Millisecond)
+		if m.app != nil {
+			m.app.RequestRender()
+		}
+	}
+	if m.app != nil && m.app.WakeAt != nil {
+		m.app.WakeAt(drag.nextScroll)
+	}
+	return offset
+}
+
+func (m *workspaceModel) moveProjectTab(from, to int) {
+	project, active := m.projects[from], m.activeProjectIndex
+	if from < to {
+		copy(m.projects[from:to], m.projects[from+1:to+1])
+	} else {
+		copy(m.projects[to+1:from+1], m.projects[to:from])
+	}
+	m.projects[to] = project
+	switch {
+	case active == from:
+		m.activeProjectIndex = to
+	case from < active && active <= to:
+		m.activeProjectIndex--
+	case to <= active && active < from:
+		m.activeProjectIndex++
 	}
 }

@@ -33,12 +33,12 @@ type lazyDocumentImages struct {
 type lazyDocumentImage struct {
 	source, placeholder, uri, width, height, failure string
 	bindings                                         []lazyImageBinding
+	aspect                                           float64
 	requested                                        bool
 }
 
 type lazyImageBinding struct {
-	ref                   string
-	autoWidth, autoHeight bool
+	ref, width, height string
 }
 
 type lazyImageResult struct {
@@ -62,7 +62,7 @@ func (d *pencodeCustomDocument) bindLazyImage(next **lazyDocumentImages, n *node
 		img.placeholder = fmt.Sprintf("%s%p", lazyImagePrefix, img)
 		if old := d.lazy; old != nil {
 			if cached := old.bySource[source]; cached != nil && cached.uri != "" {
-				img.uri, img.width, img.height = cached.uri, cached.width, cached.height
+				img.uri, img.width, img.height, img.aspect = cached.uri, cached.width, cached.height, cached.aspect
 				l.assets[img.uri] = old.assets[img.uri]
 				l.resolved = append(l.resolved, img)
 			}
@@ -74,13 +74,13 @@ func (d *pencodeCustomDocument) bindLazyImage(next **lazyDocumentImages, n *node
 		ref = img.placeholder + "/" + strconv.Itoa(len(img.bindings))
 		n.SetAttr("data-ref", ref)
 	}
-	b := lazyImageBinding{ref: ref, autoWidth: n.AttrValue("width") == "", autoHeight: n.AttrValue("height") == ""}
+	b := lazyImageBinding{ref: ref, width: n.AttrValue("width"), height: n.AttrValue("height")}
 	// Give unsized inline images a paintable box before intrinsic dimensions arrive.
 	n.SetAttr("src", img.placeholder)
-	if b.autoWidth {
+	if b.width == "" {
 		n.SetAttr("width", "300")
 	}
-	if b.autoHeight {
+	if b.height == "" {
 		n.SetAttr("height", "150")
 	}
 	img.bindings = append(img.bindings, b)
@@ -120,16 +120,25 @@ func (l *lazyDocumentImages) render(target *htmlui.View, component ecs.Entity, s
 				continue
 			}
 			target.Attr(binding.ref, "src", img.uri)
-			if binding.autoWidth {
-				target.Attr(binding.ref, "width", img.width)
+			if binding.width == "" {
+				target.Attr(binding.ref, "width", lazyImageDimension(binding.height, img.aspect, img.width))
 			}
-			if binding.autoHeight {
-				target.Attr(binding.ref, "height", img.height)
+			if binding.height == "" {
+				target.Attr(binding.ref, "height", lazyImageDimension(binding.width, 1/img.aspect, img.height))
 			}
 		}
 	}
 	l.component, l.applied = component, len(l.resolved)
 	return patched
+}
+
+func lazyImageDimension(explicit string, ratio float64, fallback string) string {
+	if explicit != "" {
+		if size, err := strconv.ParseFloat(strings.TrimSpace(explicit), 64); err == nil && size > 0 {
+			return strconv.FormatFloat(size*ratio, 'g', -1, 64)
+		}
+	}
+	return fallback
 }
 
 // The HTML renderer resolves only images inside its scrollable paint window.
@@ -192,6 +201,7 @@ func (d *pencodeCustomDocument) pollLazyImages() {
 					l.assets[asset.URI] = asset.Data
 				}
 				img.uri, img.width, img.height = asset.URI, strconv.Itoa(asset.Width), strconv.Itoa(asset.Height)
+				img.aspect = float64(asset.Width) / float64(asset.Height)
 			}
 			l.resolved = append(l.resolved, img)
 			updated = true

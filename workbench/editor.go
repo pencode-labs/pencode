@@ -64,14 +64,14 @@ type pencodeEditorView struct {
 
 // Return focus after native input and layout settle, preserving the editor view.
 func (model *workspaceModel) restoreEditorFocus(world *module.Content, state *input.State) {
-	editor := &model.editor
-	if !editor.restoreFocus {
+	if !model.editor.restoreFocus {
 		return
 	}
-	editor.restoreFocus = false
-	if !model.textEditorActive() {
+	model.editor.restoreFocus = false
+	if !model.languageEditorActive() {
 		return
 	}
+	editor := model.languageEditor()
 	field, ok := world.Get[engineui.TextField](editor.control)
 	if ok && world.Focus(editor.control) {
 		current := world.Mut[engineui.TextField](editor.control)

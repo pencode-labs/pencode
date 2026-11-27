@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/onix-engine/onix/font"
@@ -100,6 +101,85 @@ func TestProjectTitlebarSwitchAndClosePreserveEdits(t *testing.T) {
 	}
 }
 
+func TestProjectTitlebarDragReordersWithoutSwitching(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	m.languages = nil
+	first := m.activeProjectState()
+	second := &pencodeProject{Path: "/workspace/another-project-with-a-long-path", Name: "Second"}
+	third := &pencodeProject{Path: "/workspace/yet-another-project-with-a-long-path", Name: "Third"}
+	m.projects = append(m.projects, second, third)
+	m.settings.Zoom = 125
+	m.updateActiveContent("unsaved\n")
+	markPencodeRootDirtyByModel(m.fontResources, m)
+	languageInteractionStep(t, app)
+
+	point := func(project *pencodeProject, fraction float32) (float64, float64) {
+		bounds := editorContextBounds(t, m, "project-tab-select:"+project.Path)
+		scale := float64(m.settings.Zoom) / 100
+		return float64(bounds.X+bounds.Width*fraction) * scale, float64(bounds.Y+bounds.Height/2) * scale
+	}
+	queue := func(kind input.EventKind, x, y float64) {
+		state.Enqueue(input.Event{Kind: kind, Button: input.MouseLeft, X: x, Y: y})
+	}
+	assertOrder := func(want ...*pencodeProject) {
+		t.Helper()
+		if !slices.Equal(m.projects, want) || m.activeProjectState() != first || m.activeContent() != "unsaved\n" {
+			t.Fatal("drag produced the wrong order or changed the active editor")
+		}
+		lastX := float32(-1)
+		for _, project := range want {
+			bounds := editorContextBounds(t, m, "project-tab-select:"+project.Path)
+			if bounds.X <= lastX {
+				t.Fatalf("rendered tab for %q is out of order", project.Name)
+			}
+			lastX = bounds.X
+		}
+	}
+	sx, sy := point(second, .5)
+	x, y := point(first, .2)
+	queue(input.EventMouseDown, sx, sy)
+	queue(input.EventMouseMove, x, y)
+	languageInteractionStep(t, app)
+	assertOrder(first, second, third)
+	active, _ := m.fontResources.HTMLNode(m.surface, "active-project-tab")
+	if attr, _ := active.Attribute("data-drag"); attr != "before" {
+		t.Fatalf("drop indicator = %q, want before", attr)
+	}
+	local, _ := m.fontResources.Resource[*input.State]()
+	if allocations := testing.AllocsPerRun(100, func() { m.updateProjectTabDrag(m.fontResources, local) }); allocations != 0 {
+		t.Fatalf("active project tab drag allocated %g times", allocations)
+	}
+	queue(input.EventMouseUp, x, y)
+	languageInteractionStep(t, app)
+	assertOrder(second, first, third)
+	if attr, ok := active.Attribute("data-drag"); ok {
+		t.Fatalf("drop indicator remained after release: %q", attr)
+	}
+
+	sx, sy = point(first, .5)
+	x, y = point(third, .9)
+	queue(input.EventMouseDown, sx, sy)
+	queue(input.EventMouseUp, x, y)
+	languageInteractionStep(t, app)
+	assertOrder(second, third, first)
+
+	sx, sy = point(second, .5)
+	x, y = point(third, .9)
+	queue(input.EventMouseDown, sx, sy)
+	queue(input.EventMouseMove, x, y)
+	languageInteractionStep(t, app)
+	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEscape})
+	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEscape})
+	languageInteractionStep(t, app)
+	queue(input.EventMouseUp, sx, sy)
+	languageInteractionStep(t, app)
+	assertOrder(second, third, first)
+	editorContextClick(t, app, m, state, "project-tab-select:"+second.Path)
+	if m.activeProjectState() != second {
+		t.Fatal("normal click after dragging did not activate the tab")
+	}
+}
+
 func TestProjectTitlebarOverflowRevealsSelectionAndKeepsPlusVisible(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)
 	m.languages = nil
@@ -138,6 +218,24 @@ func TestProjectTitlebarOverflowRevealsSelectionAndKeepsPlusVisible(t *testing.T
 	languageInteractionStep(t, app)
 	if scroll := m.fontResources.Ref[scene.UIScroll](m.projectTabScroll.area); scroll == nil || scroll.Position.X() >= 0 {
 		t.Fatal("vertical wheel did not scroll project tabs horizontally")
+	}
+
+	scroll := m.fontResources.Ref[scene.UIScroll](m.projectTabScroll.area)
+	position := scroll.Position.X()
+	second := m.projects[1]
+	selectTab := editorContextBounds(t, m, "project-tab-select:"+second.Path)
+	x, y := float64(selectTab.X+selectTab.Width/2+position), float64(selectTab.Y+selectTab.Height/2)
+	edge := float64(bounds.X + bounds.Width - 2)
+	state.Enqueue(input.Event{Kind: input.EventMouseDown, Button: input.MouseLeft, X: x, Y: y})
+	state.Enqueue(input.Event{Kind: input.EventMouseMove, X: edge, Y: y})
+	languageInteractionStep(t, app)
+	if scroll.Position.X() >= position || m.projectTabDrag.source != second {
+		t.Fatal("dragging a scrolled tab near the edge did not scroll the strip")
+	}
+	state.Enqueue(input.Event{Kind: input.EventMouseUp, Button: input.MouseLeft, X: edge, Y: y})
+	languageInteractionStep(t, app)
+	if slices.Index(m.projects, second) <= 1 || m.activeProjectState() != first {
+		t.Fatal("drop in the scrolled strip did not reorder the tab")
 	}
 }
 

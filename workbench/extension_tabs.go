@@ -1,6 +1,8 @@
 package workbench
 
 import (
+	"path"
+
 	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
@@ -18,13 +20,30 @@ func (model *workspaceModel) selectExtensionTab(surface *pencodeExtensionSurface
 }
 
 func (model *workspaceModel) renderEditorTabs(view *htmlui.View, definition *htmlui.Definition[tabProps, struct{}]) {
+	source := model.sourceState()
 	for tab := range model.editorTabs() {
-		if tab.source != nil {
-			break // Comparisons are rendered in the adjacent source-tabs container.
-		}
 		props := tabProps{Model: model, Theme: model.workbenchTheme, Icons: model.fileIcons}
 		var key uint64
-		if surface := tab.surface; surface != nil {
+		switch {
+		case tab.source != nil:
+			comparison := tab.source
+			name := path.Base(comparison.Path)
+			props.Source, props.Path = comparison, comparison.Path
+			props.Name = name + " · " + comparison.Kind
+			if comparison.Kind == "history" {
+				props.Name += " · " + comparison.Revision[:8]
+			} else if comparison.Kind == "local-history" {
+				props.Name = name + " · " + model.tr("本地历史") + " · " + comparison.Revision
+			}
+			props.Icon = props.Icons.source(name, false)
+			if props.Icon == "" {
+				props.Icon = "icons/file-text.svg"
+			}
+			props.Active, props.Preview = source.Active == comparison.Key, comparison.Preview
+			props.Dirty, props.CloseDisabled = comparison.Result != comparison.Saved, source.busy()
+			key = componentKey(comparison.Key) ^ componentKey("sc-tab-group")
+		case tab.surface != nil:
+			surface := tab.surface
 			props.Surface, props.Path, props.Name = surface, surface.rootID, surface.ui.Title
 			props.Active, props.Busy, props.Unread = surface.live(), surface.ui.Busy, surface.ui.Unread
 			for _, action := range model.actions.rows {
@@ -34,10 +53,10 @@ func (model *workspaceModel) renderEditorTabs(view *htmlui.View, definition *htm
 				}
 			}
 			key = componentKey(surface.rootID)
-		} else {
+		default:
 			file := tab.file(model)
 			props.Project, props.Path, props.Name = tab.project, file.Path, file.Name
-			props.Active = tab.project == model.activeProjectState() && model.actions.ui.editor == nil && !model.sourceState().visible() && model.activePath == tab.path
+			props.Active = tab.project == model.activeProjectState() && model.actions.ui.editor == nil && !source.visible() && model.activePath == tab.path
 			props.Preview, props.Dirty = file.Preview, file.Dirty
 			key = componentKey(file.Path)
 			if project := tab.project; project != nil {
@@ -45,6 +64,6 @@ func (model *workspaceModel) renderEditorTabs(view *htmlui.View, definition *htm
 				key ^= componentKey(project.Path) * 1099511628211
 			}
 		}
-		view.AppendComponentChild("file-tabs", key, definition, props, struct{}{})
+		view.AppendComponentChild("tabs", key, definition, props, struct{}{})
 	}
 }

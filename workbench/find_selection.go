@@ -25,6 +25,10 @@ func (m *workspaceModel) captureFindScope(world *module.Content) {
 }
 
 func (m *workspaceModel) scopedFindMatches[V piecetree.Value](value V, dst []textsearch.Match, limit int) []textsearch.Match {
+	if m.findQuery == "" || m.findError != "" {
+		clear(dst)
+		return dst[:0]
+	}
 	content := piecetree.Text(value)
 	start, end := 0, content.Len()
 	if m.findSelection {

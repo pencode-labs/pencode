@@ -218,6 +218,7 @@ func (s *Session) syncLayout(state *input.State) (scrollChanged bool) {
 	model.editor.debugPaint.sync(model.fontResources, model)
 	model.editor.diagnostics.sync(model.fontResources, model)
 	model.editor.findPaint.sync(model.fontResources, model)
+	model.syncDiffFind(model.fontResources)
 	model.constrainLanguagePopups(model.fontResources)
 	model.editor.saveView(model.fontResources, model)
 	return

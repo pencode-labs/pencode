@@ -114,6 +114,8 @@ type pencodeProject struct {
 	treeGit                 pencodeTreeGit
 	Name                    string
 	tabIconStyle            string
+	tabID                   string
+	tabSelectID             string
 	PreviewPath             string
 	historyKey              string
 	ActivePath              string
@@ -169,6 +171,7 @@ type workspaceModel struct {
 	workbenchTheme      *pencodeTheme
 	customDocuments     map[*openFile]*pencodeCustomDocument
 	referenceCancel     context.CancelFunc
+	findDiff            *pencodeDiffFind
 	findPattern         *textsearch.Pattern
 	session             *Session
 	market              *pencodeMarketplace
@@ -240,6 +243,7 @@ type workspaceModel struct {
 	tabs                    []string
 	codeFontOptions         []htmlui.VNode
 	projectTabScroll        pencodeTabScroll
+	projectTabDrag          pencodeProjectTabDrag
 	tabScroll               pencodeTabScroll
 	tooltip                 pencodeTooltip
 	tabContext              pencodeTabContext
@@ -343,20 +347,22 @@ type treeRowState struct {
 }
 
 type tabProps struct {
-	Model      *workspaceModel
-	Surface    *pencodeExtensionSurface
-	Theme      *pencodeTheme
-	Icons      *pencodeFileIcons
-	Project    *pencodeProject
-	Path       string
-	Name       string
-	Icon       string
-	Active     bool
-	Preview    bool
-	Dirty      bool
-	Busy       bool
-	Unread     bool
-	Decoration fileNameDecoration
+	Model         *workspaceModel
+	Surface       *pencodeExtensionSurface
+	Source        *sourceTab
+	Theme         *pencodeTheme
+	Icons         *pencodeFileIcons
+	Project       *pencodeProject
+	Path          string
+	Name          string
+	Icon          string
+	Active        bool
+	Preview       bool
+	Dirty         bool
+	Busy          bool
+	Unread        bool
+	CloseDisabled bool
+	Decoration    fileNameDecoration
 }
 
 type projectProps struct {
@@ -592,6 +598,19 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 				}
 				if props.Active {
 					className += " active"
+				}
+				if props.Source != nil {
+					view.Attr("tab", "id", "sc-tab-group:"+props.Source.Key)
+					view.Attr("tab", "title", props.Path)
+					view.Attr("select", "id", "sc-tab:"+props.Source.Key)
+					view.Attr("select", "aria-controls", "source-content")
+					view.Attr("close", "id", "sc-close-tab:"+props.Source.Key)
+					if props.CloseDisabled {
+						view.Attr("close", "disabled", "")
+					} else {
+						view.RemoveAttr("close", "disabled")
+					}
+				} else if props.Active {
 					view.Attr("tab", "id", "active-tab")
 				} else {
 					view.Attr("tab", "id", fileTabID(props.Project, props.Path))
@@ -609,11 +628,15 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 					view.Attr("select", "aria-label", props.Name)
 					view.Attr("close", "title", props.Model.tr("关闭文件"))
 				}
-				closeID := props.Path
-				if props.Project != nil {
-					closeID = props.Project.Path + ":" + closeID
+				if props.Source != nil {
+					view.Attr("close", "title", props.Model.tr("关闭比较"))
+				} else {
+					closeID := props.Path
+					if props.Project != nil {
+						closeID = props.Project.Path + ":" + closeID
+					}
+					view.Attr("close", "id", "file-tab-close:"+closeID)
 				}
-				view.Attr("close", "id", "file-tab-close:"+closeID)
 				view.Attr("tab", "class", className)
 				iconForeground := "tab.inactiveForeground"
 				if props.Active {
@@ -797,6 +820,7 @@ func newPencodeDefinitions(content *module.Content, page string) (*pencodeDefini
 			HandleEvent: handlePencodeRootEvent,
 			Unmount: func(context *module.ContentComponentContext[appProps, appState]) {
 				if model := context.Props.Model; model != nil {
+					model.releaseDiffFind()
 					model.editor.dispose(context.World)
 				}
 			},
@@ -886,7 +910,8 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Event("zoom-increase", htmlui.EventClick)
 	view.Event("reset-shortcuts", htmlui.EventClick)
 	model.renderProfilingSettings(view)
-	if model.findOpen && model.activeFile() != nil {
+	showFind := model.findOpen && model.canFind()
+	if showFind {
 		model.refreshFindMatches()
 	}
 	view.Event("find-query", htmlui.EventInput)
@@ -906,7 +931,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 	view.Attr("replace-query", "value", model.replaceQuery)
 	renderReplaceToggle(view, "find-toggle-replace", model.replaceOpen)
 	for _, ref := range [...]string{"find-toggle-replace", "find-selection"} {
-		if model.renderedFind() != nil {
+		if model.findOnly() {
 			view.Attr(ref, "hidden", "")
 		} else {
 			view.RemoveAttr(ref, "hidden")
@@ -919,7 +944,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.RemoveAttr("find-error", "hidden")
 	}
 	for _, ref := range [...]string{"find-previous", "find-next", "replace-one", "replace-all"} {
-		if len(model.findMatches) == 0 {
+		if model.findCount() == 0 {
 			view.Attr(ref, "disabled", "")
 		} else {
 			view.RemoveAttr(ref, "disabled")
@@ -974,7 +999,7 @@ func renderPencodeRoot(context module.ContentRenderContext[appProps, appState], 
 		view.Attr("settings-shortcuts-pane", "hidden", "")
 		view.Attr("reset-shortcuts", "hidden", "")
 	}
-	if model.findOpen && model.activeFile() != nil {
+	if showFind {
 		view.RemoveAttr("find-bar", "hidden")
 	} else {
 		view.Attr("find-bar", "hidden", "")
@@ -1386,6 +1411,10 @@ func handleTabEvent(context *module.ContentEventContext[tabProps, struct{}]) {
 		return
 	}
 	props := context.Props
+	if props.Source != nil {
+		props.Model.sourceClick(context.Event.ID, time.Now())
+		return
+	}
 	if props.Surface != nil {
 		if props.Model.closing.action != pencodeCloseNone {
 			return

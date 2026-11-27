@@ -387,7 +387,8 @@ func (m *workspaceModel) bindTerminal(world *module.Content) {
 			if m.workbenchTheme != nil {
 				color = pencodeSyntaxColor(m.syntaxTheme.Color("editorCursor.foreground"))
 			}
-			v.terminalQuad(world, &used, control, stack, transform.Translation.X.Value+x, transform.Translation.Y.Value+y+h-2, max(width, w), 2, color)
+			caretTransform := scene.UITransformFromXY(transform.Translation.X.Value+x, transform.Translation.Y.Value+y+h-2)
+			v.terminalQuad(world, &used, control, stack, caretTransform, max(width, w), 2, color)
 		}
 	}
 	for _, e := range v.decorations[used:] {
@@ -433,26 +434,32 @@ func (m *workspaceModel) syncTerminalIME(world *module.Content, state *input.Sta
 }
 
 func (v *terminalPaint) paintRows(world *module.Content, control ecs.Entity, stack scene.UIStackIndex, transform scene.UITransform, width, height float32, first, end int) (used int) {
+	bodyStack, _ := world.Get[scene.UIStackIndex](control)
+	x, y := transform.Translation.X.Value, transform.Translation.Y.Value
 	for _, bg := range v.backgrounds {
 		if bg.y < first || bg.y >= end {
 			continue
 		}
-		v.terminalQuad(world, &used, control, stack-1, transform.Translation.X.Value+float32(bg.x)*width, transform.Translation.Y.Value+float32(bg.y)*height, float32(bg.width)*width, height, bg.color)
+		backgroundTransform := scene.UITransformFromXY(x+float32(bg.x)*width, y+float32(bg.y)*height)
+		// Paint just above the control body, below the native selection layer.
+		backgroundTransform.LinearMatrix = mgl32.Translate3D(0, 0, 1)
+		v.terminalQuad(world, &used, control, bodyStack, backgroundTransform, float32(bg.width)*width, height, bg.color)
 	}
 	for _, line := range v.underlines {
 		if line.y < first || line.y >= end {
 			continue
 		}
-		v.terminalQuad(world, &used, control, stack, transform.Translation.X.Value+float32(line.x)*width, transform.Translation.Y.Value+float32(line.y+1)*height-1, float32(line.width)*width, 1, line.color)
+		lineTransform := scene.UITransformFromXY(x+float32(line.x)*width, y+float32(line.y+1)*height-1)
+		v.terminalQuad(world, &used, control, stack, lineTransform, float32(line.width)*width, 1, line.color)
 	}
 
 	return used
 }
 
-func (v *terminalPaint) terminalQuad(world *module.Content, used *int, parent ecs.Entity, stack scene.UIStackIndex, x, y, width, height float32, color graphics.ColorRGBA) {
+func (v *terminalPaint) terminalQuad(world *module.Content, used *int, parent ecs.Entity, stack scene.UIStackIndex, transform scene.UITransform, width, height float32, color graphics.ColorRGBA) {
 	if *used == len(v.decorations) {
 		bundle := ecs.NewBundle(9)
-		bundle.Put(scene.UITransformFromXY(0, 0))
+		bundle.Put(transform)
 		bundle.Put(scene.UIGlobalTransform{})
 		bundle.Put(scene.Parent{Entity: parent})
 		bundle.Put(scene.AnchorTopLeft)
@@ -467,8 +474,7 @@ func (v *terminalPaint) terminalQuad(world *module.Content, used *int, parent ec
 	world.SetIfChanged(e, stack)
 	world.SetIfChanged(e, scene.Visibility{Visible: true})
 	world.SetIfChanged(e, scene.Size2D{Width: width, Height: height})
-	transform := world.Mut[scene.UITransform](e)
-	transform.Translation.X.Value, transform.Translation.Y.Value = x, y
+	world.SetIfChanged(e, transform)
 	sprite := world.Mut[scene.Sprite2D](e)
 	sprite.Shape = scene.RoundedRectShape2D(color, 0)
 	sprite.Width, sprite.Height = width, height

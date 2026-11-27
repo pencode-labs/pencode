@@ -755,7 +755,7 @@ func (model *workspaceModel) handleShortcutKeys(world *module.Content, state *in
 			return true
 		}
 	}
-	if model.textEditorActive() || model.renderedFind() != nil {
+	if model.canFind() {
 		if model.commandMatches("find-previous", state, goos) {
 			model.advanceFind(world, -1)
 			return true

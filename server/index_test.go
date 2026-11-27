@@ -14,14 +14,15 @@ import (
 func TestIndexCleanSnapshotSharesImmutableEntries(t *testing.T) {
 	previous := []indexEntry{{filename: "file.go", directory: &indexDirectory{prefix: "nested/", depth: 1}}}
 	p := &serviceIndex{root: t.TempDir(), changed: make(chan struct{})}
-	p.walkSnapshot(t.Context(), previous, workspaceTreeDelta{})
-	if !p.done || p.err != nil || len(p.entries) != 1 || &p.entries[0] != &previous[0] {
+	base := &serviceIndex{entries: previous, gitDirs: []string{"nested"}}
+	p.walkSnapshot(t.Context(), base, workspaceTreeDelta{})
+	if !p.done || p.err != nil || len(p.gitDirs) != 1 || &p.gitDirs[0] != &base.gitDirs[0] || len(p.entries) != 1 || &p.entries[0] != &previous[0] {
 		t.Fatal("clean refresh copied or changed the completed snapshot")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	p = &serviceIndex{changed: make(chan struct{})}
-	p.walkSnapshot(ctx, previous, workspaceTreeDelta{})
+	p.walkSnapshot(ctx, base, workspaceTreeDelta{})
 	if !p.done || p.err != context.Canceled {
 		t.Fatal("clean refresh ignored cancellation")
 	}
@@ -30,7 +31,7 @@ func TestIndexCleanSnapshotSharesImmutableEntries(t *testing.T) {
 func indexSnapshot(t *testing.T, root string, previous []indexEntry, delta workspaceTreeDelta) []indexEntry {
 	t.Helper()
 	p := &serviceIndex{root: root, changed: make(chan struct{})}
-	p.walkSnapshot(t.Context(), previous, delta)
+	p.walkSnapshot(t.Context(), &serviceIndex{entries: previous}, delta)
 	if p.err != nil {
 		t.Fatal(p.err)
 	}
@@ -143,7 +144,7 @@ func BenchmarkIndexSnapshot(b *testing.B) {
 			delta.directories[0] = "0"
 			for b.Loop() {
 				p := &serviceIndex{root: root, changed: make(chan struct{})}
-				p.walkSnapshot(b.Context(), base.entries, delta)
+				p.walkSnapshot(b.Context(), base, delta)
 				if p.err != nil {
 					b.Fatal(p.err)
 				}
@@ -154,7 +155,7 @@ func BenchmarkIndexSnapshot(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			p := &serviceIndex{root: root, changed: make(chan struct{})}
-			p.walkSnapshot(b.Context(), base.entries, workspaceTreeDelta{})
+			p.walkSnapshot(b.Context(), base, workspaceTreeDelta{})
 			if p.err != nil {
 				b.Fatal(p.err)
 			}

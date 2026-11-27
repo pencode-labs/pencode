@@ -222,7 +222,7 @@ func TestPencodeTerminalScrollSelection(t *testing.T) {
 			languageInteractionStep(t, app)
 			languageInteractionStep(t, app)
 			for i := range 50 {
-				item.screen.Feed(fmt.Appendf(nil, "line%02d 中e\u0301\r\n", i))
+				item.screen.Feed(fmt.Appendf(nil, "line%02d \x1b[41m中e\u0301\x1b[0m\r\n", i))
 			}
 			markPencodeRootDirtyByModel(world, model)
 			languageInteractionStep(t, app)
@@ -250,6 +250,38 @@ func TestPencodeTerminalScrollSelection(t *testing.T) {
 			selected := model.terminalSelection()
 			if strings.Count(selected, "\n") != 6 || !strings.Contains(selected, "中e\u0301") {
 				t.Fatalf("scroll selection missing rows or unicode: %q", selected)
+			}
+			terminalView := &model.terminalView
+			if len(terminalView.decorations) == 0 {
+				t.Fatal("missing ANSI background")
+			}
+			background := terminalView.decorations[0]
+			backgroundStack, _ := world.Get[scene.UIStackIndex](background)
+			bodyStack, _ := world.Get[scene.UIStackIndex](terminalView.control)
+			if backgroundStack != bodyStack {
+				t.Fatal("ANSI background must paint on the terminal body layer")
+			}
+			backgroundTransform := world.Ref[scene.UIGlobalTransform](background)
+			bodyTransform := world.Ref[scene.UIGlobalTransform](terminalView.control)
+			if backgroundTransform.Matrix[14] <= bodyTransform.Matrix[14] {
+				t.Fatal("terminal body can cover the ANSI background")
+			}
+			textStack, _ := world.Get[scene.UIStackIndex](terminalView.text)
+			highlighted := false
+			for entity, access := range world.Query2[engineui.Relation[engineui.SurfaceStyle], engineui.Indexed[engineui.SelectionPart]]() {
+				if access.A.Get().Owner != terminalView.control {
+					continue
+				}
+				if size, ok := world.Get[scene.Size2D](entity); ok && size.Width > 0 && size.Height > 0 {
+					stack, _ := world.Get[scene.UIStackIndex](entity)
+					if stack <= backgroundStack || stack >= textStack {
+						t.Fatal("selection must paint above the ANSI background and below the text")
+					}
+					highlighted = true
+				}
+			}
+			if !highlighted {
+				t.Fatal("no visible selection highlight")
 			}
 			// Dragging beyond the edge scrolls even while the pointer is stationary.
 			state.Enqueue(input.Event{Kind: input.EventMouseMove, X: x, Y: float64(bounds.Y-10) * scale})

@@ -566,6 +566,9 @@ func (a *workspaceModel) closeSourceTab(key string) {
 	s := a.sourceState()
 	for i, tab := range s.Tabs {
 		if tab.Key == key {
+			if a.findDiff != nil && a.findDiff.tab == tab {
+				a.clearFindCache()
+			}
 			s.releaseTab(tab)
 			if s.Active == key {
 				s.Active = ""

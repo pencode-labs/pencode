@@ -68,6 +68,9 @@ func newPencodeTestLauncher(b testing.TB) (*onix.App, *Session) {
 	if err := app.InstallSystems[onix.UIHTML](); err != nil {
 		b.Fatal(err)
 	}
+	if err := app.AddSystem(onix.StagePreUpdate, session.ProjectTabDragSystem()); err != nil {
+		b.Fatal(err)
+	}
 	if err := app.AddSystems(onix.StagePostUpdate, session.ScrollSystem(), session.LayoutSystem()); err != nil {
 		b.Fatal(err)
 	}

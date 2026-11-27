@@ -2717,8 +2717,7 @@ textarea:focus {
 }
 
 /* Source control uses the workbench theme and the existing editor tab strip. */
-.sc-file-tabs, .sc-tab-list { display: flex; flex: 0 0 auto; min-width: 0; height: 100%; }
-.source-active > :not(.sc-workspace):not(.pencode-editor):not([data-language-popup]) { display: none !important; }
+.source-active > :not(.sc-workspace):not(.pencode-editor):not([data-language-popup]):not(.pencode-find) { display: none !important; }
 .source-active > .pencode-editor { visibility: hidden; }
 .sc-workspace { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
 .sc-panel, .sc-editor { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
@@ -3486,6 +3485,18 @@ textarea:focus {
     color: var(--vscode-titleBar-activeForeground);
 }
 
+.pencode-project-tab[data-drag="source"] {
+    opacity: .55;
+}
+
+.pencode-project-tab[data-drag="before"] {
+    box-shadow: inset 2px 0 0 var(--vscode-focusBorder);
+}
+
+.pencode-project-tab[data-drag="after"] {
+    box-shadow: inset -2px 0 0 var(--vscode-focusBorder);
+}
+
 .pencode-project-tab-select {
     display: flex;
     align-items: center;
@@ -3496,6 +3507,14 @@ textarea:focus {
     padding: 0 4px 0 0;
     color: inherit;
     font-size: calc(13rem / 14);
+}
+
+.pencode-project-tab:not(:only-child) .pencode-project-tab-select {
+    cursor: grab;
+}
+
+.pencode-project-tab[data-drag="source"] .pencode-project-tab-select {
+    cursor: grabbing;
 }
 
 .pencode-project-tab-icon {

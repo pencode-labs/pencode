@@ -81,11 +81,7 @@ func newBackendProjectScan(backend *client.Client, workspace protocol.Workspace,
 			}
 		}()
 		if repositories == nil {
-			var snapshot uint64
-			if previous == 0 {
-				snapshot = id
-			}
-			repositories, _ = backend.IndexRepositories(ctx, workspace.Path, snapshot)
+			repositories, _ = backend.IndexRepositories(ctx, workspace.Path, id)
 		}
 		scan.repositories = repositories
 		offset := 0

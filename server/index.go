@@ -71,7 +71,7 @@ type serviceIndex struct {
 	watch          *workspaceWatch
 	root           string
 	entries        []indexEntry
-	gitDirs        []string // Non-nil for a full snapshot covering the repository discovery walk.
+	gitDirs        []string // Non-nil when this snapshot covers repository discovery.
 	scannedEntries int
 	mu             sync.Mutex
 	done           bool
@@ -82,11 +82,12 @@ func (p *serviceIndex) walk(ctx context.Context) {
 	p.walkSnapshot(ctx, nil, workspaceTreeDelta{full: true})
 }
 
-func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []indexEntry, delta workspaceTreeDelta) {
+func (p *serviceIndex) walkSnapshot(ctx context.Context, previous *serviceIndex, delta workspaceTreeDelta) {
 	if !delta.full && delta.count == 0 {
 		// Completed snapshots are immutable, so a clean refresh can share them.
 		p.mu.Lock()
-		p.entries, p.err, p.done = previous, ctx.Err(), true
+		p.entries, p.gitDirs = previous.entries, previous.gitDirs
+		p.err, p.done = ctx.Err(), true
 		p.signal()
 		p.mu.Unlock()
 		return
@@ -100,9 +101,9 @@ func (p *serviceIndex) walkSnapshot(ctx context.Context, previous []indexEntry, 
 			err = p.scan(ctx, root, &indexRootDirectory)
 		} else {
 			p.mu.Lock()
-			p.entries = make([]indexEntry, 0, len(previous))
+			p.entries = make([]indexEntry, 0, len(previous.entries))
 			p.mu.Unlock()
-			err = p.reconcile(ctx, root, &indexRootDirectory, previous, &delta)
+			err = p.reconcile(ctx, root, &indexRootDirectory, previous.entries, &delta)
 		}
 	}
 	p.mu.Lock()
@@ -300,7 +301,7 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 		id := s.next
 		watch := s.watches[root]
 		var baseline uint64
-		var previous []indexEntry
+		var previous *serviceIndex
 		delta := workspaceTreeDelta{full: true}
 		if watch != nil {
 			baseline, watch.index = watch.index, id
@@ -326,7 +327,7 @@ func (s *services) index(ctx context.Context, op protocol.Operation, root string
 			if p.root == root {
 				p.mu.Lock()
 				if oldID == previousID && oldID == baseline && watch != nil && p.watch == watch && p.done && p.err == nil {
-					previous = p.entries
+					previous = p
 				}
 				p.mu.Unlock()
 				if oldID != previousID {

@@ -211,6 +211,9 @@ func (a *pencodeApplication) open(request pencodeWindowRequest) (others []string
 	if err := OnixInstallSystems(app); err != nil {
 		return nil, err
 	}
+	if err := app.AddSystem(onix.StagePreUpdate, session.ProjectTabDragSystem()); err != nil {
+		return nil, err
+	}
 	if err := app.AddSystems(onix.StagePostUpdate, session.ScrollSystem(), session.LayoutSystem()); err != nil {
 		return nil, err
 	}

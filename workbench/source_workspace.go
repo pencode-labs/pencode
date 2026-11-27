@@ -3,7 +3,6 @@ package workbench
 import (
 	"context"
 	"net/url"
-	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -125,7 +124,7 @@ type pencodeSourceControl struct {
 	RepositoryRefs                          []string
 	RepositorySync                          []sourceSyncStatus
 	Repositories                            []string
-	view, tabsView, overlayView             sourceVNodeView
+	view, overlayView                       sourceVNodeView
 	branchView                              sourceVNodeView
 	panelView, toolsView                    sourceVNodeView
 	repositoryView                          sourceVNodeView
@@ -796,7 +795,7 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	m.renderSourceStatus(view)
 	view.Event("status-source-control", htmlui.EventClick)
 	view.Attr("status-source-control", "aria-expanded", strconv.FormatBool(m.bottom.active == pencodePanelSourceControl))
-	for _, ref := range []string{"source-content", "source-tabs", "source-overlay", "source-pane"} {
+	for _, ref := range []string{"source-content", "source-overlay", "source-pane"} {
 		view.Event(ref, htmlui.EventInput)
 		view.Event(ref, htmlui.EventChange)
 	}
@@ -824,52 +823,6 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	} else {
 		view.Attr("editor-body", "class", "pencode-editor-body")
 	}
-	b := &s.tabsView
-	b.reset()
-	for _, tab := range s.Tabs {
-		class := "pencode-tab"
-		if s.Active == tab.Key {
-			class += " active"
-		}
-		label := path.Base(tab.Path) + " · " + tab.Kind
-		if tab.Kind == "history" {
-			label += " · " + tab.Revision[:8]
-		} else if tab.Kind == "local-history" {
-			label = path.Base(tab.Path) + " · " + m.tr("本地历史") + " · " + tab.Revision
-		}
-		if tab.Result != tab.Saved {
-			class += " dirty"
-		}
-		if tab.Preview {
-			class += " preview"
-		}
-		foreground := "tab.inactiveForeground"
-		if tab.Key == s.Active {
-			foreground = "tab.activeForeground"
-		}
-		icon := "icons/file-text.svg"
-		if m.fileIcons != nil {
-			if themed := m.fileIcons.source(path.Base(tab.Path), false); themed != "" {
-				icon = themed
-			}
-		}
-		b.open("div", tab.Key, "id", "sc-tab-group:"+tab.Key, "class", class, "title", tab.Path)
-		b.open("button", "select", "id", "sc-tab:"+tab.Key, "type", "button", "class", "pencode-tab-select", "role", "tab", "aria-selected", strconv.FormatBool(tab.Key == s.Active), "aria-controls", "source-content")
-		b.text("img", "icon", "", "class", "pencode-tab-icon", "src", m.themedIcon(icon, foreground), "alt", "")
-		b.text("span", "label", label, "class", "pencode-tab-name")
-		b.close()
-		b.open("button", "close", "id", "sc-close-tab:"+tab.Key, "type", "button", "class", "pencode-tab-close", "title", m.tr("关闭比较"), "aria-label", m.tr("关闭 ")+label)
-		if s.busy() {
-			b.attr("disabled", "")
-		}
-		if tab.Result != tab.Saved {
-			b.text("span", "dot", "", "class", "pencode-tab-dot", "aria-hidden", "true")
-		}
-		b.text("img", "close-icon", "", "class", "pencode-close-icon", "src", m.themedIcon("icons/close.svg", foreground), "alt", "")
-		b.close()
-		b.close()
-	}
-	view.Keyed("source-tabs", b.nodes())
 	if m.bottom.active == pencodePanelSourceControl {
 		m.renderSourceControl(&s.panelView)
 	}
@@ -878,7 +831,7 @@ func (m *workspaceModel) renderSourceWorkspace(view *htmlui.View) {
 	if s.panelView.used != 0 {
 		view.Keyed("source-pane", s.panelView.nodes())
 	}
-	b = &s.overlayView
+	b := &s.overlayView
 	b.reset()
 	if s.history.menu && m.bottom.active == pencodePanelSourceControl {
 		m.renderLocalHistoryMenu(b)
@@ -902,12 +855,8 @@ func (m *workspaceModel) syncSourceScroll(world *module.Content) {
 		return
 	}
 	var scrolls [2]*scene.UIScroll
-	for i, id := range [...]string{"sc-code-left", "sc-code-right"} {
-		if node, ok := world.HTMLNode(m.surface, id); ok {
-			if entity, ok := node.ScrollContainer(); ok {
-				scrolls[i] = world.Mut[scene.UIScroll](entity)
-			}
-		}
+	for side := range scrolls {
+		scrolls[side] = m.diffScroll(world, side)
 	}
 	if tab.syncScroll(scrolls, false) && m.app != nil {
 		m.app.RequestRender()
@@ -955,7 +904,7 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 			s.Handlers = make(map[string]sourceClickBinding)
 		}
 		bound := false
-		for _, builder := range []*sourceVNodeView{&s.view, &s.tabsView, &s.overlayView, &s.panelView, &s.toolsView, &s.branchView, &s.repositoryView} {
+		for _, builder := range []*sourceVNodeView{&s.view, &s.overlayView, &s.panelView, &s.toolsView, &s.branchView, &s.repositoryView} {
 			for _, id := range builder.clicks {
 				if node, ok := world.HTMLNode(m.surface, id); ok {
 					binding := s.Handlers[id]
@@ -1062,14 +1011,8 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 	if s.RestoreScroll {
 		if tab := s.activeTab(); tab != nil {
 			var scrolls [2]*scene.UIScroll
-			for i, id := range [...]string{"sc-code-left", "sc-code-right"} {
-				if node, ok := world.HTMLNode(m.surface, id); ok {
-					if entity, ok := node.ScrollContainer(); ok {
-						if scroll := world.Mut[scene.UIScroll](entity); scroll != nil {
-							scrolls[i] = scroll
-						}
-					}
-				}
+			for side := range scrolls {
+				scrolls[side] = m.diffScroll(world, side)
 			}
 			if tab.syncScroll(scrolls, true) && m.app != nil {
 				m.app.RequestRender()
@@ -1142,11 +1085,11 @@ func (m *workspaceModel) sourceShortcut(world *module.Content, state *input.Stat
 		return true, true
 	}
 	// Route history to the merge result while comparison tabs own the editor.
-	for _, action := range []pencodeShortcutAction{pencodeShortcutUndo, pencodeShortcutRedo, pencodeShortcutFind, pencodeShortcutReplace} {
+	for _, action := range []pencodeShortcutAction{pencodeShortcutUndo, pencodeShortcutRedo} {
 		if !m.settings.Bindings[pencodeShortcutDefinitions[action].id].matchesGlobal(world, state, goos) {
 			continue
 		}
-		if tab := s.activeTab(); tab != nil && tab.SubmoduleSummary == "" && (tab.Kind == "merge" || tab.editable()) && !s.busy() && (action == pencodeShortcutUndo || action == pencodeShortcutRedo) {
+		if tab := s.activeTab(); tab != nil && tab.SubmoduleSummary == "" && (tab.Kind == "merge" || tab.editable()) && !s.busy() && !m.findInputFocused(world) {
 			if entity, ok := world.HTMLControl(m.surface, "sc-code-left-input"); ok {
 				if field, ok := world.Get[engineui.TextField](entity); ok && field.Focused {
 					return true, false

@@ -1,6 +1,18 @@
 package workbench
 
-import "github.com/onix-engine/onix/scene"
+import (
+	"github.com/onix-engine/onix/module"
+	"github.com/onix-engine/onix/scene"
+)
+
+func (m *workspaceModel) diffScroll(world *module.Content, side int) *scene.UIScroll {
+	if node, ok := world.HTMLNode(m.surface, diffViewports[side]); ok {
+		if area, ok := node.ScrollContainer(); ok {
+			return world.Mut[scene.UIScroll](area)
+		}
+	}
+	return nil
+}
 
 func (tab *sourceTab) initializeDiffView(view sourceDiffView) {
 	tab.applyDiffView(view)

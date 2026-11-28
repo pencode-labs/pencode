@@ -3497,6 +3497,20 @@ textarea:focus {
     box-shadow: inset -2px 0 0 var(--vscode-focusBorder);
 }
 
+.pencode-project-tab-preview {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 99;
+    gap: 4px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    box-shadow: 0 3px 8px var(--vscode-widget-shadow);
+    font-size: calc(13rem / 14);
+    pointer-events: none;
+}
+
 .pencode-project-tab-select {
     display: flex;
     align-items: center;
@@ -3509,12 +3523,14 @@ textarea:focus {
     font-size: calc(13rem / 14);
 }
 
-.pencode-project-tab:not(:only-child) .pencode-project-tab-select {
-    cursor: grab;
+.pencode-project-tab-select,
+.pencode-project-tab-close {
+    cursor: default;
 }
 
-.pencode-project-tab[data-drag="source"] .pencode-project-tab-select {
-    cursor: grabbing;
+.pencode-project-tab-select:active,
+.pencode-root[data-project-tab-drag] * {
+    cursor: grabbing !important;
 }
 
 .pencode-project-tab-icon {

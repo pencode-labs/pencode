@@ -31,6 +31,7 @@ type extensionEntry struct {
 	resourceData map[string][]byte
 	registration extensionhost.Registration
 	resourceSize int
+	uploadMu     sync.Mutex
 	committed    bool
 	enable       bool
 }
@@ -65,7 +66,9 @@ func (s *extensionService) remove(id uint64, entry *extensionEntry) {
 		entry.root.Close()
 	}
 	if entry.upload != nil {
+		entry.uploadMu.Lock()
 		entry.upload.Close()
+		entry.uploadMu.Unlock()
 	}
 }
 
@@ -232,7 +235,7 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 				s.remove(id, entry)
 			}
 		}
-		if len(s.entries) >= extensionhost.MaxExtensions+2 || enabled && s.pending() >= 2 {
+		if len(s.entries) >= extensionhost.MaxExtensions+protocol.MaxExtensionTransactions || enabled && s.pending() >= protocol.MaxExtensionTransactions {
 			return &protocol.Error{Code: protocol.Busy, Message: "extension registration budget exceeded"}
 		}
 		entry, err := s.register(ctx, directory, name, enabled)
@@ -249,7 +252,7 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		if err := d.Done(); err != nil {
 			return err
 		}
-		if s.pending() >= 2 || len(s.entries) >= extensionhost.MaxExtensions+2 {
+		if s.pending() >= protocol.MaxExtensionTransactions || len(s.entries) >= extensionhost.MaxExtensions+protocol.MaxExtensionTransactions {
 			return &protocol.Error{Code: protocol.Busy, Message: "at most two extension transactions may be pending"}
 		}
 		upload, err := extensionhost.Begin(s.directory, replace)
@@ -277,10 +280,12 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		if err := d.Done(); err != nil {
 			return err
 		}
-		if entry.upload == nil || final > 1 || len(data) > protocol.ChunkSize {
+		if entry.upload == nil || entry.root != nil || final > 1 || len(data) > protocol.ChunkSize {
 			return protocol.ErrProtocol
 		}
-		return entry.upload.Write(name, offset, mode, final == 1, data)
+		return s.withUpload(id, entry, func(upload *extensionhost.Upload) error {
+			return upload.Write(name, offset, mode, final == 1, data)
+		})
 	case protocol.ExtensionPrepare:
 		if err := d.Done(); err != nil {
 			return err
@@ -288,7 +293,16 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		if entry.upload == nil || entry.root != nil {
 			return protocol.ErrProtocol
 		}
-		r, err := entry.upload.Prepare(ctx)
+		var r extensionhost.Registration
+		err := s.withUpload(id, entry, func(upload *extensionhost.Upload) error {
+			prepareCtx, cancel := context.WithCancel(ctx)
+			stop := context.AfterFunc(entry.ctx, cancel)
+			defer stop()
+			defer cancel()
+			var err error
+			r, err = upload.Prepare(prepareCtx)
+			return err
+		})
 		if err != nil {
 			return err
 		}
@@ -419,6 +433,23 @@ func (s *extensionService) dispatch(ctx context.Context, op protocol.Operation, 
 		return s.openProcess(ctx, id, entry, root, language, values, e)
 	}
 	return protocol.ErrProtocol
+}
+
+// Serialize writes and probes on this staging directory. Releasing its lock
+// before retaking the registry lock lets an abort cancel and clean up the upload.
+func (s *extensionService) withUpload(id uint64, entry *extensionEntry, run func(*extensionhost.Upload) error) error {
+	if !entry.uploadMu.TryLock() {
+		return &protocol.Error{Code: protocol.Busy, Message: "extension upload is in use"}
+	}
+	upload := entry.upload
+	s.mu.Unlock()
+	err := run(upload)
+	entry.uploadMu.Unlock()
+	s.mu.Lock()
+	if s.entries[id] != entry {
+		return context.Canceled
+	}
+	return err
 }
 
 func (s *extensionService) readResource(entry *extensionEntry, name string, limit int64) ([]byte, error) {

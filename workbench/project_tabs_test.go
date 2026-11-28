@@ -180,6 +180,62 @@ func TestProjectTitlebarDragReordersWithoutSwitching(t *testing.T) {
 	}
 }
 
+func TestProjectTitlebarDragCursorAndPreview(t *testing.T) {
+	app, m, _, state := languageInteractionFixture(t)
+	project := &pencodeProject{Path: "/other", Name: "Other", tabIconStyle: projectTabIconStyles[2]}
+	m.projects = append(m.projects, project)
+	m.setZoom(m.fontResources, 125)
+	markPencodeRootDirtyByModel(m.fontResources, m)
+	languageInteractionStep(t, app)
+	x, y := fileDragPoint(t, m, project.tabSelectID)
+	step := func(kind input.EventKind, x, y float64, want input.Cursor) {
+		t.Helper()
+		state.Enqueue(input.Event{Kind: kind, Button: input.MouseLeft, X: x, Y: y})
+		languageInteractionStep(t, app)
+		if got := state.Cursor(); got != want {
+			t.Fatalf("cursor on event %v = %s, want %s", kind, got, want)
+		}
+	}
+	preview, _ := m.fontResources.HTMLNode(m.surface, "project-tab-preview")
+	assertHidden := func() {
+		t.Helper()
+		if _, visible := preview.Bounds(); visible {
+			t.Fatal("project tab preview remained visible")
+		}
+	}
+	step(input.EventMouseMove, x, y, input.CursorDefault)
+	step(input.EventMouseDown, x, y, input.CursorGrabbing)
+	assertHidden()
+	step(input.EventMouseMove, x+200, y+150, input.CursorGrabbing)
+	if _, visible := preview.Bounds(); !visible {
+		t.Fatal("missing project tab preview")
+	}
+	// Read painted text below the titlebar to distinguish the preview from the original tab.
+	textPosition := func(label string) (float32, float32) {
+		t.Helper()
+		for entity, value := range app.World.Query[scene.Text2D]().All {
+			if value.Get().Text().String() == label {
+				transform := app.World.GetRef[scene.UIGlobalTransform](entity)
+				if transform != nil && transform.Matrix[13] > 100 {
+					return transform.Matrix[12], transform.Matrix[13]
+				}
+			}
+		}
+		t.Fatalf("missing floating label %q", label)
+		return 0, 0
+	}
+	textPosition(projectTabInitial(project.Name))
+	beforeX, beforeY := textPosition(project.Name)
+	step(input.EventMouseMove, x+240, y+170, input.CursorGrabbing)
+	afterX, afterY := textPosition(project.Name)
+	if dx, dy := afterX-beforeX, afterY-beforeY; dx < 39 || dx > 41 || dy < 19 || dy > 21 {
+		t.Fatalf("preview moved (%g, %g), want (40, 20)", dx, dy)
+	}
+	step(input.EventMouseMove, x, y, input.CursorGrabbing)
+	step(input.EventMouseUp, x, y, input.CursorDefault)
+	assertHidden()
+}
+
 func TestProjectTitlebarOverflowRevealsSelectionAndKeepsPlusVisible(t *testing.T) {
 	app, m, _, state := languageInteractionFixture(t)
 	m.languages = nil

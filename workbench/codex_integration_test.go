@@ -291,11 +291,26 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 		wait(func() bool { return strings.Contains(surface.view.HTML, `data-ref="history/saved"`) })
 		editorContextClick(t, app, model, state, waitControl(surface, "history/saved"))
 		wait(func() bool { return strings.Contains(surface.view.HTML, "Stored conversation") })
-		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "你 ask 工具问我一个问题"}, "")
-		editorContextClick(t, app, model, state, waitControl(surface, "send"))
+		promptID := waitControl(surface, "prompt")
+		editorContextClick(t, app, model, state, promptID)
+		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "你 ask 工具问我一个问题"})
+		languageInteractionStep(t, app)
+		running := os.Getenv("PENCODE_CODEX_ASYNC_STEER") == "1"
+		if running {
+			editorContextClick(t, app, model, state, waitControl(surface, "send"))
+		} else {
+			state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyEnter})
+			languageInteractionStep(t, app)
+			state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyEnter})
+		}
 		wait(func() bool {
-			return surface.ui.Busy == (os.Getenv("PENCODE_CODEX_ASYNC_STEER") == "1") && strings.Contains(surface.view.HTML, `class="codex-question-card"`)
+			return surface.ui.Busy == running && strings.Contains(surface.view.HTML, `class="codex-question-card"`)
 		})
+		promptID = waitControl(surface, "prompt")
+		control, _ := model.fontResources.HTMLControl(model.surface, promptID)
+		if field := model.fontResources.Ref[engineui.TextField](control); field == nil || field.Value != "" || !running && !field.Focused {
+			t.Fatalf("invalid native prompt after send: %+v", field)
+		}
 		ref := ""
 		for _, binding := range surface.view.Events {
 			if strings.HasPrefix(binding.Ref, "question-") && strings.HasSuffix(binding.Ref, "/select/1") {
@@ -312,7 +327,9 @@ func testCodexStatusBarWorkspace(t *testing.T, startupGate string) {
 			t.Fatalf("async choice is not visible above composer: choice=%+v prompt=%+v", choice, prompt)
 		}
 		phase = "retain draft alongside async question"
-		surface.send(peb.EditorEvent{Kind: "input", Ref: "prompt", Value: "保留草稿"}, "")
+		editorContextClick(t, app, model, state, promptID)
+		state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "保留草稿"})
+		languageInteractionStep(t, app)
 		phase = "select an async answer using native button"
 		editorContextClick(t, app, model, state, waitControl(surface, ref+"select/1"))
 		wait(func() bool { return strings.Contains(surface.view.HTML, `aria-pressed="true"`) })

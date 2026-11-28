@@ -3,8 +3,10 @@ package extensions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,6 +91,86 @@ func TestRemoteExtensionInstallEnableDisableAndRevoke(t *testing.T) {
 	catalog, err = backend.ListExtensions(t.Context())
 	if err != nil || len(catalog.Items) != 0 {
 		t.Fatal("uninstall did not remove the server package", catalog, err)
+	}
+}
+
+func TestConcurrentLocalInstallsDuringRegistration(t *testing.T) {
+	if os.Args[len(os.Args)-1] == "hold-registration" {
+		conn, err := net.Dial("tcp", os.Args[len(os.Args)-2])
+		if err != nil {
+			os.Exit(1)
+		}
+		_, _ = io.Copy(io.Discard, conn)
+		os.Exit(0)
+	}
+
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if err := listener.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, fixtures := actionFixture(t)
+	source := filepath.Join(fixtures, "test")
+	changeFixtureManifest(t, source, func(m *Manifest) {
+		m.Args = []string{"-test.run=^TestConcurrentLocalInstallsDuringRegistration$", "--", listener.Addr().String(), "hold-registration"}
+	})
+	target := t.TempDir()
+	backend := extensionBackend(t, target)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	slow := make(chan error, 1)
+	go func() {
+		_, _, err := Install(ctx, backend, source)
+		slow <- err
+	}()
+	probe, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer probe.Close()
+
+	// The stalled probe occupies one of the server's two transaction slots.
+	// The other slot must serve both installs, including the one waiting for it.
+	fast := make(chan error, 2)
+	for _, id := range []string{"first", "second"} {
+		directory := t.TempDir()
+		if err := os.Mkdir(filepath.Join(directory, "resources"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		data := fmt.Sprintf(`{"id":%q,"entry":"fixture","disabled":true}`, id)
+		if err := os.WriteFile(filepath.Join(directory, "resources", "extension.json"), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			_, _, err := Install(ctx, backend, directory)
+			fast <- err
+		}()
+	}
+	for range 2 {
+		select {
+		case err := <-fast:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case err := <-slow:
+			t.Fatalf("other installs waited for stalled probe: %v", err)
+		case <-time.After(10 * time.Second):
+			t.Fatal("other installs did not finish")
+		}
+	}
+	cancel()
+	if err := <-slow; !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected the stalled probe to be canceled, got %v", err)
+	}
+	catalog, err := backend.ListExtensions(t.Context())
+	if err != nil || len(catalog.Items) != 2 || catalog.Items[0].ID != "first" || catalog.Items[1].ID != "second" {
+		t.Fatal("canceling the stalled installation changed committed packages", catalog, err)
+	}
+	if entries, err := os.ReadDir(target); err != nil || len(entries) != 2 {
+		t.Fatal("canceled installation left staging files", entries, err)
 	}
 }
 

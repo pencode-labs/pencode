@@ -202,11 +202,7 @@ func (m *workspaceModel) applySourceRepositoryResult(s *pencodeSourceControl, pr
 			s.CommitMessage = ""
 			s.MessageMultiline, s.MessageFocus = false, false
 			s.MessageAnchor, s.MessageCaret = 0, 0
-			if m.fontResources != nil && s == m.sourceState() {
-				if entity, ok := m.fontResources.HTMLControl(m.surface, "sc-message"); ok {
-					m.fontResources.SetControlValue(entity, "")
-				}
-			}
+			s.RestoreMessage = true
 		} else if view, ok := s.RepositoryViews[root]; ok {
 			view.Message, view.Multiline, view.Anchor, view.Caret = "", false, 0, 0
 			s.RepositoryViews[root] = view
@@ -274,6 +270,7 @@ func (s *pencodeSourceControl) selectRepository(repository sourceRepository) {
 	s.MessageMultiline, s.MessageAnchor, s.MessageCaret = view.Multiline, view.Anchor, view.Caret
 	s.RestoreScroll = s.Active != ""
 	s.MessageFocus, s.BranchFocus = false, false
+	s.RestoreMessage = true
 	s.RepositoryError, s.SelectedHash, s.FocusedTab = "", "", ""
 	s.CommitFiles, s.Collapsed = nil, nil
 	s.TreeRevision++

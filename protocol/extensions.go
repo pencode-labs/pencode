@@ -2,6 +2,9 @@ package protocol
 
 import "path"
 
+// MaxExtensionTransactions bounds simultaneous staged installs and enables per connection.
+const MaxExtensionTransactions = 2
+
 // ExtensionManifest is installed on the server at resources/extension.json.
 type ExtensionManifest struct {
 	ID          string   `json:"id"`

@@ -226,6 +226,22 @@ type ExtensionUpload struct {
 	handle uint64
 }
 
+// ReserveExtensionTransaction waits for room to stage a package or enable an extension.
+// Hold the slot until commit or abort so concurrent downloads can finish independently.
+func (c *Client) ReserveExtensionTransaction(ctx context.Context) (release func(), err error) {
+	if c == nil {
+		return nil, ErrClosed
+	}
+	select {
+	case c.extensionSlots <- struct{}{}:
+		return func() { <-c.extensionSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.done:
+		return nil, c.Err()
+	}
+}
+
 // BeginExtension stages a package. A nonempty replace ID updates that package.
 func (c *Client) BeginExtension(ctx context.Context, replace string) (*ExtensionUpload, error) {
 	e := service(protocol.ExtensionBegin, "")

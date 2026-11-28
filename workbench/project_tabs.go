@@ -78,6 +78,13 @@ type pencodeProjectTabProps struct {
 	Active  bool
 }
 
+func (p *pencodeProject) titlebarTabID(active bool) string {
+	if active {
+		return "active-project-tab"
+	}
+	return p.tabID
+}
+
 func newProjectTabDefinition(content *module.Content) (*htmlui.Definition[pencodeProjectTabProps, struct{}], error) {
 	template, err := htmlui.BuildTemplate(func(b *markup.Builder) {
 		b.Open("div", "data-ref", "tab", "class", "pencode-project-tab")
@@ -101,12 +108,10 @@ func newProjectTabDefinition(content *module.Content) (*htmlui.Definition[pencod
 			Render: func(c module.ContentRenderContext[pencodeProjectTabProps, struct{}], view *htmlui.View) {
 				p := c.Props
 				className, foreground := "pencode-project-tab", "descriptionForeground"
-				id := p.Project.tabID
 				if p.Active {
 					className, foreground = className+" active", "titleBar.activeForeground"
-					id = "active-project-tab"
 				}
-				view.Attr("tab", "id", id)
+				view.Attr("tab", "id", p.Project.titlebarTabID(p.Active))
 				view.Attr("tab", "class", className)
 				if p.Drag != "" {
 					view.Attr("tab", "data-drag", p.Drag)
@@ -147,6 +152,13 @@ func newProjectTabDefinition(content *module.Content) (*htmlui.Definition[pencod
 
 func (m *workspaceModel) renderProjectTabs(view *htmlui.View, definition *htmlui.Definition[pencodeProjectTabProps, struct{}]) {
 	active, drag := m.activeProjectState(), &m.projectTabDrag
+	setPanelVisible(view, "project-tab-preview", drag.active)
+	if drag.active {
+		view.Attr("root", "data-project-tab-drag", "")
+		view.Attr("project-tab-preview-icon", "style", drag.source.tabIconStyle)
+		view.Text("project-tab-preview-initial", projectTabInitial(drag.source.Name))
+		view.Text("project-tab-preview-name", drag.source.Name)
+	}
 	for _, project := range m.projects {
 		if project.tabID == "" {
 			project.tabID = "project-tab:" + project.Path
@@ -169,7 +181,29 @@ func (m *workspaceModel) renderProjectTabs(view *htmlui.View, definition *htmlui
 type pencodeProjectTabDrag struct {
 	nextScroll                   time.Time
 	source, target               *pencodeProject
+	grabX, grabY                 float32
+	previewX, previewY           float32
 	active, after, suppressClick bool
+	positioned                   bool
+}
+
+func (m *workspaceModel) syncProjectTabPreview(world *module.Content, pointer input.Pointer) {
+	drag := &m.projectTabDrag
+	if !drag.active {
+		return
+	}
+	preview, _ := world.HTMLNode(m.surface, "project-tab-preview")
+	bounds, ok := preview.Bounds()
+	if !ok {
+		return
+	}
+	zoom := max(float32(m.settings.Zoom)/100, .01)
+	x := min(max(0, pointer.X/zoom-drag.grabX-bounds.X), max(0, m.viewportWidth/zoom-bounds.Width-bounds.X))
+	y := min(max(0, pointer.Y/zoom-drag.grabY-bounds.Y), max(0, m.viewportHeight/zoom-bounds.Height-bounds.Y))
+	if !drag.positioned || x != drag.previewX || y != drag.previewY {
+		drag.positioned = world.HTMLSetOffset(m.surface, "project-tab-preview", x, y)
+		drag.previewX, drag.previewY = x, y
+	}
 }
 
 // ProjectTabDragSystem resolves drags before pointer releases can activate a tab.
@@ -230,7 +264,11 @@ func (m *workspaceModel) updateProjectTabDrag(world *module.Content, state *inpu
 			selectNode, _ := world.HTMLNode(m.surface, project.tabSelectID)
 			bounds, ok := selectNode.Bounds()
 			if ok && languageRectContains(bounds, px-offset, py) {
-				drag.source = project
+				tab, _ := world.HTMLNode(m.surface, project.titlebarTabID(project == m.activeProjectState()))
+				if box, ok := tab.Bounds(); ok {
+					drag.source = project
+					drag.grabX, drag.grabY = px-offset-box.X, py-box.Y
+				}
 				break
 			}
 		}
@@ -258,11 +296,7 @@ func (m *workspaceModel) updateProjectTabDrag(world *module.Content, state *inpu
 			if project == drag.source {
 				from = index
 			}
-			id := project.tabID
-			if project == active {
-				id = "active-project-tab"
-			}
-			tab, _ := world.HTMLNode(m.surface, id)
+			tab, _ := world.HTMLNode(m.surface, project.titlebarTabID(project == active))
 			if bounds, ok := tab.Bounds(); ok && x-offset >= bounds.X+bounds.Width/2 {
 				slot = index + 1
 			}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/onix-engine/onix/input"
+	htmlui "github.com/onix-engine/onix/ui/html"
 )
 
 func sourceTestConflict(t *testing.T) (sourceRepository, string) {
@@ -107,6 +108,39 @@ func TestSourceControlMergeConflictFeedback(t *testing.T) {
 	result.Message = "Merge resolved and staged"
 	if result.expectedGitError() {
 		t.Fatal("save error was suppressed")
+	}
+}
+
+func TestSourceControlPullConflictCommitMessage(t *testing.T) {
+	r, name := sourceTestConflict(t)
+	remote := t.TempDir()
+	sourceTestGit(t, r, "init", "--bare", "-b", "main", remote)
+	sourceTestGit(t, r, "remote", "add", "origin", remote)
+	sourceTestGit(t, r, "push", "origin", "incoming:main")
+	sourceTestGit(t, r, "branch", "--set-upstream-to=origin/main", "main")
+	sourceTestGit(t, r, "branch", "-D", "incoming")
+	t.Setenv("ONIX_PENCODE_PROFILE_PROJECT", r.Root)
+	t.Setenv("ONIX_PENCODE_PROFILE_FILE", name)
+	app, m, _, state := languageInteractionFixture(t)
+	editorContextClick(t, app, m, state, "status-source-control")
+	sourceWait(t, app, m)
+	s := m.sourceState()
+	message, _ := m.fontResources.HTMLControl(m.surface, "sc-message")
+	editorContextClick(t, app, m, state, "sc-message")
+	state.Enqueue(input.Event{Kind: input.EventTextInput, Text: "x"})
+	languageInteractionStep(t, app)
+	state.Enqueue(input.Event{Kind: input.EventKeyDown, Key: input.KeyBackspace})
+	state.Enqueue(input.Event{Kind: input.EventKeyUp, Key: input.KeyBackspace})
+	languageInteractionStep(t, app)
+	if s.CommitMessage != "" || !htmlui.ControlValueDirty(app.World, message) {
+		t.Fatal("expected an empty, previously edited message field")
+	}
+	editorContextClick(t, app, m, state, sourceRepositoryActionPrefix+"pull:"+r.Root)
+	sourceWait(t, app, m)
+	const want = "Merge from origin/main"
+	message, _ = m.fontResources.HTMLControl(m.surface, "sc-message")
+	if got := htmlui.ControlValue(app.World, message); len(s.Snapshot.Groups[0]) != 1 || s.CommitMessage != want || got != want {
+		t.Fatalf("conflicts=%v, draft=%q, input=%q, want %q", s.Snapshot.Groups[0], s.CommitMessage, got, want)
 	}
 }
 

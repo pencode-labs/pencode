@@ -163,6 +163,7 @@ type pencodeSourceControl struct {
 	RestoreGraph                            bool
 	RefreshPending, RefreshStarted          bool
 	MessageMultiline, MessageFocus          bool
+	RestoreMessage                          bool
 	RestoreScroll                           bool
 	MenuOpen                                bool
 	BranchSubmenu                           bool
@@ -578,6 +579,7 @@ func (s *pencodeSourceControl) applySourceSnapshot(snapshot *sourceSnapshot, sta
 	}
 	if next.MergeMessage != "" && s.CommitMessage == "" {
 		s.CommitMessage = next.MergeMessage
+		s.RestoreMessage = true
 	}
 	s.Snapshot = next
 	s.updateRepositoryHead(snapshot)
@@ -943,6 +945,13 @@ func (m *workspaceModel) bindSourceControls(world *module.Content) {
 					s.RestoreGraph = false
 				}
 			}
+		}
+	}
+	if s.RestoreMessage && m.bottom.active == pencodePanelSourceControl {
+		// Native controls retain their edited value when the authored value changes.
+		if entity, ok := world.HTMLControl(m.surface, "sc-message"); ok {
+			world.SetControlValue(entity, s.CommitMessage)
+			s.RestoreMessage = false
 		}
 	}
 	if s.MessageFocus && m.bottom.active == pencodePanelSourceControl {

@@ -191,6 +191,7 @@ func (s *Session) syncLayout(state *input.State) (scrollChanged bool) {
 		scrollChanged = true
 	}
 	model.syncFileDragPreview(model.fontResources)
+	model.syncProjectTabPreview(model.fontResources, state.Pointer())
 	// HTML/native reconciliation may replace text spans after FrameUpdate.
 	// Publish paint against the final field value, including asynchronous results.
 	if field, ok := model.fontResources.Get[engineui.TextField](model.editor.control); ok {

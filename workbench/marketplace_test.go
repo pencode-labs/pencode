@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,7 +62,7 @@ func TestMarketplaceDirectoryButtonFollowsWorkspace(t *testing.T) {
 			}
 			if remoteMode {
 				model.handleMarketplaceEvent(&module.ContentEventContext[appProps, appState]{Ref: "market-open-directory"})
-				if model.market.busy {
+				if len(model.market.pending) != 0 {
 					t.Fatal("remote workspace started opening a server path locally")
 				}
 			}
@@ -71,13 +72,15 @@ func TestMarketplaceDirectoryButtonFollowsWorkspace(t *testing.T) {
 
 func waitPencodeMarket(t *testing.T, model *workspaceModel) {
 	t.Helper()
-	if !model.market.busy {
+	if len(model.market.pending) == 0 {
 		return
 	}
-	select {
-	case <-model.market.done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("marketplace operation did not finish")
+	for _, task := range model.market.pending {
+		select {
+		case <-task.done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("marketplace operation did not finish")
+		}
 	}
 	if !model.pollMarketplace() {
 		t.Fatal("marketplace result was not applied")
@@ -255,7 +258,7 @@ func TestMarketplaceStateFollowsRetainedViews(t *testing.T) {
 		t.Fatal("scene switch lost the shared marketplace state")
 	}
 	waitPencodeMarket(t, launcher.model)
-	if launcher.model.market.busy {
+	if len(launcher.model.market.pending) != 0 {
 		t.Fatal("launcher did not consume the background operation")
 	}
 }
@@ -354,6 +357,106 @@ func TestMarketplaceRefreshOnlyChecksUpdates(t *testing.T) {
 	}
 }
 
+func TestMarketplaceConcurrentInstalls(t *testing.T) {
+	_, session := newPencodeTestApp(t)
+	model, market := session.active.model, session.market
+	started, release := make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/")
+		if id == "slow" {
+			close(started)
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if id == "broken" {
+			http.Error(w, "missing package", http.StatusNotFound)
+			return
+		}
+		z := zip.NewWriter(w)
+		f, err := z.Create(id + "/resources/extension.json")
+		if err == nil {
+			_, err = fmt.Fprintf(f, `{"id":%q,"version":"1.0.0","entry":"fixture","disabled":true}`, id)
+		}
+		if err := z.Close(); err != nil {
+			t.Error(err)
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	defer market.stop()
+	for _, id := range []string{"slow", "fast", "broken"} {
+		market.listings = append(market.listings, extensions.Listing{Name: id, Version: "1.0.0", URL: server.URL + "/" + id})
+	}
+	market.open = true
+	selectItem := func(id string) {
+		t.Helper()
+		market.selected = id
+		market.revision++
+		markPencodeRootDirtyByModel(model.fontResources, model)
+		if err := model.fontResources.SyncHTML(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	markup := func(ref string) string {
+		t.Helper()
+		node, ok := model.fontResources.HTMLNode(model.surface, ref)
+		if !ok {
+			t.Fatalf("missing %s", ref)
+		}
+		text, err := node.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return text
+	}
+	download := func() {
+		model.handleMarketplaceEvent(&module.ContentEventContext[appProps, appState]{Ref: "market-download"})
+	}
+	selectItem("slow")
+	download()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first download did not start")
+	}
+	first := market.pending["slow"]
+	selectItem("slow")
+	download()
+	if first == nil || market.pending["slow"] != first || !strings.Contains(markup("market-download"), " disabled") || strings.Count(markup("marketplace-panel"), model.tr("正在安装扩展…")) < 2 {
+		t.Fatal("pending extension can be submitted twice or lacks progress")
+	}
+	for _, id := range []string{"fast", "broken"} {
+		selectItem(id)
+		if strings.Contains(markup("market-download"), " disabled") || strings.Contains(markup("market-install"), " disabled") {
+			t.Fatal("another installation blocked the available install actions")
+		}
+		download()
+		task := market.pending[id]
+		if task == nil {
+			t.Fatalf("%s did not start", id)
+		}
+		select {
+		case <-task.done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s waited for the slow installation", id)
+		}
+		model.pollMarketplace()
+	}
+	if len(market.items) != 1 || market.items[0].ID != "fast" || !strings.Contains(market.feedback, "HTTP 404") || market.pending["slow"] != first {
+		t.Fatal("one result changed another installation", market.items, market.feedback)
+	}
+	close(release)
+	waitPencodeMarket(t, model)
+	if len(market.items) != 2 || market.items[0].ID != "fast" || market.items[1].ID != "slow" || market.selected != "broken" {
+		t.Fatal("out-of-order completion lost an installation or changed selection", market.items, market.selected)
+	}
+}
+
 func TestMarketplaceUpdateCheckFailurePreservesInstalledStatus(t *testing.T) {
 	_, session := newPencodeTestApp(t)
 	model := session.active.model
@@ -428,17 +531,15 @@ func TestMarketplaceUpdateReplacesLoadedContributions(t *testing.T) {
 	model.setExtensionState("test", pencodeExtensionLoaded)
 	model.importExtensionSettings("test", "Test", []peb.Setting{{ID: "old", Label: "Old setting", Type: peb.SettingBoolean, Default: []byte("true")}})
 	model.extensionIcons = map[string][]byte{"peb://test/resources/old.svg": []byte("old")}
-	model.market.busy = true
-	model.market.results = make(chan pencodeMarketResult, 1)
-	model.market.results <- pencodeMarketResult{
+	model.applyMarketResult(&pencodeMarketResult{
 		op: pencodeMarketUpdate, id: "test",
 		items: []extensions.Installed{{ExtensionManifest: extensions.Manifest{ID: "test", Version: "1.1.0"}}},
 		bundles: map[string]*extensions.Bundle{"test": {
 			ID: "test", Label: "Test", Icons: map[string][]byte{"peb://test/resources/new.svg": []byte("new")},
 			Settings: []peb.Setting{{ID: "new", Label: "New setting", Type: peb.SettingBoolean, Default: []byte("true")}},
 		}},
-	}
-	if !model.pollMarketplace() || model.extensionStates["test"] != pencodeExtensionLoaded {
+	})
+	if model.extensionStates["test"] != pencodeExtensionLoaded {
 		t.Fatal("updated extension was not reloaded")
 	}
 	if len(model.extensionIcons["peb://test/resources/old.svg"]) != 0 || string(model.extensionIcons["peb://test/resources/new.svg"]) != "new" {

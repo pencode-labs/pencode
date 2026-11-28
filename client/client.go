@@ -29,14 +29,15 @@ type call struct {
 	kind     protocol.Kind
 }
 type Client struct {
-	conn    io.ReadWriteCloser
-	err     error
-	pending map[uint64]*call
-	queue   chan *call
-	cancels chan uint64
-	done    chan struct{}
-	stopped sync.WaitGroup
-	next    uint64
+	conn           io.ReadWriteCloser
+	err            error
+	pending        map[uint64]*call
+	queue          chan *call
+	cancels        chan uint64
+	done           chan struct{}
+	extensionSlots chan struct{}
+	stopped        sync.WaitGroup
+	next           uint64
 	// Upload bytes stay charged while the writer owns them, even after a
 	// caller cancels. Response bytes cover incomplete replies only.
 	uploadBytes, responseBytes int
@@ -45,6 +46,7 @@ type Client struct {
 
 func New(ctx context.Context, conn io.ReadWriteCloser) (*Client, error) {
 	c := &Client{conn: conn, pending: make(map[uint64]*call), queue: make(chan *call, maxPending), cancels: make(chan uint64, maxPending), done: make(chan struct{})}
+	c.extensionSlots = make(chan struct{}, protocol.MaxExtensionTransactions)
 	c.stopped.Add(2)
 	go c.read()
 	go c.write()

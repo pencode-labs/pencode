@@ -2,6 +2,7 @@ package extensions
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,6 +12,27 @@ import (
 	"github.com/pencode-labs/pencode/client"
 	"github.com/pencode-labs/pencode/protocol"
 )
+
+// LocalPackageID identifies a directory selection before scheduling its installation.
+func LocalPackageID(source string) (string, error) {
+	root, err := os.OpenRoot(source)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	data, err := readResource(root.FS(), "resources/extension.json", 64<<10)
+	if err != nil {
+		return "", err
+	}
+	var manifest Manifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return "", err
+	}
+	if !validID(manifest.ID) {
+		return "", fmt.Errorf("无效的扩展 ID：%q", manifest.ID)
+	}
+	return manifest.ID, nil
+}
 
 // Install uploads a selected local package to the server. Only this explicit
 // file-transfer source is opened locally; installed packages always live there.
@@ -28,6 +50,11 @@ func install(ctx context.Context, backend *client.Client, source, replace string
 	if _, err := readResource(root.FS(), "resources/extension.json", 64<<10); err != nil {
 		return Installed{}, nil, err
 	}
+	release, err := backend.ReserveExtensionTransaction(ctx)
+	if err != nil {
+		return Installed{}, nil, err
+	}
+	defer release()
 	upload, err := backend.BeginExtension(ctx, replace)
 	if err != nil {
 		return Installed{}, nil, err
@@ -70,6 +97,11 @@ func SetEnabled(ctx context.Context, backend *client.Client, id string, enabled 
 		item, err := backend.DisableExtension(ctx, id)
 		return item, nil, err
 	}
+	release, err := backend.ReserveExtensionTransaction(ctx)
+	if err != nil {
+		return Installed{}, nil, err
+	}
+	defer release()
 	remote, err := backend.PrepareEnableExtension(ctx, id)
 	if err != nil {
 		return Installed{}, nil, err

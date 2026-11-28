@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,8 +35,16 @@ type pencodeMarketResult struct {
 	bundles     map[string]*extensions.Bundle
 	directory   string
 	id          string
+	selected    string // Selection when the task started.
 	items       []extensions.Installed
 	op          pencodeMarketOperation
+}
+
+type pencodeMarketTask struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	status string
+	result pencodeMarketResult
 }
 
 type pencodeMarketplaceView struct {
@@ -53,16 +62,14 @@ type pencodeMarketplace struct {
 	source          extensions.Marketplace
 	listings        []extensions.Listing
 	entries         []extensions.Installed
-	cancel          context.CancelFunc
-	done            chan struct{}
-	results         chan pencodeMarketResult
+	pending         map[string]*pencodeMarketTask // Empty ID reserves a catalog-wide operation.
 	details         [5]string
 	pencodeMarketplaceView
 	directory              string // Backend path; only local workspaces can open it.
 	items                  []extensions.Installed
 	rows                   []htmlui.ComponentVNode
 	revision, rowsRevision uint64
-	busy, download         bool
+	download               bool
 }
 
 type pencodeMarketProps struct {
@@ -72,18 +79,18 @@ type pencodeMarketProps struct {
 }
 
 func (m *pencodeMarketplace) stop() {
-	if m == nil || m.cancel == nil {
+	if m == nil {
 		return
 	}
-	m.cancel()
-	<-m.done
-	m.cancel = nil
-	select {
-	case result := <-m.results:
-		for _, bundle := range result.bundles {
+	for _, task := range m.pending {
+		task.cancel()
+	}
+	for id, task := range m.pending {
+		<-task.done
+		for _, bundle := range task.result.bundles {
 			bundle.Close()
 		}
-	default:
+		delete(m.pending, id)
 	}
 }
 
@@ -99,7 +106,7 @@ func (model *workspaceModel) backgroundWake() func() {
 
 func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, source, id string) {
 	m := model.market
-	if m == nil || m.busy {
+	if m == nil || m.pending[""] != nil {
 		return
 	}
 	if op == pencodeMarketOpenDirectory && (model.remoteWorkspace() || m.directory == "") {
@@ -109,34 +116,54 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 		m.feedback = model.tr("服务未连接")
 		return
 	}
-	m.busy, m.feedback = true, model.tr("正在读取扩展…")
+	if op == pencodeMarketInstall {
+		var err error
+		id, err = extensions.LocalPackageID(source)
+		if err != nil {
+			m.feedback = fmt.Sprintf(model.tr("选择扩展失败：%v"), err)
+			model.logOutput(extensions.MarketplaceOutputChannelName, "[Error] "+m.feedback)
+			return
+		}
+	}
+	if m.pending[id] != nil || id == "" && len(m.pending) != 0 {
+		return
+	}
+	status := model.tr("正在读取扩展…")
 	switch op {
 	case pencodeMarketInstall, pencodeMarketDownload:
-		m.feedback = model.tr("正在安装扩展…")
+		status = model.tr("正在安装扩展…")
 	case pencodeMarketUpdate:
-		m.feedback = model.tr("正在更新扩展…")
+		status = model.tr("正在更新扩展…")
 	case pencodeMarketUninstall:
-		m.feedback = model.tr("正在卸载扩展…")
+		status = model.tr("正在卸载扩展…")
 	case pencodeMarketEnable:
-		m.feedback = model.tr("正在启用扩展…")
+		status = model.tr("正在启用扩展…")
 	case pencodeMarketDisable:
-		m.feedback = model.tr("正在禁用扩展…")
+		status = model.tr("正在禁用扩展…")
 	case pencodeMarketOpenDirectory:
-		m.feedback = model.tr("正在打开扩展目录…")
+		status = model.tr("正在打开扩展目录…")
 		source = m.directory
 	}
-	model.logOutput(extensions.MarketplaceOutputChannelName, fmt.Sprintf("[Info] %s %s", m.feedback, id))
+	m.feedback = status
+	if id != "" {
+		m.feedback = id + " · " + status
+	}
+	model.logOutput(extensions.MarketplaceOutputChannelName, "[Info] "+m.feedback)
 	ctx, cancel := context.WithCancel(output.WithStore(context.Background(), model.outputStore()))
-	m.cancel, m.done = cancel, make(chan struct{})
-	if m.results == nil {
-		m.results = make(chan pencodeMarketResult, 1)
+	task := &pencodeMarketTask{cancel: cancel, done: make(chan struct{}), status: status}
+	if m.pending == nil {
+		m.pending = make(map[string]*pencodeMarketTask)
 	}
-	backend, results, done, wake := model.session.backend, m.results, m.done, model.backgroundWake()
-	known := make(map[string]bool, len(model.extensionStates))
-	for id, state := range model.extensionStates {
-		known[id] = state == pencodeExtensionLoaded
+	m.pending[id] = task
+	backend, wake := model.session.backend, model.backgroundWake()
+	var known map[string]bool
+	if op == pencodeMarketRefresh {
+		known = make(map[string]bool, len(model.extensionStates))
+		for id, state := range model.extensionStates {
+			known[id] = state == pencodeExtensionLoaded
+		}
 	}
-	owner := model.activeProjectState()
+	owner, selected := model.activeProjectState(), m.selected
 	marketSource := m.source
 	var listing extensions.Listing
 	if op == pencodeMarketDownload || op == pencodeMarketUpdate {
@@ -148,16 +175,12 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 		}
 	}
 	go func() {
-		defer close(done)
-		r := pencodeMarketResult{owner: owner, op: op, id: id, bundles: make(map[string]*extensions.Bundle)}
-		published := false
-		defer func() {
-			if !published {
-				for _, bundle := range r.bundles {
-					bundle.Close()
-				}
-			}
-		}()
+		if wake != nil {
+			defer wake()
+		}
+		defer close(task.done)
+		r := &task.result
+		*r = pencodeMarketResult{owner: owner, op: op, id: id, selected: selected, bundles: make(map[string]*extensions.Bundle)}
 		switch op {
 		case pencodeMarketInstall, pencodeMarketDownload, pencodeMarketUpdate:
 			var item extensions.Installed
@@ -168,27 +191,27 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 				item, bundle, r.err = marketSource.Install(ctx, backend, listing, op == pencodeMarketUpdate)
 			}
 			if r.err == nil {
-				r.id = item.ID
+				r.id, r.items = item.ID, []extensions.Installed{item}
 				r.bundles[item.ID] = bundle
 			}
 		case pencodeMarketUninstall:
 			r.err = backend.RemoveExtension(ctx, id)
 		case pencodeMarketEnable, pencodeMarketDisable:
 			var bundle *extensions.Bundle
-			_, bundle, r.err = extensions.SetEnabled(ctx, backend, id, op == pencodeMarketEnable)
+			var item extensions.Installed
+			item, bundle, r.err = extensions.SetEnabled(ctx, backend, id, op == pencodeMarketEnable)
 			if r.err == nil {
-				r.bundles[id] = bundle
+				r.items, r.bundles[id] = []extensions.Installed{item}, bundle
 			}
 		case pencodeMarketOpenDirectory:
 			openCtx, stop := context.WithTimeout(ctx, 5*time.Second)
 			r.err = openExternalCommand(openCtx, source).Run()
 			stop()
-		}
-		if r.err == nil && op != pencodeMarketOpenDirectory {
+		case pencodeMarketRefresh:
 			catalog, err := backend.ListExtensions(ctx)
 			r.err = err
 			r.items, r.directory = catalog.Items, catalog.Directory
-			if r.err == nil && op == pencodeMarketRefresh {
+			if r.err == nil {
 				r.listings, r.marketError = marketSource.List(ctx, catalog.OS, catalog.Arch)
 				for i := range r.items {
 					item := &r.items[i]
@@ -207,130 +230,131 @@ func (model *workspaceModel) startMarketOperation(op pencodeMarketOperation, sou
 				}
 			}
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case results <- r:
-			published = true
-			if wake != nil {
-				wake()
-			}
-		}
 	}()
 }
 
 func (model *workspaceModel) pollMarketplace() bool {
 	m := model.market
-	if m == nil || !m.busy {
+	if m == nil {
 		return false
 	}
-	select {
-	case result := <-m.results:
-		m.stop()
-		m.busy = false
-		view := &m.pencodeMarketplaceView
-		if result.owner != m.project {
-			view = &model.storedView(result.owner).market
+	changed := false
+	for id, task := range m.pending {
+		select {
+		case <-task.done:
+			task.cancel()
+			delete(m.pending, id)
+			model.applyMarketResult(&task.result)
+			changed = true
+		default:
 		}
-		if result.err != nil {
-			for _, bundle := range result.bundles {
-				bundle.Close()
-			}
-			view.feedback = fmt.Sprintf(model.tr("操作失败：%v"), result.err)
-			model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, "[Error] "+view.feedback)
-			return true
+	}
+	return changed
+}
+
+func (model *workspaceModel) applyMarketResult(result *pencodeMarketResult) {
+	m := model.market
+	view := &m.pencodeMarketplaceView
+	if result.owner != m.project {
+		view = &model.storedView(result.owner).market
+	}
+	if result.err != nil {
+		view.feedback = fmt.Sprintf(model.tr("操作失败：%v"), result.err)
+		if result.id != "" {
+			view.feedback = result.id + " · " + view.feedback
 		}
-		if result.op == pencodeMarketOpenDirectory {
-			view.feedback = ""
-			return true
-		}
+		model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, "[Error] "+view.feedback)
+		return
+	}
+	if result.op == pencodeMarketOpenDirectory {
+		view.feedback = ""
+		return
+	}
+	if result.op == pencodeMarketRefresh {
 		m.items, m.directory = result.items, result.directory
 		if result.listings != nil {
 			m.listings = result.listings
 		}
-		if result.op == pencodeMarketUpdate {
-			model.unloadExtension(result.id)
-			model.setExtensionState(result.id, 0)
+	} else {
+		// Each mutation publishes only its own item. Other tasks can finish in any order.
+		i, exists := slices.BinarySearchFunc(m.items, result.id, func(item extensions.Installed, id string) int {
+			return strings.Compare(item.ID, id)
+		})
+		if result.op == pencodeMarketUninstall {
+			if exists {
+				m.items = slices.Delete(m.items, i, i+1)
+			}
+			model.removeExtension(result.id)
+		} else if exists {
+			m.items[i] = result.items[0]
+		} else {
+			m.items = slices.Insert(m.items, i, result.items[0])
 		}
-		present := make(map[string]bool, len(m.items))
-		found := false
-		for _, item := range m.items {
-			present[item.ID] = !item.Disabled
-			found = found || item.ID == view.selected
-			if item.Disabled {
-				if model.extensionStates[item.ID] != pencodeExtensionDisabled {
-					model.unloadExtension(item.ID)
-				}
-				model.setExtensionState(item.ID, pencodeExtensionDisabled)
+	}
+	if result.op == pencodeMarketUpdate {
+		model.unloadExtension(result.id)
+		model.setExtensionState(result.id, 0)
+	}
+	var present map[string]bool
+	if result.op == pencodeMarketRefresh {
+		present = make(map[string]bool, len(result.items))
+	}
+	loadError := ""
+	for _, item := range result.items {
+		if present != nil {
+			present[item.ID] = true
+			if item.Problem != "" {
+				model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, "[Error] "+item.ID+": "+item.Problem)
 			}
 		}
-		for _, listing := range m.listings {
-			found = found || listing.Name == view.selected
+		bundle := result.bundles[item.ID]
+		if item.Disabled {
+			if model.extensionStates[item.ID] != pencodeExtensionDisabled {
+				model.unloadExtension(item.ID)
+			}
+			model.setExtensionState(item.ID, pencodeExtensionDisabled)
 		}
+		if item.Disabled || bundle == nil || model.extensionStates[item.ID] == pencodeExtensionLoaded {
+			bundle.Close()
+			continue
+		}
+		if err := model.importExtension(bundle); err != nil {
+			bundle.Close()
+			loadError = fmt.Sprintf(model.tr("扩展 %s 加载失败：%v"), item.ID, err)
+		} else {
+			model.setExtensionState(item.ID, pencodeExtensionLoaded)
+		}
+	}
+	switch result.op {
+	case pencodeMarketRefresh:
 		for id, state := range model.extensionStates {
-			if _, exists := present[id]; state != pencodeExtensionRemoved && !exists {
+			if !present[id] && state != pencodeExtensionRemoved {
 				model.removeExtension(id)
 			}
 		}
-		loadError := ""
-		for id, bundle := range result.bundles {
-			if bundle == nil || !present[id] || model.extensionStates[id] == pencodeExtensionLoaded {
-				bundle.Close()
-				continue
-			}
-			if err := model.importExtension(bundle); err != nil {
-				bundle.Close()
-				loadError = fmt.Sprintf(model.tr("扩展 %s 加载失败：%v"), id, err)
-				continue
-			}
-			model.setExtensionState(id, pencodeExtensionLoaded)
-		}
-		switch result.op {
-		case pencodeMarketUninstall:
-			if model.extensionStates[result.id] != pencodeExtensionRemoved {
-				model.removeExtension(result.id)
-			}
-			view.feedback = model.tr("扩展已卸载")
-		case pencodeMarketInstall, pencodeMarketDownload, pencodeMarketUpdate:
-			view.selected, view.feedback = result.id, model.tr("扩展已安装")
-			_, found = present[result.id]
-			if result.op == pencodeMarketUpdate {
-				view.feedback = model.tr("扩展已更新")
-			}
-		case pencodeMarketEnable:
-			view.feedback = model.tr("扩展已启用")
-		case pencodeMarketDisable:
-			view.feedback = model.tr("扩展已禁用")
-		default:
-			view.feedback = ""
-		}
-		if result.marketError != nil {
-			view.feedback = fmt.Sprintf(model.tr("扩展源加载失败：%v"), result.marketError)
-		}
-		if loadError != "" {
-			view.feedback = loadError
-		}
-		if result.op == pencodeMarketRefresh {
-			model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, fmt.Sprintf("[Info] Refresh: %d installed, %d available", len(m.items), len(m.listings)))
-			for _, listing := range m.listings {
-				if listing.Problem != "" {
-					model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, "[Error] "+listing.Name+": "+listing.Problem)
-				}
-			}
-			for _, item := range m.items {
-				if item.Problem != "" {
-					model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, "[Error] "+item.ID+": "+item.Problem)
-				}
+		view.feedback = ""
+		model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, fmt.Sprintf("[Info] Refresh: %d installed, %d available", len(m.items), len(m.listings)))
+		for _, listing := range m.listings {
+			if listing.Problem != "" {
+				model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, "[Error] "+listing.Name+": "+listing.Problem)
 			}
 		}
-		if view.feedback != "" {
-			level := "[Info] "
-			if result.marketError != nil || loadError != "" {
-				level = "[Error] "
-			}
-			model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, level+view.feedback)
+	case pencodeMarketUninstall:
+		view.feedback = model.tr("扩展已卸载")
+	case pencodeMarketInstall, pencodeMarketDownload:
+		view.feedback = model.tr("扩展已安装")
+		if result.op == pencodeMarketInstall && view.selected == result.selected {
+			view.selected = result.id
 		}
-		if !found {
+	case pencodeMarketUpdate:
+		view.feedback = model.tr("扩展已更新")
+	case pencodeMarketEnable:
+		view.feedback = model.tr("扩展已启用")
+	case pencodeMarketDisable:
+		view.feedback = model.tr("扩展已禁用")
+	}
+	if result.op == pencodeMarketRefresh || result.op == pencodeMarketUninstall && view.selected == result.id {
+		if !present[view.selected] && !slices.ContainsFunc(m.listings, func(l extensions.Listing) bool { return l.Name == view.selected }) {
 			view.selected = ""
 			if len(m.listings) > 0 {
 				view.selected = m.listings[0].Name
@@ -338,11 +362,24 @@ func (model *workspaceModel) pollMarketplace() bool {
 				view.selected = m.items[0].ID
 			}
 		}
-		m.revision++
-		return true
-	default:
-		return false
 	}
+	if result.marketError != nil {
+		view.feedback = fmt.Sprintf(model.tr("扩展源加载失败：%v"), result.marketError)
+	}
+	if loadError != "" {
+		view.feedback = loadError
+	}
+	if view.feedback != "" {
+		if result.id != "" {
+			view.feedback = result.id + " · " + view.feedback
+		}
+		level := "[Info] "
+		if result.marketError != nil || loadError != "" {
+			level = "[Error] "
+		}
+		model.logProjectOutput(result.owner, extensions.MarketplaceOutputChannelName, level+view.feedback)
+	}
+	m.revision++
 }
 
 func (model *workspaceModel) handleMarketplaceEvent(c *module.ContentEventContext[appProps, appState]) bool {
@@ -371,7 +408,7 @@ func (model *workspaceModel) handleMarketplaceEvent(c *module.ContentEventContex
 	case "market-open-directory":
 		model.startMarketOperation(pencodeMarketOpenDirectory, "", "")
 	case "market-install":
-		if m.busy || model.app == nil || model.app.OpenFolder == nil {
+		if m.pending[""] != nil || model.app == nil || model.app.OpenFolder == nil {
 			return true
 		}
 		source, err := model.app.OpenFolder(window.FileDialogOptions{Title: model.tr("选择扩展目录（包含 resources/extension.json）"), DefaultPath: model.lastDirectory})
@@ -469,7 +506,7 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	}
 	view.RemoveAttr("marketplace-panel", "hidden")
 	view.Attr("open-marketplace", "aria-expanded", "true")
-	view.Attr("marketplace-panel", "aria-busy", boolAttribute(m.busy))
+	view.Attr("marketplace-panel", "aria-busy", boolAttribute(m.pending[""] != nil))
 	view.Attr("market-search", "value", m.filter)
 	view.Text("market-feedback", m.feedback)
 	view.Text("market-directory", m.directory)
@@ -478,13 +515,16 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	} else {
 		view.RemoveAttr("market-open-directory", "hidden")
 	}
-	for _, ref := range [...]string{"market-refresh", "market-install", "market-open-directory"} {
-		if m.busy || ref == "market-open-directory" && m.directory == "" {
+	setDisabled := func(ref string, disabled bool) {
+		if disabled {
 			view.Attr(ref, "disabled", "")
 		} else {
 			view.RemoveAttr(ref, "disabled")
 		}
 	}
+	setDisabled("market-install", m.pending[""] != nil)
+	setDisabled("market-refresh", len(m.pending) != 0)
+	setDisabled("market-open-directory", len(m.pending) != 0 || m.directory == "")
 	if m.rowsModel != model || m.rowsRevision != m.revision || m.rowsDefinition != definition {
 		clear(m.rows[:cap(m.rows)])
 		m.rows = m.rows[:0]
@@ -528,33 +568,26 @@ func (model *workspaceModel) renderMarketplace(view *htmlui.View, definition *ht
 	} else {
 		view.Attr("market-download", "hidden", "")
 	}
-	if m.busy || !m.download {
-		view.Attr("market-download", "disabled", "")
-	} else {
-		view.RemoveAttr("market-download", "disabled")
-	}
-	if m.busy || m.selectedItem == nil {
-		view.Attr("market-uninstall", "disabled", "")
-	} else {
-		view.RemoveAttr("market-uninstall", "disabled")
-	}
+	busy := m.pending[""] != nil || m.pending[m.selected] != nil
+	setDisabled("market-download", busy || !m.download)
+	setDisabled("market-uninstall", busy || m.selectedItem == nil)
 	label := model.tr("禁用扩展")
 	if m.selectedItem != nil && m.selectedItem.Disabled {
 		label = model.tr("启用扩展")
 	}
 	view.Text("market-toggle", label)
-	if m.busy || m.selectedItem == nil {
-		view.Attr("market-toggle", "disabled", "")
-	} else {
-		view.RemoveAttr("market-toggle", "disabled")
-	}
+	setDisabled("market-toggle", busy || m.selectedItem == nil)
 	if len(m.rows) == 0 {
 		view.RemoveAttr("market-empty", "hidden")
 	} else {
 		view.Attr("market-empty", "hidden", "")
 	}
+	details := m.details
+	if task := m.pending[m.selected]; m.selected != "" && task != nil {
+		details[3] = task.status
+	}
 	for i, ref := range [...]string{"market-name", "market-meta", "market-description", "market-status", "market-path"} {
-		view.Text(ref, m.details[i])
+		view.Text(ref, details[i])
 	}
 }
 
